@@ -41,6 +41,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
   Timer? _autoScrollTimer;
   Offset? _lastDragPosition;
   bool _isScrollingFromList = false;
+  bool _hasPerformedInitialScroll = false;
 
   @override
   void initState() {
@@ -60,8 +61,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         setState(() {});
-        // Scroll dynamically to the current time, centering it perfectly in the middle of the viewport!
-        _scrollToCurrentTime(smooth: false);
       }
     });
   }
@@ -461,6 +460,15 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
     final colorMarks = ref.watch(diaryColorMarkProvider);
     final selectEvent = ref.watch(diaryInputTimeProvider);
     final currentInputTime = ref.watch(currentInputTimeProvider);
+
+    if (diaryListAsync is AsyncData && !_hasPerformedInitialScroll) {
+      _hasPerformedInitialScroll = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _scrollToCurrentTime(smooth: false);
+        }
+      });
+    }
 
     final dateStr = DateFormat('yyyy-MM-dd').format(selectedDate);
     final currentColorMark = colorMarks.where((m) {

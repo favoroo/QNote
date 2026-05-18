@@ -63,44 +63,40 @@ class BottomNavBar extends ConsumerWidget {
       ),
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
           child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: navigationItems.asMap().entries.map((entry) {
               final index = entry.key;
               final item = entry.value;
               final isSelected = index == currentIndex;
 
-              return Expanded(
-                child: GestureDetector(
-                  onTap: () => onTap(index),
-                  onLongPress: index == 0
-                      ? () {
-                          // Switch to diary branch if not already selected
-                          if (!isSelected) {
-                            onTap(0);
-                          }
-                          // Trigger smooth scroll to current time in timeline
-                          ref.read(diaryScrollTriggerProvider.notifier).state =
-                              DateTime.now().millisecondsSinceEpoch;
+              return GestureDetector(
+                onTap: () => onTap(index),
+                onLongPress: index == 0
+                    ? () {
+                        // Switch to diary branch if not already selected
+                        if (!isSelected) {
+                          onTap(0);
                         }
-                      : null,
-                  behavior: HitTestBehavior.opaque,
-                  child: Center(
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: isSelected ? theme.colorScheme.primary.withValues(alpha: 0.12) : Colors.transparent,
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: Icon(
-                        isSelected ? item.activeIcon : item.icon,
-                        color: isSelected 
-                            ? theme.colorScheme.primary 
-                            : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-                        size: 24,
-                      ),
-                    ),
+                        // Trigger smooth scroll to current time in timeline
+                        ref.read(diaryScrollTriggerProvider.notifier).state =
+                            DateTime.now().millisecondsSinceEpoch;
+                      }
+                    : null,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isSelected ? theme.colorScheme.primary.withValues(alpha: 0.12) : Colors.transparent,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Icon(
+                    isSelected ? item.activeIcon : item.icon,
+                    color: isSelected 
+                        ? theme.colorScheme.primary 
+                        : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                    size: 24,
                   ),
                 ),
               );
