@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/date_color_mark.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
+import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/widgets/search_view.dart';
 import 'package:qnote_flutter/widgets/diary/diary_item.dart';
 import 'package:qnote_flutter/widgets/diary/diary_input_bar.dart';
@@ -30,6 +31,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
   int _windowDays = 7;
   late ScrollController _scrollController;
   final GlobalKey _viewportKey = GlobalKey();
+  // GlobalKey placed on the current-time node so we can read its actual RenderBox position
+  final GlobalKey _currentTimeNodeKey = GlobalKey();
   int? _dragStartIndex;
   int? _dragEndIndex;
   bool _isShiftingWindow = false;
@@ -66,51 +69,59 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
   void _scrollToCurrentTime({bool smooth = true, int attempts = 0}) {
     if (!_scrollController.hasClients) return;
 
-    final now = DateTime.now();
-    final dayOffset = _dateToDayOffset(now);
-    final nodeIndex = now.hour * 2 + (now.minute >= 30 ? 1 : 0);
-    final subIndex = nodeIndex + 1;
-    final targetIndex = dayOffset * _itemsPerDay + subIndex;
-
-    final viewportHeight = _scrollController.position.viewportDimension;
-    final estimatedOffset = dayOffset * _dayHeight + _dividerHeight + nodeIndex * _nodeHeight - (viewportHeight > 0 ? viewportHeight / 2 : 350.0);
-    final targetOffset = estimatedOffset.clamp(0.0, _scrollController.position.maxScrollExtent);
-
+    // Phase 1: rough jump using static math to get near the target so the
+    // ListView renders the item. On first attempt only.
     if (attempts == 0) {
-      if (smooth) {
-        _scrollController.animateTo(
-          targetOffset,
-          duration: const Duration(milliseconds: 600),
-          curve: Curves.easeInOutCubic,
-        ).then((_) {
-          if (mounted) {
-            final targetCtx = _itemContexts[targetIndex];
-            if (targetCtx != null) {
-              Scrollable.ensureVisible(
-                targetCtx,
-                alignment: 0.5,
-                duration: const Duration(milliseconds: 150),
-                curve: Curves.easeOut,
-              );
-            }
+      final now = DateTime.now();
+      final dayOffset = _dateToDayOffset(now);
+      final nodeIndex = now.hour * 2 + (now.minute >= 30 ? 1 : 0);
+      final viewportHeight = _scrollController.position.viewportDimension;
+      final rough = dayOffset * _dayHeight + _dividerHeight + nodeIndex * _nodeHeight
+          - (viewportHeight > 0 ? viewportHeight / 2 : 350.0);
+      _scrollController.jumpTo(rough.clamp(0.0, _scrollController.position.maxScrollExtent));
+    }
+
+    // Phase 2: wait one frame then use the GlobalKey RenderBox for the exact position.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      final keyCtx = _currentTimeNodeKey.currentContext;
+      if (keyCtx != null) {
+        // Read the node's actual pixel offset in the scroll coordinate space.
+        final renderBox = keyCtx.findRenderObject() as RenderBox?;
+        if (renderBox != null && renderBox.hasSize) {
+          final nodeHeight = renderBox.size.height;
+          // localToGlobal gives position relative to top-left of screen.
+          // We want the scroll offset that centres this node.
+          final viewportHeight = _scrollController.position.viewportDimension;
+          final scrollOffset = _scrollController.offset;
+          // Position of the node top relative to the viewport top:
+          final nodeTopOnScreen = renderBox.localToGlobal(Offset.zero).dy;
+          // Translate to scroll-space:
+          final nodeTopInScroll = scrollOffset + nodeTopOnScreen;
+          final target = (nodeTopInScroll - (viewportHeight - nodeHeight) / 2)
+              .clamp(0.0, _scrollController.position.maxScrollExtent);
+
+          if (smooth) {
+            _scrollController.animateTo(
+              target,
+              duration: const Duration(milliseconds: 500),
+              curve: Curves.easeInOutCubic,
+            );
+          } else {
+            _scrollController.jumpTo(target);
           }
-        });
-      } else {
-        _scrollController.jumpTo(targetOffset);
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            final targetCtx = _itemContexts[targetIndex];
-            if (targetCtx != null) {
-              Scrollable.ensureVisible(
-                targetCtx,
-                alignment: 0.5,
-                duration: Duration.zero,
-              );
-            }
-          }
+          return;
+        }
+      }
+
+      // GlobalKey not resolved yet — retry up to 8 times with short delay.
+      if (attempts < 8) {
+        Future.delayed(const Duration(milliseconds: 40), () {
+          if (mounted) _scrollToCurrentTime(smooth: smooth, attempts: attempts + 1);
         });
       }
-    }
+    });
   }
 
   @override
@@ -469,14 +480,14 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
                 height: 56,
                 child: Row(
                   children: [
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 4),
                     IconButton(
                       icon: const Icon(Icons.menu),
-                      onPressed: () => Scaffold.of(context).openDrawer(),
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      onPressed: () => rootScaffoldKey.currentState?.openDrawer(),
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
                       constraints: const BoxConstraints(),
                     ),
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 2),
                     Container(
                       width: 36,
                       height: 36,
@@ -498,29 +509,35 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
                     Expanded(
                       child: GestureDetector(
                         onTap: _showDatePicker,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            if (currentColorMark != null) ...[
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  color: _hexToColor(currentColorMark.color),
-                                  shape: BoxShape.circle,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                if (currentColorMark != null) ...[
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: BoxDecoration(
+                                      color: _hexToColor(currentColorMark.color),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                ],
+                                Text(
+                                  _formatDateTitle(selectedDate),
+                                  textAlign: TextAlign.center,
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.5,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                            ],
-                            Text(
-                              _formatDateTitle(selectedDate),
-                              textAlign: TextAlign.center,
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.5,
-                              ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
@@ -539,14 +556,14 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
                         constraints: const BoxConstraints(),
                       ),
                     ),
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 2),
                     IconButton(
                       icon: const Icon(Icons.search_rounded),
                       onPressed: _navigateToSearch,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
                       constraints: const BoxConstraints(),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 4),
                   ],
                 ),
               ),
@@ -580,6 +597,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
                       onLongPressMoveUpdate: _handleDragUpdate,
                       onLongPressEnd: _handleDragEnd,
                       child: ListView.builder(
+                        cacheExtent: 1500,
                         controller: _scrollController,
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         itemCount: _windowDays * _itemsPerDay,
@@ -693,6 +711,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
                             final isStandardNodeCurrentTime = _isToday(date) && (now.hour == time.hour && now.minute == time.minute);
 
                             childWidget = Column(
+                              key: (isNowInThisInterval && _isToday(date)) ? _currentTimeNodeKey : null,
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 _EmptyTimeNode(

@@ -4,7 +4,7 @@ import 'package:qnote_flutter/providers/todo_provider.dart';
 import 'package:qnote_flutter/models/todo.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
 import 'package:qnote_flutter/widgets/time_picker.dart';
-import 'package:qnote_flutter/widgets/side_drawer.dart';
+import 'package:qnote_flutter/providers/navigation_provider.dart';
 
 class TodoPage extends ConsumerStatefulWidget {
   const TodoPage({super.key});
@@ -40,7 +40,6 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: colorScheme.surface,
-      drawer: const SideDrawer(),
       endDrawer: const _HistoryDrawer(),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _addNewTodo(isLongTerm),
@@ -56,7 +55,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.menu),
-          onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+          onPressed: () => rootScaffoldKey.currentState?.openDrawer(),
         ),
         title: Text(
           '待办',

@@ -10,7 +10,7 @@ import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
-import 'package:qnote_flutter/widgets/side_drawer.dart';
+import 'package:qnote_flutter/providers/navigation_provider.dart';
 
 class AiPage extends ConsumerStatefulWidget {
   const AiPage({super.key});
@@ -249,7 +249,7 @@ class _AiPageState extends ConsumerState<AiPage> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.menu),
-          onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+          onPressed: () => rootScaffoldKey.currentState?.openDrawer(),
         ),
         title: const Text('AI 助手'),
         actions: [
@@ -259,7 +259,6 @@ class _AiPageState extends ConsumerState<AiPage> {
           ),
         ],
       ),
-      drawer: const SideDrawer(),
       endDrawer: _buildHistoryDrawer(sessionsAsync, currentChat, theme),
       body: Column(
         children: [

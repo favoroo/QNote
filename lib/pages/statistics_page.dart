@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
-import 'package:qnote_flutter/widgets/side_drawer.dart';
+import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/widgets/time_range_selector.dart';
 import 'package:qnote_flutter/widgets/statistics/sleep_stats.dart';
 import 'package:qnote_flutter/widgets/statistics/diet_stats.dart';
@@ -108,12 +108,11 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.menu),
-          onPressed: () => Scaffold.of(context).openDrawer(),
+          onPressed: () => rootScaffoldKey.currentState?.openDrawer(),
         ),
         title: const Text('数据统计'),
         centerTitle: true,
       ),
-      drawer: const SideDrawer(),
       body: Column(
         children: [
           _TabSwitcher(

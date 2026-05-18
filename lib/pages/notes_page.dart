@@ -6,7 +6,7 @@ import 'package:qnote_flutter/providers/note_provider.dart';
 import 'package:qnote_flutter/providers/folder_provider.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
 import 'package:qnote_flutter/widgets/search_view.dart';
-import 'package:qnote_flutter/widgets/side_drawer.dart';
+import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/widgets/notes/note_editor_view.dart';
 
 class _DragData {
@@ -29,13 +29,10 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     final folderListAsync = ref.watch(folderListProvider);
 
     return Scaffold(
-      drawer: const SideDrawer(),
       appBar: AppBar(
-        leading: Builder(
-          builder: (context) => IconButton(
-            icon: const Icon(Icons.menu),
-            onPressed: () => Scaffold.of(context).openDrawer(),
-          ),
+        leading: IconButton(
+          icon: const Icon(Icons.menu),
+          onPressed: () => rootScaffoldKey.currentState?.openDrawer(),
         ),
         title: const Text('笔记'),
         actions: [
