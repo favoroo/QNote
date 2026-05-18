@@ -1,0 +1,97 @@
+# ============================================
+# QNote Flutter 项目 Git 忽略规则
+# ============================================
+
+# ---- Flutter 构建相关 ----
+build/
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# ---- IDE 和编辑器配置 ----
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# ---- 系统文件 ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- 日志和调试 ----
+*.log
+logs/
+
+# ---- 临时和缓存文件 ----
+*.tmp
+*.temp
+*.bak
+*.cache
+*.pid
+*.seed
+*.pid.lock
+
+# ---- 测试相关 ----
+coverage/
+.test_coverage
+.nyc_output/
+
+# ---- 备份文件 ----
+*.backup
+*.orig
+
+# ---- 项目特定文件（不需要版本控制）----
+scratch.dart
+skills-lock.json
+
+# ---- IDE/工具特定目录 ----
+.trae/
+.agents/
+
+# ---- 参考文档（旧架构，体积较大）----
+01旧架构数据/
+
+# ---- 敏感配置和环境变量 ----
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+secrets.yaml
+
+# ---- Android 构建产物 ----
+android/app/build/
+android/.gradle/
+android/local.properties
+android/*.apk
+android/*.aab
+
+# ---- iOS 构建产物（如果存在）----
+ios/Pods/
+ios/.symlinks/
+ios/build/
+ios/*.dSYM.zip
+ios/*.ipa
+ios/*.xcarchive
+ios/profile/
+
+# ---- Web 构建产物 ----
+web/.dart_tool/
+web/.packages
+
+# ---- Windows/Linux/MacOS 构建产物 ----
+windows/build/
+linux/build/
+macos/build/
+
+# ---- 符号链接文件 ----
+*.lnk
+
+# ---- 文档生成（如果使用）----
+doc/api/
