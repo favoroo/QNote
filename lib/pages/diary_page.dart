@@ -18,7 +18,7 @@ class DiaryPage extends ConsumerStatefulWidget {
   ConsumerState<DiaryPage> createState() => _DiaryPageState();
 }
 
-class _DiaryPageState extends ConsumerState<DiaryPage> {
+class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserver {
   static const int _itemsPerDay = 49;
   static const double _dayHeight = 2180.0;
   static const double _dividerHeight = 80.0;
@@ -36,10 +36,12 @@ class _DiaryPageState extends ConsumerState<DiaryPage> {
   final Map<int, BuildContext> _itemContexts = {};
   Timer? _autoScrollTimer;
   Offset? _lastDragPosition;
+  bool _isScrollingFromList = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     final now = DateTime.now();
     _today = DateTime(now.year, now.month, now.day);
     _windowStartDate = _today.subtract(const Duration(days: 3));
@@ -59,7 +61,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> {
     });
   }
 
-  void _scrollToCurrentTime({bool smooth = true}) {
+  void _scrollToCurrentTime({bool smooth = true, int attempts = 0}) {
     if (!_scrollController.hasClients) return;
 
     final now = DateTime.now();
@@ -68,17 +70,18 @@ class _DiaryPageState extends ConsumerState<DiaryPage> {
     final subIndex = nodeIndex + 1;
     final targetIndex = dayOffset * _itemsPerDay + subIndex;
 
-    // 1. Instantly jump close to the estimated offset to force ListView to mount/render the target item
+    // 1. Calculate estimated offset and jump to it first
     final viewportHeight = _scrollController.position.viewportDimension;
-    final estimatedOffset = dayOffset * _dayHeight + _dividerHeight + nodeIndex * _nodeHeight - (viewportHeight / 2);
+    final estimatedOffset = dayOffset * _dayHeight + _dividerHeight + nodeIndex * _nodeHeight - (viewportHeight > 0 ? viewportHeight / 2 : 300.0);
     
-    _scrollController.jumpTo(estimatedOffset.clamp(
-      0.0,
-      _scrollController.position.maxScrollExtent,
-    ));
+    if (attempts == 0) {
+      _scrollController.jumpTo(estimatedOffset.clamp(
+        0.0,
+        _scrollController.position.maxScrollExtent,
+      ));
+    }
 
-    // 2. In the next frame (when the target item is fully mounted and registered in _itemContexts),
-    // precisely center it vertically in the viewport using ensureVisible with alignment 0.5.
+    // 2. Poll for the context to become available
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final targetCtx = _itemContexts[targetIndex];
@@ -89,12 +92,28 @@ class _DiaryPageState extends ConsumerState<DiaryPage> {
           duration: smooth ? const Duration(milliseconds: 500) : Duration.zero,
           curve: Curves.easeInOut,
         );
+      } else if (attempts < 5) {
+        // Context not registered yet, wait for layout and retry
+        Future.delayed(const Duration(milliseconds: 30), () {
+          if (mounted) {
+            _scrollToCurrentTime(smooth: smooth, attempts: attempts + 1);
+          }
+        });
       }
     });
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Scroll to current time immediately when resuming the app from background
+      _scrollToCurrentTime(smooth: true);
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _stopAutoScrollTimer();
     _itemContexts.clear();
     _scrollController.removeListener(_onScroll);
@@ -113,6 +132,19 @@ class _DiaryPageState extends ConsumerState<DiaryPage> {
       _shiftWindowBackward();
     } else if (offset > maxScroll - viewportHeight * 0.5) {
       _shiftWindowForward();
+    }
+
+    // Determine currently visible date based on scroll offset
+    // A small buffer threshold of 120.0 aligns perfectly with divider transitions
+    final targetOffset = offset + 120.0;
+    final dayOffset = (targetOffset / _dayHeight).floor().clamp(0, _windowDays - 1);
+    final visibleDate = _indexToDate(dayOffset);
+
+    final selectedDate = ref.read(selectedDateProvider);
+    if (!_isSameDay(selectedDate, visibleDate)) {
+      _isScrollingFromList = true;
+      ref.read(selectedDateProvider.notifier).state = visibleDate;
+      _isScrollingFromList = false;
     }
   }
 
@@ -192,6 +224,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage> {
 
   void _goToDate(DateTime date) {
     ref.read(selectedDateProvider.notifier).state = date;
+    if (_isScrollingFromList) return;
+
     final dayOffset = _dateToDayOffset(date);
     if (dayOffset < 0 || dayOffset >= _windowDays) {
       _ensureDateInWindow(date);
@@ -405,6 +439,12 @@ class _DiaryPageState extends ConsumerState<DiaryPage> {
     ref.listen<DateTime>(selectedDateProvider, (previous, next) {
       if (next != null) {
         _goToDate(next);
+      }
+    });
+
+    ref.listen<int>(diaryScrollTriggerProvider, (previous, next) {
+      if (next != 0) {
+        _scrollToCurrentTime(smooth: true);
       }
     });
 

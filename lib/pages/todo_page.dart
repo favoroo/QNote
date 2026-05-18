@@ -84,6 +84,10 @@ class _TodoPageState extends ConsumerState<TodoPage> {
               child: _SegmentedControl(
                 isLongTerm: isLongTerm,
                 onChanged: (value) {
+                  FocusScope.of(context).unfocus();
+                  setState(() {
+                    _focusedTodoId = null;
+                  });
                   ref.read(isLongTermFilterProvider.notifier).state = value;
                   _pageController.animateToPage(
                     value ? 1 : 0,
@@ -97,6 +101,10 @@ class _TodoPageState extends ConsumerState<TodoPage> {
               child: PageView(
                 controller: _pageController,
                 onPageChanged: (index) {
+                  FocusScope.of(context).unfocus();
+                  setState(() {
+                    _focusedTodoId = null;
+                  });
                   ref.read(isLongTermFilterProvider.notifier).state = (index == 1);
                 },
                 children: [
@@ -160,6 +168,11 @@ class _TodoPageState extends ConsumerState<TodoPage> {
               todo: todo,
               index: index,
               autoFocus: todo.id == _focusedTodoId,
+              onFocused: () {
+                setState(() {
+                  _focusedTodoId = null;
+                });
+              },
               onToggleComplete: () {
                 ref.read(todoListProvider.notifier).toggleComplete(todo.id, true);
               },
@@ -330,7 +343,7 @@ class _SegmentedControl extends StatelessWidget {
                 ),
                 child: Center(
                   child: Text(
-                    '今日待办',
+                    '今日',
                     style: TextStyle(
                       fontWeight: !isLongTerm ? FontWeight.bold : FontWeight.w600,
                       fontSize: 13.5,
@@ -364,7 +377,7 @@ class _SegmentedControl extends StatelessWidget {
                 ),
                 child: Center(
                   child: Text(
-                    '长期待办',
+                    '长期',
                     style: TextStyle(
                       fontWeight: isLongTerm ? FontWeight.bold : FontWeight.w600,
                       fontSize: 13.5,
@@ -387,6 +400,7 @@ class _TodoItem extends StatefulWidget {
   final Todo todo;
   final int index;
   final bool autoFocus;
+  final VoidCallback? onFocused;
   final VoidCallback onToggleComplete;
   final ValueChanged<String> onTitleChanged;
   final void Function(GlobalKey key) onShowMenu;
@@ -397,6 +411,7 @@ class _TodoItem extends StatefulWidget {
     required this.todo,
     required this.index,
     this.autoFocus = false,
+    this.onFocused,
     required this.onToggleComplete,
     required this.onTitleChanged,
     required this.onShowMenu,
@@ -454,6 +469,7 @@ class _TodoItemState extends State<_TodoItem> with SingleTickerProviderStateMixi
     if (widget.autoFocus) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _focusNode.requestFocus();
+        widget.onFocused?.call();
       });
     }
   }

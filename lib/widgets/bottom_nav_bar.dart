@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
+import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/widgets/side_drawer.dart';
 
 class ScaffoldWithNavBar extends StatefulWidget {
@@ -35,7 +37,7 @@ class _ScaffoldWithNavBarState extends State<ScaffoldWithNavBar> {
   }
 }
 
-class BottomNavBar extends StatelessWidget {
+class BottomNavBar extends ConsumerWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
   final VoidCallback? onMenuTap;
@@ -48,7 +50,7 @@ class BottomNavBar extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     
     return Container(
@@ -56,7 +58,7 @@ class BottomNavBar extends StatelessWidget {
         color: theme.colorScheme.surface,
         border: Border(
           top: BorderSide(
-            color: theme.colorScheme.outlineVariant.withOpacity(0.3),
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
             width: 0.5,
           ),
         ),
@@ -73,6 +75,17 @@ class BottomNavBar extends StatelessWidget {
 
               return GestureDetector(
                 onTap: () => onTap(index),
+                onLongPress: index == 0
+                    ? () {
+                        // Switch to diary branch if not already selected
+                        if (!isSelected) {
+                          onTap(0);
+                        }
+                        // Trigger smooth scroll to current time in timeline
+                        ref.read(diaryScrollTriggerProvider.notifier).state =
+                            DateTime.now().millisecondsSinceEpoch;
+                      }
+                    : null,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),

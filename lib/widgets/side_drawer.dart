@@ -135,7 +135,7 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
                     icon: Icons.sync_rounded,
                     iconBgColor: Colors.lightBlue.withValues(alpha: 0.1),
                     iconColor: Colors.lightBlue,
-                    label: '同步设置 (WebDAV)',
+                    label: '同步设置',
                     onTap: () => _navigateTo(context, const SyncSettingsPage()),
                   ),
                   _DrawerMenuItem(

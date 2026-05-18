@@ -12,6 +12,7 @@ import 'package:qnote_flutter/providers/user_profile_provider.dart';
 import 'package:qnote_flutter/core/network/webdav_service.dart';
 import 'package:qnote_flutter/core/network/sync_scheduler.dart';
 import 'package:qnote_flutter/models/webdav_config.dart';
+import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:uuid/uuid.dart';
 
 class SyncSettingsPage extends ConsumerStatefulWidget {
@@ -29,7 +30,8 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
   final _remotePathController = TextEditingController();
 
   bool _obscurePassword = true;
-  bool _autoSync = false;
+  bool _webdavEnabled = false;
+  bool _syncOnLaunch = false;
   int _syncInterval = 0;
   bool _testing = false;
   StreamSubscription<SyncStatus>? _statusSubscription;
@@ -65,17 +67,26 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
   Future<void> _loadConfig() async {
     try {
       final config = await ref.read(webdavConfigProvider.future);
+      final syncOnLaunchStr = await ConfigRepository.instance.getAppConfig('webdav_sync_on_launch');
+      final syncOnLaunch = syncOnLaunchStr == 'true';
+
       if (config != null) {
         _serverUrlController.text = config.serverUrl;
         _usernameController.text = config.username;
         _passwordController.text = config.password;
         _remotePathController.text = config.remotePath;
         setState(() {
-          _autoSync = config.autoSync;
+          _webdavEnabled = config.autoSync;
+          _syncOnLaunch = syncOnLaunch;
           _syncInterval = config.syncInterval;
         });
       } else {
         _remotePathController.text = 'QNote';
+        setState(() {
+          _webdavEnabled = false;
+          _syncOnLaunch = syncOnLaunch;
+          _syncInterval = 0;
+        });
       }
     } catch (e) {
       _remotePathController.text = 'QNote';
@@ -137,14 +148,14 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
     final existing = await ref.read(webdavConfigProvider.future).catchError((_) => null);
 
     final config = WebdavConfig(
-      id: existing?.id ?? const Uuid().v4(),
+      id: 'default',
       serverUrl: _serverUrlController.text.trim(),
       username: _usernameController.text.trim(),
       password: _passwordController.text,
       remotePath: _remotePathController.text.trim().isEmpty
           ? 'QNote'
           : _remotePathController.text.trim(),
-      autoSync: _autoSync,
+      autoSync: _webdavEnabled,
       syncInterval: _syncInterval,
       lastSyncTime: existing?.lastSyncTime,
       createdAt: existing?.createdAt ?? DateTime.now(),
@@ -152,6 +163,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
     );
 
     await ref.read(webdavConfigProvider.notifier).saveConfig(config);
+    await ConfigRepository.instance.setAppConfig('webdav_sync_on_launch', _syncOnLaunch ? 'true' : 'false');
 
     if (mounted) {
       _showNotification('配置已保存', isSuccess: true);
@@ -310,7 +322,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
       child: Scaffold(
         backgroundColor: colorScheme.surfaceContainerLowest.withValues(alpha: 0.5),
       appBar: AppBar(
-        title: const Text('同步设置 (WebDAV)'),
+        title: const Text('同步设置'),
         backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
@@ -412,16 +424,16 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
                     iconColor: Colors.blue,
                     title: '启用 WebDAV 同步',
                     subtitle: '自动备份数据至私有网盘',
-                    value: _autoSync,
-                    onChanged: (v) => setState(() => _autoSync = v),
+                    value: _webdavEnabled,
+                    onChanged: (v) => setState(() => _webdavEnabled = v),
                   ),
                   const Divider(indent: 64, endIndent: 16, height: 1),
                   _buildSwitchTile(
                     icon: Icons.bolt_outlined,
                     iconColor: Colors.orange,
                     title: '启动时自动同步',
-                    value: _autoSync, // Placeholder logic or separate state
-                    onChanged: (v) {}, // Needs actual state in real app
+                    value: _syncOnLaunch,
+                    onChanged: (v) => setState(() => _syncOnLaunch = v),
                   ),
                   const Divider(indent: 64, endIndent: 16, height: 1),
                   _buildDropdownTile(

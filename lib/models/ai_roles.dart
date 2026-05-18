@@ -48,16 +48,19 @@ class AiRoles {
 class AiRoleSettings {
   final double temperature;
   final int maxTokens;
+  final bool extractImages;
 
   const AiRoleSettings({
     this.temperature = 0.7,
     this.maxTokens = 2048,
+    this.extractImages = false,
   });
 
   Map<String, dynamic> toMap() {
     return {
       'temperature': temperature,
       'maxTokens': maxTokens,
+      'extractImages': extractImages,
     };
   }
 
@@ -65,13 +68,15 @@ class AiRoleSettings {
     return AiRoleSettings(
       temperature: (map['temperature'] as num?)?.toDouble() ?? 0.7,
       maxTokens: map['maxTokens'] as int? ?? 2048,
+      extractImages: map['extractImages'] as bool? ?? false,
     );
   }
 
-  AiRoleSettings copyWith({double? temperature, int? maxTokens}) {
+  AiRoleSettings copyWith({double? temperature, int? maxTokens, bool? extractImages}) {
     return AiRoleSettings(
       temperature: temperature ?? this.temperature,
       maxTokens: maxTokens ?? this.maxTokens,
+      extractImages: extractImages ?? this.extractImages,
     );
   }
 }

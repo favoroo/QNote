@@ -37,6 +37,8 @@ final currentInputTimeProvider = StateProvider<TimeOfDay>((ref) => TimeOfDay.now
 
 final diaryDraftsProvider = StateProvider<List<DiaryRecord>>((ref) => []);
 
+final diaryScrollTriggerProvider = StateProvider<int>((ref) => 0);
+
 final diaryListProvider =
     AsyncNotifierProvider<DiaryListNotifier, List<DiaryRecord>>(() {
       return DiaryListNotifier();

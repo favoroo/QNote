@@ -531,7 +531,11 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
   Future<void> _handleAiExtract() async {
     if (_isExtracting) return;
     final draft = _activeDraft;
-    if (draft.inputText.trim().isEmpty && draft.selectedPhotos.isEmpty) return;
+
+    final aiTempsAsync = ref.read(aiTemperaturesProvider);
+    final extractImages = aiTempsAsync.valueOrNull?.timelineOptimization.extractImages ?? false;
+    final isExtractButtonEnabled = draft.inputText.trim().isNotEmpty || (extractImages && draft.selectedPhotos.isNotEmpty);
+    if (!isExtractButtonEnabled) return;
 
     setState(() {
       _isExtracting = true;
@@ -568,7 +572,8 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
       setState(() => _extractPhase = _ExtractPhase.waiting);
 
       List<Map<String, dynamic>> results;
-      if (draft.selectedPhotos.isNotEmpty) {
+      final bool shouldSendImage = extractImages && draft.selectedPhotos.isNotEmpty;
+      if (shouldSendImage) {
         final base64 = await _imageRepo.getBase64Image(draft.selectedPhotos.first);
         results = await aiService.extractGlobalImageInfo(
           imageBase64: base64,
@@ -1943,6 +1948,10 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
     final isEmpty = draft.inputText.trim().isEmpty && draft.selectedShortcut == null && draft.selectedPhotos.isEmpty;
     final isDisabled = isValidationError || isEmpty;
 
+    final aiTempsAsync = ref.watch(aiTemperaturesProvider);
+    final extractImages = aiTempsAsync.valueOrNull?.timelineOptimization.extractImages ?? false;
+    final isExtractButtonEnabled = draft.inputText.trim().isNotEmpty || (extractImages && draft.selectedPhotos.isNotEmpty);
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
       child: Row(
@@ -2012,9 +2021,9 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
                       child: Icon(
                         Icons.auto_awesome,
                         size: 24,
-                        color: (draft.inputText.trim().isEmpty && draft.selectedPhotos.isEmpty)
-                            ? theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4)
-                            : theme.colorScheme.primary,
+                        color: isExtractButtonEnabled
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
                       ),
                     ),
             ),

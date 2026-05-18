@@ -47,6 +47,11 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   String _lastSavedTitle = '';
   String _lastSavedContent = '';
 
+  // Photo synchronization and tracking
+  late List<String> _photos;
+  late List<String> _newlyUploadedPaths;
+  late List<String> _removedPaths;
+
   @override
   void initState() {
     super.initState();
@@ -59,6 +64,11 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     // Seed the initial saved state to prevent redundant saves
     _lastSavedTitle = widget.note.title;
     _lastSavedContent = _contentController.text;
+
+    // Parse initial photos from markdown content
+    _photos = _extractImagesFromContent(_contentController.text);
+    _newlyUploadedPaths = [];
+    _removedPaths = [];
 
     // Listen to changes in both title and content for auto-saving
     _titleController.addListener(_onTitleChanged);
@@ -100,7 +110,21 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
       _redoList.clear();
     }
     
+    // Bidirectional sync: extract images from the text when edited
+    _syncPhotosFromContent();
+    
     _triggerAutoSave();
+  }
+
+  void _syncPhotosFromContent() {
+    final currentContent = _contentController.text;
+    final inlineImages = _extractImagesFromContent(currentContent);
+    
+    if (!listEquals(_photos, inlineImages)) {
+      setState(() {
+        _photos = inlineImages;
+      });
+    }
   }
 
   void _triggerAutoSave() {
@@ -206,6 +230,15 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     _autoSaveTimer?.cancel(); // Cancel any pending auto-save before final manual exit save
 
     try {
+      // Clean up physically removed files from disk
+      for (final path in _removedPaths) {
+        try {
+          await _imageRepo.deleteImage(path);
+        } catch (_) {}
+      }
+      _removedPaths.clear();
+      _newlyUploadedPaths.clear();
+
       await _saveNote();
     } catch (e) {
       debugPrint('Error saving note on back: $e');
@@ -253,6 +286,9 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     }
 
     if (mounted) {
+      setState(() {
+        _newlyUploadedPaths.add(savedPath);
+      });
       _insertMarkdownAtCursor('![image]($savedPath)');
     }
   }
@@ -278,8 +314,65 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     }
 
     if (mounted) {
+      setState(() {
+        _newlyUploadedPaths.add(savedPath);
+      });
       _insertMarkdownAtCursor('![image]($savedPath)');
     }
+  }
+
+  void _removePhoto(int index) {
+    final path = _photos[index];
+    
+    // Remove from disk if it was newly uploaded in this session
+    if (_newlyUploadedPaths.contains(path)) {
+      _newlyUploadedPaths.remove(path);
+      try {
+        _imageRepo.deleteImage(path);
+      } catch (_) {}
+    } else {
+      _removedPaths.add(path);
+    }
+
+    setState(() {
+      _photos.removeAt(index);
+      
+      // Also remove the inline markdown from the content editor text!
+      final text = _contentController.text;
+      final escapedPath = RegExp.escape(path);
+      final regExp = RegExp('!\\\[.*?\\\]\\\\($escapedPath\\\\)\\\\n*');
+      final newText = text.replaceAll(regExp, '');
+      
+      _contentController.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(offset: 0),
+      );
+    });
+    
+    _triggerAutoSave();
+  }
+
+  void _previewPhoto(int index) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            elevation: 0,
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              child: UnifiedImage(
+                imagePath: _photos[index],
+                fit: BoxFit.contain,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   void _insertMarkdownAtCursor(String markup) {
@@ -389,6 +482,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return PopScope(
       canPop: false,
@@ -430,26 +524,35 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
               child: SingleChildScrollView(
                 controller: _scrollController,
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                child: TextField(
-                  controller: _contentController,
-                  focusNode: _editorFocusNode,
-                  maxLines: null,
-                  keyboardType: TextInputType.multiline,
-                  textCapitalization: TextCapitalization.sentences,
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    height: 1.6,
-                    letterSpacing: 0.3,
-                  ),
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    errorBorder: InputBorder.none,
-                    disabledBorder: InputBorder.none,
-                    hintText: '在此输入内容...',
-                    filled: false,
-                    fillColor: Colors.transparent,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_photos.isNotEmpty) ...[
+                      _buildPhotosSection(theme, colorScheme),
+                      const SizedBox(height: 16),
+                    ],
+                    TextField(
+                      controller: _contentController,
+                      focusNode: _editorFocusNode,
+                      maxLines: null,
+                      keyboardType: TextInputType.multiline,
+                      textCapitalization: TextCapitalization.sentences,
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        height: 1.6,
+                        letterSpacing: 0.3,
+                      ),
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        hintText: '在此输入内容...',
+                        filled: false,
+                        fillColor: Colors.transparent,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -457,6 +560,105 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildPhotosSection(ThemeData theme, ColorScheme colorScheme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              '插入的图片 (${_photos.length})',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 96,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: _photos.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
+              final path = _photos[index];
+              return GestureDetector(
+                onTap: () => _previewPhoto(index),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      width: 96,
+                      height: 96,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: colorScheme.outlineVariant.withValues(alpha: 0.4),
+                          width: 1,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.03),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: UnifiedImage(
+                          imagePath: path,
+                          width: 96,
+                          height: 96,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: -4,
+                      right: -4,
+                      child: GestureDetector(
+                        onTap: () => _removePhoto(index),
+                        child: Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: colorScheme.error.withValues(alpha: 0.9),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.1),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.close,
+                            size: 14,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+        Divider(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+          thickness: 1,
+        ),
+      ],
     );
   }
 
@@ -646,10 +848,29 @@ class MarkdownTextEditingController extends TextEditingController {
   }
 
   TextSpan _parseActiveLine(String lineText, TextStyle baseStyle, ThemeData theme) {
-    // 1. Image Block - always show the preview image card, never show raw code even in active editing mode!
+    // 1. Image Block - Render as a clean, monospace text link so it can be edited/deleted easily
     final imageMatch = RegExp(r'^!\[(.*?)\]\((.*?)\)$').firstMatch(lineText.trim());
     if (imageMatch != null) {
-      return _parsePreviewLine(lineText, baseStyle, theme);
+      final path = imageMatch.group(2) ?? '';
+      return TextSpan(
+        children: [
+          TextSpan(
+            text: '🖼️ ![图片]',
+            style: baseStyle.copyWith(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          TextSpan(
+            text: '($path)',
+            style: baseStyle.copyWith(
+              color: theme.colorScheme.outline,
+              fontFamily: 'monospace',
+              fontSize: 14,
+            ),
+          ),
+        ],
+      );
     }
 
     // 2. Horizontal Rule
@@ -848,64 +1069,26 @@ class MarkdownTextEditingController extends TextEditingController {
   TextSpan _parsePreviewLine(String lineText, TextStyle baseStyle, ThemeData theme) {
     final trimmed = lineText.trim();
 
-    // 1. Image Block - Render a beautiful, full-width rounded image directly in the flow of the text
+    // 1. Image Block - Render as a beautiful, clean monospace text link inside the editor to prevent floating layout bugs
     final imageMatch = RegExp(r'^!\[(.*?)\]\((.*?)\)$').firstMatch(trimmed);
     if (imageMatch != null) {
       final path = imageMatch.group(2) ?? '';
-      final altText = imageMatch.group(1) ?? '';
-      final remainingText = lineText.substring(1);
-
       return TextSpan(
         children: [
-          WidgetSpan(
-            alignment: PlaceholderAlignment.bottom,
-            child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
-              width: double.infinity,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.03),
-                          blurRadius: 8,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: UnifiedImage(
-                        imagePath: path,
-                        width: double.infinity,
-                        height: 220,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                  ),
-                  if (altText.isNotEmpty && altText != 'image') ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      altText,
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: theme.colorScheme.outline,
-                        fontStyle: FontStyle.italic,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ],
-              ),
+          TextSpan(
+            text: '🖼️ [图片] ',
+            style: baseStyle.copyWith(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.bold,
             ),
           ),
           TextSpan(
-            text: remainingText,
-            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent, height: 0),
+            text: path.split('/').last,
+            style: baseStyle.copyWith(
+              color: theme.colorScheme.primary.withValues(alpha: 0.8),
+              decoration: TextDecoration.underline,
+              fontFamily: 'monospace',
+            ),
           ),
         ],
       );

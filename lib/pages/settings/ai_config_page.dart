@@ -359,6 +359,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         newTemps = _roleSettings;
     }
     await AiRoleService.instance.saveTemperatures(newTemps);
+    ref.invalidate(aiTemperaturesProvider);
     if (mounted) setState(() => _roleSettings = newTemps);
   }
 
@@ -493,6 +494,43 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                 },
               ),
             ),
+            if (roleKey == 'timelineOptimization') ...[
+              const SizedBox(height: 4),
+              Divider(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '是否提取图片',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '提取时包含图片信息（需要模型支持）',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch(
+                    value: settings.extractImages,
+                    onChanged: (value) {
+                      _updateRoleSettings(roleKey, settings.copyWith(extractImages: value));
+                    },
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),

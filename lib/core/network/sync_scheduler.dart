@@ -35,7 +35,13 @@ class SyncScheduler {
     final config = await _configRepo.getWebdavConfig();
     if (config == null || !config.autoSync) return;
     _webdavService.updateConfig(config);
-    await performSync();
+    
+    final syncOnLaunchStr = await _configRepo.getAppConfig('webdav_sync_on_launch');
+    final syncOnLaunch = syncOnLaunchStr == 'true';
+    if (syncOnLaunch) {
+      await performSync();
+    }
+    
     _setupPeriodicSync(config.syncInterval);
   }
 
