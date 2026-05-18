@@ -11,7 +11,6 @@ import 'package:qnote_flutter/core/utils/delta_markdown.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_quill/quill_delta.dart';
 import 'package:flutter_quill/flutter_quill.dart' show Document;
 
 class NoteEditorView extends ConsumerStatefulWidget {
@@ -294,7 +293,13 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
 
     if (isBlock) {
       final prefix = (index == 0 || text[index - 1] == '\n') ? '' : '\n';
-      final suffix = (index == text.length || text[index] == '\n') ? '' : '\n';
+      String suffix = '\n';
+      if (markup.startsWith('![')) {
+        // Automatically add a blank line below the image for convenient subsequent text editing!
+        suffix = '\n\n';
+      } else {
+        suffix = (index == text.length || text[index] == '\n') ? '' : '\n';
+      }
       finalMarkup = '$prefix$markup$suffix';
     }
 
@@ -600,7 +605,6 @@ class MarkdownTextEditingController extends TextEditingController {
 
     final lines = text.split('\n');
     final List<TextSpan> children = [];
-    final theme = Theme.of(context);
     final baseStyle = style ?? const TextStyle();
 
     for (int i = 0; i < lines.length; i++) {
@@ -642,29 +646,10 @@ class MarkdownTextEditingController extends TextEditingController {
   }
 
   TextSpan _parseActiveLine(String lineText, TextStyle baseStyle, ThemeData theme) {
-    final symbolStyle = baseStyle.copyWith(color: theme.colorScheme.primary.withValues(alpha: 0.6), fontWeight: FontWeight.normal);
-
-    // 1. Image Block
+    // 1. Image Block - always show the preview image card, never show raw code even in active editing mode!
     final imageMatch = RegExp(r'^!\[(.*?)\]\((.*?)\)$').firstMatch(lineText.trim());
     if (imageMatch != null) {
-      final path = imageMatch.group(2) ?? '';
-      return TextSpan(
-        children: [
-          WidgetSpan(
-            child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 8),
-              width: double.infinity,
-              child: UnifiedImage(
-                imagePath: path,
-                width: double.infinity,
-                height: 200,
-                borderRadius: BorderRadius.circular(16),
-                fit: BoxFit.cover,
-              ),
-            ),
-          ),
-        ],
-      );
+      return _parsePreviewLine(lineText, baseStyle, theme);
     }
 
     // 2. Horizontal Rule
@@ -863,24 +848,64 @@ class MarkdownTextEditingController extends TextEditingController {
   TextSpan _parsePreviewLine(String lineText, TextStyle baseStyle, ThemeData theme) {
     final trimmed = lineText.trim();
 
-    // 1. Image Block
+    // 1. Image Block - Render a beautiful, full-width rounded image directly in the flow of the text
     final imageMatch = RegExp(r'^!\[(.*?)\]\((.*?)\)$').firstMatch(trimmed);
     if (imageMatch != null) {
       final path = imageMatch.group(2) ?? '';
+      final altText = imageMatch.group(1) ?? '';
+      final remainingText = lineText.substring(1);
+
       return TextSpan(
         children: [
           WidgetSpan(
+            alignment: PlaceholderAlignment.bottom,
             child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 8),
+              margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
               width: double.infinity,
-              child: UnifiedImage(
-                imagePath: path,
-                width: double.infinity,
-                height: 200,
-                borderRadius: BorderRadius.circular(16),
-                fit: BoxFit.cover,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.03),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: UnifiedImage(
+                        imagePath: path,
+                        width: double.infinity,
+                        height: 220,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                  if (altText.isNotEmpty && altText != 'image') ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      altText,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: theme.colorScheme.outline,
+                        fontStyle: FontStyle.italic,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ],
               ),
             ),
+          ),
+          TextSpan(
+            text: remainingText,
+            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent, height: 0),
           ),
         ],
       );
@@ -888,6 +913,7 @@ class MarkdownTextEditingController extends TextEditingController {
 
     // 2. Horizontal Rule
     if (trimmed == '---' || trimmed == '***') {
+      final remainingText = lineText.substring(1);
       return TextSpan(
         children: [
           WidgetSpan(
@@ -896,6 +922,10 @@ class MarkdownTextEditingController extends TextEditingController {
               height: 1.5,
               color: theme.colorScheme.outlineVariant.withOpacity(0.5),
             ),
+          ),
+          TextSpan(
+            text: remainingText,
+            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent, height: 0),
           ),
         ],
       );
@@ -909,7 +939,12 @@ class MarkdownTextEditingController extends TextEditingController {
         fontWeight: FontWeight.bold,
         color: theme.colorScheme.onSurface,
       );
-      return _parseInlineStyles(cleanText, headerStyle, theme);
+      return TextSpan(
+        children: [
+          TextSpan(text: '# ', style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent)),
+          _parseInlineStyles(cleanText, headerStyle, theme),
+        ],
+      );
     }
     if (lineText.startsWith('## ')) {
       final cleanText = lineText.substring(3);
@@ -918,7 +953,12 @@ class MarkdownTextEditingController extends TextEditingController {
         fontWeight: FontWeight.bold,
         color: theme.colorScheme.onSurface,
       );
-      return _parseInlineStyles(cleanText, headerStyle, theme);
+      return TextSpan(
+        children: [
+          TextSpan(text: '## ', style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent)),
+          _parseInlineStyles(cleanText, headerStyle, theme),
+        ],
+      );
     }
     if (lineText.startsWith('### ')) {
       final cleanText = lineText.substring(4);
@@ -927,7 +967,12 @@ class MarkdownTextEditingController extends TextEditingController {
         fontWeight: FontWeight.bold,
         color: theme.colorScheme.onSurface,
       );
-      return _parseInlineStyles(cleanText, headerStyle, theme);
+      return TextSpan(
+        children: [
+          TextSpan(text: '### ', style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent)),
+          _parseInlineStyles(cleanText, headerStyle, theme),
+        ],
+      );
     }
 
     // 4. Blockquote
@@ -951,6 +996,7 @@ class MarkdownTextEditingController extends TextEditingController {
               ),
             ),
           ),
+          TextSpan(text: ' ', style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent)),
           _parseInlineStyles(cleanText, quoteStyle, theme),
         ],
       );
@@ -973,6 +1019,7 @@ class MarkdownTextEditingController extends TextEditingController {
               ),
             ),
           ),
+          TextSpan(text: ' ', style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent)),
           _parseInlineStyles(cleanText, baseStyle, theme),
         ],
       );
@@ -1010,10 +1057,18 @@ class MarkdownTextEditingController extends TextEditingController {
       if (text.startsWith('**', index)) {
         final end = text.indexOf('**', index + 2);
         if (end != -1) {
+          spans.add(TextSpan(
+            text: '**',
+            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+          ));
           final innerText = text.substring(index + 2, end);
           spans.add(TextSpan(
             text: innerText,
             style: baseStyle.copyWith(fontWeight: FontWeight.bold),
+          ));
+          spans.add(TextSpan(
+            text: '**',
+            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
           ));
           index = end + 2;
           continue;
@@ -1024,10 +1079,18 @@ class MarkdownTextEditingController extends TextEditingController {
       if (text.startsWith('*', index)) {
         final end = text.indexOf('*', index + 1);
         if (end != -1) {
+          spans.add(TextSpan(
+            text: '*',
+            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+          ));
           final innerText = text.substring(index + 1, end);
           spans.add(TextSpan(
             text: innerText,
             style: baseStyle.copyWith(fontStyle: FontStyle.italic),
+          ));
+          spans.add(TextSpan(
+            text: '*',
+            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
           ));
           index = end + 1;
           continue;
@@ -1038,6 +1101,10 @@ class MarkdownTextEditingController extends TextEditingController {
       if (text.startsWith('`', index)) {
         final end = text.indexOf('`', index + 1);
         if (end != -1) {
+          spans.add(TextSpan(
+            text: '`',
+            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+          ));
           final innerText = text.substring(index + 1, end);
           spans.add(TextSpan(
             text: innerText,
@@ -1046,6 +1113,10 @@ class MarkdownTextEditingController extends TextEditingController {
               backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
               color: theme.colorScheme.primary,
             ),
+          ));
+          spans.add(TextSpan(
+            text: '`',
+            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
           ));
           index = end + 1;
           continue;
@@ -1056,10 +1127,18 @@ class MarkdownTextEditingController extends TextEditingController {
       if (text.startsWith('~~', index)) {
         final end = text.indexOf('~~', index + 2);
         if (end != -1) {
+          spans.add(TextSpan(
+            text: '~~',
+            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+          ));
           final innerText = text.substring(index + 2, end);
           spans.add(TextSpan(
             text: innerText,
             style: baseStyle.copyWith(decoration: TextDecoration.lineThrough),
+          ));
+          spans.add(TextSpan(
+            text: '~~',
+            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
           ));
           index = end + 2;
           continue;

@@ -1,8 +1,14 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/providers/sync_provider.dart' hide SyncStatus;
+import 'package:qnote_flutter/providers/diary_provider.dart';
+import 'package:qnote_flutter/providers/note_provider.dart';
+import 'package:qnote_flutter/providers/todo_provider.dart';
+import 'package:qnote_flutter/providers/folder_provider.dart';
+import 'package:qnote_flutter/providers/ai_provider.dart';
+import 'package:qnote_flutter/providers/shortcut_provider.dart';
+import 'package:qnote_flutter/providers/user_profile_provider.dart';
 import 'package:qnote_flutter/core/network/webdav_service.dart';
 import 'package:qnote_flutter/core/network/sync_scheduler.dart';
 import 'package:qnote_flutter/models/webdav_config.dart';
@@ -193,16 +199,26 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
 
   Future<void> _performSync() async {
     final config = await ref.read(webdavConfigProvider.future).catchError((_) => null);
+    if (!mounted) return;
     if (config == null) {
       _showNotification('请先配置 WebDAV', isError: true);
       return;
     }
     WebdavService.instance.updateConfig(config);
     await SyncScheduler.instance.performSync();
+    
+    if (!mounted) return;
+    final scheduler = SyncScheduler.instance;
+    if (scheduler.status == SyncStatus.success) {
+      _showNotification('云端同步成功！', isSuccess: true);
+    } else if (scheduler.status == SyncStatus.error) {
+      _showNotification('同步失败: ${scheduler.lastError ?? "请查看运行日志获取详情"}', isError: true);
+    }
   }
 
   Future<void> _restoreFromBackup() async {
     final config = await ref.read(webdavConfigProvider.future).catchError((_) => null);
+    if (!mounted) return;
     if (config == null) {
       _showNotification('请先配置 WebDAV', isError: true);
       return;
@@ -226,9 +242,32 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
       ),
     );
     if (confirmed != true) return;
+    if (!mounted) return;
 
     WebdavService.instance.updateConfig(config);
     await SyncScheduler.instance.restoreFromBackup();
+
+    if (!mounted) return;
+    final scheduler = SyncScheduler.instance;
+    if (scheduler.status == SyncStatus.success) {
+      // Refresh all providers to instantly reload the restored database in the UI!
+      ref.invalidate(diaryListProvider);
+      ref.invalidate(noteListProvider);
+      ref.invalidate(todoListProvider);
+      ref.invalidate(folderListProvider);
+      ref.invalidate(aiConfigListProvider);
+      ref.invalidate(aiRolesProvider);
+      ref.invalidate(aiTemperaturesProvider);
+      ref.invalidate(shortcutListProvider);
+      ref.invalidate(userProfileProvider);
+      ref.invalidate(chatSessionListProvider);
+      ref.invalidate(webdavConfigProvider);
+      ref.invalidate(diaryColorMarkProvider);
+
+      _showNotification('本地数据已成功恢复！', isSuccess: true);
+    } else if (scheduler.status == SyncStatus.error) {
+      _showNotification('恢复失败: ${scheduler.lastError ?? "请确认云端是否存在备份文件，或查看运行日志"}', isError: true);
+    }
   }
 
   String _statusText(SyncStatus status) {
@@ -295,6 +334,63 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Column(
           children: [
+            // Sync Status Banner Card
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: _statusColor(syncStatus).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: _statusColor(syncStatus).withValues(alpha: 0.3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    _statusIcon(syncStatus),
+                    color: _statusColor(syncStatus),
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              '同步状态：',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Text(
+                              _statusText(syncStatus),
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: _statusColor(syncStatus),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (syncStatus == SyncStatus.error && lastError != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            lastError,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: Colors.red.shade700,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
             // Top Control Card
             Container(
               decoration: BoxDecoration(

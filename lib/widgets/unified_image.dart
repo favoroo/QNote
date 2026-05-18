@@ -130,6 +130,11 @@ class _UnifiedImageState extends State<UnifiedImage> {
                 width: widget.width,
                 height: widget.height,
                 fit: widget.fit,
+                // Downsample image decoding sizes on mobile to prevent memory spikes (OOM) and black screen freezes.
+                // We use 2.0x display width to match device pixel ratios for sharp rendering.
+                cacheWidth: widget.width != null 
+                    ? (widget.width! * 2.0).clamp(100.0, 1080.0).round() 
+                    : 720,
                 errorBuilder: (context, error, stackTrace) {
                   LoggerService.instance.logUI(
                     '图片加载失败: $error',

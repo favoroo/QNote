@@ -56,7 +56,10 @@ class SyncScheduler {
       final config = await _configRepo.getWebdavConfig();
       if (config == null) throw Exception('WebDAV not configured');
       _webdavService.updateConfig(config);
-      await _webdavService.uploadDatabase();
+      final success = await _webdavService.uploadDatabase();
+      if (!success) {
+        throw Exception('备份上传失败，请查看运行日志获取详情');
+      }
       _lastSyncTime = DateTime.now();
       final updatedConfig = config.copyWith(
         lastSyncTime: _lastSyncTime,
@@ -77,7 +80,10 @@ class SyncScheduler {
       final config = await _configRepo.getWebdavConfig();
       if (config == null) throw Exception('WebDAV not configured');
       _webdavService.updateConfig(config);
-      await _webdavService.downloadDatabase(merge: merge);
+      final success = await _webdavService.downloadDatabase(merge: merge);
+      if (!success) {
+        throw Exception('备份下载/恢复失败，请确认云端是否存在备份，或查看运行日志');
+      }
       _lastSyncTime = DateTime.now();
       _updateStatus(SyncStatus.success);
     } catch (e) {

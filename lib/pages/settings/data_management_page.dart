@@ -470,13 +470,15 @@ class _LogViewerPageState extends State<_LogViewerPage> {
           Expanded(
             child: entries.isEmpty
                 ? const Center(child: Text('暂无日志'))
-                : ListView.builder(
-                    itemCount: entries.length,
-                    reverse: true,
-                    itemBuilder: (context, index) {
-                      final entry = entries[entries.length - 1 - index];
-                      return _buildLogItem(entry);
-                    },
+                : SelectionArea(
+                    child: ListView.builder(
+                      itemCount: entries.length,
+                      reverse: true,
+                      itemBuilder: (context, index) {
+                        final entry = entries[entries.length - 1 - index];
+                        return _buildLogItem(entry);
+                      },
+                    ),
                   ),
           ),
           Container(
@@ -507,9 +509,29 @@ class _LogViewerPageState extends State<_LogViewerPage> {
     };
     final levelColor = _getLevelColor(entry.level);
     final categoryStr = _getCategoryName(entry.category);
+    final formattedTime = _formatTime(entry.timestamp);
     
     return InkWell(
       onTap: entry.details != null ? () => _showLogDetails(entry) : null,
+      onLongPress: () {
+        final buffer = StringBuffer();
+        buffer.write('[$formattedTime] [$categoryStr] [$levelStr] ${entry.message}');
+        if (entry.details != null) {
+          buffer.write('\n详情: ${entry.details}');
+        }
+        if (entry.stackTrace != null) {
+          buffer.write('\n堆栈跟踪:\n${entry.stackTrace}');
+        }
+        Clipboard.setData(ClipboardData(text: buffer.toString()));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('已复制该条日志到剪贴板'),
+            duration: const Duration(seconds: 1),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         child: Row(
@@ -522,7 +544,7 @@ class _LogViewerPageState extends State<_LogViewerPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '[${_formatTime(entry.timestamp)}] [$categoryStr] ${entry.message}',
+                    '[$formattedTime] [$categoryStr] ${entry.message}',
                     style: TextStyle(
                       fontSize: 12,
                       fontFamily: 'monospace',

@@ -134,23 +134,28 @@ class NotificationService {
   }
 
   Future<void> _checkReminders() async {
-    final todos = await _todoRepository.getUpcomingReminders();
-    final now = DateTime.now();
-    for (final todo in todos) {
-      if (todo.reminderTime == null) continue;
-      if (_notifiedReminderIds.contains(todo.id)) continue;
-      final reminderTime = DateTime.tryParse(todo.reminderTime!);
-      if (reminderTime == null) continue;
-      final difference = reminderTime.difference(now);
-      if (difference.inSeconds >= 0 && difference.inSeconds < 60) {
-        await showNotification(
-          id: todo.id.hashCode,
-          title: '待办提醒',
-          body: todo.title,
-          payload: todo.id,
-        );
-        _notifiedReminderIds.add(todo.id);
+    try {
+      final todos = await _todoRepository.getUpcomingReminders();
+      final now = DateTime.now();
+      for (final todo in todos) {
+        if (todo.reminderTime == null) continue;
+        if (_notifiedReminderIds.contains(todo.id)) continue;
+        final reminderTime = _parseReminderTime(todo.reminderTime!);
+        if (reminderTime == null) continue;
+        final difference = reminderTime.difference(now);
+        // Match window of +/- 60 seconds relative to current polling cycle to handle timer drifts
+        if (difference.inSeconds.abs() < 60) {
+          await showNotification(
+            id: todo.id.hashCode,
+            title: '待办提醒',
+            body: todo.title.isEmpty ? '新待办' : todo.title,
+            payload: todo.id,
+          );
+          _notifiedReminderIds.add(todo.id);
+        }
       }
+    } catch (e) {
+      // Avoid letting timer checks throw uncaught exceptions
     }
   }
 
@@ -161,16 +166,20 @@ class NotificationService {
     String? payload,
   }) async {
     if (kIsWeb) return;
-    const androidDetails = AndroidNotificationDetails(
-      'qnote_channel',
-      'QNote Notifications',
-      channelDescription: 'Notifications from QNote app',
-      importance: Importance.defaultImportance,
-      priority: Priority.defaultPriority,
-    );
-    const iosDetails = DarwinNotificationDetails();
-    const details = NotificationDetails(android: androidDetails, iOS: iosDetails);
-    await _plugin.show(id, title, body, details, payload: payload);
+    try {
+      const androidDetails = AndroidNotificationDetails(
+        'qnote_channel',
+        'QNote Notifications',
+        channelDescription: 'Notifications from QNote app',
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+      );
+      const iosDetails = DarwinNotificationDetails();
+      const details = NotificationDetails(android: androidDetails, iOS: iosDetails);
+      await _plugin.show(id, title, body, details, payload: payload);
+    } catch (_) {
+      // Safe guard against native initialization/permission crashes
+    }
   }
 
   Future<void> scheduleNotification({
@@ -181,36 +190,44 @@ class NotificationService {
     String? payload,
   }) async {
     if (kIsWeb) return;
-    const androidDetails = AndroidNotificationDetails(
-      'qnote_scheduled',
-      'QNote Scheduled',
-      channelDescription: 'Scheduled notifications from QNote',
-      importance: Importance.defaultImportance,
-      priority: Priority.defaultPriority,
-    );
-    const iosDetails = DarwinNotificationDetails();
-    const details = NotificationDetails(android: androidDetails, iOS: iosDetails);
-    await _plugin.zonedSchedule(
-      id,
-      title,
-      body,
-      tz.TZDateTime.from(scheduledTime, tz.local),
-      details,
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-      payload: payload,
-    );
+    try {
+      const androidDetails = AndroidNotificationDetails(
+        'qnote_scheduled',
+        'QNote Scheduled',
+        channelDescription: 'Scheduled notifications from QNote',
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+      );
+      const iosDetails = DarwinNotificationDetails();
+      const details = NotificationDetails(android: androidDetails, iOS: iosDetails);
+      await _plugin.zonedSchedule(
+        id,
+        title,
+        body,
+        tz.TZDateTime.from(scheduledTime, tz.local),
+        details,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        payload: payload,
+      );
+    } catch (_) {
+      // Safe guard against native exact alarms / permission SecurityExceptions on Android 13/14
+    }
   }
 
   Future<void> cancelNotification(int id) async {
     if (kIsWeb) return;
-    await _plugin.cancel(id);
+    try {
+      await _plugin.cancel(id);
+    } catch (_) {}
   }
 
   Future<void> cancelAllNotifications() async {
     if (kIsWeb) return;
-    await _plugin.cancelAll();
+    try {
+      await _plugin.cancelAll();
+    } catch (_) {}
   }
 
   Future<void> showDiaryReminder({

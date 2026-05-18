@@ -11,6 +11,7 @@ import 'database_init.dart' if (dart.library.io) 'database_init_io.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await LoggerService.instance.init();
   await initializeDateFormatting('zh_CN');
   await initDatabaseFactory();
   await DatabaseHelper.instance.database;
@@ -18,7 +19,6 @@ void main() async {
   await configRepo.ensureDefaultShortcuts();
   await configRepo.ensureDefaultAiConfigs();
   await NotificationService.instance.init();
-  await LoggerService.instance.init();
   final webdavConfig = await configRepo.getWebdavConfig();
   if (webdavConfig != null && webdavConfig.autoSync) {
     SyncScheduler.instance.syncIfNeeded();

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -32,6 +33,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage> {
   int? _dragEndIndex;
   bool _isShiftingWindow = false;
   double? _shiftTargetOffset;
+  final Map<int, BuildContext> _itemContexts = {};
+  Timer? _autoScrollTimer;
+  Offset? _lastDragPosition;
 
   @override
   void initState() {
@@ -49,12 +53,50 @@ class _DiaryPageState extends ConsumerState<DiaryPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         setState(() {});
+        // Scroll dynamically to the current time, centering it perfectly in the middle of the viewport!
+        _scrollToCurrentTime(smooth: true);
+      }
+    });
+  }
+
+  void _scrollToCurrentTime({bool smooth = true}) {
+    if (!_scrollController.hasClients) return;
+
+    final now = DateTime.now();
+    final dayOffset = _dateToDayOffset(now);
+    final nodeIndex = now.hour * 2 + (now.minute >= 30 ? 1 : 0);
+    final subIndex = nodeIndex + 1;
+    final targetIndex = dayOffset * _itemsPerDay + subIndex;
+
+    // 1. Instantly jump close to the estimated offset to force ListView to mount/render the target item
+    final viewportHeight = _scrollController.position.viewportDimension;
+    final estimatedOffset = dayOffset * _dayHeight + _dividerHeight + nodeIndex * _nodeHeight - (viewportHeight / 2);
+    
+    _scrollController.jumpTo(estimatedOffset.clamp(
+      0.0,
+      _scrollController.position.maxScrollExtent,
+    ));
+
+    // 2. In the next frame (when the target item is fully mounted and registered in _itemContexts),
+    // precisely center it vertically in the viewport using ensureVisible with alignment 0.5.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final targetCtx = _itemContexts[targetIndex];
+      if (targetCtx != null) {
+        Scrollable.ensureVisible(
+          targetCtx,
+          alignment: 0.5,
+          duration: smooth ? const Duration(milliseconds: 500) : Duration.zero,
+          curve: Curves.easeInOut,
+        );
       }
     });
   }
 
   @override
   void dispose() {
+    _stopAutoScrollTimer();
+    _itemContexts.clear();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
@@ -482,7 +524,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> {
                 return Stack(
                   children: [
                     Positioned(
-                      left: 39,
+                      left: 40,
                       top: 0,
                       bottom: 0,
                       child: Container(
@@ -504,8 +546,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage> {
                           final subIndex = i % _itemsPerDay;
                           final date = _indexToDate(dayOffset);
 
+                          Widget childWidget;
+
                           if (subIndex == 0) {
-                            return Container(
+                            childWidget = Container(
                               key: ValueKey('div_${dayOffset}_${date.millisecondsSinceEpoch}'),
                               padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
                               alignment: Alignment.center,
@@ -526,185 +570,192 @@ class _DiaryPageState extends ConsumerState<DiaryPage> {
                                 ],
                               ),
                             );
-                          }
+                          } else {
+                            final nodeIndex = subIndex - 1;
+                            final time = TimeOfDay(hour: nodeIndex ~/ 2, minute: (nodeIndex % 2) * 30);
+                            final currentMinutes = time.hour * 60 + time.minute;
+                            final nextMinutes = currentMinutes + 30;
+                            final nodeStartDateTime = DateTime(date.year, date.month, date.day, time.hour, time.minute);
 
-                          final nodeIndex = subIndex - 1;
-                          final time = TimeOfDay(hour: nodeIndex ~/ 2, minute: (nodeIndex % 2) * 30);
-                          final currentMinutes = time.hour * 60 + time.minute;
-                          final nextMinutes = currentMinutes + 30;
-                          final nodeStartDateTime = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+                            final dateKey = '${date.year}-${date.month}-${date.day}';
+                            final dayRecords = recordsByDate[dateKey] ?? const [];
+                            final recordsInInterval = dayRecords.where((r) {
+                              final rMinutes = r.time.hour * 60 + r.time.minute;
+                              if (nodeIndex == 47) {
+                                return rMinutes >= currentMinutes;
+                              } else {
+                                return rMinutes >= currentMinutes && rMinutes < nextMinutes;
+                              }
+                            }).toList();
 
-                          final dateKey = '${date.year}-${date.month}-${date.day}';
-                          final dayRecords = recordsByDate[dateKey] ?? const [];
-                          final recordsInInterval = dayRecords.where((r) {
-                            final rMinutes = r.time.hour * 60 + r.time.minute;
-                            if (nodeIndex == 47) {
-                              return rMinutes >= currentMinutes;
-                            } else {
-                              return rMinutes >= currentMinutes && rMinutes < nextMinutes;
-                            }
-                          }).toList();
+                            final isUserSelected = selectEvent != null;
 
-                          final isUserSelected = selectEvent != null;
-
-                          bool isStandardNodeSelected = false;
-                          if (isUserSelected) {
-                            final selectionStart = DateTime(
-                              selectEvent.date.year,
-                              selectEvent.date.month,
-                              selectEvent.date.day,
-                              selectEvent.time.hour,
-                              selectEvent.time.minute,
-                            );
-
-                            if (selectEvent.endTime == null) {
-                              isStandardNodeSelected = nodeStartDateTime.isAtSameMomentAs(selectionStart);
-                            } else {
-                              final selEndDate = selectEvent.endDate ?? selectEvent.date;
-                              final selectionEnd = DateTime(
-                                selEndDate.year,
-                                selEndDate.month,
-                                selEndDate.day,
-                                selectEvent.endTime!.hour,
-                                selectEvent.endTime!.minute,
+                            bool isStandardNodeSelected = false;
+                            if (isUserSelected) {
+                              final selectionStart = DateTime(
+                                selectEvent.date.year,
+                                selectEvent.date.month,
+                                selectEvent.date.day,
+                                selectEvent.time.hour,
+                                selectEvent.time.minute,
                               );
-                              isStandardNodeSelected = nodeStartDateTime.isAtSameMomentAs(selectionStart) ||
-                                  (nodeStartDateTime.isAfter(selectionStart) && nodeStartDateTime.isBefore(selectionEnd));
+
+                              if (selectEvent.endTime == null) {
+                                isStandardNodeSelected = nodeStartDateTime.isAtSameMomentAs(selectionStart);
+                              } else {
+                                final selEndDate = selectEvent.endDate ?? selectEvent.date;
+                                final selectionEnd = DateTime(
+                                  selEndDate.year,
+                                  selEndDate.month,
+                                  selEndDate.day,
+                                  selectEvent.endTime!.hour,
+                                  selectEvent.endTime!.minute,
+                                );
+                                isStandardNodeSelected = !nodeStartDateTime.isBefore(selectionStart) &&
+                                    !nodeStartDateTime.isAfter(selectionEnd);
+                              }
                             }
-                          }
 
-                          bool isDraggedSelected = false;
-                          if (_dragStartIndex != null && _dragEndIndex != null) {
-                            final start = math.min(_dragStartIndex!, _dragEndIndex!);
-                            final end = math.max(_dragStartIndex!, _dragEndIndex!);
-                            isDraggedSelected = i >= start && i <= end;
-                          }
+                            bool isDraggedSelected = false;
+                            if (_dragStartIndex != null && _dragEndIndex != null) {
+                              final start = math.min(_dragStartIndex!, _dragEndIndex!);
+                              final end = math.max(_dragStartIndex!, _dragEndIndex!);
+                              isDraggedSelected = i >= start && i <= end;
+                            }
 
-                          final bool finalIsSelected = isDraggedSelected || isStandardNodeSelected;
+                            final bool finalIsSelected = isDraggedSelected || isStandardNodeSelected;
 
-                          final inputMinutes = currentInputTime.hour * 60 + currentInputTime.minute;
-                          final now = TimeOfDay.now();
-                          final nowMinutes = now.hour * 60 + now.minute;
+                            final inputMinutes = currentInputTime.hour * 60 + currentInputTime.minute;
+                            final now = TimeOfDay.now();
+                            final nowMinutes = now.hour * 60 + now.minute;
 
-                          final isSelectedTimeInThisInterval = nodeIndex == 47
-                              ? inputMinutes >= currentMinutes
-                              : (inputMinutes >= currentMinutes && inputMinutes < nextMinutes);
+                            final isSelectedTimeInThisInterval = nodeIndex == 47
+                                ? inputMinutes >= currentMinutes
+                                : (inputMinutes >= currentMinutes && inputMinutes < nextMinutes);
 
-                          final showDedicatedSelectedNode = isUserSelected &&
-                              _isSameDay(selectEvent.date, date) &&
-                              isSelectedTimeInThisInterval &&
-                              !(currentInputTime.minute == 0 || currentInputTime.minute == 30);
+                            final showDedicatedSelectedNode = isUserSelected &&
+                                _isSameDay(selectEvent.date, date) &&
+                                isSelectedTimeInThisInterval &&
+                                !(currentInputTime.minute == 0 || currentInputTime.minute == 30);
 
-                          final isNowInThisInterval = nodeIndex == 47
-                              ? nowMinutes >= currentMinutes
-                              : (nowMinutes >= currentMinutes && nowMinutes < nextMinutes);
+                            final isNowInThisInterval = nodeIndex == 47
+                                ? nowMinutes >= currentMinutes
+                                : (nowMinutes >= currentMinutes && nowMinutes < nextMinutes);
 
-                          final showDedicatedCurrentTimeNode = isNowInThisInterval &&
-                              _isToday(date) &&
-                              !(now.minute == 0 || now.minute == 30) &&
-                              (!isUserSelected || !_isSameDay(selectEvent.date, date) || (now.hour != currentInputTime.hour || now.minute != currentInputTime.minute));
+                            final showDedicatedCurrentTimeNode = isNowInThisInterval &&
+                                _isToday(date) &&
+                                !(now.minute == 0 || now.minute == 30) &&
+                                (!isUserSelected || !_isSameDay(selectEvent.date, date) || (now.hour != currentInputTime.hour || now.minute != currentInputTime.minute));
 
-                          final isStandardNodeCurrentTime = _isToday(date) && (now.hour == time.hour && now.minute == time.minute);
+                            final isStandardNodeCurrentTime = _isToday(date) && (now.hour == time.hour && now.minute == time.minute);
 
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              _EmptyTimeNode(
-                                key: ValueKey('n_${dayOffset}_${nodeIndex}'),
-                                time: time,
-                                isSelected: finalIsSelected,
-                                isDraggedSelected: isDraggedSelected,
-                                isCurrentTime: isStandardNodeCurrentTime,
-                                onTap: () {
-                                  if (isUserSelected) {
-                                    if (selectEvent.endTime == null) {
-                                      if (_isSameDay(selectEvent.date, date) &&
-                                          selectEvent.time.hour == time.hour &&
-                                          selectEvent.time.minute == time.minute) {
-                                        ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
-                                          TimeOfDay.now(),
-                                          date: DateTime.now(),
-                                        );
-                                      } else {
-                                        ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
-                                          time,
-                                          date: date,
-                                        );
-                                      }
-                                    } else {
-                                      final selectionStart = DateTime(
-                                        selectEvent.date.year,
-                                        selectEvent.date.month,
-                                        selectEvent.date.day,
-                                        selectEvent.time.hour,
-                                        selectEvent.time.minute,
-                                      );
-                                      final selEndDate = selectEvent.endDate ?? selectEvent.date;
-                                      final selectionEnd = DateTime(
-                                        selEndDate.year,
-                                        selEndDate.month,
-                                        selEndDate.day,
-                                        selectEvent.endTime!.hour,
-                                        selectEvent.endTime!.minute,
-                                      );
-
-                                      if (nodeStartDateTime.isAtSameMomentAs(selectionStart) ||
-                                          (nodeStartDateTime.isAfter(selectionStart) && nodeStartDateTime.isBefore(selectionEnd))) {
-                                        if (nodeStartDateTime.isAtSameMomentAs(selectionStart)) {
+                            childWidget = Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                _EmptyTimeNode(
+                                  key: ValueKey('n_${dayOffset}_${nodeIndex}'),
+                                  time: time,
+                                  isSelected: finalIsSelected,
+                                  isDraggedSelected: isDraggedSelected,
+                                  isCurrentTime: isStandardNodeCurrentTime,
+                                  onTap: () {
+                                    if (isUserSelected) {
+                                      if (selectEvent.endTime == null) {
+                                        if (_isSameDay(selectEvent.date, date) &&
+                                            selectEvent.time.hour == time.hour &&
+                                            selectEvent.time.minute == time.minute) {
                                           ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
                                             TimeOfDay.now(),
                                             date: DateTime.now(),
                                           );
                                         } else {
                                           ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
-                                            selectEvent.time,
-                                            endTime: time,
-                                            date: selectEvent.date,
-                                            endDate: date,
+                                            time,
+                                            date: date,
                                           );
                                         }
                                       } else {
-                                        ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
-                                          time,
-                                          date: date,
+                                        final selectionStart = DateTime(
+                                          selectEvent.date.year,
+                                          selectEvent.date.month,
+                                          selectEvent.date.day,
+                                          selectEvent.time.hour,
+                                          selectEvent.time.minute,
                                         );
+                                        final selEndDate = selectEvent.endDate ?? selectEvent.date;
+                                        final selectionEnd = DateTime(
+                                          selEndDate.year,
+                                          selEndDate.month,
+                                          selEndDate.day,
+                                          selectEvent.endTime!.hour,
+                                          selectEvent.endTime!.minute,
+                                        );
+
+                                        if (nodeStartDateTime.isAtSameMomentAs(selectionStart) ||
+                                            (nodeStartDateTime.isAfter(selectionStart) && nodeStartDateTime.isBefore(selectionEnd))) {
+                                          if (nodeStartDateTime.isAtSameMomentAs(selectionStart)) {
+                                            ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+                                              TimeOfDay.now(),
+                                              date: DateTime.now(),
+                                            );
+                                          } else {
+                                            ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+                                              selectEvent.time,
+                                              endTime: time,
+                                              date: selectEvent.date,
+                                              endDate: date,
+                                            );
+                                          }
+                                        } else {
+                                          ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+                                            time,
+                                            date: date,
+                                          );
+                                        }
                                       }
+                                    } else {
+                                      ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+                                        time,
+                                        date: date,
+                                      );
                                     }
-                                  } else {
-                                    ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
-                                      time,
-                                      date: date,
-                                    );
-                                  }
-                                },
-                              ),
-                              if (showDedicatedSelectedNode)
-                                _SelectedTimeNode(
-                                  time: currentInputTime,
-                                  onTap: () {
-                                    ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
-                                      TimeOfDay.now(),
-                                      date: DateTime.now(),
-                                    );
                                   },
                                 ),
-                              if (showDedicatedCurrentTimeNode)
-                                _CurrentTimeNode(
-                                  time: now,
-                                  onTap: () {
-                                    ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
-                                      now,
-                                      date: DateTime.now(),
-                                    );
-                                  },
-                                ),
-                              ...recordsInInterval.map((record) => DiaryItem(
-                                    record: record,
-                                    onTap: () => _handleEdit(record),
-                                    onEdit: _handleEdit,
-                                    onDelete: _handleDelete,
-                                  )),
-                            ],
+                                if (showDedicatedSelectedNode)
+                                  _SelectedTimeNode(
+                                    time: currentInputTime,
+                                    onTap: () {
+                                      ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+                                        TimeOfDay.now(),
+                                        date: DateTime.now(),
+                                      );
+                                    },
+                                  ),
+                                if (showDedicatedCurrentTimeNode)
+                                  _CurrentTimeNode(
+                                    time: now,
+                                    onTap: () {
+                                      ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+                                        now,
+                                        date: DateTime.now(),
+                                      );
+                                    },
+                                  ),
+                                ...recordsInInterval.map((record) => DiaryItem(
+                                      record: record,
+                                      onTap: () => _handleEdit(record),
+                                      onEdit: _handleEdit,
+                                      onDelete: _handleDelete,
+                                    )),
+                              ],
+                            );
+                          }
+
+                          return TimelineItemWrapper(
+                            index: i,
+                            onMount: (index, ctx) => _itemContexts[index] = ctx,
+                            onUnmount: (index) => _itemContexts.remove(index),
+                            child: childWidget,
                           );
                         },
                       ),
@@ -733,40 +784,40 @@ class _DiaryPageState extends ConsumerState<DiaryPage> {
     return Colors.grey;
   }
 
-  int _pointToItemIndex(Offset localPosition) {
-    if (!_scrollController.hasClients) return -1;
+  int _pointToItemIndex(Offset globalPosition) {
+    for (final entry in _itemContexts.entries) {
+      final index = entry.key;
+      final ctx = entry.value;
+      if (!ctx.mounted) continue;
 
-    final localY = localPosition.dy;
-    final absoluteY = localY + _scrollController.offset;
+      final renderBox = ctx.findRenderObject() as RenderBox?;
+      if (renderBox == null || !renderBox.hasSize) continue;
 
-    final dayOffset = absoluteY ~/ _dayHeight;
-    if (dayOffset < 0 || dayOffset >= _windowDays) return -1;
+      final localPos = renderBox.globalToLocal(globalPosition);
+      final size = renderBox.size;
 
-    final relativeY = absoluteY % _dayHeight;
-
-    int subIndex;
-    if (relativeY < _dividerHeight) {
-      subIndex = 0;
-    } else {
-      subIndex = 1 + ((relativeY - _dividerHeight) ~/ _nodeHeight);
-      if (subIndex > 48) subIndex = 48;
+      if (localPos.dy >= 0 && localPos.dy <= size.height) {
+        return index;
+      }
     }
-
-    return dayOffset * _itemsPerDay + subIndex;
+    return -1;
   }
 
   void _handleDragStart(LongPressStartDetails details) {
-    final index = _pointToItemIndex(details.localPosition);
+    final index = _pointToItemIndex(details.globalPosition);
     if (index != -1 && index % _itemsPerDay != 0) {
       setState(() {
         _dragStartIndex = index;
         _dragEndIndex = index;
       });
+      _lastDragPosition = details.globalPosition;
+      _startAutoScrollTimer();
     }
   }
 
   void _handleDragUpdate(LongPressMoveUpdateDetails details) {
-    final index = _pointToItemIndex(details.localPosition);
+    _lastDragPosition = details.globalPosition;
+    final index = _pointToItemIndex(details.globalPosition);
     if (index != -1 && index % _itemsPerDay != 0) {
       setState(() {
         _dragEndIndex = index;
@@ -775,6 +826,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage> {
   }
 
   void _handleDragEnd(LongPressEndDetails details) {
+    _stopAutoScrollTimer();
+    _lastDragPosition = null;
+
     if (_dragStartIndex != null && _dragEndIndex != null) {
       final start = math.min(_dragStartIndex!, _dragEndIndex!);
       final end = math.max(_dragStartIndex!, _dragEndIndex!);
@@ -802,6 +856,59 @@ class _DiaryPageState extends ConsumerState<DiaryPage> {
       _dragStartIndex = null;
       _dragEndIndex = null;
     });
+  }
+
+  void _startAutoScrollTimer() {
+    _autoScrollTimer?.cancel();
+    _autoScrollTimer = Timer.periodic(const Duration(milliseconds: 20), (timer) {
+      if (_lastDragPosition == null || !mounted || !_scrollController.hasClients) return;
+
+      final renderBox = _viewportKey.currentContext?.findRenderObject() as RenderBox?;
+      if (renderBox == null || !renderBox.hasSize) return;
+
+      final localPos = renderBox.globalToLocal(_lastDragPosition!);
+      final viewportHeight = renderBox.size.height;
+
+      const double threshold = 60.0; // 触发自动滚动的边缘距离
+      const double maxSpeed = 12.0;    // 每次 Tick (20ms) 的最大滚动速度
+
+      double scrollDelta = 0.0;
+
+      if (localPos.dy < threshold && localPos.dy >= 0) {
+        // 向上滚动 (越靠近边缘，滚动速度越快)
+        final ratio = (threshold - localPos.dy) / threshold;
+        scrollDelta = -maxSpeed * ratio;
+      } else if (localPos.dy > viewportHeight - threshold && localPos.dy <= viewportHeight) {
+        // 向下滚动 (越靠近边缘，滚动速度越快)
+        final ratio = (localPos.dy - (viewportHeight - threshold)) / threshold;
+        scrollDelta = maxSpeed * ratio;
+      }
+
+      if (scrollDelta != 0.0) {
+        final currentOffset = _scrollController.offset;
+        final targetOffset = (currentOffset + scrollDelta).clamp(
+          0.0,
+          _scrollController.position.maxScrollExtent,
+        );
+
+        if (targetOffset != currentOffset) {
+          _scrollController.jumpTo(targetOffset);
+
+          // 列表发生滚动后，手指下方的节点发生改变，动态更新选择范围！
+          final index = _pointToItemIndex(_lastDragPosition!);
+          if (index != -1 && index % _itemsPerDay != 0) {
+            setState(() {
+              _dragEndIndex = index;
+            });
+          }
+        }
+      }
+    });
+  }
+
+  void _stopAutoScrollTimer() {
+    _autoScrollTimer?.cancel();
+    _autoScrollTimer = null;
   }
 }
 
@@ -1147,5 +1254,59 @@ class _CurrentTimeNode extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class TimelineItemWrapper extends StatefulWidget {
+  final int index;
+  final Widget child;
+  final void Function(int index, BuildContext context) onMount;
+  final void Function(int index) onUnmount;
+
+  const TimelineItemWrapper({
+    super.key,
+    required this.index,
+    required this.child,
+    required this.onMount,
+    required this.onUnmount,
+  });
+
+  @override
+  State<TimelineItemWrapper> createState() => _TimelineItemWrapperState();
+}
+
+class _TimelineItemWrapperState extends State<TimelineItemWrapper> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        widget.onMount(widget.index, context);
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(TimelineItemWrapper oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.index != widget.index) {
+      widget.onUnmount(oldWidget.index);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          widget.onMount(widget.index, context);
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.onUnmount(widget.index);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return widget.child;
   }
 }

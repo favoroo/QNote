@@ -18,14 +18,34 @@ class WebdavService {
   WebdavConfig? get config => _config;
 
   void updateConfig(WebdavConfig config) {
-    _config = config;
-    _dio.options.baseUrl = config.serverUrl;
+    // Normalize serverUrl to end with a slash
+    var serverUrl = config.serverUrl.trim();
+    if (!serverUrl.endsWith('/')) {
+      serverUrl = '$serverUrl/';
+    }
+
+    // Normalize remotePath: strip leading slashes and ensure a trailing slash
+    var remotePath = config.remotePath.trim();
+    while (remotePath.startsWith('/')) {
+      remotePath = remotePath.substring(1);
+    }
+    if (remotePath.isNotEmpty && !remotePath.endsWith('/')) {
+      remotePath = '$remotePath/';
+    }
+
+    // Store config with normalized paths
+    _config = config.copyWith(
+      serverUrl: serverUrl,
+      remotePath: remotePath,
+    );
+
+    _dio.options.baseUrl = serverUrl;
     _dio.options.headers['Authorization'] =
         'Basic ${base64Encode(utf8.encode('${config.username}:${config.password}'))}';
     
     LoggerService.instance.logNetwork(
       '更新WebDAV配置',
-      details: '服务器=${config.serverUrl}, 路径=${config.remotePath}'
+      details: '服务器=$serverUrl, 路径=$remotePath'
     );
   }
 

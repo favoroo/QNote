@@ -178,13 +178,10 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
             nextStartTime = TimeOfDay(hour: h, minute: m);
           }
         }
-        
-        // 2. Always synchronize formValues['fallAsleepTime'] to match nextStartTime
-        nextFormValues['fallAsleepTime'] = '${nextStartTime.hour.toString().padLeft(2, '0')}:${nextStartTime.minute.toString().padLeft(2, '0')}';
 
-        // 3. Compute endTime and endOffset dynamically based on duration
+        // 2. Compute endTime and endOffset dynamically based on duration if duration was updated in formValues
         final durationVal = nextFormValues['duration'];
-        if (durationVal != null) {
+        if (formValues != null && formValues.containsKey('duration') && durationVal != null) {
           final double? durationHours = double.tryParse(durationVal.toString());
           if (durationHours != null) {
             final startMinutes = nextStartTime.hour * 60 + nextStartTime.minute;
@@ -205,12 +202,21 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
             nextClearEndTime = true;
             nextClearEndOffset = true;
           }
-        } else {
-          nextEndTime = null;
-          nextEndOffset = null;
-          nextClearEndTime = true;
-          nextClearEndOffset = true;
         }
+        // 3. Otherwise, if endTime was updated (e.g. from bottom settings or timeline), dynamically compute duration
+        else if (nextEndTime != null) {
+          final startMin = nextStartTime.hour * 60 + nextStartTime.minute;
+          final endMin = nextEndTime.hour * 60 + nextEndTime.minute;
+          var diffMin = endMin - startMin;
+          if (diffMin < 0) {
+            diffMin += 1440;
+          }
+          final durationHours = diffMin / 60.0;
+          nextFormValues['duration'] = durationHours.toStringAsFixed(1);
+        }
+
+        // 4. Always synchronize formValues['fallAsleepTime'] to match nextStartTime
+        nextFormValues['fallAsleepTime'] = '${nextStartTime.hour.toString().padLeft(2, '0')}:${nextStartTime.minute.toString().padLeft(2, '0')}';
       }
 
       _drafts[_activeDraftIndex] = active.copyWith(
@@ -229,10 +235,48 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
       );
     });
 
-    final newTime = _drafts[_activeDraftIndex].startTime;
+    final activeDraft = _drafts[_activeDraftIndex];
+    final newTime = activeDraft.startTime;
     final currentTime = ref.read(currentInputTimeProvider);
     if (currentTime.hour != newTime.hour || currentTime.minute != newTime.minute) {
       ref.read(currentInputTimeProvider.notifier).state = newTime;
+    }
+
+    // Bidirectional sync to the timeline selection provider!
+    final selectedDate = ref.read(selectedDateProvider);
+    final targetDate = _calculateStartDateTime(activeDraft, selectedDate);
+    final targetEndDate = activeDraft.endTime != null ? _calculateEndDateTime(activeDraft, selectedDate) : null;
+    final currentTimeline = ref.read(diaryInputTimeProvider);
+
+    final bool timeMatches = currentTimeline != null &&
+        currentTimeline.time.hour == activeDraft.startTime.hour &&
+        currentTimeline.time.minute == activeDraft.startTime.minute &&
+        ((currentTimeline.endTime == null && activeDraft.endTime == null) ||
+            (currentTimeline.endTime != null &&
+                activeDraft.endTime != null &&
+                currentTimeline.endTime!.hour == activeDraft.endTime!.hour &&
+                currentTimeline.endTime!.minute == activeDraft.endTime!.minute));
+
+    final bool dateMatches = currentTimeline != null &&
+        currentTimeline.date.year == targetDate.year &&
+        currentTimeline.date.month == targetDate.month &&
+        currentTimeline.date.day == targetDate.day &&
+        ((currentTimeline.endDate == null && targetEndDate == null) ||
+            (currentTimeline.endDate != null &&
+                targetEndDate != null &&
+                currentTimeline.endDate!.year == targetEndDate.year &&
+                currentTimeline.endDate!.month == targetEndDate.month &&
+                currentTimeline.endDate!.day == targetEndDate.day));
+
+    if (!timeMatches || !dateMatches) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+          activeDraft.startTime,
+          endTime: activeDraft.endTime,
+          date: targetDate,
+          endDate: targetEndDate,
+        );
+      });
     }
   }
 
@@ -288,6 +332,45 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
       _updateActiveDraft(clearShortcut: true, formValues: {});
     } else {
       if (config?.id == 'sleep') {
+        // 1. Check if the user already has a time selection on the timeline
+        final timelineSelect = ref.read(diaryInputTimeProvider);
+        if (timelineSelect != null) {
+          final startTimeStr = '${timelineSelect.time.hour.toString().padLeft(2, '0')}:${timelineSelect.time.minute.toString().padLeft(2, '0')}';
+          
+          double? durationHours;
+          if (timelineSelect.endTime != null) {
+            final startMin = timelineSelect.time.hour * 60 + timelineSelect.time.minute;
+            final endMin = timelineSelect.endTime!.hour * 60 + timelineSelect.endTime!.minute;
+            var diffMin = endMin - startMin;
+            if (diffMin < 0) {
+              diffMin += 1440; // Handles overnight sleep correctly
+            }
+            durationHours = diffMin / 60.0;
+          }
+
+          final selectedDate = ref.read(selectedDateProvider);
+          final startLocalDate = DateTime(timelineSelect.date.year, timelineSelect.date.month, timelineSelect.date.day);
+          final startOffset = startLocalDate.difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day)).inDays;
+
+          final initialFormValues = <String, dynamic>{
+            'fallAsleepTime': startTimeStr,
+          };
+          if (durationHours != null) {
+            initialFormValues['duration'] = durationHours.toStringAsFixed(1);
+          }
+
+          _updateActiveDraft(
+            selectedShortcut: config,
+            clearShortcut: false,
+            startTime: timelineSelect.time,
+            endTime: timelineSelect.endTime,
+            startOffset: startOffset,
+            formValues: initialFormValues,
+          );
+          return;
+        }
+
+        // 2. If no timeline selection, fallback to history or defaults
         try {
           final repo = ref.read(diaryRepositoryProvider);
           final sleepRecords = await repo.getByTag('睡眠');
