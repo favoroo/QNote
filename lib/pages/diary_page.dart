@@ -10,6 +10,7 @@ import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/widgets/search_view.dart';
 import 'package:qnote_flutter/widgets/diary/diary_item.dart';
 import 'package:qnote_flutter/widgets/diary/diary_input_bar.dart';
+import 'package:qnote_flutter/widgets/diary/custom_date_picker.dart';
 
 class DiaryPage extends ConsumerStatefulWidget {
   const DiaryPage({super.key});
@@ -20,7 +21,7 @@ class DiaryPage extends ConsumerStatefulWidget {
 
 class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserver {
   static const int _itemsPerDay = 49;
-  static const double _dayHeight = 2180.0;
+  static const double _dayHeight = 2384.0;
   static const double _dividerHeight = 80.0;
   static const double _nodeHeight = 48.0;
 
@@ -47,16 +48,17 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
     _windowStartDate = _today.subtract(const Duration(days: 3));
 
     final nodeIndex = now.hour * 2 + (now.minute >= 30 ? 1 : 0);
-    final initialOffset = 3 * _dayHeight + _dividerHeight + nodeIndex * _nodeHeight - 200.0;
+    // 350.0 is used to subtract half of a typical viewport height for instant centering
+    final initialOffset = 3 * _dayHeight + _dividerHeight + nodeIndex * _nodeHeight - 350.0;
 
-    _scrollController = ScrollController(initialScrollOffset: initialOffset);
+    _scrollController = ScrollController(initialScrollOffset: initialOffset.clamp(0.0, double.infinity));
     _scrollController.addListener(_onScroll);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         setState(() {});
         // Scroll dynamically to the current time, centering it perfectly in the middle of the viewport!
-        _scrollToCurrentTime(smooth: true);
+        _scrollToCurrentTime(smooth: false);
       }
     });
   }
@@ -70,43 +72,58 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
     final subIndex = nodeIndex + 1;
     final targetIndex = dayOffset * _itemsPerDay + subIndex;
 
-    // 1. Calculate estimated offset and jump to it first
     final viewportHeight = _scrollController.position.viewportDimension;
-    final estimatedOffset = dayOffset * _dayHeight + _dividerHeight + nodeIndex * _nodeHeight - (viewportHeight > 0 ? viewportHeight / 2 : 300.0);
-    
-    if (attempts == 0) {
-      _scrollController.jumpTo(estimatedOffset.clamp(
-        0.0,
-        _scrollController.position.maxScrollExtent,
-      ));
-    }
+    final estimatedOffset = dayOffset * _dayHeight + _dividerHeight + nodeIndex * _nodeHeight - (viewportHeight > 0 ? viewportHeight / 2 : 350.0);
+    final targetOffset = estimatedOffset.clamp(0.0, _scrollController.position.maxScrollExtent);
 
-    // 2. Poll for the context to become available
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final targetCtx = _itemContexts[targetIndex];
-      if (targetCtx != null) {
-        Scrollable.ensureVisible(
-          targetCtx,
-          alignment: 0.5,
-          duration: smooth ? const Duration(milliseconds: 500) : Duration.zero,
-          curve: Curves.easeInOut,
-        );
-      } else if (attempts < 5) {
-        // Context not registered yet, wait for layout and retry
-        Future.delayed(const Duration(milliseconds: 30), () {
+    if (attempts == 0) {
+      if (smooth) {
+        _scrollController.animateTo(
+          targetOffset,
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeInOutCubic,
+        ).then((_) {
           if (mounted) {
-            _scrollToCurrentTime(smooth: smooth, attempts: attempts + 1);
+            final targetCtx = _itemContexts[targetIndex];
+            if (targetCtx != null) {
+              Scrollable.ensureVisible(
+                targetCtx,
+                alignment: 0.5,
+                duration: const Duration(milliseconds: 150),
+                curve: Curves.easeOut,
+              );
+            }
+          }
+        });
+      } else {
+        _scrollController.jumpTo(targetOffset);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            final targetCtx = _itemContexts[targetIndex];
+            if (targetCtx != null) {
+              Scrollable.ensureVisible(
+                targetCtx,
+                alignment: 0.5,
+                duration: Duration.zero,
+              );
+            }
           }
         });
       }
-    });
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // Scroll to current time immediately when resuming the app from background
+      final now = DateTime.now();
+      final todayNow = DateTime(now.year, now.month, now.day);
+      if (!_isSameDay(_today, todayNow)) {
+        setState(() {
+          _today = todayNow;
+          _windowStartDate = _today.subtract(const Duration(days: 3));
+        });
+      }
       _scrollToCurrentTime(smooth: true);
     }
   }
@@ -369,36 +386,15 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
 
   void _showDatePicker() async {
     final selectedDate = ref.read(selectedDateProvider);
-    final result = await showDatePicker(
+    final colorMarks = ref.read(diaryColorMarkProvider);
+    final result = await showDialog<DateTime>(
       context: context,
-      initialDate: selectedDate,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
-      locale: const Locale('zh', 'CN'),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            splashFactory: NoSplash.splashFactory,
-            splashColor: Colors.transparent,
-            highlightColor: Colors.transparent,
-            hoverColor: Colors.transparent,
-            colorScheme: ColorScheme.light(
-              primary: Theme.of(context).colorScheme.primary,
-              onPrimary: Colors.white,
-              onSurface: Colors.black,
-            ),
-            dialogTheme: DialogThemeData(
-              barrierColor: Colors.black.withValues(alpha: 0.2),
-            ),
-            textButtonTheme: TextButtonThemeData(
-              style: TextButton.styleFrom(
-                splashFactory: NoSplash.splashFactory,
-              ),
-            ),
-          ),
-          child: child!,
-        );
-      },
+      builder: (context) => CustomDatePickerDialog(
+        initialDate: selectedDate,
+        firstDate: DateTime(2000),
+        lastDate: DateTime(2100),
+        colorMarks: colorMarks,
+      ),
     );
     if (result != null) {
       _goToDate(result);
@@ -473,16 +469,19 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
                 height: 56,
                 child: Row(
                   children: [
+                    const SizedBox(width: 8),
                     IconButton(
                       icon: const Icon(Icons.menu),
                       onPressed: () => Scaffold.of(context).openDrawer(),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      constraints: const BoxConstraints(),
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 6),
                     Container(
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                        color: theme.colorScheme.primary.withValues(alpha: 0.04),
                         shape: BoxShape.circle,
                       ),
                       child: IconButton(
@@ -529,7 +528,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                        color: theme.colorScheme.primary.withValues(alpha: 0.04),
                         shape: BoxShape.circle,
                       ),
                       child: IconButton(
@@ -540,11 +539,14 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
                         constraints: const BoxConstraints(),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     IconButton(
                       icon: const Icon(Icons.search_rounded),
                       onPressed: _navigateToSearch,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      constraints: const BoxConstraints(),
                     ),
+                    const SizedBox(width: 8),
                   ],
                 ),
               ),
@@ -591,7 +593,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
                           if (subIndex == 0) {
                             childWidget = Container(
                               key: ValueKey('div_${dayOffset}_${date.millisecondsSinceEpoch}'),
-                              padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                              height: 80.0,
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
                               alignment: Alignment.center,
                               child: Row(
                                 children: [
@@ -986,9 +989,8 @@ class _EmptyTimeNode extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
-        padding: EdgeInsets.symmetric(
-          vertical: isSelected ? 16.0 : 12.0,
-        ),
+        height: 44.0,
+        padding: EdgeInsets.zero,
         margin: EdgeInsets.only(
           left: 0.0,
           right: 4.0,

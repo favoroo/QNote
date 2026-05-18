@@ -424,7 +424,7 @@ class _SortableLevelState extends State<_SortableLevel> {
             children: [
               if (combined.isEmpty && widget.parentId != null)
                 Padding(
-                  padding: EdgeInsets.only(left: 16.0 + widget.depth * 24.0, top: 8, bottom: 8),
+                  padding: EdgeInsets.only(left: 16.0 + widget.depth * 12.0, top: 8, bottom: 8),
                   child: Text('  空文件夹', style: TextStyle(color: theme.colorScheme.outlineVariant)),
                 ),
               ...combined.asMap().entries.map((entry) {
@@ -538,7 +538,7 @@ class _NoteTile extends StatelessWidget {
       opacity: isDragging ? 0.35 : 1.0,
       child: Container(
         padding: EdgeInsets.only(
-          left: 16.0 + depth * 24.0,
+          left: 16.0 + depth * 12.0,
           right: 12,
           top: 12,
           bottom: 12,
@@ -739,7 +739,7 @@ class _FolderTileState extends State<_FolderTile> {
                   behavior: HitTestBehavior.opaque,
                   child: Padding(
                     padding: EdgeInsets.only(
-                      left: 12.0 + widget.depth * 24.0,
+                      left: 12.0 + widget.depth * 12.0,
                       right: 12,
                       top: 12,
                       bottom: 12,

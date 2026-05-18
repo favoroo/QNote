@@ -1,9 +1,14 @@
+import 'dart:io';
+import 'dart:convert' show base64Encode;
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:qnote_flutter/models/user_profile.dart';
 import 'package:qnote_flutter/providers/user_profile_provider.dart';
+import 'package:qnote_flutter/core/storage/image_repository.dart';
+import 'package:qnote_flutter/widgets/unified_image.dart';
 
 class UserProfilePage extends ConsumerStatefulWidget {
   const UserProfilePage({super.key});
@@ -16,10 +21,15 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   final _nicknameController = TextEditingController();
   final _heightController = TextEditingController();
   final _weightController = TextEditingController();
+  final _ageController = TextEditingController();
   DateTime? _birthday;
-  DateTime _weightDate = DateTime.now();
+  final DateTime _weightDate = DateTime.now();
   bool _showWeightHistory = false;
   bool _saveSuccess = false;
+  String _avatarPath = '';
+
+  final ImagePicker _imagePicker = ImagePicker();
+  final ImageRepository _imageRepo = ImageRepository();
 
   @override
   void initState() {
@@ -39,9 +49,12 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
       setState(() {
         _nicknameController.text = profile.nickname ?? '';
         _heightController.text = profile.height?.toString() ?? '';
+        _avatarPath = profile.avatarPath;
         if (profile.birthday != null) {
           _birthday = DateTime.tryParse(profile.birthday!);
         }
+        final age = _calculateAge();
+        _ageController.text = age > 0 ? '$age' : '';
       });
     }
   }
@@ -51,6 +64,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     _nicknameController.dispose();
     _heightController.dispose();
     _weightController.dispose();
+    _ageController.dispose();
     super.dispose();
   }
 
@@ -62,6 +76,52 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
       age--;
     }
     return age;
+  }
+
+  void _onAgeTextChanged(String value) {
+    final age = int.tryParse(value);
+    if (age == null || age < 0 || age > 150) {
+      if (value.isEmpty) {
+        setState(() {
+          _birthday = null;
+        });
+      }
+      return;
+    }
+    
+    setState(() {
+      final now = DateTime.now();
+      final currentMonth = _birthday?.month ?? 1;
+      final currentDay = _birthday?.day ?? 1;
+      _birthday = DateTime(now.year - age, currentMonth, currentDay);
+    });
+  }
+
+  Future<void> _pickAvatar() async {
+    final image = await _imagePicker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 500,
+      maxHeight: 500,
+      imageQuality: 85,
+    );
+    if (image == null) return;
+
+    String savedPath;
+    if (kIsWeb) {
+      final bytes = await image.readAsBytes();
+      final base64Str = base64Encode(bytes);
+      final ext = image.path.contains('.png') ? 'png' : 'jpeg';
+      savedPath = 'data:image/$ext;base64,$base64Str';
+    } else {
+      final file = File(image.path);
+      savedPath = await _imageRepo.saveImage(file, subfolder: 'avatar');
+    }
+
+    if (mounted) {
+      setState(() {
+        _avatarPath = savedPath;
+      });
+    }
   }
 
   double? get _latestWeight {
@@ -85,6 +145,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
         nickname: _nicknameController.text.isEmpty ? null : _nicknameController.text,
         birthday: _birthday?.toIso8601String().split('T').first,
         height: double.tryParse(_heightController.text),
+        avatarPath: _avatarPath,
         updatedAt: DateTime.now(),
       );
       await notifier.save(profile);
@@ -168,244 +229,232 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          _buildTopCard(theme),
-          const SizedBox(height: 24),
-          Text('基本资料', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-          const SizedBox(height: 12),
-          _buildBasicInfoCard(theme),
-          const SizedBox(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('体重管理', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-              GestureDetector(
-                onTap: () => setState(() => _showWeightHistory = !_showWeightHistory),
-                child: Row(
-                  children: [
-                    Icon(Icons.history, size: 16, color: theme.colorScheme.primary),
-                    const SizedBox(width: 4),
-                    Text('历史', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.primary)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _buildWeightCard(theme),
-          const SizedBox(height: 24),
+          _buildIdentityCard(theme),
+          const SizedBox(height: 20),
+          _buildHealthCard(theme),
+          const SizedBox(height: 20),
           _buildAiHint(theme),
         ],
       ),
     );
   }
 
-  Widget _buildTopCard(ThemeData theme) {
-    final age = _calculateAge();
-    final weight = _latestWeight;
-
+  Widget _buildIdentityCard(ThemeData theme) {
     return Container(
       decoration: _cardDecoration(theme),
       padding: const EdgeInsets.all(20),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
-                  shape: BoxShape.circle,
+              // Avatar
+              GestureDetector(
+                onTap: _pickAvatar,
+                child: Stack(
+                  children: [
+                    Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: _avatarPath.isNotEmpty
+                          ? UnifiedImage(
+                              imagePath: _avatarPath,
+                              width: 72,
+                              height: 72,
+                              borderRadius: BorderRadius.circular(36),
+                              fit: BoxFit.cover,
+                            )
+                          : Icon(Icons.person_outline, size: 36, color: theme.colorScheme.primary),
+                    ),
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.camera_alt,
+                          size: 11,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                child: Icon(Icons.person_outline, size: 32, color: theme.colorScheme.primary),
               ),
               const SizedBox(width: 16),
+              // Nickname
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Text(
+                      '姓名 / 昵称',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
                     TextField(
                       controller: _nicknameController,
+                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                       decoration: const InputDecoration(
-                        hintText: 'HQ',
+                        hintText: '输入昵称',
                         border: InputBorder.none,
                         contentPadding: EdgeInsets.zero,
                         isDense: true,
                       ),
-                      style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              // Age Input
+              Container(
+                width: 90,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      '年龄 (岁)',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontSize: 11,
+                      ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      '个人资料会帮助 AI 助手了解您',
-                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8)),
+                    SizedBox(
+                      height: 24,
+                      child: TextField(
+                        controller: _ageController,
+                        keyboardType: TextInputType.number,
+                        textAlign: TextAlign.center,
+                        onChanged: _onAgeTextChanged,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.primary,
+                        ),
+                        decoration: const InputDecoration(
+                          hintText: '年龄',
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.zero,
+                          isDense: true,
+                        ),
+                      ),
                     ),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
+          Divider(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4), thickness: 1),
+          const SizedBox(height: 16),
+          // Birthday Selector Row
           Row(
             children: [
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Column(
-                    children: [
-                      Text('当前年龄', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                      const SizedBox(height: 4),
-                      RichText(
-                        text: TextSpan(
-                          children: [
-                            TextSpan(text: age > 0 ? '$age' : '-', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.primary)),
-                            TextSpan(text: ' 岁', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Column(
-                    children: [
-                      Text('最新体重', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                      const SizedBox(height: 4),
-                      RichText(
-                        text: TextSpan(
-                          children: [
-                            TextSpan(text: weight != null ? weight.toStringAsFixed(0) : '-', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.primary)),
-                            TextSpan(text: ' kg', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+              Icon(Icons.cake_outlined, size: 18, color: theme.colorScheme.onSurfaceVariant),
+              const SizedBox(width: 8),
+              Text(
+                '出生年月',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ],
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBasicInfoCard(ThemeData theme) {
-    return Container(
-      decoration: _cardDecoration(theme),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.cake_outlined, size: 18, color: theme.colorScheme.onSurfaceVariant),
-                    const SizedBox(width: 8),
-                    Text('出生年月', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                GestureDetector(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: _birthday ?? DateTime(2000, 1, 1),
-                      firstDate: DateTime(1900),
-                      lastDate: DateTime.now(),
-                    );
-                    if (picked != null && mounted) {
-                      setState(() => _birthday = picked);
-                    }
-                  },
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                _birthday != null ? DateFormat('MM月').format(_birthday!) : '月',
-                                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
-                              ),
-                              Icon(Icons.keyboard_arrow_down, size: 16, color: theme.colorScheme.onSurfaceVariant),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                _birthday != null ? DateFormat('dd日').format(_birthday!) : '日',
-                                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
-                              ),
-                              Icon(Icons.keyboard_arrow_down, size: 16, color: theme.colorScheme.onSurfaceVariant),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Divider(height: 32, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: () async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: _birthday ?? DateTime(2000, 1, 1),
+                firstDate: DateTime(1900),
+                lastDate: DateTime.now(),
+                initialDatePickerMode: DatePickerMode.year,
+              );
+              if (picked != null && mounted) {
+                setState(() {
+                  _birthday = picked;
+                  final ageValue = _calculateAge();
+                  _ageController.text = ageValue > 0 ? '$ageValue' : '';
+                });
+              }
+            },
             child: Row(
               children: [
-                Icon(Icons.straighten, size: 18, color: theme.colorScheme.primary),
-                const SizedBox(width: 8),
-                Text('身高 (CM)', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                const Spacer(),
-                Container(
-                  width: 100,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(12),
+                // Year
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _birthday != null ? DateFormat('yyyy年').format(_birthday!) : '年',
+                          style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        Icon(Icons.keyboard_arrow_down, size: 14, color: theme.colorScheme.onSurfaceVariant),
+                      ],
+                    ),
                   ),
-                  child: TextField(
-                    controller: _heightController,
-                    keyboardType: TextInputType.number,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
-                    decoration: const InputDecoration(
-                      hintText: '173',
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.zero,
+                ),
+                const SizedBox(width: 8),
+                // Month
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _birthday != null ? DateFormat('MM月').format(_birthday!) : '月',
+                          style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        Icon(Icons.keyboard_arrow_down, size: 14, color: theme.colorScheme.onSurfaceVariant),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Day
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _birthday != null ? DateFormat('dd日').format(_birthday!) : '日',
+                          style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        Icon(Icons.keyboard_arrow_down, size: 14, color: theme.colorScheme.onSurfaceVariant),
+                      ],
                     ),
                   ),
                 ),
@@ -417,7 +466,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     );
   }
 
-  Widget _buildWeightCard(ThemeData theme) {
+  Widget _buildHealthCard(ThemeData theme) {
     final profile = ref.watch(userProfileNotifierProvider);
     final weightHistory = profile != null ? profile.weightHistory : <dynamic>[];
 
@@ -425,77 +474,235 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
       decoration: _cardDecoration(theme),
       padding: const EdgeInsets.all(20),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                DateFormat('yyyy-MM-dd').format(_weightDate),
-                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              Text('今日', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-            ],
-          ),
-          const SizedBox(height: 16),
+          // Height and Weight Fields Side-by-Side
           Row(
             children: [
+              // Height
               Expanded(
                 child: Container(
-                  height: 48,
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(16),
                   ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.straighten, size: 16, color: theme.colorScheme.primary),
+                          const SizedBox(width: 6),
+                          Text(
+                            '身高 (CM)',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _heightController,
+                        keyboardType: TextInputType.number,
+                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                        decoration: const InputDecoration(
+                          hintText: '173',
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.zero,
+                          isDense: true,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Latest Weight Display
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.scale_outlined, size: 16, color: theme.colorScheme.primary),
+                          const SizedBox(width: 6),
+                          Text(
+                            '最新体重 (kg)',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _latestWeight != null ? '${_latestWeight!.toStringAsFixed(1)} kg' : '未记录',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: _latestWeight != null ? theme.colorScheme.onSurface : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Divider(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4), thickness: 1),
+          const SizedBox(height: 16),
+          // Weight Management Header
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.monitor_weight_outlined, size: 18, color: theme.colorScheme.onSurfaceVariant),
+                  const SizedBox(width: 8),
+                  Text(
+                    '体重记录',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              GestureDetector(
+                onTap: () => setState(() => _showWeightHistory = !_showWeightHistory),
+                child: Row(
+                  children: [
+                    Icon(
+                      _showWeightHistory ? Icons.keyboard_arrow_up : Icons.history,
+                      size: 16,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      _showWeightHistory ? '收起历史' : '历史记录',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Weight Input Field + Add Button
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   child: Row(
                     children: [
-                      const SizedBox(width: 16),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: TextField(
                           controller: _weightController,
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
                           decoration: InputDecoration(
-                            hintText: '今日体重',
-                            hintStyle: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                            hintText: '记录今日体重 (kg)...',
+                            hintStyle: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                            ),
                             border: InputBorder.none,
+                            isDense: true,
                           ),
                         ),
                       ),
-                      Text('kg', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                      const SizedBox(width: 16),
                     ],
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               GestureDetector(
                 onTap: _addWeightRecord,
                 child: Container(
-                  width: 48,
-                  height: 48,
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.primaryContainer.withValues(alpha: 0.8),
-                    borderRadius: BorderRadius.circular(16),
+                    color: theme.colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(Icons.add_circle_outline, color: Colors.white, size: 24),
+                  child: const Icon(Icons.add, color: Colors.white, size: 20),
                 ),
               ),
             ],
           ),
+          // Weight History List inside the card
           if (_showWeightHistory && weightHistory.isNotEmpty) ...[
             const SizedBox(height: 16),
-            Divider(height: 1, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
-            const SizedBox(height: 8),
-            ...weightHistory.map((record) => ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  title: Text('${record.weight} kg', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
-                  subtitle: Text(DateFormat('yyyy-MM-dd').format(record.time), style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
-                    onPressed: () => _deleteWeightRecord(record.id),
-                  ),
-                )),
+            Container(
+              constraints: const BoxConstraints(maxHeight: 180),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                ),
+              ),
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                itemCount: weightHistory.length,
+                separatorBuilder: (context, index) => Divider(
+                  height: 1,
+                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                ),
+                itemBuilder: (context, index) {
+                  final record = weightHistory[index];
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${record.weight} kg',
+                              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              DateFormat('yyyy-MM-dd').format(record.time),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                              ),
+                            ),
+                          ],
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                          onPressed: () => _deleteWeightRecord(record.id),
+                          constraints: const BoxConstraints(),
+                          padding: EdgeInsets.zero,
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
           ],
         ],
       ),
@@ -506,8 +713,11 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.15),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -906,10 +906,25 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
   Widget build(BuildContext context) {
     ref.listen<TimelineTimeSelectEvent?>(diaryInputTimeProvider, (previous, next) {
       if (next != null) {
+        final selectedDate = ref.read(selectedDateProvider);
+        final startDay = DateTime(next.date.year, next.date.month, next.date.day);
+        final baseDay = DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
+        final startOffset = startDay.difference(baseDay).inDays;
+
+        int? endOffset;
+        if (next.endDate != null) {
+          final endDay = DateTime(next.endDate!.year, next.endDate!.month, next.endDate!.day);
+          endOffset = endDay.difference(baseDay).inDays;
+        }
+
         _updateActiveDraft(
           startTime: next.time,
           endTime: next.endTime,
           clearEndTime: next.endTime == null,
+          startOffset: startOffset,
+          endOffset: endOffset,
+          clearStartOffset: false,
+          clearEndOffset: next.endTime == null,
         );
         if (!_isExpanded) {
           setState(() => _isExpanded = true);
