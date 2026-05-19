@@ -9,6 +9,9 @@ import 'package:qnote_flutter/models/user_profile.dart';
 import 'package:qnote_flutter/providers/user_profile_provider.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
+import 'dart:math' as math;
+import 'package:fl_chart/fl_chart.dart';
+import 'package:qnote_flutter/models/weight_record.dart';
 
 class UserProfilePage extends ConsumerStatefulWidget {
   const UserProfilePage({super.key});
@@ -23,8 +26,9 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   final _weightController = TextEditingController();
   final _ageController = TextEditingController();
   DateTime? _birthday;
-  final DateTime _weightDate = DateTime.now();
+  DateTime _weightDate = DateTime.now();
   bool _showWeightHistory = false;
+  int _historyTab = 0; // 0: 折线趋势图, 1: 历史记录列表
   bool _saveSuccess = false;
   String _avatarPath = '';
 
@@ -97,6 +101,23 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     });
   }
 
+  Future<void> _showBirthdayPicker(DatePickerMode initialMode) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _birthday ?? DateTime(2000, 1, 1),
+      firstDate: DateTime(1900),
+      lastDate: DateTime.now(),
+      initialDatePickerMode: initialMode,
+    );
+    if (picked != null && mounted) {
+      setState(() {
+        _birthday = picked;
+        final ageValue = _calculateAge();
+        _ageController.text = ageValue > 0 ? '$ageValue' : '';
+      });
+    }
+  }
+
   Future<void> _pickAvatar() async {
     final image = await _imagePicker.pickImage(
       source: ImageSource.gallery,
@@ -125,7 +146,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   }
 
   double? get _latestWeight {
-    final profile = ref.read(userProfileNotifierProvider);
+    final profile = ref.watch(userProfileNotifierProvider);
     if (profile == null || profile.weightHistory.isEmpty) return null;
     final sorted = List.of(profile.weightHistory)..sort((a, b) => b.time.compareTo(a.time));
     return sorted.first.weight;
@@ -174,6 +195,9 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
           );
       if (!mounted) return;
       _weightController.clear();
+      setState(() {
+        _weightDate = DateTime.now();
+      });
     } catch (e) {
       debugPrint('添加体重记录失败: $e');
     }
@@ -377,27 +401,12 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
             ],
           ),
           const SizedBox(height: 12),
-          GestureDetector(
-            onTap: () async {
-              final picked = await showDatePicker(
-                context: context,
-                initialDate: _birthday ?? DateTime(2000, 1, 1),
-                firstDate: DateTime(1900),
-                lastDate: DateTime.now(),
-                initialDatePickerMode: DatePickerMode.year,
-              );
-              if (picked != null && mounted) {
-                setState(() {
-                  _birthday = picked;
-                  final ageValue = _calculateAge();
-                  _ageController.text = ageValue > 0 ? '$ageValue' : '';
-                });
-              }
-            },
-            child: Row(
-              children: [
-                // Year
-                Expanded(
+          Row(
+            children: [
+              // Year
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => _showBirthdayPicker(DatePickerMode.year),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                     decoration: BoxDecoration(
@@ -416,9 +425,12 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                // Month
-                Expanded(
+              ),
+              const SizedBox(width: 8),
+              // Month
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => _showBirthdayPicker(DatePickerMode.day),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                     decoration: BoxDecoration(
@@ -437,9 +449,12 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                // Day
-                Expanded(
+              ),
+              const SizedBox(width: 8),
+              // Day
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => _showBirthdayPicker(DatePickerMode.day),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                     decoration: BoxDecoration(
@@ -458,8 +473,8 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ],
       ),
@@ -613,14 +628,47 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                   ),
                   child: Row(
                     children: [
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 10),
+                      GestureDetector(
+                        onTap: _selectWeightDate,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primaryContainer.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.calendar_month,
+                                size: 13,
+                                color: theme.colorScheme.primary,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _isToday(_weightDate) 
+                                    ? '今天' 
+                                    : DateFormat('MM-dd').format(_weightDate),
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.primary,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
                       Expanded(
                         child: TextField(
                           controller: _weightController,
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
                           decoration: InputDecoration(
-                            hintText: '记录今日体重 (kg)...',
+                            hintText: _isToday(_weightDate) 
+                                ? '记录今日体重 (kg)...' 
+                                : '记录 ${_weightDate.month}月${_weightDate.day}日 体重 (kg)...',
                             hintStyle: theme.textTheme.bodyMedium?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
                             ),
@@ -640,69 +688,82 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.primaryContainer,
+                    color: theme.colorScheme.primary,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.add, color: Colors.white, size: 20),
+                  child: Icon(Icons.add, color: theme.colorScheme.onPrimary, size: 20),
                 ),
               ),
             ],
           ),
-          // Weight History List inside the card
+          // Weight History List / Chart inside the card
           if (_showWeightHistory && weightHistory.isNotEmpty) ...[
             const SizedBox(height: 16),
-            Container(
-              constraints: const BoxConstraints(maxHeight: 180),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-                ),
-              ),
-              child: ListView.separated(
-                shrinkWrap: true,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                itemCount: weightHistory.length,
-                separatorBuilder: (context, index) => Divider(
-                  height: 1,
-                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-                ),
-                itemBuilder: (context, index) {
-                  final record = weightHistory[index];
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${record.weight} kg',
-                              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              DateFormat('yyyy-MM-dd').format(record.time),
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                              ),
-                            ),
-                          ],
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
-                          onPressed: () => _deleteWeightRecord(record.id),
-                          constraints: const BoxConstraints(),
-                          padding: EdgeInsets.zero,
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
+            Row(
+              children: [
+                _buildTabButton(theme, title: '折线趋势图', index: 0),
+                const SizedBox(width: 8),
+                _buildTabButton(theme, title: '历史列表', index: 1),
+              ],
             ),
+            const SizedBox(height: 12),
+            if (_historyTab == 0)
+              _buildWeightChart(weightHistory, theme)
+            else
+              Container(
+                constraints: const BoxConstraints(maxHeight: 180),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  itemCount: weightHistory.length,
+                  separatorBuilder: (context, index) => Divider(
+                    height: 1,
+                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                  ),
+                  itemBuilder: (context, index) {
+                    final sortedList = List<WeightRecord>.from(weightHistory)
+                      ..sort((a, b) => b.time.compareTo(a.time));
+                    final record = sortedList[index];
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${record.weight} kg',
+                                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                DateFormat('yyyy-MM-dd').format(record.time),
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                                ),
+                              ),
+                            ],
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                            onPressed: () => _deleteWeightRecord(record.id),
+                            constraints: const BoxConstraints(),
+                            padding: EdgeInsets.zero,
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
           ],
         ],
       ),
@@ -739,6 +800,216 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
         ],
       ),
     );
+  }
+
+  Widget _buildTabButton(ThemeData theme, {required String title, required int index}) {
+    final isSelected = _historyTab == index;
+    return GestureDetector(
+      onTap: () => setState(() => _historyTab = index),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected 
+              ? theme.colorScheme.primaryContainer.withValues(alpha: 0.15) 
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected 
+                ? theme.colorScheme.primary.withValues(alpha: 0.3) 
+                : theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Text(
+          title,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWeightChart(List<dynamic> weightHistory, ThemeData theme) {
+    final sortedHistory = List<WeightRecord>.from(weightHistory)
+      ..sort((a, b) => a.time.compareTo(b.time));
+
+    final spots = <FlSpot>[];
+    for (var i = 0; i < sortedHistory.length; i++) {
+      spots.add(FlSpot(i.toDouble(), sortedHistory[i].weight));
+    }
+
+    final weights = sortedHistory.map((e) => e.weight).toList();
+    final double minW = weights.reduce((a, b) => a < b ? a : b);
+    final double maxW = weights.reduce((a, b) => a > b ? a : b);
+    
+    final double range = maxW - minW;
+    final double padding = range < 1.0 ? 2.0 : range * 0.15;
+    final double minY = math.max(0.0, minW - padding);
+    final double maxY = maxW + padding;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double availableWidth = constraints.maxWidth;
+        final double chartWidth = math.max(availableWidth, sortedHistory.length * 64.0);
+
+        return Container(
+          height: 180,
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+            ),
+          ),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            reverse: true,
+            child: Container(
+              width: chartWidth,
+              padding: const EdgeInsets.only(right: 24, left: 16, top: 12),
+              child: LineChart(
+                LineChartData(
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: true,
+                    drawHorizontalLine: true,
+                    horizontalInterval: range < 1.0 ? 1.0 : (range / 4.0).clamp(0.5, 100.0),
+                    getDrawingHorizontalLine: (value) => FlLine(
+                      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
+                      strokeWidth: 1,
+                    ),
+                    getDrawingVerticalLine: (value) => FlLine(
+                      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.15),
+                      strokeWidth: 1,
+                    ),
+                  ),
+                  titlesData: FlTitlesData(
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 28,
+                        interval: 1,
+                        getTitlesWidget: (value, meta) {
+                          final int index = value.toInt();
+                          if (index < 0 || index >= sortedHistory.length) {
+                            return const SizedBox.shrink();
+                          }
+                          final record = sortedHistory[index];
+                          final dateStr = DateFormat('MM/dd').format(record.time);
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              dateStr,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 40,
+                        getTitlesWidget: (value, meta) {
+                          return Text(
+                            value.toStringAsFixed(1),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  minY: minY,
+                  maxY: maxY,
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: spots,
+                      isCurved: true,
+                      preventCurveOverShooting: true,
+                      color: theme.colorScheme.primary,
+                      barWidth: 3,
+                      isStrokeCapRound: true,
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(
+                          radius: 4,
+                          color: theme.colorScheme.primary,
+                          strokeWidth: 2,
+                          strokeColor: theme.colorScheme.surface,
+                        ),
+                      ),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        gradient: LinearGradient(
+                          colors: [
+                            theme.colorScheme.primary.withValues(alpha: 0.25),
+                            theme.colorScheme.primary.withValues(alpha: 0.0),
+                          ],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                      ),
+                    ),
+                  ],
+                  lineTouchData: LineTouchData(
+                    touchTooltipData: LineTouchTooltipData(
+                      getTooltipColor: (touchedSpot) => theme.colorScheme.surfaceContainerHighest,
+                      tooltipRoundedRadius: 8,
+                      getTooltipItems: (touchedSpots) {
+                        return touchedSpots.map((lineBarSpot) {
+                          final index = lineBarSpot.x.toInt();
+                          final record = sortedHistory[index];
+                          final dateStr = DateFormat('yyyy-MM-dd').format(record.time);
+                          return LineTooltipItem(
+                            '${record.weight} kg\n$dateStr',
+                            TextStyle(
+                              color: theme.colorScheme.onSurface,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                            ),
+                          );
+                        }).toList();
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  bool _isToday(DateTime date) {
+    final now = DateTime.now();
+    return date.year == now.year && date.month == now.month && date.day == now.day;
+  }
+
+  Future<void> _selectWeightDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _weightDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null && mounted) {
+      setState(() {
+        _weightDate = picked;
+      });
+    }
   }
 }
 

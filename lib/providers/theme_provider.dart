@@ -54,9 +54,14 @@ class AccentColorNotifier extends StateNotifier<Color> {
 }
 
 final presetAccentColors = [
-  const Color(0xFF005BCB),
-  const Color(0xFF4648D4),
-  const Color(0xFFBA1A1A),
-  const Color(0xFF006A6A),
-  const Color(0xFF924700),
+  const Color(0xFF005BCB), // 经典蓝 (Default Blue)
+  const Color(0xFF5E5CE6), // 皇家紫 (Royal Indigo)
+  const Color(0xFFD32F2F), // 珊瑚红 (Coral Crimson)
+  const Color(0xFF006A6A), // 深湖绿 (Lake Teal)
+  const Color(0xFF994D00), // 琥珀橙 (Amber Orange)
+  const Color(0xFFF43F5E), // 玫瑰粉 (Rose Coral)
+  const Color(0xFF10B981), // 薄荷绿 (Mint Emerald)
+  const Color(0xFF8B5CF6), // 罗兰紫 (Lavender Violet)
+  const Color(0xFF0284C7), // 晴空蓝 (Sky Ocean)
+  const Color(0xFF8D6E63), // 摩卡棕 (Mocha Earth)
 ];

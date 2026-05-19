@@ -24,8 +24,11 @@ class UserProfileNotifier extends StateNotifier<UserProfile?> {
   }
 
   Future<void> addWeightRecord(double weight, {DateTime? time}) async {
-    final profile = state;
-    if (profile == null) return;
+    final profile = state ?? UserProfile(
+      id: '',
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
     final record = WeightRecord(
       id: const Uuid().v4(),
       weight: weight,

@@ -11,6 +11,7 @@ import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
+import 'package:qnote_flutter/config/defaults.dart';
 
 class AiPage extends ConsumerStatefulWidget {
   const AiPage({super.key});
@@ -520,18 +521,17 @@ class _AiPageState extends ConsumerState<AiPage> {
 
   Widget _buildChatArea(ChatSession? currentChat, ThemeData theme) {
     final messages = currentChat?.messages ?? [];
-    if (messages.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.smart_toy, size: 64, color: theme.disabledColor),
-            const SizedBox(height: 16),
-            Text('开始一段新对话', style: theme.textTheme.titleMedium),
-          ],
-        ),
-      );
-    }
+    
+    // If messages are empty, virtualize the assistant's greeting bubble so it's shown.
+    final displayMessages = messages.isEmpty
+        ? [
+            ChatMessage(
+              role: 'assistant',
+              content: defaultSystemPrompts['assistant_greeting'] ?? '你可以切换顶部的分析范围（日期/笔记）来获得更精准的专业建议，或直接提问',
+              timestamp: DateTime.now(),
+            )
+          ]
+        : messages;
 
     final showTyping =
         _isTyping && messages.isNotEmpty && messages.last.role == 'user';
@@ -539,12 +539,12 @@ class _AiPageState extends ConsumerState<AiPage> {
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.all(16),
-      itemCount: messages.length + (showTyping ? 1 : 0),
+      itemCount: displayMessages.length + (showTyping ? 1 : 0),
       itemBuilder: (context, index) {
-        if (index == messages.length) {
+        if (index == displayMessages.length) {
           return const _TypingBubble();
         }
-        return _ChatBubble(message: messages[index]);
+        return _ChatBubble(message: displayMessages[index]);
       },
     );
   }
@@ -743,16 +743,42 @@ class _AiPageState extends ConsumerState<AiPage> {
             valueListenable: _inputController,
             builder: (context, value, _) {
               if (value.text.isEmpty) return const SizedBox.shrink();
-              return IconButton(
-                icon: Icon(
-                  Icons.close,
-                  size: 16,
-                  color: theme.colorScheme.onSurfaceVariant,
+              return Padding(
+                padding: const EdgeInsets.only(right: 8, bottom: 6),
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () {
+                      _inputController.clear();
+                    },
+                    behavior: HitTestBehavior.opaque,
+                    child: Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: Container(
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: Colors.red.withValues(alpha: 0.85),
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.red.withValues(alpha: 0.25),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: const Center(
+                          child: Icon(
+                            Icons.close,
+                            size: 12,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-                onPressed: () {
-                  _inputController.clear();
-                },
-                visualDensity: VisualDensity.compact,
               );
             },
           ),
@@ -1134,65 +1160,131 @@ class _ChatBubble extends StatelessWidget {
     final theme = Theme.of(context);
     final isUser = message.role == 'user';
 
-    return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: isUser ? 10 : 8,
-        ),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.8,
-        ),
-        decoration: BoxDecoration(
-          color: isUser
-              ? theme.colorScheme.primary
-              : theme.colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: isUser ? const Radius.circular(16) : Radius.zero,
-            bottomRight: isUser ? Radius.zero : const Radius.circular(16),
+    return Column(
+      crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        // Avatar and sender name header
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6, left: 4, right: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (!isUser) ...[
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Icon(
+                      Icons.smart_toy_rounded,
+                      size: 13,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'QNote AI',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ] else ...[
+                Text(
+                  '您的提问',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Icon(
+                      Icons.chat_bubble_outline_rounded,
+                      size: 12,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
-        child: isUser
-            ? Text(
-                message.content,
-                style: TextStyle(
-                  color: theme.colorScheme.onPrimary,
-                  fontSize: 14,
-                ),
-              )
-            : message.content.isEmpty
-            ? const _TypingDots()
-            : MarkdownBody(
-                data: message.content,
-                selectable: true,
-                styleSheet: MarkdownStyleSheet(
-                  p: TextStyle(
-                    color: theme.colorScheme.onSurface,
-                    fontSize: 14,
-                    height: 1.5,
-                  ),
-                  h2: TextStyle(
-                    color: theme.colorScheme.onSurface,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  h3: TextStyle(
-                    color: theme.colorScheme.onSurface,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  code: TextStyle(
-                    color: theme.colorScheme.onSurface,
-                    backgroundColor: theme.colorScheme.surfaceContainerHighest,
-                  ),
-                  listBullet: TextStyle(color: theme.colorScheme.onSurface),
-                ),
+        // Bubble container
+        Align(
+          alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: isUser ? 10 : 8,
+            ),
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.82,
+            ),
+            decoration: BoxDecoration(
+              color: isUser
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(16),
+                topRight: const Radius.circular(16),
+                bottomLeft: isUser ? const Radius.circular(16) : Radius.zero,
+                bottomRight: isUser ? Radius.zero : const Radius.circular(16),
               ),
-      ),
+            ),
+            child: isUser
+                ? Text(
+                    message.content,
+                    style: TextStyle(
+                      color: theme.colorScheme.onPrimary,
+                      fontSize: 14,
+                    ),
+                  )
+                : message.content.isEmpty
+                ? const _TypingDots()
+                : MarkdownBody(
+                    data: message.content,
+                    selectable: true,
+                    styleSheet: MarkdownStyleSheet(
+                      p: TextStyle(
+                        color: theme.colorScheme.onSurface,
+                        fontSize: 14,
+                        height: 1.5,
+                      ),
+                      h2: TextStyle(
+                        color: theme.colorScheme.onSurface,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      h3: TextStyle(
+                        color: theme.colorScheme.onSurface,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      code: TextStyle(
+                        color: theme.colorScheme.onSurface,
+                        backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                      ),
+                      listBullet: TextStyle(color: theme.colorScheme.onSurface),
+                    ),
+                  ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1203,21 +1295,58 @@ class _TypingBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(16),
-            topRight: Radius.circular(16),
-            bottomRight: Radius.circular(16),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6, left: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Icon(
+                    Icons.smart_toy_rounded,
+                    size: 13,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'QNote AI',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w500,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
           ),
         ),
-        child: const _TypingDots(),
-      ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+                bottomRight: Radius.circular(16),
+              ),
+            ),
+            child: const _TypingDots(),
+          ),
+        ),
+      ],
     );
   }
 }

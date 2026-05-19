@@ -769,12 +769,16 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
 
     final notifier = ref.read(diaryListProvider.notifier);
     final selectedDate = ref.read(selectedDateProvider);
+    DateTime? firstSentTime;
 
     for (final draft in _drafts) {
       final isEmpty = draft.inputText.trim().isEmpty && draft.selectedShortcut == null && draft.selectedPhotos.isEmpty;
       if (isEmpty) continue;
 
       final startDateTime = _calculateStartDateTime(draft, selectedDate);
+      if (firstSentTime == null) {
+        firstSentTime = startDateTime;
+      }
       var endDateTime = _calculateEndDateTime(draft, selectedDate);
 
       if (draft.selectedShortcut?.id == 'sleep') {
@@ -863,6 +867,10 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
       _activeDraftIndex = 0;
       _textController.text = '';
     });
+
+    if (firstSentTime != null) {
+      ref.read(diaryScrollToTimeProvider.notifier).state = firstSentTime;
+    }
   }
 
   DateTime _calculateStartDateTime(_Draft draft, DateTime selectedDate) {
@@ -1432,7 +1440,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
     if (!showTabs) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+      padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
       child: Row(
         children: [
           Expanded(
@@ -1447,7 +1455,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
                     if (!shouldShow) return const SizedBox.shrink();
 
                     return Padding(
-                      padding: const EdgeInsets.only(right: 6),
+                      padding: const EdgeInsets.only(right: 4),
                       child: Container(
                         decoration: BoxDecoration(
                           color: isActive ? theme.colorScheme.primary : theme.colorScheme.surfaceContainerHighest,
@@ -1460,10 +1468,10 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
                               onTap: () => _switchDraft(idx),
                               child: Padding(
                                 padding: EdgeInsets.only(
-                                  left: 12,
-                                  top: 6,
-                                  bottom: 6,
-                                  right: isActive && _drafts.length > 1 ? 4 : 12,
+                                  left: 8,
+                                  top: 4,
+                                  bottom: 4,
+                                  right: isActive && _drafts.length > 1 ? 4 : 8,
                                 ),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
@@ -1518,7 +1526,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
                     GestureDetector(
                       onTap: _addDraft,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: theme.colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(20),
@@ -1549,7 +1557,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
               child: GestureDetector(
                 onTap: _clearCurrentDraft,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.errorContainer,
                     borderRadius: BorderRadius.circular(12),
@@ -1578,7 +1586,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
 
   Widget _buildShortcutRow(ThemeData theme, AsyncValue<List<ShortcutConfig>> shortcuts) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 4, 4),
+      padding: const EdgeInsets.fromLTRB(12, 0, 4, 2),
       child: Row(
         children: [
           Expanded(
@@ -1590,12 +1598,12 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
                   data: (list) => list.map<Widget>((config) {
                     final isSelected = _activeDraft.selectedShortcut?.id == config.id;
                     return Padding(
-                      padding: const EdgeInsets.only(right: 6),
+                      padding: const EdgeInsets.only(right: 4),
                       child: GestureDetector(
                         onTap: () => _selectShortcut(config),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
                             color: isSelected ? theme.colorScheme.primary : Colors.transparent,
                             borderRadius: BorderRadius.circular(20),
@@ -1613,7 +1621,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
                                 size: 14,
                                 color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface,
                               ),
-                              const SizedBox(width: 6),
+                              const SizedBox(width: 4),
                               Text(
                                 config.name,
                                 style: theme.textTheme.labelSmall?.copyWith(
@@ -1684,7 +1692,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
 
   Widget _buildTimeAndImageRow(ThemeData theme) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+      padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
       child: Row(
         children: [
           Expanded(

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -43,6 +43,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
   bool _isScrollingFromList = false;
   bool _hasPerformedInitialScroll = false;
 
+  static double? _savedScrollOffset;
+
   @override
   void initState() {
     super.initState();
@@ -53,10 +55,14 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
 
     final nodeIndex = now.hour * 2 + (now.minute >= 30 ? 1 : 0);
     // 350.0 is used to subtract half of a typical viewport height for instant centering
-    final initialOffset = 3 * _dayHeight + _dividerHeight + nodeIndex * _nodeHeight - 350.0;
+    final initialOffset = _savedScrollOffset ?? (3 * _dayHeight + _dividerHeight + nodeIndex * _nodeHeight - 350.0);
 
     _scrollController = ScrollController(initialScrollOffset: initialOffset.clamp(0.0, double.infinity));
     _scrollController.addListener(_onScroll);
+
+    if (_savedScrollOffset != null) {
+      _hasPerformedInitialScroll = true;
+    }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -77,7 +83,12 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
       final viewportHeight = _scrollController.position.viewportDimension;
       final rough = dayOffset * _dayHeight + _dividerHeight + nodeIndex * _nodeHeight
           - (viewportHeight > 0 ? viewportHeight / 2 : 350.0);
-      _scrollController.jumpTo(rough.clamp(0.0, _scrollController.position.maxScrollExtent));
+      final targetRough = rough.clamp(0.0, _scrollController.position.maxScrollExtent);
+      
+      // Only jump if we are not already close to the target rough position
+      if ((_scrollController.offset - targetRough).abs() > 50.0) {
+        _scrollController.jumpTo(targetRough);
+      }
     }
 
     // Phase 2: wait one frame then use the GlobalKey RenderBox for the exact position.
@@ -101,6 +112,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
           final target = (nodeTopInScroll - (viewportHeight - nodeHeight) / 2)
               .clamp(0.0, _scrollController.position.maxScrollExtent);
 
+          // If we are already at the exact target, don't trigger anything to avoid jumpy behavior
+          if ((scrollOffset - target).abs() < 2.0) {
+            return;
+          }
+
           if (smooth) {
             _scrollController.animateTo(
               target,
@@ -121,6 +137,138 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
         });
       }
     });
+  }
+
+  void _scrollToTime(DateTime targetTime, {bool smooth = true}) {
+    if (!_scrollController.hasClients) return;
+
+    final dayOffset = _dateToDayOffset(targetTime);
+    if (dayOffset < 0 || dayOffset >= _windowDays) {
+      _ensureDateInWindow(targetTime);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scrollController.hasClients) return;
+        final newDayOffset = _dateToDayOffset(targetTime);
+        final nodeIndex = targetTime.hour * 2 + (targetTime.minute >= 30 ? 1 : 0);
+        final viewportHeight = _scrollController.position.viewportDimension;
+        final target = newDayOffset * _dayHeight + _dividerHeight + nodeIndex * _nodeHeight
+            - (viewportHeight > 0 ? viewportHeight / 2 : 350.0);
+        final targetClamped = target.clamp(0.0, _scrollController.position.maxScrollExtent);
+
+        if ((_scrollController.offset - targetClamped).abs() < 2.0) return;
+
+        if (smooth) {
+          _scrollController.animateTo(
+            targetClamped,
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeInOutCubic,
+          );
+        } else {
+          _scrollController.jumpTo(targetClamped);
+        }
+      });
+      return;
+    }
+
+    final nodeIndex = targetTime.hour * 2 + (targetTime.minute >= 30 ? 1 : 0);
+    final viewportHeight = _scrollController.position.viewportDimension;
+    final target = dayOffset * _dayHeight + _dividerHeight + nodeIndex * _nodeHeight
+        - (viewportHeight > 0 ? viewportHeight / 2 : 350.0);
+    final targetClamped = target.clamp(0.0, _scrollController.position.maxScrollExtent);
+
+    if ((_scrollController.offset - targetClamped).abs() < 2.0) return;
+
+    if (smooth) {
+      _scrollController.animateTo(
+        targetClamped,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOutCubic,
+      );
+    } else {
+      _scrollController.jumpTo(targetClamped);
+    }
+  }
+
+  void _handleNodeTap(DateTime date, TimeOfDay time) {
+    final selectEvent = ref.read(diaryInputTimeProvider);
+    
+    if (selectEvent == null || selectEvent.endTime == null) {
+      if (selectEvent != null &&
+          _isSameDay(selectEvent.date, date) &&
+          selectEvent.time.hour == time.hour &&
+          selectEvent.time.minute == time.minute) {
+        ref.read(diaryInputTimeProvider.notifier).state = null;
+      } else {
+        ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+          time,
+          date: date,
+        );
+      }
+      return;
+    }
+
+    final clickedDateTime = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
+
+    final selectionStart = DateTime(
+      selectEvent.date.year,
+      selectEvent.date.month,
+      selectEvent.date.day,
+      selectEvent.time.hour,
+      selectEvent.time.minute,
+    );
+
+    final selEndDate = selectEvent.endDate ?? selectEvent.date;
+    final selectionEnd = DateTime(
+      selEndDate.year,
+      selEndDate.month,
+      selEndDate.day,
+      selectEvent.endTime!.hour,
+      selectEvent.endTime!.minute,
+    );
+
+    if (clickedDateTime.isAtSameMomentAs(selectionStart)) {
+      // 1. 点击开始时间节点：取消全部勾选
+      ref.read(diaryInputTimeProvider.notifier).state = null;
+    } else if (clickedDateTime.isAfter(selectionStart) && !clickedDateTime.isAfter(selectionEnd)) {
+      // 2. 点击范围内的某个节点（排除开始节点）：将该节点及之后的节点取消勾选，即新范围是 [开始, 点击节点 - 30分钟]
+      final newEndDateTime = clickedDateTime.subtract(const Duration(minutes: 30));
+      final newEndTime = TimeOfDay(hour: newEndDateTime.hour, minute: newEndDateTime.minute);
+      
+      ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+        selectEvent.time,
+        endTime: newEndTime,
+        date: selectEvent.date,
+        endDate: DateTime(newEndDateTime.year, newEndDateTime.month, newEndDateTime.day),
+      );
+    } else if (clickedDateTime.isAfter(selectionEnd)) {
+      // 3. 点击结束节点之后的节点：将范围延长到该节点，即新范围是 [开始, 点击节点]
+      ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+        selectEvent.time,
+        endTime: time,
+        date: selectEvent.date,
+        endDate: date,
+      );
+    } else if (clickedDateTime.isBefore(selectionStart)) {
+      // 4. 点击开始节点之前的节点：将范围向左（前）延长，即新范围是 [点击节点, 结束]
+      ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+        time,
+        endTime: selectEvent.endTime,
+        date: date,
+        endDate: selEndDate,
+      );
+    }
+  }
+
+  void _handleNodeDoubleTap(DateTime date, TimeOfDay time) {
+    ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+      time,
+      date: date,
+    );
   }
 
   @override
@@ -152,6 +300,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
     if (_isShiftingWindow || !_scrollController.hasClients) return;
 
     final offset = _scrollController.offset;
+    _savedScrollOffset = offset;
+
     final maxScroll = _scrollController.position.maxScrollExtent;
     final viewportHeight = _scrollController.position.viewportDimension;
 
@@ -161,17 +311,43 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
       _shiftWindowForward();
     }
 
-    // Determine currently visible date based on scroll offset
-    // A small buffer threshold of 120.0 aligns perfectly with divider transitions
-    final targetOffset = offset + 120.0;
-    final dayOffset = (targetOffset / _dayHeight).floor().clamp(0, _windowDays - 1);
-    final visibleDate = _indexToDate(dayOffset);
+    // Determine currently visible date based on the exact center of the viewport
+    final viewportCtx = _viewportKey.currentContext;
+    if (viewportCtx != null) {
+      final RenderBox? viewportBox = viewportCtx.findRenderObject() as RenderBox?;
+      if (viewportBox != null && viewportBox.hasSize) {
+        // Find the Y coordinate for the center of the viewport on screen
+        final double centerYOnScreen = viewportBox.localToGlobal(Offset(0, viewportBox.size.height / 2)).dy;
 
-    final selectedDate = ref.read(selectedDateProvider);
-    if (!_isSameDay(selectedDate, visibleDate)) {
-      _isScrollingFromList = true;
-      ref.read(selectedDateProvider.notifier).state = visibleDate;
-      _isScrollingFromList = false;
+        int? centerIndex;
+        // Convert to list to avoid ConcurrentModificationError during iteration
+        final entries = _itemContexts.entries.toList();
+        for (final entry in entries) {
+          final ctx = entry.value;
+          if (!ctx.mounted) continue;
+          final RenderBox? itemBox = ctx.findRenderObject() as RenderBox?;
+          if (itemBox != null && itemBox.hasSize) {
+            final double itemTop = itemBox.localToGlobal(Offset.zero).dy;
+            final double itemBottom = itemTop + itemBox.size.height;
+            if (centerYOnScreen >= itemTop && centerYOnScreen <= itemBottom) {
+              centerIndex = entry.key;
+              break;
+            }
+          }
+        }
+
+        if (centerIndex != null) {
+          final dayOffset = centerIndex ~/ _itemsPerDay;
+          final visibleDate = _indexToDate(dayOffset);
+
+          final selectedDate = ref.read(selectedDateProvider);
+          if (!_isSameDay(selectedDate, visibleDate)) {
+            _isScrollingFromList = true;
+            ref.read(selectedDateProvider.notifier).state = visibleDate;
+            _isScrollingFromList = false;
+          }
+        }
+      }
     }
   }
 
@@ -454,6 +630,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
       }
     });
 
+    ref.listen<DateTime?>(diaryScrollToTimeProvider, (previous, next) {
+      if (next != null) {
+        _scrollToTime(next);
+        ref.read(diaryScrollToTimeProvider.notifier).state = null;
+      }
+    });
+
     final theme = Theme.of(context);
     final selectedDate = ref.watch(selectedDateProvider);
     final diaryListAsync = ref.watch(diaryListProvider);
@@ -728,88 +911,20 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
                                   isSelected: finalIsSelected,
                                   isDraggedSelected: isDraggedSelected,
                                   isCurrentTime: isStandardNodeCurrentTime,
-                                  onTap: () {
-                                    if (isUserSelected) {
-                                      if (selectEvent.endTime == null) {
-                                        if (_isSameDay(selectEvent.date, date) &&
-                                            selectEvent.time.hour == time.hour &&
-                                            selectEvent.time.minute == time.minute) {
-                                          ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
-                                            TimeOfDay.now(),
-                                            date: DateTime.now(),
-                                          );
-                                        } else {
-                                          ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
-                                            time,
-                                            date: date,
-                                          );
-                                        }
-                                      } else {
-                                        final selectionStart = DateTime(
-                                          selectEvent.date.year,
-                                          selectEvent.date.month,
-                                          selectEvent.date.day,
-                                          selectEvent.time.hour,
-                                          selectEvent.time.minute,
-                                        );
-                                        final selEndDate = selectEvent.endDate ?? selectEvent.date;
-                                        final selectionEnd = DateTime(
-                                          selEndDate.year,
-                                          selEndDate.month,
-                                          selEndDate.day,
-                                          selectEvent.endTime!.hour,
-                                          selectEvent.endTime!.minute,
-                                        );
-
-                                        if (nodeStartDateTime.isAtSameMomentAs(selectionStart) ||
-                                            (nodeStartDateTime.isAfter(selectionStart) && nodeStartDateTime.isBefore(selectionEnd))) {
-                                          if (nodeStartDateTime.isAtSameMomentAs(selectionStart)) {
-                                            ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
-                                              TimeOfDay.now(),
-                                              date: DateTime.now(),
-                                            );
-                                          } else {
-                                            ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
-                                              selectEvent.time,
-                                              endTime: time,
-                                              date: selectEvent.date,
-                                              endDate: date,
-                                            );
-                                          }
-                                        } else {
-                                          ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
-                                            time,
-                                            date: date,
-                                          );
-                                        }
-                                      }
-                                    } else {
-                                      ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
-                                        time,
-                                        date: date,
-                                      );
-                                    }
-                                  },
+                                  onTap: () => _handleNodeTap(date, time),
+                                  onDoubleTap: () => _handleNodeDoubleTap(date, time),
                                 ),
                                 if (showDedicatedSelectedNode)
                                   _SelectedTimeNode(
                                     time: currentInputTime,
-                                    onTap: () {
-                                      ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
-                                        TimeOfDay.now(),
-                                        date: DateTime.now(),
-                                      );
-                                    },
+                                    onTap: () => _handleNodeTap(date, currentInputTime),
+                                    onDoubleTap: () => _handleNodeDoubleTap(date, currentInputTime),
                                   ),
                                 if (showDedicatedCurrentTimeNode)
                                   _CurrentTimeNode(
                                     time: now,
-                                    onTap: () {
-                                      ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
-                                        now,
-                                        date: DateTime.now(),
-                                      );
-                                    },
+                                    onTap: () => _handleNodeTap(date, now),
+                                    onDoubleTap: () => _handleNodeDoubleTap(date, now),
                                   ),
                                 ...recordsInInterval.map((record) => DiaryItem(
                                       record: record,
@@ -988,6 +1103,7 @@ class _EmptyTimeNode extends StatelessWidget {
   final bool isDraggedSelected;
   final bool isCurrentTime;
   final VoidCallback onTap;
+  final VoidCallback? onDoubleTap;
 
   const _EmptyTimeNode({
     super.key,
@@ -996,6 +1112,7 @@ class _EmptyTimeNode extends StatelessWidget {
     this.isDraggedSelected = false,
     this.isCurrentTime = false,
     required this.onTap,
+    this.onDoubleTap,
   });
 
   @override
@@ -1012,6 +1129,7 @@ class _EmptyTimeNode extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
+      onDoubleTap: onDoubleTap,
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
@@ -1126,10 +1244,12 @@ class _EmptyTimeNode extends StatelessWidget {
 class _SelectedTimeNode extends StatelessWidget {
   final TimeOfDay time;
   final VoidCallback onTap;
+  final VoidCallback? onDoubleTap;
 
   const _SelectedTimeNode({
     required this.time,
     required this.onTap,
+    this.onDoubleTap,
   });
 
   @override
@@ -1139,6 +1259,7 @@ class _SelectedTimeNode extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
+      onDoubleTap: onDoubleTap,
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
@@ -1219,10 +1340,12 @@ class _SelectedTimeNode extends StatelessWidget {
 class _CurrentTimeNode extends StatelessWidget {
   final TimeOfDay time;
   final VoidCallback onTap;
+  final VoidCallback? onDoubleTap;
 
   const _CurrentTimeNode({
     required this.time,
     required this.onTap,
+    this.onDoubleTap,
   });
 
   @override
@@ -1233,6 +1356,7 @@ class _CurrentTimeNode extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
+      onDoubleTap: onDoubleTap,
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),

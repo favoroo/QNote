@@ -79,13 +79,7 @@ class PersonalizationPage extends ConsumerWidget {
                   Wrap(
                     spacing: 16,
                     runSpacing: 16,
-                    children: [
-                      const Color(0xFF005BCB),
-                      const Color(0xFF5E5CE6),
-                      const Color(0xFFD32F2F),
-                      const Color(0xFF006A6A),
-                      const Color(0xFF994D00),
-                    ].map((color) {
+                    children: presetAccentColors.map((color) {
                       final isSelected = color.toARGB32() == accentColor.toARGB32();
                       return GestureDetector(
                         onTap: () => ref.read(accentColorProvider.notifier).setAccentColor(color),

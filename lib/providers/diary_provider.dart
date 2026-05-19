@@ -39,6 +39,8 @@ final diaryDraftsProvider = StateProvider<List<DiaryRecord>>((ref) => []);
 
 final diaryScrollTriggerProvider = StateProvider<int>((ref) => 0);
 
+final diaryScrollToTimeProvider = StateProvider<DateTime?>((ref) => null);
+
 final diaryListProvider =
     AsyncNotifierProvider<DiaryListNotifier, List<DiaryRecord>>(() {
       return DiaryListNotifier();
