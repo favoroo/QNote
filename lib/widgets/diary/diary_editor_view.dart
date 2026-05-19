@@ -72,7 +72,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     final result = await showTimePickerDialog(
       context: context,
       initialTime: _endTime ?? _startTime ?? _time,
-      mode: TimePickerMode.time,
+      mode: TimePickerMode.dateTime,
     );
     if (result != null) {
       setState(() {
@@ -264,12 +264,12 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             GestureDetector(
               onTap: _pickTime,
               child: Container(
-                width: 100,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
                 height: 44,
                 decoration: BoxDecoration(
-                  color: colorScheme.primaryContainer.withValues(alpha: 0.3),
+                  color: colorScheme.primaryContainer.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: colorScheme.primary.withValues(alpha: 0.3)),
+                  border: Border.all(color: colorScheme.primary.withValues(alpha: 0.15)),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -296,12 +296,12 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               GestureDetector(
                 onTap: _pickEndTime,
                 child: Container(
-                  width: 100,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
                   height: 44,
                   decoration: BoxDecoration(
-                    color: colorScheme.primaryContainer.withValues(alpha: 0.3),
+                    color: colorScheme.primaryContainer.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(22),
-                    border: Border.all(color: colorScheme.primary.withValues(alpha: 0.3)),
+                    border: Border.all(color: colorScheme.primary.withValues(alpha: 0.15)),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -330,10 +330,10 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                   height: 44,
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(22),
                     border: Border.all(
-                      color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+                      color: colorScheme.outlineVariant.withValues(alpha: 0.2),
                       style: BorderStyle.solid,
                     ),
                   ),

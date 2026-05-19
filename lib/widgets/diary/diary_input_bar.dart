@@ -711,7 +711,18 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
   }
 
   void _showModelMenu() async {
-    final configs = ref.read(aiConfigListProvider).valueOrNull ?? [];
+    // 收起软键盘并清除焦点，防止弹窗关闭后键盘再次自动弹出
+    FocusScope.of(context).unfocus();
+
+    List<AiConfig> configs = [];
+    try {
+      configs = await ref.read(aiConfigListProvider.future);
+    } catch (e) {
+      LoggerService.instance.logAI('加载模型配置失败: $e');
+    }
+
+    if (!mounted) return;
+
     if (configs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('暂无模型配置')));
       return;

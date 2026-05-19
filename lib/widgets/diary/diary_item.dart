@@ -115,177 +115,181 @@ class DiaryItem extends StatelessWidget {
           ),
           // Content Card
           Expanded(
-            child: Container(
-              margin: const EdgeInsets.only(bottom: 16, right: 12),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+            child: GestureDetector(
+              onTap: onTap,
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 16, right: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+                  ),
                 ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header: Time Range + Tag + More
-                  Row(
-                    children: [
-                      // Time Pill
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.access_time,
-                              size: 12,
-                              color: theme.colorScheme.primary,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              _formatTimeRangeWithDate(),
-                              style: theme.textTheme.labelSmall?.copyWith(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header: Time Range + Tag + More
+                    Row(
+                      children: [
+                        // Time Pill
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.access_time,
+                                size: 12,
                                 color: theme.colorScheme.primary,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _formatTimeRangeWithDate(),
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: theme.colorScheme.primary,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // Tag
+                        if (record.displayTag.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: tagColor.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              record.displayTag,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: tagColor,
                                 fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        const Spacer(),
+                        // More Button
+                        IconButton(
+                          key: actionMenuKey,
+                          icon: Icon(
+                            Icons.more_vert,
+                            size: 18,
+                            color: theme.colorScheme.outline,
+                          ),
+                          onPressed: () {
+                            ActionMenu.show(
+                              context: context,
+                              key: actionMenuKey,
+                              items: [
+                                ActionMenuItem(
+                                  icon: Icons.edit,
+                                  label: '编辑',
+                                  onTap: () => onEdit?.call(record),
+                                ),
+                                ActionMenuItem(
+                                  icon: Icons.delete_outline,
+                                  label: '删除',
+                                  isDestructive: true,
+                                  onTap: () => onDelete?.call(record),
+                                ),
+                              ],
+                            );
+                          },
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    // Fields (from bodyState)
+                    if (fields.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Column(
+                          children: fields.entries.map((entry) {
+                            if (entry.value == null || entry.value.toString().isEmpty) {
+                              return const SizedBox.shrink();
+                            }
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${entry.key}：',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: theme.colorScheme.onSurface,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      entry.value.toString(),
+                                      style: theme.textTheme.bodyMedium?.copyWith(
+                                        color: theme.colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    // Content (Remark)
+                    if (record.content.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '备注：',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: theme.colorScheme.onSurface,
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                record.content,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
                               ),
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      // Tag
-                      if (record.displayTag.isNotEmpty)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: tagColor.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            record.displayTag,
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: tagColor,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                    // Photos
+                    if (record.photos.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: record.photos.map((photo) {
+                            return UnifiedImage(
+                              imagePath: photo,
+                              width: 60,
+                              height: 60,
+                              borderRadius: BorderRadius.circular(8),
+                            );
+                          }).toList(),
                         ),
-                      const Spacer(),
-                      // More Button
-                      IconButton(
-                        key: actionMenuKey,
-                        icon: Icon(
-                          Icons.more_vert,
-                          size: 18,
-                          color: theme.colorScheme.outline,
-                        ),
-                        onPressed: () {
-                          ActionMenu.show(
-                            context: context,
-                            key: actionMenuKey,
-                            items: [
-                              ActionMenuItem(
-                                icon: Icons.edit,
-                                label: '编辑',
-                                onTap: () => onEdit?.call(record),
-                              ),
-                              ActionMenuItem(
-                                icon: Icons.delete_outline,
-                                label: '删除',
-                                isDestructive: true,
-                                onTap: () => onDelete?.call(record),
-                              ),
-                            ],
-                          );
-                        },
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  // Fields (from bodyState)
-                  if (fields.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Column(
-                        children: fields.entries.map((entry) {
-                          if (entry.value == null || entry.value.toString().isEmpty) {
-                            return const SizedBox.shrink();
-                          }
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${entry.key}：',
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                    color: theme.colorScheme.onSurface,
-                                  ),
-                                ),
-                                Expanded(
-                                  child: Text(
-                                    entry.value.toString(),
-                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  // Content (Remark)
-                  if (record.content.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '备注：',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: theme.colorScheme.onSurface,
-                            ),
-                          ),
-                          Expanded(
-                            child: Text(
-                              record.content,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  // Photos
-                  if (record.photos.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: record.photos.map((photo) {
-                          return UnifiedImage(
-                            imagePath: photo,
-                            width: 60,
-                            height: 60,
-                            borderRadius: BorderRadius.circular(8),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
