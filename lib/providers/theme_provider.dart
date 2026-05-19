@@ -64,4 +64,6 @@ final presetAccentColors = [
   const Color(0xFF8B5CF6), // 罗兰紫 (Lavender Violet)
   const Color(0xFF0284C7), // 晴空蓝 (Sky Ocean)
   const Color(0xFF8D6E63), // 摩卡棕 (Mocha Earth)
+  const Color(0xFF64748B), // 蓝灰 (Slate Grey)
+  const Color(0xFFEAB308), // 金盏黄 (Amber Gold)
 ];

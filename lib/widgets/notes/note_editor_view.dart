@@ -8,6 +8,7 @@ import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/providers/note_provider.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/core/utils/delta_markdown.dart';
+import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
@@ -236,12 +237,17 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   // Image insertion
   // ---------------------------------------------------------------------------
   Future<void> _pickImage(ImageSource source) async {
-    final image = await _imagePicker.pickImage(
-      source: source,
-      maxWidth: 1200,
-      maxHeight: 1200,
-      imageQuality: 80,
-    );
+    final XFile? image;
+    if (source == ImageSource.camera) {
+      image = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1200,
+        maxHeight: 1200,
+        imageQuality: 80,
+      );
+    } else {
+      image = await GalleryHelper.pickSingleImage(context);
+    }
     if (image == null) return;
 
     String savedPath;

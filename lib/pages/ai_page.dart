@@ -715,38 +715,39 @@ class _AiPageState extends ConsumerState<AiPage> {
         color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(24),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+      child: Stack(
+        alignment: Alignment.bottomRight,
         children: [
-          Expanded(
-            child: TextField(
-              controller: _inputController,
-              minLines: 1,
-              maxLines: 4,
-              decoration: InputDecoration(
-                filled: false,
-                hintText: '输入问题或指令...',
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                errorBorder: InputBorder.none,
-                disabledBorder: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 10,
-                ),
+          TextField(
+            controller: _inputController,
+            minLines: 1,
+            maxLines: 4,
+            decoration: InputDecoration(
+              filled: false,
+              hintText: '输入问题或指令...',
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              errorBorder: InputBorder.none,
+              disabledBorder: InputBorder.none,
+              contentPadding: const EdgeInsets.only(
+                left: 16,
+                top: 10,
+                bottom: 10,
+                right: 42,
               ),
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => _sendMessage(),
             ),
+            textInputAction: TextInputAction.send,
+            onSubmitted: (_) => _sendMessage(),
           ),
-          ValueListenableBuilder<TextEditingValue>(
-            valueListenable: _inputController,
-            builder: (context, value, _) {
-              if (value.text.isEmpty) return const SizedBox.shrink();
-              return Padding(
-                padding: const EdgeInsets.only(right: 8, bottom: 6),
-                child: MouseRegion(
+          Positioned(
+            right: 6,
+            bottom: 4,
+            child: ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _inputController,
+              builder: (context, value, _) {
+                if (value.text.isEmpty) return const SizedBox.shrink();
+                return MouseRegion(
                   cursor: SystemMouseCursors.click,
                   child: GestureDetector(
                     onTap: () {
@@ -779,9 +780,9 @@ class _AiPageState extends ConsumerState<AiPage> {
                       ),
                     ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         ],
       ),

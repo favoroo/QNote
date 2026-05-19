@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:qnote_flutter/providers/theme_provider.dart';
 import 'package:qnote_flutter/pages/settings/user_profile_page.dart';
 import 'package:qnote_flutter/pages/settings/personalization_page.dart';
 import 'package:qnote_flutter/pages/settings/ai_config_page.dart';
@@ -33,32 +32,34 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
           bottomRight: Radius.circular(24),
         ),
       ),
-      child: ClipRRect(
-        borderRadius: const BorderRadius.only(
-          topRight: Radius.circular(24),
-          bottomRight: Radius.circular(24),
-        ),
-        child: PopScope(
-          canPop: false,
-          onPopInvokedWithResult: (didPop, result) {
-            if (didPop) return;
-            if (_navigatorKey.currentState?.canPop() ?? false) {
-              _navigatorKey.currentState?.pop();
-            } else {
-              Navigator.of(context).pop();
-            }
-          },
-          child: Navigator(
-            key: _navigatorKey,
-            onGenerateRoute: (settings) {
-              WidgetBuilder builder;
-              if (settings.name == '/') {
-                builder = (context) => _buildMenu(context);
+      child: ScaffoldMessenger(
+        child: ClipRRect(
+          borderRadius: const BorderRadius.only(
+            topRight: Radius.circular(24),
+            bottomRight: Radius.circular(24),
+          ),
+          child: PopScope(
+            canPop: false,
+            onPopInvokedWithResult: (didPop, result) {
+              if (didPop) return;
+              if (_navigatorKey.currentState?.canPop() ?? false) {
+                _navigatorKey.currentState?.pop();
               } else {
-                builder = (context) => settings.arguments as Widget;
+                Navigator.of(context).pop();
               }
-              return MaterialPageRoute(builder: builder, settings: settings);
             },
+            child: Navigator(
+              key: _navigatorKey,
+              onGenerateRoute: (settings) {
+                WidgetBuilder builder;
+                if (settings.name == '/') {
+                  builder = (context) => _buildMenu(context);
+                } else {
+                  builder = (context) => settings.arguments as Widget;
+                }
+                return MaterialPageRoute(builder: builder, settings: settings);
+              },
+            ),
           ),
         ),
       ),

@@ -19,6 +19,7 @@ import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/widgets/time_picker.dart';
 import 'package:qnote_flutter/widgets/time_scroll_picker.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
+import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 
 class _Draft {
   final String id;
@@ -513,12 +514,11 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
   Future<void> _pickImageFromGallery() async {
     if (_activeDraft.selectedPhotos.length >= 3) return;
     try {
-      final images = await _imagePicker.pickMultiImage();
-      if (images.isEmpty) return;
       final remaining = 3 - _activeDraft.selectedPhotos.length;
-      final toProcess = images.take(remaining);
+      final images = await GalleryHelper.pickMultiImages(context, maxAssets: remaining);
+      if (images.isEmpty) return;
       final paths = <String>[];
-      for (final xFile in toProcess) {
+      for (final xFile in images) {
         final savedPath = await _imageRepo.saveImage(File(xFile.path), subfolder: 'diary');
         paths.add(savedPath);
       }
@@ -1172,7 +1172,9 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
         mainAxisSize: MainAxisSize.min,
         children: [
           const SizedBox(height: 6),
-          _buildFormFieldsArea(theme),
+          Flexible(
+            child: _buildFormFieldsArea(theme),
+          ),
           _buildDraftTabs(theme),
           _buildShortcutRow(theme, shortcuts),
           _buildTimeAndImageRow(theme),
@@ -2111,42 +2113,46 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
                 color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(24),
               ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
+              child: Stack(
+                alignment: Alignment.bottomRight,
                 children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _textController,
-                      focusNode: _textFocusNode,
-                      minLines: 1,
-                      maxLines: 5,
-                      style: theme.textTheme.bodyMedium,
-                      decoration: InputDecoration(
-                        filled: false,
-                        hintText: draft.selectedShortcut != null ? '记录${draft.selectedShortcut!.name}...' : '记录当前...',
-                        hintStyle: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        errorBorder: InputBorder.none,
-                        disabledBorder: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  TextField(
+                    controller: _textController,
+                    focusNode: _textFocusNode,
+                    minLines: 1,
+                    maxLines: 5,
+                    style: theme.textTheme.bodyMedium,
+                    decoration: InputDecoration(
+                      filled: false,
+                      hintText: draft.selectedShortcut != null ? '记录${draft.selectedShortcut!.name}...' : '记录当前...',
+                      hintStyle: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      errorBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
+                      contentPadding: const EdgeInsets.only(
+                        left: 16,
+                        top: 12,
+                        bottom: 12,
+                        right: 42,
                       ),
-                      onSubmitted: (_) {
-                        if (!isDisabled) _handleSend();
-                      },
                     ),
+                    onSubmitted: (_) {
+                      if (!isDisabled) _handleSend();
+                    },
                   ),
-                  ValueListenableBuilder<TextEditingValue>(
-                    valueListenable: _textController,
-                    builder: (context, value, _) {
-                      final hasText = value.text.isNotEmpty;
-                      final hasShortcut = draft.selectedShortcut != null;
-                      final hasPhotos = draft.selectedPhotos.isNotEmpty;
-                      if (!hasText && !hasShortcut && !hasPhotos) return const SizedBox.shrink();
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8, bottom: 6),
-                        child: MouseRegion(
+                  Positioned(
+                    right: 6,
+                    bottom: 6,
+                    child: ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _textController,
+                      builder: (context, value, _) {
+                        final hasText = value.text.isNotEmpty;
+                        final hasShortcut = draft.selectedShortcut != null;
+                        final hasPhotos = draft.selectedPhotos.isNotEmpty;
+                        if (!hasText && !hasShortcut && !hasPhotos) return const SizedBox.shrink();
+                        return MouseRegion(
                           cursor: SystemMouseCursors.click,
                           child: GestureDetector(
                             onTap: _clearCurrentDraft,
@@ -2177,9 +2183,9 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
                               ),
                             ),
                           ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
                 ],
               ),

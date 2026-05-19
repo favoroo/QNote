@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/models/user_profile.dart';
 import 'package:qnote_flutter/providers/user_profile_provider.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
@@ -119,12 +120,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   }
 
   Future<void> _pickAvatar() async {
-    final image = await _imagePicker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 500,
-      maxHeight: 500,
-      imageQuality: 85,
-    );
+    final image = await GalleryHelper.pickSingleImage(context);
     if (image == null) return;
 
     String savedPath;

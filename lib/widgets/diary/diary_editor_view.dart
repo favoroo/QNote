@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:intl/intl.dart';
 
 import 'package:qnote_flutter/models/diary_record.dart';
@@ -103,13 +104,18 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
 
   Future<void> _addPhoto(ImageSource source) async {
     if (_photos.length >= 3) return;
-    final picker = ImagePicker();
-    final xFile = await picker.pickImage(
-      source: source,
-      maxWidth: 1200,
-      maxHeight: 1200,
-      imageQuality: 80,
-    );
+    final XFile? xFile;
+    if (source == ImageSource.camera) {
+      final picker = ImagePicker();
+      xFile = await picker.pickImage(
+        source: source,
+        maxWidth: 1200,
+        maxHeight: 1200,
+        imageQuality: 80,
+      );
+    } else {
+      xFile = await GalleryHelper.pickSingleImage(context);
+    }
     if (xFile == null) return;
     final imageRepo = ImageRepository();
     final savedPath = await imageRepo.saveImage(File(xFile.path), subfolder: 'diary');
