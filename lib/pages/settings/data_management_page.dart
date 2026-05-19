@@ -344,34 +344,45 @@ class _LogViewerPage extends StatefulWidget {
 
 class _LogViewerPageState extends State<_LogViewerPage> {
   final LoggerService _logger = LoggerService.instance;
-  LogCategory? _selectedCategory;
   LogLevel? _selectedLevel;
+
+  @override
+  void initState() {
+    super.initState();
+    _logger.addListener(_onLogsChanged);
+  }
+
+  @override
+  void dispose() {
+    _logger.removeListener(_onLogsChanged);
+    super.dispose();
+  }
+
+  void _onLogsChanged() {
+    if (mounted) setState(() {});
+  }
   
   @override
   Widget build(BuildContext context) {
     var entries = _logger.entries;
-    
-    if (_selectedCategory != null) {
-      entries = entries.where((e) => e.category == _selectedCategory).toList();
-    }
     
     if (_selectedLevel != null) {
       entries = entries.where((e) => e.level == _selectedLevel).toList();
     }
 
     return Scaffold(
+      backgroundColor: const Color(0xFF0F0F11),
       appBar: AppBar(
-        title: const Text('运行日志'),
+        backgroundColor: const Color(0xFF16161A),
+        title: const Text('运行日志', style: TextStyle(color: Colors.white)),
+        iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           PopupMenuButton<String>(
-            icon: const Icon(Icons.filter_list),
+            icon: const Icon(Icons.filter_list, color: Colors.white70),
             onSelected: (value) {
               setState(() {
                 if (value == 'all') {
-                  _selectedCategory = null;
                   _selectedLevel = null;
-                } else if (value.startsWith('cat_')) {
-                  _selectedCategory = LogCategory.values[int.parse(value.substring(4))];
                 } else if (value.startsWith('lvl_')) {
                   _selectedLevel = LogLevel.values[int.parse(value.substring(4))];
                 }
@@ -380,22 +391,6 @@ class _LogViewerPageState extends State<_LogViewerPage> {
             itemBuilder: (context) => [
               const PopupMenuItem(value: 'all', child: Text('显示全部')),
               const PopupMenuDivider(),
-              const PopupMenuHeader(child: Text('按分类')),
-              ...LogCategory.values.map((cat) => PopupMenuItem(
-                value: 'cat_${cat.index}',
-                child: Row(
-                  children: [
-                    Icon(_getCategoryIcon(cat), size: 18),
-                    const SizedBox(width: 8),
-                    Text(_getCategoryName(cat)),
-                    const Spacer(),
-                    if (_selectedCategory == cat)
-                      const Icon(Icons.check, size: 18, color: Colors.blue),
-                  ],
-                ),
-              )),
-              const PopupMenuDivider(),
-              const PopupMenuHeader(child: Text('按级别')),
               ...LogLevel.values.map((level) => PopupMenuItem(
                 value: 'lvl_${level.index}',
                 child: Row(
@@ -415,10 +410,9 @@ class _LogViewerPageState extends State<_LogViewerPage> {
             ],
           ),
           IconButton(
-            icon: const Icon(Icons.copy),
+            icon: const Icon(Icons.copy, color: Colors.white70),
             onPressed: () {
               final text = _logger.getAllLogsAsString(
-                filterCategory: _selectedCategory,
                 filterLevel: _selectedLevel,
               );
               Clipboard.setData(ClipboardData(text: text));
@@ -428,7 +422,7 @@ class _LogViewerPageState extends State<_LogViewerPage> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.delete_outline),
+            icon: const Icon(Icons.delete_outline, color: Colors.white70),
             onPressed: () async {
               await _logger.clearLogs();
               if (mounted) setState(() {});
@@ -438,28 +432,20 @@ class _LogViewerPageState extends State<_LogViewerPage> {
       ),
       body: Column(
         children: [
-          if (_selectedCategory != null || _selectedLevel != null)
+          if (_selectedLevel != null)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              color: const Color(0xFF16161A),
               child: Row(
                 children: [
-                  if (_selectedCategory != null)
-                    Chip(
-                      label: Text(_getCategoryName(_selectedCategory!)),
-                      avatar: Icon(_getCategoryIcon(_selectedCategory!), size: 16),
-                      onDeleted: () => setState(() => _selectedCategory = null),
-                    ),
-                  if (_selectedLevel != null)
-                    Chip(
-                      label: Text(_getLevelName(_selectedLevel!)),
-                      backgroundColor: _getLevelColor(_selectedLevel!).withAlpha(51),
-                      onDeleted: () => setState(() => _selectedLevel = null),
-                    ),
+                  Chip(
+                    label: Text(_getLevelName(_selectedLevel!)),
+                    backgroundColor: _getLevelColor(_selectedLevel!).withValues(alpha: 0.2),
+                    onDeleted: () => setState(() => _selectedLevel = null),
+                  ),
                   const Spacer(),
                   TextButton(
                     onPressed: () => setState(() {
-                      _selectedCategory = null;
                       _selectedLevel = null;
                     }),
                     child: const Text('清除筛选'),
@@ -469,11 +455,10 @@ class _LogViewerPageState extends State<_LogViewerPage> {
             ),
           Expanded(
             child: entries.isEmpty
-                ? const Center(child: Text('暂无日志'))
+                ? const Center(child: Text('暂无日志', style: TextStyle(color: Colors.white54)))
                 : SelectionArea(
                     child: ListView.builder(
                       itemCount: entries.length,
-                      reverse: true,
                       itemBuilder: (context, index) {
                         final entry = entries[entries.length - 1 - index];
                         return _buildLogItem(entry);
@@ -482,17 +467,16 @@ class _LogViewerPageState extends State<_LogViewerPage> {
                   ),
           ),
           Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
+            padding: const EdgeInsets.all(12),
+            decoration: const BoxDecoration(
+              color: Color(0xFF16161A),
+              border: Border(top: BorderSide(color: Colors.white12)),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _buildStatChip('总计', '${_logger.totalEntries}', Icons.receipt_long),
-                _buildStatChip('AI', '${_logger.getLogsByCategory(LogCategory.ai).length}', Icons.smart_toy),
-                _buildStatChip('错误', '${_logger.getLogsByLevel(LogLevel.error).length}', Icons.error, Colors.red),
+                _buildStatChip('错误', '${_logger.getLogsByLevel(LogLevel.error).length}', Icons.error, Colors.redAccent),
               ],
             ),
           ),
@@ -502,126 +486,33 @@ class _LogViewerPageState extends State<_LogViewerPage> {
   }
 
   Widget _buildLogItem(LogEntry entry) {
-    final levelStr = switch (entry.level) {
-      LogLevel.info => 'INFO',
-      LogLevel.warning => 'WARN',
-      LogLevel.error => 'ERROR',
-    };
+    final levelStr = entry.level.name.toUpperCase();
     final levelColor = _getLevelColor(entry.level);
-    final categoryStr = _getCategoryName(entry.category);
     final formattedTime = _formatTime(entry.timestamp);
     
     return InkWell(
-      onTap: entry.details != null ? () => _showLogDetails(entry) : null,
-      onLongPress: () {
-        final buffer = StringBuffer();
-        buffer.write('[$formattedTime] [$categoryStr] [$levelStr] ${entry.message}');
-        if (entry.details != null) {
-          buffer.write('\n详情: ${entry.details}');
-        }
-        if (entry.stackTrace != null) {
-          buffer.write('\n堆栈跟踪:\n${entry.stackTrace}');
-        }
-        Clipboard.setData(ClipboardData(text: buffer.toString()));
+      onDoubleTap: () {
+        Clipboard.setData(ClipboardData(text: entry.message));
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('已复制该条日志到剪贴板'),
-            duration: const Duration(seconds: 1),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
+          const SnackBar(content: Text('已复制该条日志内容')),
+        );
+      },
+      onLongPress: () {
+        Clipboard.setData(ClipboardData(text: entry.message));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已复制该条日志内容')),
         );
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(_getCategoryIcon(entry.category), size: 16, color: Colors.grey[600]),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '[$formattedTime] [$categoryStr] ${entry.message}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontFamily: 'monospace',
-                      color: levelColor,
-                    ),
-                  ),
-                  if (entry.details != null)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 8, top: 2),
-                      child: Text(
-                        entry.details!,
-                        style: TextStyle(fontSize: 11, color: Colors.grey[500]),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 4),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: levelColor.withAlpha(26),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(levelStr, style: TextStyle(fontSize: 10, color: levelColor, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showLogDetails(LogEntry entry) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('${_getCategoryName(entry.category)} - ${_getLevelName(entry.level)}'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('时间: ${entry.timestamp.toIso8601String()}'),
-              const SizedBox(height: 8),
-              Text('消息: ${entry.message}'),
-              if (entry.details != null) ...[
-                const SizedBox(height: 8),
-                const Text('详情:', style: TextStyle(fontWeight: FontWeight.bold)),
-                SelectableText(entry.details!, style: const TextStyle(fontSize: 12)),
-              ],
-              if (entry.stackTrace != null) ...[
-                const SizedBox(height: 8),
-                const Text('堆栈跟踪:', style: TextStyle(fontWeight: FontWeight.bold)),
-                Container(
-                  constraints: const BoxConstraints(maxHeight: 200),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[900],
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  padding: const EdgeInsets.all(8),
-                  child: SelectableText(
-                    entry.stackTrace.toString(),
-                    style: const TextStyle(fontSize: 11, color: Colors.green, fontFamily: 'monospace'),
-                  ),
-                ),
-              ],
-            ],
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        child: Text(
+          '[$formattedTime] [$levelStr] ${entry.message}',
+          style: TextStyle(
+            fontSize: 12,
+            fontFamily: 'monospace',
+            color: levelColor,
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
-          ),
-        ],
       ),
     );
   }
@@ -630,9 +521,9 @@ class _LogViewerPageState extends State<_LogViewerPage> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 16, color: color ?? Colors.grey),
+        Icon(icon, size: 16, color: color ?? Colors.white70),
         const SizedBox(width: 4),
-        Text('$label: $count', style: const TextStyle(fontSize: 12)),
+        Text('$label: $count', style: const TextStyle(fontSize: 12, color: Colors.white70)),
       ],
     );
   }
@@ -641,39 +532,11 @@ class _LogViewerPageState extends State<_LogViewerPage> {
     return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}:${dt.second.toString().padLeft(2, '0')}';
   }
 
-  IconData _getCategoryIcon(LogCategory cat) {
-    return switch (cat) {
-      LogCategory.system => Icons.settings,
-      LogCategory.ai => Icons.smart_toy,
-      LogCategory.database => Icons.storage,
-      LogCategory.network => Icons.cloud,
-      LogCategory.ui => Icons.touch_app,
-      LogCategory.sync => Icons.sync,
-      LogCategory.export => Icons.upload,
-      LogCategory.import => Icons.download,
-      LogCategory.config => Icons.tune,
-    };
-  }
-
-  String _getCategoryName(LogCategory cat) {
-    return switch (cat) {
-      LogCategory.system => '系统',
-      LogCategory.ai => 'AI',
-      LogCategory.database => '数据库',
-      LogCategory.network => '网络',
-      LogCategory.ui => '界面',
-      LogCategory.sync => '同步',
-      LogCategory.export => '导出',
-      LogCategory.import => '导入',
-      LogCategory.config => '配置',
-    };
-  }
-
   Color _getLevelColor(LogLevel level) {
     return switch (level) {
-      LogLevel.info => Colors.grey,
-      LogLevel.warning => Colors.orange,
-      LogLevel.error => Colors.red,
+      LogLevel.info => Colors.white70,
+      LogLevel.warning => Colors.orangeAccent,
+      LogLevel.error => Colors.redAccent,
     };
   }
 
@@ -684,15 +547,5 @@ class _LogViewerPageState extends State<_LogViewerPage> {
       LogLevel.error => '错误',
     };
   }
-}
-
-class PopupMenuHeader<T> extends PopupMenuItem<T> {
-  const PopupMenuHeader({required super.child, super.key});
-  
-  @override
-  bool represents(T? value) => false;
-  
-  @override
-  bool get enabled => false;
 }
 

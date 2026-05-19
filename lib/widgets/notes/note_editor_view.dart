@@ -21,10 +21,20 @@ abstract class _Segment {}
 class _TextSegment extends _Segment {
   final MarkdownTextEditingController controller;
   final FocusNode focusNode;
+  bool listenersAttached = false;
   _TextSegment({required BuildContext context, String text = ''})
-      : controller = MarkdownTextEditingController(context: context, text: text),
-        focusNode = FocusNode();
+      : focusNode = FocusNode(),
+        controller = MarkdownTextEditingController(context: context, text: text) {
+    controller.focusNode = focusNode;
+    focusNode.addListener(_onFocusChanged);
+  }
+
+  void _onFocusChanged() {
+    controller.refresh();
+  }
+
   void dispose() {
+    focusNode.removeListener(_onFocusChanged);
     controller.dispose();
     focusNode.dispose();
   }
@@ -136,7 +146,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   void _attachListeners() {
     for (int i = 0; i < _segments.length; i++) {
       final seg = _segments[i];
-      if (seg is _TextSegment) {
+      if (seg is _TextSegment && !seg.listenersAttached) {
+        seg.listenersAttached = true;
         seg.controller.addListener(_triggerAutoSave);
         // Update focus index silently — NO setState, to avoid rebuild disrupting focus/keyboard.
         seg.focusNode.addListener(() {
@@ -291,6 +302,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     after.focusNode.addListener(() {
       if (after.focusNode.hasFocus) _focusedSegmentIndex = afterIdx;
     });
+    before.listenersAttached = true;
+    after.listenersAttached = true;
 
     setState(() {
       _segments.replaceRange(targetIndex, targetIndex + 1, [before, imgSeg, after]);
@@ -675,13 +688,18 @@ class _ToolbarButton extends StatelessWidget {
 // ---------------------------------------------------------------------------
 class MarkdownTextEditingController extends TextEditingController {
   final BuildContext context;
+  FocusNode? focusNode;
 
-  MarkdownTextEditingController({required this.context, super.text});
+  MarkdownTextEditingController({required this.context, this.focusNode, super.text});
+
+  void refresh() {
+    notifyListeners();
+  }
 
   @override
   TextSpan buildTextSpan({required BuildContext context, TextStyle? style, required bool withComposing}) {
     final selection = this.selection;
-    final cursorOffset = selection.baseOffset;
+    final cursorOffset = (focusNode == null || focusNode!.hasFocus) ? selection.baseOffset : -1;
     final activeLineIndex = _getActiveLineIndex(text, cursorOffset);
 
     final lines = text.split('\n');
@@ -891,11 +909,21 @@ class MarkdownTextEditingController extends TextEditingController {
       decoration: TextDecoration.none,
     );
 
+    final StringBuffer textBuffer = StringBuffer();
+
+    void flushBuffer() {
+      if (textBuffer.isNotEmpty) {
+        spans.add(TextSpan(text: textBuffer.toString(), style: baseStyle));
+        textBuffer.clear();
+      }
+    }
+
     while (index < text.length) {
       // Bold `**`
       if (text.startsWith('**', index)) {
         final end = text.indexOf('**', index + 2);
         if (end != -1) {
+          flushBuffer();
           spans.add(TextSpan(text: '**', style: symbolStyle));
           final innerText = text.substring(index + 2, end);
           spans.add(TextSpan(
@@ -912,6 +940,7 @@ class MarkdownTextEditingController extends TextEditingController {
       if (text.startsWith('*', index)) {
         final end = text.indexOf('*', index + 1);
         if (end != -1) {
+          flushBuffer();
           spans.add(TextSpan(text: '*', style: symbolStyle));
           final innerText = text.substring(index + 1, end);
           spans.add(TextSpan(
@@ -928,6 +957,7 @@ class MarkdownTextEditingController extends TextEditingController {
       if (text.startsWith('`', index)) {
         final end = text.indexOf('`', index + 1);
         if (end != -1) {
+          flushBuffer();
           spans.add(TextSpan(text: '`', style: symbolStyle));
           final innerText = text.substring(index + 1, end);
           spans.add(TextSpan(
@@ -948,6 +978,7 @@ class MarkdownTextEditingController extends TextEditingController {
       if (text.startsWith('~~', index)) {
         final end = text.indexOf('~~', index + 2);
         if (end != -1) {
+          flushBuffer();
           spans.add(TextSpan(text: '~~', style: symbolStyle));
           final innerText = text.substring(index + 2, end);
           spans.add(TextSpan(
@@ -961,10 +992,11 @@ class MarkdownTextEditingController extends TextEditingController {
       }
 
       // Default
-      spans.add(TextSpan(text: text[index].toString(), style: baseStyle));
+      textBuffer.write(text[index]);
       index++;
     }
 
+    flushBuffer();
     return TextSpan(children: spans);
   }
 
@@ -1138,11 +1170,21 @@ class MarkdownTextEditingController extends TextEditingController {
     final List<TextSpan> spans = [];
     int index = 0;
 
+    final StringBuffer textBuffer = StringBuffer();
+
+    void flushBuffer() {
+      if (textBuffer.isNotEmpty) {
+        spans.add(TextSpan(text: textBuffer.toString(), style: baseStyle));
+        textBuffer.clear();
+      }
+    }
+
     while (index < text.length) {
       // Bold `**`
       if (text.startsWith('**', index)) {
         final end = text.indexOf('**', index + 2);
         if (end != -1) {
+          flushBuffer();
           spans.add(TextSpan(
             text: '**',
             style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
@@ -1165,6 +1207,7 @@ class MarkdownTextEditingController extends TextEditingController {
       if (text.startsWith('*', index)) {
         final end = text.indexOf('*', index + 1);
         if (end != -1) {
+          flushBuffer();
           spans.add(TextSpan(
             text: '*',
             style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
@@ -1187,6 +1230,7 @@ class MarkdownTextEditingController extends TextEditingController {
       if (text.startsWith('`', index)) {
         final end = text.indexOf('`', index + 1);
         if (end != -1) {
+          flushBuffer();
           spans.add(TextSpan(
             text: '`',
             style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
@@ -1213,6 +1257,7 @@ class MarkdownTextEditingController extends TextEditingController {
       if (text.startsWith('~~', index)) {
         final end = text.indexOf('~~', index + 2);
         if (end != -1) {
+          flushBuffer();
           spans.add(TextSpan(
             text: '~~',
             style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
@@ -1232,10 +1277,11 @@ class MarkdownTextEditingController extends TextEditingController {
       }
 
       // Default
-      spans.add(TextSpan(text: text[index].toString(), style: baseStyle));
+      textBuffer.write(text[index]);
       index++;
     }
 
+    flushBuffer();
     return TextSpan(children: spans);
   }
 }

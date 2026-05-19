@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import 'package:dio/dio.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
@@ -63,6 +64,40 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   }
 
   String _formatTestError(Object e) {
+    if (e is DioException) {
+      final responseData = e.response?.data;
+      if (responseData != null) {
+        if (responseData is Map) {
+          final errorObj = responseData['error'];
+          if (errorObj != null) {
+            if (errorObj is Map && errorObj['message'] != null) {
+              return '错误: ${errorObj['message']}';
+            } else if (errorObj is String) {
+              return '错误: $errorObj';
+            }
+          }
+          if (responseData['message'] != null) {
+            return '错误: ${responseData['message']}';
+          }
+        } else if (responseData is String && responseData.isNotEmpty) {
+          return '错误: $responseData';
+        }
+      }
+      final msg = e.toString();
+      if (kIsWeb && (msg.contains('XMLHttpRequest') || msg.contains('connection error') || msg.contains('CORS') || msg.contains('onError'))) {
+        return '浏览器限制：Web端无法直接调用外部API（CORS），请在真机上测试';
+      }
+      if (e.type == DioExceptionType.connectionTimeout || e.type == DioExceptionType.receiveTimeout) {
+        return '请求超时';
+      }
+      if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
+        return '认证失败，请检查API Key';
+      }
+      if (e.response?.statusCode != null) {
+        return 'HTTP ${e.response!.statusCode} 错误';
+      }
+    }
+
     final msg = e.toString();
     if (kIsWeb && (msg.contains('XMLHttpRequest') || msg.contains('connection error') || msg.contains('CORS') || msg.contains('onError'))) {
       return '浏览器限制：Web端无法直接调用外部API（CORS），请在真机上测试';

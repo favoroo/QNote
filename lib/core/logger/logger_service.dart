@@ -21,37 +21,27 @@ class LogEntry {
   final DateTime timestamp;
   final String message;
   final LogLevel level;
-  final LogCategory category;
-  final String? details;
-  final StackTrace? stackTrace;
 
   LogEntry({
     required this.timestamp,
     required this.message,
     required this.level,
-    this.category = LogCategory.system,
-    this.details,
-    this.stackTrace,
   });
 
   Map<String, dynamic> toMap() => {
     'timestamp': timestamp.toIso8601String(),
     'message': message,
     'level': level.index,
-    'category': category.index,
-    if (details != null) 'details': details,
   };
 
   factory LogEntry.fromMap(Map<String, dynamic> map) => LogEntry(
     timestamp: DateTime.parse(map['timestamp'] as String),
     message: map['message'] as String,
     level: LogLevel.values[map['level'] as int? ?? 0],
-    category: LogCategory.values[map['category'] as int? ?? 0],
-    details: map['details'] as String?,
   );
 }
 
-class LoggerService {
+class LoggerService extends ChangeNotifier {
   static final LoggerService _instance = LoggerService._();
   static LoggerService get instance => _instance;
   LoggerService._();
@@ -89,7 +79,6 @@ class LoggerService {
                 timestamp: DateTime.now(),
                 message: line,
                 level: LogLevel.info,
-                category: LogCategory.system,
               ),
             );
           }
@@ -217,13 +206,19 @@ class LoggerService {
     String? details,
     StackTrace? stackTrace,
   }) {
+    final categoryName = category.name.toUpperCase();
+    final buffer = StringBuffer();
+    buffer.write('[$categoryName] $message');
+    if (details != null && details.isNotEmpty) {
+      buffer.write('\n详情: $details');
+    }
+    if (stackTrace != null) {
+      buffer.write('\n堆栈:\n$stackTrace');
+    }
     final entry = LogEntry(
       timestamp: DateTime.now(),
-      message: message,
+      message: buffer.toString(),
       level: level,
-      category: category,
-      details: details,
-      stackTrace: stackTrace,
     );
     _addEntry(entry);
   }
@@ -234,6 +229,7 @@ class LoggerService {
       _entries.removeRange(0, _entries.length - _maxEntries);
     }
     _entriesController.add(List.from(_entries));
+    notifyListeners();
     _persistLogs();
   }
 
@@ -248,6 +244,7 @@ class LoggerService {
           list.map((e) => LogEntry.fromMap(e as Map<String, dynamic>)),
         );
         _entriesController.add(List.from(_entries));
+        notifyListeners();
       }
     } catch (e) {
       debugPrint('加载日志失败: $e');
@@ -267,6 +264,7 @@ class LoggerService {
   Future<void> clearLogs() async {
     _entries.clear();
     _entriesController.add(List.from(_entries));
+    notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_storageKey);
     info('日志已清除', category: LogCategory.system);
@@ -280,8 +278,9 @@ class LoggerService {
     var filteredEntries = _entries;
 
     if (filterCategory != null) {
+      final prefix = '[${filterCategory.name.toUpperCase()}]';
       filteredEntries = filteredEntries
-          .where((e) => e.category == filterCategory)
+          .where((e) => e.message.startsWith(prefix))
           .toList();
     }
 
@@ -292,30 +291,10 @@ class LoggerService {
     }
 
     for (final entry in filteredEntries.reversed) {
-      final levelStr = switch (entry.level) {
-        LogLevel.info => 'INFO',
-        LogLevel.warning => 'WARN',
-        LogLevel.error => 'ERROR',
-      };
-
-      final categoryStr = switch (entry.category) {
-        LogCategory.system => 'SYSTEM',
-        LogCategory.ai => 'AI',
-        LogCategory.database => 'DB',
-        LogCategory.network => 'NET',
-        LogCategory.ui => 'UI',
-        LogCategory.sync => 'SYNC',
-        LogCategory.export => 'EXPORT',
-        LogCategory.import => 'IMPORT',
-        LogCategory.config => 'CONFIG',
-      };
-
+      final levelStr = entry.level.name.toUpperCase();
       buffer.write(
-        '[${_formatTimestamp(entry.timestamp)}] [$levelStr] [$categoryStr] ${entry.message}',
+        '[${_formatTimestamp(entry.timestamp)}] [$levelStr] ${entry.message}',
       );
-      if (entry.details != null) {
-        buffer.write(' | 详情: ${entry.details}');
-      }
       buffer.writeln();
     }
     return buffer.toString();
@@ -327,7 +306,8 @@ class LoggerService {
   }
 
   List<LogEntry> getLogsByCategory(LogCategory category) {
-    return _entries.where((e) => e.category == category).toList();
+    final prefix = '[${category.name.toUpperCase()}]';
+    return _entries.where((e) => e.message.startsWith(prefix)).toList();
   }
 
   List<LogEntry> getLogsByLevel(LogLevel level) {
@@ -336,7 +316,9 @@ class LoggerService {
 
   int get totalEntries => _entries.length;
 
+  @override
   void dispose() {
     _entriesController.close();
+    super.dispose();
   }
 }

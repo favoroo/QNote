@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:qnote_flutter/config/defaults.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
@@ -23,6 +24,11 @@ class AiService {
   void updateConfig(AiConfig config, {double? temperature, int? maxTokens}) {
     String cleanedBaseUrl = _cleanUrl(config.baseUrl);
 
+    // If Gemini and baseUrl is empty, default to official Gemini API endpoint
+    if (config.provider == 'gemini' && cleanedBaseUrl.isEmpty) {
+      cleanedBaseUrl = 'https://generativelanguage.googleapis.com';
+    }
+
     if (config.apiKey.isEmpty || cleanedBaseUrl.isEmpty) {
       throw ArgumentError('AI配置不完整: apiKey或baseUrl为空');
     }
@@ -41,8 +47,15 @@ class AiService {
     if (temperature != null) _temperature = temperature;
     if (maxTokens != null) _maxTokens = maxTokens;
     _dio.options.baseUrl = cleanedBaseUrl;
-    _dio.options.headers['Authorization'] = 'Bearer ${config.apiKey}';
+    
     _dio.options.headers['Content-Type'] = 'application/json';
+    if (config.provider == 'gemini') {
+      _dio.options.headers['x-goog-api-key'] = config.apiKey;
+      _dio.options.headers.remove('Authorization');
+    } else {
+      _dio.options.headers['Authorization'] = 'Bearer ${config.apiKey}';
+      _dio.options.headers.remove('x-goog-api-key');
+    }
 
     LoggerService.instance.logAI(
       '更新AI配置: 提供商=${config.provider}, 模型=${config.modelName}',
@@ -68,20 +81,90 @@ class AiService {
     );
 
     try {
-      final response = await _dio.post(
-        _chatEndpoint,
-        data: {
+      dynamic requestBody;
+      String endpoint = _chatEndpoint;
+
+      if (_config!.provider == 'gemini') {
+        String? systemInstruction;
+        final List<Map<String, dynamic>> contents = [];
+
+        for (final m in messages) {
+          if (m.role == 'system') {
+            systemInstruction = m.content;
+          } else {
+            final role = m.role == 'user' ? 'user' : 'model';
+            contents.add({
+              'role': role,
+              'parts': [
+                {'text': m.content}
+              ]
+            });
+          }
+        }
+
+        requestBody = {
+          'contents': contents,
+          'generationConfig': {
+            'temperature': _temperature,
+            'maxOutputTokens': _maxTokens,
+          }
+        };
+        if (systemInstruction != null) {
+          requestBody['systemInstruction'] = {
+            'parts': [
+              {'text': systemInstruction}
+            ]
+          };
+        }
+        endpoint = '/v1beta/models/${_config!.modelName}:generateContent';
+      } else {
+        final isOmni = _config!.modelName.toLowerCase().contains('omni');
+        final formattedMessages = messages.map((m) {
+          if (isOmni) {
+            return {
+              'role': m.role,
+              'content': [
+                {'type': 'text', 'text': m.content}
+              ],
+            };
+          } else {
+            return {
+              'role': m.role,
+              'content': m.content,
+            };
+          }
+        }).toList();
+
+        final bodyMap = <String, dynamic>{
           'model': _config!.modelName,
-          'messages': messages
-              .map((m) => {'role': m.role, 'content': m.content})
-              .toList(),
+          'messages': formattedMessages,
           'temperature': _temperature,
           'max_tokens': _maxTokens,
-        },
+        };
+
+        if (isOmni) {
+          bodyMap['sessionId'] = DateTime.now().millisecondsSinceEpoch.toString();
+          bodyMap['output_modalities'] = ['text'];
+        }
+
+        requestBody = bodyMap;
+      }
+
+      final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
+      LoggerService.instance.logAI(
+        'AI请求 [${_config!.provider}] [${_config!.modelName}] $endpoint:\n${_formatJsonForLogging(sanitizedBody)}'
+      );
+
+      final response = await _dio.post(
+        endpoint,
+        data: requestBody,
       );
 
       final duration = DateTime.now().difference(startTime).inMilliseconds;
       final data = response.data;
+      LoggerService.instance.logAI(
+        'AI响应:\n${_formatJsonForLogging(data)}'
+      );
       String result;
 
       if (_config!.provider == 'gemini') {
@@ -98,10 +181,26 @@ class AiService {
 
       return result;
     } catch (e, stackTrace) {
+      String details = stackTrace.toString();
+      if (e is DioException) {
+        final respData = e.response?.data;
+        final reqData = e.requestOptions.data;
+        final reqHeaders = e.requestOptions.headers;
+        debugPrint('=== AI REQUEST ERROR DIAGNOSTICS ===');
+        debugPrint('URL: ${e.requestOptions.uri}');
+        debugPrint('Headers: $reqHeaders');
+        debugPrint('Payload: $reqData');
+        debugPrint('Response Status: ${e.response?.statusCode}');
+        debugPrint('Response Data: $respData');
+        debugPrint('====================================');
+        if (respData != null) {
+          details = 'Response Body: $respData\n\n$details';
+        }
+      }
       LoggerService.instance.logAI(
         '同步对话失败: $e',
         level: LogLevel.error,
-        details: stackTrace.toString(),
+        details: details,
       );
       rethrow;
     }
@@ -116,15 +215,78 @@ class AiService {
       details: '模型=${_config!.modelName}, 消息数=${messages.length}',
     );
 
-    final requestBody = jsonEncode({
-      'model': _config!.modelName,
-      'messages': messages
-          .map((m) => {'role': m.role, 'content': m.content})
-          .toList(),
-      'temperature': _temperature,
-      'max_tokens': _maxTokens,
-      'stream': true,
-    });
+    dynamic requestBody;
+    if (_config!.provider == 'gemini') {
+      String? systemInstruction;
+      final List<Map<String, dynamic>> contents = [];
+
+      for (final m in messages) {
+        if (m.role == 'system') {
+          systemInstruction = m.content;
+        } else {
+          final role = m.role == 'user' ? 'user' : 'model';
+          contents.add({
+            'role': role,
+            'parts': [
+              {'text': m.content}
+            ]
+          });
+        }
+      }
+
+      final bodyMap = <String, dynamic>{
+        'contents': contents,
+        'generationConfig': {
+          'temperature': _temperature,
+          'maxOutputTokens': _maxTokens,
+        }
+      };
+      if (systemInstruction != null) {
+        bodyMap['systemInstruction'] = {
+          'parts': [
+            {'text': systemInstruction}
+          ]
+        };
+      }
+      requestBody = jsonEncode(bodyMap);
+    } else {
+      final isOmni = _config!.modelName.toLowerCase().contains('omni');
+      final formattedMessages = messages.map((m) {
+        if (isOmni) {
+          return {
+            'role': m.role,
+            'content': [
+              {'type': 'text', 'text': m.content}
+            ],
+          };
+        } else {
+          return {
+            'role': m.role,
+            'content': m.content,
+          };
+        }
+      }).toList();
+
+      final bodyMap = <String, dynamic>{
+        'model': _config!.modelName,
+        'messages': formattedMessages,
+        'temperature': _temperature,
+        'max_tokens': _maxTokens,
+        'stream': true,
+      };
+
+      if (isOmni) {
+        bodyMap['sessionId'] = DateTime.now().millisecondsSinceEpoch.toString();
+        bodyMap['output_modalities'] = ['text'];
+      }
+
+      requestBody = jsonEncode(bodyMap);
+    }
+
+    final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
+    LoggerService.instance.logAI(
+      'AI流式请求 [${_config!.provider}] [${_config!.modelName}] $_chatEndpoint:\n${_formatJsonForLogging(sanitizedBody)}'
+    );
 
     try {
       final response = await _dio.post<ResponseBody>(
@@ -141,6 +303,7 @@ class AiService {
 
       String buffer = '';
       int totalChars = 0;
+      final accumulatedResponse = StringBuffer();
       await for (final chunk in stream) {
         buffer += utf8.decode(chunk, allowMalformed: true);
         final lines = buffer.split('\n');
@@ -155,8 +318,7 @@ class AiService {
                 .difference(startTime)
                 .inMilliseconds;
             LoggerService.instance.logAI(
-              '流式对话完成',
-              details: '耗时=${duration}ms, 总输出=$totalChars字符',
+              'AI流式响应完成 [总输出=$totalChars字符]:\n$accumulatedResponse'
             );
             return;
           }
@@ -171,6 +333,7 @@ class AiService {
             }
             if (text != null) {
               totalChars += text.length;
+              accumulatedResponse.write(text);
               yield text;
             }
           } catch (_) {}
@@ -179,14 +342,20 @@ class AiService {
 
       final duration = DateTime.now().difference(startTime).inMilliseconds;
       LoggerService.instance.logAI(
-        '流式对话结束',
-        details: '耗时=${duration}ms, 总输出=$totalChars字符',
+        'AI流式响应结束 [总输出=$totalChars字符]:\n$accumulatedResponse'
       );
     } catch (e, stackTrace) {
+      String details = stackTrace.toString();
+      if (e is DioException) {
+        final respData = e.response?.data;
+        if (respData != null) {
+          details = 'Response Body: $respData\n\n$details';
+        }
+      }
       LoggerService.instance.logAI(
         '流式对话失败: $e',
         level: LogLevel.error,
-        details: stackTrace.toString(),
+        details: details,
       );
       rethrow;
     }
@@ -283,19 +452,70 @@ class AiService {
         .replaceAll('{{schemaContext}}', schemaContext)
         .replaceAll('{{contextStr}}', contextStr ?? '');
 
-    final requestBody = <String, dynamic>{
-      'model': _config!.modelName,
-      'messages': [
-        {'role': 'system', 'content': systemPrompt},
-        {'role': 'user', 'content': text},
-      ],
-      'temperature': _temperature,
-      'max_tokens': _maxTokens,
-    };
+    dynamic requestBody;
+    if (_config!.provider == 'gemini') {
+      requestBody = {
+        'contents': [
+          {
+            'role': 'user',
+            'parts': [
+              {'text': text}
+            ]
+          }
+        ],
+        'systemInstruction': {
+          'parts': [
+            {'text': systemPrompt}
+          ]
+        },
+        'generationConfig': {
+          'temperature': _temperature,
+          'maxOutputTokens': _maxTokens,
+          'responseMimeType': 'application/json',
+        }
+      };
+    } else {
+      final isOmni = _config!.modelName.toLowerCase().contains('omni');
+      final formattedMessages = [
+        if (isOmni) ...[
+          {
+            'role': 'system',
+            'content': [
+              {'type': 'text', 'text': systemPrompt}
+            ]
+          },
+          {
+            'role': 'user',
+            'content': [
+              {'type': 'text', 'text': text}
+            ]
+          }
+        ] else ...[
+          {'role': 'system', 'content': systemPrompt},
+          {'role': 'user', 'content': text},
+        ]
+      ];
 
-    if (_config!.provider != 'gemini') {
-      requestBody['response_format'] = {'type': 'json_object'};
+      final bodyMap = <String, dynamic>{
+        'model': _config!.modelName,
+        'messages': formattedMessages,
+        'temperature': _temperature,
+        'max_tokens': _maxTokens,
+        'response_format': {'type': 'json_object'},
+      };
+
+      if (isOmni) {
+        bodyMap['sessionId'] = DateTime.now().millisecondsSinceEpoch.toString();
+        bodyMap['output_modalities'] = ['text'];
+      }
+
+      requestBody = bodyMap;
     }
+
+    final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
+    LoggerService.instance.logAI(
+      'AI提取日记结构请求 [${_config!.provider}] [${_config!.modelName}] $_generateContentEndpoint:\n${_formatJsonForLogging(sanitizedBody)}'
+    );
 
     try {
       final response = await _dio.post(
@@ -303,6 +523,9 @@ class AiService {
         data: requestBody,
       );
       final content = _extractTextFromResponse(response.data);
+      LoggerService.instance.logAI(
+        'AI提取日记结构响应:\n${_formatJsonForLogging(response.data)}'
+      );
 
       final jsonResult = jsonDecode(content);
       LoggerService.instance.logAI(
@@ -349,12 +572,20 @@ class AiService {
       mimeType: mimeType,
     );
 
+    final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
+    LoggerService.instance.logAI(
+      'AI提取图片请求 [${_config!.provider}] [${_config!.modelName}] $_generateContentEndpoint:\n${_formatJsonForLogging(sanitizedBody)}'
+    );
+
     try {
       final response = await _dio.post(
         _generateContentEndpoint,
         data: requestBody,
       );
       final content = _extractTextFromResponse(response.data);
+      LoggerService.instance.logAI(
+        'AI提取图片响应:\n${_formatJsonForLogging(response.data)}'
+      );
 
       final result = jsonDecode(content) as Map<String, dynamic>;
       LoggerService.instance.logAI('单张图片信息提取完成');
@@ -395,12 +626,20 @@ class AiService {
       mimeType: mimeType,
     );
 
+    final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
+    LoggerService.instance.logAI(
+      'AI提取全局图片请求 [${_config!.provider}] [${_config!.modelName}] $_generateContentEndpoint:\n${_formatJsonForLogging(sanitizedBody)}'
+    );
+
     try {
       final response = await _dio.post(
         _generateContentEndpoint,
         data: requestBody,
       );
       final content = _extractTextFromResponse(response.data);
+      LoggerService.instance.logAI(
+        'AI提取全局图片响应:\n${_formatJsonForLogging(response.data)}'
+      );
 
       final jsonResult = jsonDecode(content);
       LoggerService.instance.logAI(
@@ -448,6 +687,37 @@ class AiService {
       };
     }
 
+    final isOmni = _config!.modelName.toLowerCase().contains('omni');
+    if (isOmni) {
+      return {
+        'model': _config!.modelName,
+        'messages': [
+          {
+            'role': 'system',
+            'content': [
+              {'type': 'text', 'text': systemPrompt}
+            ],
+          },
+          {
+            'role': 'user',
+            'content': [
+              {
+                'type': 'input_image',
+                'input_image': {
+                  'type': 'base64',
+                  'data': [imageBase64]
+                }
+              }
+            ],
+          },
+        ],
+        'temperature': _temperature,
+        'max_tokens': _maxTokens,
+        'sessionId': DateTime.now().millisecondsSinceEpoch.toString(),
+        'output_modalities': ['text'],
+      };
+    }
+
     return {
       'model': _config!.modelName,
       'messages': [
@@ -473,5 +743,55 @@ class AiService {
       return data['candidates']?[0]?['content']?['parts']?[0]?['text'] ?? '';
     }
     return data['choices']?[0]?['message']?['content'] ?? '';
+  }
+
+  dynamic _sanitizeRequestBodyForLogging(dynamic body) {
+    try {
+      if (body is String) {
+        final decoded = jsonDecode(body);
+        return _sanitizeMapOrList(decoded);
+      }
+      return _sanitizeMapOrList(body);
+    } catch (_) {
+      return body;
+    }
+  }
+
+  dynamic _sanitizeMapOrList(dynamic val) {
+    if (val is Map) {
+      final newMap = <String, dynamic>{};
+      for (final key in val.keys) {
+        final kStr = key.toString();
+        final value = val[key];
+        if (kStr == 'data' && value is String && value.length > 200) {
+          newMap[kStr] = '<IMAGE_BASE64_DATA_OMITTED>';
+        } else if (kStr == 'image_url' && value is Map && value['url'] is String && (value['url'] as String).startsWith('data:')) {
+          newMap[kStr] = {'url': 'data:image/...;<BASE64_OMITTED>'};
+        } else if (kStr == 'input_image' && value is Map && value['input_image'] is Map && value['input_image']['data'] is List) {
+          newMap[kStr] = {
+            'type': 'base64',
+            'data': ['<IMAGE_BASE64_DATA_OMITTED>']
+          };
+        } else {
+          newMap[kStr] = _sanitizeMapOrList(value);
+        }
+      }
+      return newMap;
+    } else if (val is List) {
+      return val.map((item) => _sanitizeMapOrList(item)).toList();
+    }
+    return val;
+  }
+
+  String _formatJsonForLogging(dynamic data) {
+    try {
+      if (data is String) {
+        final decoded = jsonDecode(data);
+        return const JsonEncoder.withIndent('  ').convert(decoded);
+      }
+      return const JsonEncoder.withIndent('  ').convert(data);
+    } catch (_) {
+      return data.toString();
+    }
   }
 }

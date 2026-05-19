@@ -1,66 +1,6 @@
 import 'package:flutter/material.dart';
-
-enum LogLevel { info, warning, error }
-
-class LogEntry {
-  final DateTime timestamp;
-  final String message;
-  final LogLevel level;
-
-  LogEntry({
-    required this.timestamp,
-    required this.message,
-    required this.level,
-  });
-}
-
-class DebugConsoleController {
-  DebugConsoleController._();
-  static final DebugConsoleController instance = DebugConsoleController._();
-
-  final List<LogEntry> _logs = [];
-  static const int maxLogs = 500;
-
-  VoidCallback? onLogsChanged;
-
-  List<LogEntry> get logs => List.unmodifiable(_logs);
-
-  void log(String message, [LogLevel level = LogLevel.info]) {
-    _logs.add(LogEntry(
-      timestamp: DateTime.now(),
-      message: message,
-      level: level,
-    ));
-    if (_logs.length > maxLogs) {
-      _logs.removeRange(0, _logs.length - maxLogs);
-    }
-    onLogsChanged?.call();
-  }
-
-  void clear() {
-    _logs.clear();
-    onLogsChanged?.call();
-  }
-
-  String copyAll() {
-    final buffer = StringBuffer();
-    for (final entry in _logs) {
-      buffer.writeln(
-        '${_formatTimestamp(entry.timestamp)} [${entry.level.name.toUpperCase()}] ${entry.message}',
-      );
-    }
-    return buffer.toString();
-  }
-
-  String _formatTimestamp(DateTime dt) {
-    return '${dt.hour.toString().padLeft(2, '0')}:'
-        '${dt.minute.toString().padLeft(2, '0')}:'
-        '${dt.second.toString().padLeft(2, '0')}.'
-        '${dt.millisecond.toString().padLeft(3, '0')}';
-  }
-}
-
-final _controller = DebugConsoleController.instance;
+import 'package:flutter/services.dart';
+import 'package:qnote_flutter/core/logger/logger_service.dart';
 
 OverlayEntry? _debugOverlayEntry;
 
@@ -92,46 +32,48 @@ class _DebugConsoleOverlayState extends State<_DebugConsoleOverlay> {
   @override
   void initState() {
     super.initState();
-    _controller.onLogsChanged = _onLogsChanged;
+    LoggerService.instance.addListener(_onLogsChanged);
   }
 
   @override
   void dispose() {
-    _controller.onLogsChanged = null;
+    LoggerService.instance.removeListener(_onLogsChanged);
     _scrollController.dispose();
     super.dispose();
   }
 
   void _onLogsChanged() {
     if (mounted) setState(() {});
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
-      }
-    });
   }
 
   List<LogEntry> get _filteredLogs {
-    if (_filter == null) return _controller.logs;
-    return _controller.logs.where((e) => e.level == _filter).toList();
+    final logs = LoggerService.instance.entries;
+    if (_filter == null) return logs;
+    return logs.where((e) => e.level == _filter).toList();
   }
 
   Color _levelColor(LogLevel level) {
     switch (level) {
       case LogLevel.info:
-        return Colors.white;
+        return Colors.white70;
       case LogLevel.warning:
-        return Colors.yellow;
+        return Colors.orangeAccent;
       case LogLevel.error:
-        return Colors.red;
+        return Colors.redAccent;
     }
+  }
+
+  String _formatTime(DateTime dt) {
+    return '${dt.hour.toString().padLeft(2, '0')}:'
+        '${dt.minute.toString().padLeft(2, '0')}:'
+        '${dt.second.toString().padLeft(2, '0')}';
   }
 
   @override
   Widget build(BuildContext context) {
     final logs = _filteredLogs;
     return Material(
-      color: Colors.black87,
+      color: const Color(0xFF0F0F11),
       child: SafeArea(
         child: Column(
           children: [
@@ -145,24 +87,46 @@ class _DebugConsoleOverlayState extends State<_DebugConsoleOverlay> {
                         style: TextStyle(color: Colors.white54),
                       ),
                     )
-                  : ListView.builder(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      itemCount: logs.length,
-                      itemBuilder: (context, index) {
-                        final entry = logs[index];
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 2),
-                          child: Text(
-                            '${_controller._formatTimestamp(entry.timestamp)} ${entry.message}',
-                            style: TextStyle(
-                              color: _levelColor(entry.level),
-                              fontSize: 12,
-                              fontFamily: 'monospace',
+                  : SelectionArea(
+                      child: ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        itemCount: logs.length,
+                        itemBuilder: (context, index) {
+                          final entry = logs[logs.length - 1 - index];
+                          return InkWell(
+                            onDoubleTap: () {
+                              Clipboard.setData(ClipboardData(text: entry.message));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('已复制该条日志内容'),
+                                  duration: Duration(milliseconds: 800),
+                                ),
+                              );
+                            },
+                            onLongPress: () {
+                              Clipboard.setData(ClipboardData(text: entry.message));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('已复制该条日志内容'),
+                                  duration: Duration(milliseconds: 800),
+                                ),
+                              );
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Text(
+                                '[${_formatTime(entry.timestamp)}] [${entry.level.name.toUpperCase()}] ${entry.message}',
+                                style: TextStyle(
+                                  color: _levelColor(entry.level),
+                                  fontSize: 12,
+                                  fontFamily: 'monospace',
+                                ),
+                              ),
                             ),
-                          ),
-                        );
-                      },
+                          );
+                        },
+                      ),
                     ),
             ),
           ],
@@ -175,6 +139,7 @@ class _DebugConsoleOverlayState extends State<_DebugConsoleOverlay> {
     return Container(
       height: 48,
       padding: const EdgeInsets.symmetric(horizontal: 12),
+      color: const Color(0xFF16161A),
       child: Row(
         children: [
           const Text(
@@ -189,17 +154,21 @@ class _DebugConsoleOverlayState extends State<_DebugConsoleOverlay> {
           IconButton(
             icon: const Icon(Icons.copy, color: Colors.white70, size: 20),
             onPressed: () {
-              final text = _controller.copyAll();
+              final text = LoggerService.instance.getAllLogsAsString(
+                filterLevel: _filter,
+              );
               if (text.isNotEmpty) {
-                // ignore: avoid_print
-                debugPrint(text);
+                Clipboard.setData(ClipboardData(text: text));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('日志已全部复制到剪贴板')),
+                );
               }
             },
             tooltip: '复制全部',
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline, color: Colors.white70, size: 20),
-            onPressed: () => _controller.clear(),
+            onPressed: () => LoggerService.instance.clearLogs(),
             tooltip: '清除',
           ),
           IconButton(
@@ -213,8 +182,9 @@ class _DebugConsoleOverlayState extends State<_DebugConsoleOverlay> {
   }
 
   Widget _buildFilterBar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      color: const Color(0xFF16161A).withValues(alpha: 0.5),
       child: Row(
         children: [
           _filterChip('All', null),
