@@ -344,22 +344,42 @@ class _LogViewerPage extends StatefulWidget {
 
 class _LogViewerPageState extends State<_LogViewerPage> {
   final LoggerService _logger = LoggerService.instance;
+  final _scrollController = ScrollController();
   LogLevel? _selectedLevel;
+  bool _isSelectMode = false;
+  final Set<LogEntry> _selectedLogs = {};
 
   @override
   void initState() {
     super.initState();
     _logger.addListener(_onLogsChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToBottom();
+    });
   }
 
   @override
   void dispose() {
     _logger.removeListener(_onLogsChanged);
+    _scrollController.dispose();
     super.dispose();
   }
 
   void _onLogsChanged() {
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {});
+      if (!_isSelectMode) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _scrollToBottom();
+        });
+      }
+    }
+  }
+
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+    }
   }
   
   @override
@@ -374,65 +394,118 @@ class _LogViewerPageState extends State<_LogViewerPage> {
       backgroundColor: const Color(0xFF0F0F11),
       appBar: AppBar(
         backgroundColor: const Color(0xFF16161A),
-        title: const Text('运行日志', style: TextStyle(color: Colors.white)),
+        title: Text(
+          _isSelectMode ? '已选择 ${_selectedLogs.length} 项' : '运行日志',
+          style: const TextStyle(color: Colors.white),
+        ),
         iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.filter_list, color: Colors.white70),
-            onSelected: (value) {
-              setState(() {
-                if (value == 'all') {
-                  _selectedLevel = null;
-                } else if (value.startsWith('lvl_')) {
-                  _selectedLevel = LogLevel.values[int.parse(value.substring(4))];
-                }
-              });
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'all', child: Text('显示全部')),
-              const PopupMenuDivider(),
-              ...LogLevel.values.map((level) => PopupMenuItem(
-                value: 'lvl_${level.index}',
-                child: Row(
-                  children: [
-                    Container(width: 12, height: 12, decoration: BoxDecoration(
-                      color: _getLevelColor(level),
-                      shape: BoxShape.circle,
+        leading: _isSelectMode
+            ? IconButton(
+                icon: const Icon(Icons.close, color: Colors.white70),
+                onPressed: () {
+                  setState(() {
+                    _isSelectMode = false;
+                    _selectedLogs.clear();
+                  });
+                },
+              )
+            : null,
+        actions: _isSelectMode
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.select_all, color: Colors.white70),
+                  onPressed: () {
+                    setState(() {
+                      if (_selectedLogs.length == entries.length) {
+                        _selectedLogs.clear();
+                        _isSelectMode = false;
+                      } else {
+                        _selectedLogs.addAll(entries);
+                      }
+                    });
+                  },
+                  tooltip: '全选',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.copy, color: Colors.white70),
+                  onPressed: _selectedLogs.isEmpty
+                      ? null
+                      : () {
+                          final orderedSelection = entries
+                              .where((e) => _selectedLogs.contains(e))
+                              .toList();
+                          final text = orderedSelection
+                              .map((e) => '[${_formatTime(e.timestamp)}] [${e.level.name.toUpperCase()}] ${e.message}')
+                              .join('\n');
+                          Clipboard.setData(ClipboardData(text: text));
+                          setState(() {
+                            _isSelectMode = false;
+                            _selectedLogs.clear();
+                          });
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('已复制选中的日志')),
+                          );
+                        },
+                  tooltip: '复制选中',
+                ),
+              ]
+            : [
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.filter_list, color: Colors.white70),
+                  onSelected: (value) {
+                    setState(() {
+                      if (value == 'all') {
+                        _selectedLevel = null;
+                      } else if (value.startsWith('lvl_')) {
+                        _selectedLevel = LogLevel.values[int.parse(value.substring(4))];
+                      }
+                    });
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(value: 'all', child: Text('显示全部')),
+                    const PopupMenuDivider(),
+                    ...LogLevel.values.map((level) => PopupMenuItem(
+                      value: 'lvl_${level.index}',
+                      child: Row(
+                        children: [
+                          Container(width: 12, height: 12, decoration: BoxDecoration(
+                            color: _getLevelColor(level),
+                            shape: BoxShape.circle,
+                          )),
+                          const SizedBox(width: 8),
+                          Text(_getLevelName(level)),
+                          const Spacer(),
+                          if (_selectedLevel == level)
+                            const Icon(Icons.check, size: 18, color: Colors.blue),
+                        ],
+                      ),
                     )),
-                    const SizedBox(width: 8),
-                    Text(_getLevelName(level)),
-                    const Spacer(),
-                    if (_selectedLevel == level)
-                      const Icon(Icons.check, size: 18, color: Colors.blue),
                   ],
                 ),
-              )),
-            ],
-          ),
-          IconButton(
-            icon: const Icon(Icons.copy, color: Colors.white70),
-            onPressed: () {
-              final text = _logger.getAllLogsAsString(
-                filterLevel: _selectedLevel,
-              );
-              Clipboard.setData(ClipboardData(text: text));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('日志已复制到剪贴板')),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline, color: Colors.white70),
-            onPressed: () async {
-              await _logger.clearLogs();
-              if (mounted) setState(() {});
-            },
-          ),
-        ],
+                IconButton(
+                  icon: const Icon(Icons.copy, color: Colors.white70),
+                  onPressed: () {
+                    final text = _logger.getAllLogsAsString(
+                      filterLevel: _selectedLevel,
+                    );
+                    Clipboard.setData(ClipboardData(text: text));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('日志已复制到剪贴板')),
+                    );
+                  },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, color: Colors.white70),
+                  onPressed: () async {
+                    await _logger.clearLogs();
+                    if (mounted) setState(() {});
+                  },
+                ),
+              ],
       ),
       body: Column(
         children: [
-          if (_selectedLevel != null)
+          if (_selectedLevel != null && !_isSelectMode)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               color: const Color(0xFF16161A),
@@ -458,9 +531,10 @@ class _LogViewerPageState extends State<_LogViewerPage> {
                 ? const Center(child: Text('暂无日志', style: TextStyle(color: Colors.white54)))
                 : SelectionArea(
                     child: ListView.builder(
+                      controller: _scrollController,
                       itemCount: entries.length,
                       itemBuilder: (context, index) {
-                        final entry = entries[entries.length - 1 - index];
+                        final entry = entries[index];
                         return _buildLogItem(entry);
                       },
                     ),
@@ -489,29 +563,64 @@ class _LogViewerPageState extends State<_LogViewerPage> {
     final levelStr = entry.level.name.toUpperCase();
     final levelColor = _getLevelColor(entry.level);
     final formattedTime = _formatTime(entry.timestamp);
+    final isSelected = _selectedLogs.contains(entry);
     
     return InkWell(
-      onDoubleTap: () {
-        Clipboard.setData(ClipboardData(text: entry.message));
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已复制该条日志内容')),
-        );
+      onTap: () {
+        if (_isSelectMode) {
+          setState(() {
+            if (isSelected) {
+              _selectedLogs.remove(entry);
+              if (_selectedLogs.isEmpty) {
+                _isSelectMode = false;
+              }
+            } else {
+              _selectedLogs.add(entry);
+            }
+          });
+        }
       },
       onLongPress: () {
-        Clipboard.setData(ClipboardData(text: entry.message));
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已复制该条日志内容')),
-        );
+        if (!_isSelectMode) {
+          setState(() {
+            _isSelectMode = true;
+            _selectedLogs.add(entry);
+          });
+        }
       },
-      child: Padding(
+      onDoubleTap: _isSelectMode
+          ? null
+          : () {
+              Clipboard.setData(ClipboardData(text: entry.message));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('已复制该条日志内容')),
+              );
+            },
+      child: Container(
+        color: isSelected ? Colors.blue.withValues(alpha: 0.2) : Colors.transparent,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        child: Text(
-          '[$formattedTime] [$levelStr] ${entry.message}',
-          style: TextStyle(
-            fontSize: 12,
-            fontFamily: 'monospace',
-            color: levelColor,
-          ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_isSelectMode) ...[
+              Icon(
+                isSelected ? Icons.check_box : Icons.check_box_outline_blank,
+                size: 16,
+                color: isSelected ? Colors.blue : Colors.white54,
+              ),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: Text(
+                '[$formattedTime] [$levelStr] ${entry.message}',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                  color: levelColor,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

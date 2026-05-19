@@ -724,6 +724,7 @@ class _AiPageState extends ConsumerState<AiPage> {
               minLines: 1,
               maxLines: 4,
               decoration: InputDecoration(
+                filled: false,
                 hintText: '输入问题或指令...',
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,

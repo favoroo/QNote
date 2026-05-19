@@ -248,35 +248,39 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
     final targetEndDate = activeDraft.endTime != null ? _calculateEndDateTime(activeDraft, selectedDate) : null;
     final currentTimeline = ref.read(diaryInputTimeProvider);
 
-    final bool timeMatches = currentTimeline != null &&
-        currentTimeline.time.hour == activeDraft.startTime.hour &&
-        currentTimeline.time.minute == activeDraft.startTime.minute &&
-        ((currentTimeline.endTime == null && activeDraft.endTime == null) ||
-            (currentTimeline.endTime != null &&
-                activeDraft.endTime != null &&
-                currentTimeline.endTime!.hour == activeDraft.endTime!.hour &&
-                currentTimeline.endTime!.minute == activeDraft.endTime!.minute));
+    // Only automatically sync back to diaryInputTimeProvider if it is NOT null.
+    // If it is null, we do not want to force-select a node on the timeline.
+    if (currentTimeline != null) {
+      final bool timeMatches =
+          currentTimeline.time.hour == activeDraft.startTime.hour &&
+          currentTimeline.time.minute == activeDraft.startTime.minute &&
+          ((currentTimeline.endTime == null && activeDraft.endTime == null) ||
+              (currentTimeline.endTime != null &&
+                  activeDraft.endTime != null &&
+                  currentTimeline.endTime!.hour == activeDraft.endTime!.hour &&
+                  currentTimeline.endTime!.minute == activeDraft.endTime!.minute));
 
-    final bool dateMatches = currentTimeline != null &&
-        currentTimeline.date.year == targetDate.year &&
-        currentTimeline.date.month == targetDate.month &&
-        currentTimeline.date.day == targetDate.day &&
-        ((currentTimeline.endDate == null && targetEndDate == null) ||
-            (currentTimeline.endDate != null &&
-                targetEndDate != null &&
-                currentTimeline.endDate!.year == targetEndDate.year &&
-                currentTimeline.endDate!.month == targetEndDate.month &&
-                currentTimeline.endDate!.day == targetEndDate.day));
+      final bool dateMatches =
+          currentTimeline.date.year == targetDate.year &&
+          currentTimeline.date.month == targetDate.month &&
+          currentTimeline.date.day == targetDate.day &&
+          ((currentTimeline.endDate == null && targetEndDate == null) ||
+              (currentTimeline.endDate != null &&
+                  targetEndDate != null &&
+                  currentTimeline.endDate!.year == targetEndDate.year &&
+                  currentTimeline.endDate!.month == targetEndDate.month &&
+                  currentTimeline.endDate!.day == targetEndDate.day));
 
-    if (!timeMatches || !dateMatches) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
-          activeDraft.startTime,
-          endTime: activeDraft.endTime,
-          date: targetDate,
-          endDate: targetEndDate,
-        );
-      });
+      if (!timeMatches || !dateMatches) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+            activeDraft.startTime,
+            endTime: activeDraft.endTime,
+            date: targetDate,
+            endDate: targetEndDate,
+          );
+        });
+      }
     }
   }
 
@@ -296,8 +300,20 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
 
   void _addDraft() {
     if (_drafts.length >= 5) return;
+    final currentTimeline = ref.read(diaryInputTimeProvider);
+    final selectedDate = ref.read(selectedDateProvider);
     setState(() {
-      final newDraft = _Draft(id: const Uuid().v4());
+      final newDraft = _Draft(
+        id: const Uuid().v4(),
+        startTime: currentTimeline?.time,
+        endTime: currentTimeline?.endTime,
+        startOffset: currentTimeline != null
+            ? currentTimeline.date.difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day)).inDays
+            : null,
+        endOffset: (currentTimeline != null && currentTimeline.endDate != null)
+            ? currentTimeline.endDate!.difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day)).inDays
+            : null,
+      );
       _drafts.add(newDraft);
       _activeDraftIndex = _drafts.length - 1;
       _textController.text = '';
@@ -320,8 +336,20 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
 
   void _clearCurrentDraft() {
     _formControllers.clear();
+    final currentTimeline = ref.read(diaryInputTimeProvider);
+    final selectedDate = ref.read(selectedDateProvider);
     setState(() {
-      _drafts[_activeDraftIndex] = _Draft(id: const Uuid().v4());
+      _drafts[_activeDraftIndex] = _Draft(
+        id: const Uuid().v4(),
+        startTime: currentTimeline?.time,
+        endTime: currentTimeline?.endTime,
+        startOffset: currentTimeline != null
+            ? currentTimeline.date.difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day)).inDays
+            : null,
+        endOffset: (currentTimeline != null && currentTimeline.endDate != null)
+            ? currentTimeline.endDate!.difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day)).inDays
+            : null,
+      );
       _textController.text = '';
     });
   }
@@ -397,6 +425,18 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
                   'fallAsleepTime': lastFallAsleepTime,
                 },
               );
+
+              // Explicitly sync to timeline selection
+              final selectedDate = ref.read(selectedDateProvider);
+              final targetDate = DateTime(
+                selectedDate.year,
+                selectedDate.month,
+                selectedDate.day,
+              ).add(Duration(days: offset));
+              ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+                lastStartTime,
+                date: targetDate,
+              );
               return;
             }
           }
@@ -411,6 +451,18 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
               'fallAsleepTime': '22:00',
             },
           );
+
+          // Explicitly sync to timeline selection
+          final selectedDate = ref.read(selectedDateProvider);
+          final targetDate = DateTime(
+            selectedDate.year,
+            selectedDate.month,
+            selectedDate.day,
+          ).add(const Duration(days: -1));
+          ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+            const TimeOfDay(hour: 22, minute: 0),
+            date: targetDate,
+          );
           return;
         } catch (e) {
           LoggerService.instance.logAI('加载上次睡眠记录失败: $e');
@@ -423,6 +475,18 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
             formValues: {
               'fallAsleepTime': '22:00',
             },
+          );
+
+          // Explicitly sync to timeline selection
+          final selectedDate = ref.read(selectedDateProvider);
+          final targetDate = DateTime(
+            selectedDate.year,
+            selectedDate.month,
+            selectedDate.day,
+          ).add(const Duration(days: -1));
+          ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+            const TimeOfDay(hour: 22, minute: 0),
+            date: targetDate,
           );
           return;
         }
@@ -493,9 +557,18 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
       final offset = DateTime(result.year, result.month, result.day)
           .difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day))
           .inDays;
+      final newTime = TimeOfDay(hour: result.hour, minute: result.minute);
       _updateActiveDraft(
-        startTime: TimeOfDay(hour: result.hour, minute: result.minute),
+        startTime: newTime,
         startOffset: offset,
+      );
+      
+      // Explicitly update timeline selection when user manually picks a time
+      ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+        newTime,
+        endTime: _activeDraft.endTime,
+        date: DateTime(result.year, result.month, result.day),
+        endDate: _activeDraft.endTime != null ? _calculateEndDateTime(_activeDraft, selectedDate) : null,
       );
     }
   }
@@ -515,17 +588,33 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
       final offset = DateTime(result.year, result.month, result.day)
           .difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day))
           .inDays;
+      final newEndTime = TimeOfDay(hour: result.hour, minute: result.minute);
       _updateActiveDraft(
-        endTime: TimeOfDay(hour: result.hour, minute: result.minute),
+        endTime: newEndTime,
         endOffset: offset,
+      );
+
+      // Explicitly update timeline selection when user manually picks end time
+      ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+        _activeDraft.startTime,
+        endTime: newEndTime,
+        date: _calculateStartDateTime(_activeDraft, selectedDate),
+        endDate: DateTime(result.year, result.month, result.day),
       );
     }
   }
 
-
-
   void _clearEndTime() {
     _updateActiveDraft(clearEndTime: true, clearEndOffset: true);
+    
+    // Explicitly update timeline selection to clear end time
+    final selectedDate = ref.read(selectedDateProvider);
+    ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+      _activeDraft.startTime,
+      endTime: null,
+      date: _calculateStartDateTime(_activeDraft, selectedDate),
+      endDate: null,
+    );
   }
 
   Future<void> _handleAiExtract() async {
@@ -661,6 +750,18 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
           _textController.text = _drafts[0].inputText;
           _extractPhase = _ExtractPhase.idle;
         });
+
+        // Explicitly sync the AI-extracted time of the first draft to the timeline selection
+        final firstDraft = newDrafts[0];
+        final selectedDate = ref.read(selectedDateProvider);
+        final targetDate = _calculateStartDateTime(firstDraft, selectedDate);
+        final targetEndDate = firstDraft.endTime != null ? _calculateEndDateTime(firstDraft, selectedDate) : null;
+        ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+          firstDraft.startTime,
+          endTime: firstDraft.endTime,
+          date: targetDate,
+          endDate: targetEndDate,
+        );
       }
     } catch (e, stackTrace) {
       String errorMessage = '提取失败';
@@ -786,7 +887,21 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
       final isEmpty = draft.inputText.trim().isEmpty && draft.selectedShortcut == null && draft.selectedPhotos.isEmpty;
       if (isEmpty) continue;
 
-      final startDateTime = _calculateStartDateTime(draft, selectedDate);
+      // If no timeline node is selected, use the current time (TimeOfDay.now()) at the exact moment of sending.
+      final selectEvent = ref.read(diaryInputTimeProvider);
+      final TimeOfDay eventTime = selectEvent == null ? TimeOfDay.now() : draft.startTime;
+
+      var startDateTime = DateTime(
+        selectedDate.year,
+        selectedDate.month,
+        selectedDate.day,
+        eventTime.hour,
+        eventTime.minute,
+      );
+      if (draft.startOffset != null) {
+        startDateTime = startDateTime.add(Duration(days: draft.startOffset!));
+      }
+
       if (firstSentTime == null) {
         firstSentTime = startDateTime;
       }
@@ -873,8 +988,21 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
       );
     }
 
+    final currentTimeline = ref.read(diaryInputTimeProvider);
     setState(() {
-      _drafts = [_Draft(id: const Uuid().v4())];
+      _drafts = [
+        _Draft(
+          id: const Uuid().v4(),
+          startTime: currentTimeline?.time,
+          endTime: currentTimeline?.endTime,
+          startOffset: currentTimeline != null
+              ? currentTimeline.date.difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day)).inDays
+              : null,
+          endOffset: (currentTimeline != null && currentTimeline.endDate != null)
+              ? currentTimeline.endDate!.difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day)).inDays
+              : null,
+        )
+      ];
       _activeDraftIndex = 0;
       _textController.text = '';
     });
@@ -952,6 +1080,15 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
         if (!_isExpanded) {
           setState(() => _isExpanded = true);
         }
+      } else {
+        // If next is null, timeline selection was cleared/deselected.
+        // Reset the draft time back to TimeOfDay.now() and clear offsets & end times.
+        _updateActiveDraft(
+          startTime: TimeOfDay.now(),
+          clearEndTime: true,
+          clearStartOffset: true,
+          clearEndOffset: true,
+        );
       }
     });
 
@@ -1566,34 +1703,6 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
               ),
             ),
           ),
-          if (_activeDraft.inputText.isNotEmpty || _activeDraft.selectedShortcut != null || _activeDraft.selectedPhotos.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: GestureDetector(
-                onTap: _clearCurrentDraft,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.errorContainer,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.close, size: 12, color: theme.colorScheme.error),
-                      const SizedBox(width: 4),
-                      Text(
-                        '清除',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.error,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
         ],
       ),
     );
@@ -1848,7 +1957,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
               height: 44,
               decoration: BoxDecoration(
                 color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(12),
+                shape: BoxShape.circle,
               ),
               child: Stack(
                 alignment: Alignment.center,
@@ -1886,7 +1995,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
               height: 44,
               decoration: BoxDecoration(
                 color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(12),
+                shape: BoxShape.circle,
               ),
               child: Icon(Icons.camera_alt_outlined, size: 20, color: theme.colorScheme.primary),
             ),
@@ -2002,25 +2111,77 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
                 color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(24),
               ),
-              child: TextField(
-                controller: _textController,
-                focusNode: _textFocusNode,
-                minLines: 1,
-                maxLines: 5,
-                style: theme.textTheme.bodyMedium,
-                decoration: InputDecoration(
-                  hintText: draft.selectedShortcut != null ? '记录${draft.selectedShortcut!.name}...' : '记录当前...',
-                  hintStyle: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  errorBorder: InputBorder.none,
-                  disabledBorder: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                ),
-                onSubmitted: (_) {
-                  if (!isDisabled) _handleSend();
-                },
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _textController,
+                      focusNode: _textFocusNode,
+                      minLines: 1,
+                      maxLines: 5,
+                      style: theme.textTheme.bodyMedium,
+                      decoration: InputDecoration(
+                        filled: false,
+                        hintText: draft.selectedShortcut != null ? '记录${draft.selectedShortcut!.name}...' : '记录当前...',
+                        hintStyle: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                      onSubmitted: (_) {
+                        if (!isDisabled) _handleSend();
+                      },
+                    ),
+                  ),
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _textController,
+                    builder: (context, value, _) {
+                      final hasText = value.text.isNotEmpty;
+                      final hasShortcut = draft.selectedShortcut != null;
+                      final hasPhotos = draft.selectedPhotos.isNotEmpty;
+                      if (!hasText && !hasShortcut && !hasPhotos) return const SizedBox.shrink();
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8, bottom: 6),
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTap: _clearCurrentDraft,
+                            behavior: HitTestBehavior.opaque,
+                            child: Padding(
+                              padding: const EdgeInsets.all(6),
+                              child: Container(
+                                width: 20,
+                                height: 20,
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withValues(alpha: 0.85),
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.red.withValues(alpha: 0.25),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.close,
+                                    size: 12,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
             ),
           ),
@@ -2029,8 +2190,8 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
             onTap: _handleAiExtract,
             onLongPress: _showModelMenu,
             child: Container(
-              width: 52,
-              height: 52,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
                 color: theme.colorScheme.primary.withValues(alpha: 0.08),
                 shape: BoxShape.circle,
@@ -2058,7 +2219,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
                   : Center(
                       child: Icon(
                         Icons.auto_awesome,
-                        size: 24,
+                        size: 20,
                         color: isExtractButtonEnabled
                             ? theme.colorScheme.primary
                             : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
@@ -2070,8 +2231,8 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
           GestureDetector(
             onTap: isDisabled ? null : _handleSend,
             child: Container(
-              width: 52,
-              height: 52,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
                 color: isDisabled
                     ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
@@ -2081,7 +2242,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
               child: Center(
                 child: Icon(
                   Icons.send_rounded,
-                  size: 24,
+                  size: 20,
                   color: isDisabled
                       ? theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3)
                       : theme.colorScheme.primary,
