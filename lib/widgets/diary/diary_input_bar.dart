@@ -879,6 +879,10 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
       _textController.text = '';
     });
 
+    if (mounted) {
+      FocusScope.of(context).unfocus();
+    }
+
     if (firstSentTime != null) {
       ref.read(diaryScrollToTimeProvider.notifier).state = firstSentTime;
     }

@@ -19,10 +19,10 @@ import 'package:flutter_quill/flutter_quill.dart' show Document;
 abstract class _Segment {}
 
 class _TextSegment extends _Segment {
-  final TextEditingController controller;
+  final MarkdownTextEditingController controller;
   final FocusNode focusNode;
-  _TextSegment({String text = ''})
-      : controller = TextEditingController(text: text),
+  _TextSegment({required BuildContext context, String text = ''})
+      : controller = MarkdownTextEditingController(context: context, text: text),
         focusNode = FocusNode();
   void dispose() {
     controller.dispose();
@@ -129,7 +129,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   }
 
   void _addTextSegment(String text) {
-    final seg = _TextSegment(text: text);
+    final seg = _TextSegment(context: context, text: text);
     _segments.add(seg);
   }
 
@@ -276,9 +276,9 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     final textBefore = text.substring(0, splitAt);
     final textAfter = text.substring(splitAt);
 
-    final before = _TextSegment(text: textBefore);
+    final before = _TextSegment(context: context, text: textBefore);
     final imgSeg = _ImageSegment(path);
-    final after = _TextSegment(text: textAfter);
+    final after = _TextSegment(context: context, text: textAfter);
 
     // Dispose old segment and attach listeners to new ones before setState
     seg.dispose();
@@ -334,7 +334,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         (_segments[nextIdx] as _TextSegment).dispose();
       }
 
-      final merged = _TextSegment(text: mergedText);
+      final merged = _TextSegment(context: context, text: mergedText);
 
       final start = (prevIdx >= 0 && _segments[prevIdx] is _TextSegment) ? prevIdx : segmentIndex;
       final end = (nextIdx < _segments.length && _segments[nextIdx] is _TextSegment) ? nextIdx : segmentIndex;
@@ -667,5 +667,575 @@ class _ToolbarButton extends StatelessWidget {
         onPressed: onPressed,
       ),
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Markdown rendering controller
+// ---------------------------------------------------------------------------
+class MarkdownTextEditingController extends TextEditingController {
+  final BuildContext context;
+
+  MarkdownTextEditingController({required this.context, super.text});
+
+  @override
+  TextSpan buildTextSpan({required BuildContext context, TextStyle? style, required bool withComposing}) {
+    final selection = this.selection;
+    final cursorOffset = selection.baseOffset;
+    final activeLineIndex = _getActiveLineIndex(text, cursorOffset);
+
+    final lines = text.split('\n');
+    final List<TextSpan> children = [];
+    final baseStyle = style ?? const TextStyle();
+
+    for (int i = 0; i < lines.length; i++) {
+      final lineText = lines[i];
+      final isActive = (i == activeLineIndex);
+
+      final lineSpan = _styleLine(lineText, isActive, context, baseStyle);
+      children.add(lineSpan);
+
+      if (i < lines.length - 1) {
+        children.add(const TextSpan(text: '\n'));
+      }
+    }
+
+    return TextSpan(style: baseStyle, children: children);
+  }
+
+  int _getActiveLineIndex(String text, int selectionOffset) {
+    if (selectionOffset < 0) return -1;
+    int currentOffset = 0;
+    final lines = text.split('\n');
+    for (int i = 0; i < lines.length; i++) {
+      final lineLength = lines[i].length + 1; // +1 for the '\n'
+      if (selectionOffset >= currentOffset && selectionOffset <= currentOffset + lines[i].length) {
+        return i;
+      }
+      currentOffset += lineLength;
+    }
+    return lines.length - 1;
+  }
+
+  TextSpan _styleLine(String lineText, bool isActive, BuildContext context, TextStyle baseStyle) {
+    final theme = Theme.of(context);
+    if (isActive) {
+      return _parseActiveLine(lineText, baseStyle, theme);
+    } else {
+      return _parsePreviewLine(lineText, baseStyle, theme);
+    }
+  }
+
+  TextSpan _parseActiveLine(String lineText, TextStyle baseStyle, ThemeData theme) {
+    // 1. Image Block - Render as a clean, monospace text link so it can be edited/deleted easily
+    final imageMatch = RegExp(r'^!\[(.*?)\]\((.*?)\)$').firstMatch(lineText.trim());
+    if (imageMatch != null) {
+      final path = imageMatch.group(2) ?? '';
+      return TextSpan(
+        children: [
+          TextSpan(
+            text: '🖼️ ![图片]',
+            style: baseStyle.copyWith(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          TextSpan(
+            text: '($path)',
+            style: baseStyle.copyWith(
+              color: theme.colorScheme.outline,
+              fontFamily: 'monospace',
+              fontSize: 14,
+            ),
+          ),
+        ],
+      );
+    }
+
+    // 2. Horizontal Rule
+    if (lineText.trim() == '---' || lineText.trim() == '***') {
+      return TextSpan(
+        text: lineText,
+        style: baseStyle.copyWith(
+          color: theme.colorScheme.primary.withValues(alpha: 0.6),
+          fontWeight: FontWeight.bold,
+          letterSpacing: 2,
+        ),
+      );
+    }
+
+    // 3. Headings
+    if (lineText.startsWith('# ')) {
+      final cleanText = lineText.substring(2);
+      final headerStyle = baseStyle.copyWith(
+        fontSize: 22,
+        fontWeight: FontWeight.bold,
+        color: theme.colorScheme.onSurface,
+      );
+      return TextSpan(
+        children: [
+          TextSpan(
+              text: '# ',
+              style: baseStyle.copyWith(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.6),
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold)),
+          _parseInlineStylesActive(cleanText, headerStyle, theme),
+        ],
+      );
+    }
+    if (lineText.startsWith('## ')) {
+      final cleanText = lineText.substring(3);
+      final headerStyle = baseStyle.copyWith(
+        fontSize: 18,
+        fontWeight: FontWeight.bold,
+        color: theme.colorScheme.onSurface,
+      );
+      return TextSpan(
+        children: [
+          TextSpan(
+              text: '## ',
+              style: baseStyle.copyWith(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.6),
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold)),
+          _parseInlineStylesActive(cleanText, headerStyle, theme),
+        ],
+      );
+    }
+    if (lineText.startsWith('### ')) {
+      final cleanText = lineText.substring(4);
+      final headerStyle = baseStyle.copyWith(
+        fontSize: 16,
+        fontWeight: FontWeight.bold,
+        color: theme.colorScheme.onSurface,
+      );
+      return TextSpan(
+        children: [
+          TextSpan(
+              text: '### ',
+              style: baseStyle.copyWith(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.6),
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold)),
+          _parseInlineStylesActive(cleanText, headerStyle, theme),
+        ],
+      );
+    }
+
+    // 4. Blockquote
+    if (lineText.startsWith('> ')) {
+      final cleanText = lineText.substring(2);
+      final quoteStyle = baseStyle.copyWith(
+        fontStyle: FontStyle.italic,
+        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
+      );
+      return TextSpan(
+        children: [
+          TextSpan(
+              text: '> ',
+              style: baseStyle.copyWith(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.6),
+                  fontWeight: FontWeight.bold)),
+          _parseInlineStylesActive(cleanText, quoteStyle, theme),
+        ],
+      );
+    }
+
+    // 5. List items
+    if (lineText.startsWith('- ') || lineText.startsWith('* ')) {
+      final cleanText = lineText.substring(2);
+      final symbol = lineText.substring(0, 2);
+      return TextSpan(
+        children: [
+          TextSpan(
+              text: symbol,
+              style: baseStyle.copyWith(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.6),
+                  fontWeight: FontWeight.bold)),
+          _parseInlineStylesActive(cleanText, baseStyle, theme),
+        ],
+      );
+    }
+
+    // 6. Numbered list items
+    final numberMatch = RegExp(r'^(\d+)\.\s(.*)$').firstMatch(lineText);
+    if (numberMatch != null) {
+      final number = numberMatch.group(1);
+      final cleanText = numberMatch.group(2) ?? '';
+      return TextSpan(
+        children: [
+          TextSpan(
+            text: '$number. ',
+            style: baseStyle.copyWith(
+              fontWeight: FontWeight.bold,
+              color: theme.colorScheme.primary.withValues(alpha: 0.6),
+            ),
+          ),
+          _parseInlineStylesActive(cleanText, baseStyle, theme),
+        ],
+      );
+    }
+
+    // 7. General Paragraph Line
+    return _parseInlineStylesActive(lineText, baseStyle, theme);
+  }
+
+  TextSpan _parseInlineStylesActive(String text, TextStyle baseStyle, ThemeData theme) {
+    final List<TextSpan> spans = [];
+    int index = 0;
+    final symbolStyle = baseStyle.copyWith(
+      color: theme.colorScheme.primary.withValues(alpha: 0.5),
+      fontWeight: FontWeight.normal,
+      fontStyle: FontStyle.normal,
+      decoration: TextDecoration.none,
+    );
+
+    while (index < text.length) {
+      // Bold `**`
+      if (text.startsWith('**', index)) {
+        final end = text.indexOf('**', index + 2);
+        if (end != -1) {
+          spans.add(TextSpan(text: '**', style: symbolStyle));
+          final innerText = text.substring(index + 2, end);
+          spans.add(TextSpan(
+            text: innerText,
+            style: baseStyle.copyWith(fontWeight: FontWeight.bold),
+          ));
+          spans.add(TextSpan(text: '**', style: symbolStyle));
+          index = end + 2;
+          continue;
+        }
+      }
+
+      // Italic `*`
+      if (text.startsWith('*', index)) {
+        final end = text.indexOf('*', index + 1);
+        if (end != -1) {
+          spans.add(TextSpan(text: '*', style: symbolStyle));
+          final innerText = text.substring(index + 1, end);
+          spans.add(TextSpan(
+            text: innerText,
+            style: baseStyle.copyWith(fontStyle: FontStyle.italic),
+          ));
+          spans.add(TextSpan(text: '*', style: symbolStyle));
+          index = end + 1;
+          continue;
+        }
+      }
+
+      // Monospace code `` ` ``
+      if (text.startsWith('`', index)) {
+        final end = text.indexOf('`', index + 1);
+        if (end != -1) {
+          spans.add(TextSpan(text: '`', style: symbolStyle));
+          final innerText = text.substring(index + 1, end);
+          spans.add(TextSpan(
+            text: innerText,
+            style: baseStyle.copyWith(
+              fontFamily: 'monospace',
+              backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+              color: theme.colorScheme.primary,
+            ),
+          ));
+          spans.add(TextSpan(text: '`', style: symbolStyle));
+          index = end + 1;
+          continue;
+        }
+      }
+
+      // Strikethrough `~~`
+      if (text.startsWith('~~', index)) {
+        final end = text.indexOf('~~', index + 2);
+        if (end != -1) {
+          spans.add(TextSpan(text: '~~', style: symbolStyle));
+          final innerText = text.substring(index + 2, end);
+          spans.add(TextSpan(
+            text: innerText,
+            style: baseStyle.copyWith(decoration: TextDecoration.lineThrough),
+          ));
+          spans.add(TextSpan(text: '~~', style: symbolStyle));
+          index = end + 2;
+          continue;
+        }
+      }
+
+      // Default
+      spans.add(TextSpan(text: text[index].toString(), style: baseStyle));
+      index++;
+    }
+
+    return TextSpan(children: spans);
+  }
+
+  TextSpan _parsePreviewLine(String lineText, TextStyle baseStyle, ThemeData theme) {
+    final trimmed = lineText.trim();
+
+    // 1. Image Block - Render as a beautiful, clean monospace text link inside the editor to prevent floating layout
+    // bugs
+    final imageMatch = RegExp(r'^!\[(.*?)\]\((.*?)\)$').firstMatch(trimmed);
+    if (imageMatch != null) {
+      final path = imageMatch.group(2) ?? '';
+      return TextSpan(
+        children: [
+          TextSpan(
+            text: '🖼️ [图片] ',
+            style: baseStyle.copyWith(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          TextSpan(
+            text: path.split('/').last,
+            style: baseStyle.copyWith(
+              color: theme.colorScheme.primary.withValues(alpha: 0.8),
+              decoration: TextDecoration.underline,
+              fontFamily: 'monospace',
+            ),
+          ),
+        ],
+      );
+    }
+
+    // 2. Horizontal Rule
+    if (trimmed == '---' || trimmed == '***') {
+      final remainingText = lineText.substring(1);
+      return TextSpan(
+        children: [
+          WidgetSpan(
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              height: 1.5,
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+            ),
+          ),
+          TextSpan(
+            text: remainingText,
+            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent, height: 0),
+          ),
+        ],
+      );
+    }
+
+    // 3. Headings
+    if (lineText.startsWith('# ')) {
+      final cleanText = lineText.substring(2);
+      final headerStyle = baseStyle.copyWith(
+        fontSize: 22,
+        fontWeight: FontWeight.bold,
+        color: theme.colorScheme.onSurface,
+      );
+      return TextSpan(
+        children: [
+          TextSpan(text: '# ', style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent)),
+          _parseInlineStyles(cleanText, headerStyle, theme),
+        ],
+      );
+    }
+    if (lineText.startsWith('## ')) {
+      final cleanText = lineText.substring(3);
+      final headerStyle = baseStyle.copyWith(
+        fontSize: 18,
+        fontWeight: FontWeight.bold,
+        color: theme.colorScheme.onSurface,
+      );
+      return TextSpan(
+        children: [
+          TextSpan(text: '## ', style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent)),
+          _parseInlineStyles(cleanText, headerStyle, theme),
+        ],
+      );
+    }
+    if (lineText.startsWith('### ')) {
+      final cleanText = lineText.substring(4);
+      final headerStyle = baseStyle.copyWith(
+        fontSize: 16,
+        fontWeight: FontWeight.bold,
+        color: theme.colorScheme.onSurface,
+      );
+      return TextSpan(
+        children: [
+          TextSpan(text: '### ', style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent)),
+          _parseInlineStyles(cleanText, headerStyle, theme),
+        ],
+      );
+    }
+
+    // 4. Blockquote
+    if (lineText.startsWith('> ')) {
+      final cleanText = lineText.substring(2);
+      final quoteStyle = baseStyle.copyWith(
+        fontStyle: FontStyle.italic,
+        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
+      );
+      return TextSpan(
+        children: [
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Container(
+              margin: const EdgeInsets.only(right: 8),
+              width: 4,
+              height: 16,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          TextSpan(text: ' ', style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent)),
+          _parseInlineStyles(cleanText, quoteStyle, theme),
+        ],
+      );
+    }
+
+    // 5. List items
+    if (lineText.startsWith('- ') || lineText.startsWith('* ')) {
+      final cleanText = lineText.substring(2);
+      return TextSpan(
+        children: [
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Container(
+              margin: const EdgeInsets.only(right: 8, left: 4),
+              width: 5,
+              height: 5,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          TextSpan(text: ' ', style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent)),
+          _parseInlineStyles(cleanText, baseStyle, theme),
+        ],
+      );
+    }
+
+    // 6. Numbered list items
+    final numberMatch = RegExp(r'^(\d+)\.\s(.*)$').firstMatch(lineText);
+    if (numberMatch != null) {
+      final number = numberMatch.group(1);
+      final cleanText = numberMatch.group(2) ?? '';
+      return TextSpan(
+        children: [
+          TextSpan(
+            text: '$number. ',
+            style: baseStyle.copyWith(
+              fontWeight: FontWeight.bold,
+              color: theme.colorScheme.primary,
+            ),
+          ),
+          _parseInlineStyles(cleanText, baseStyle, theme),
+        ],
+      );
+    }
+
+    // 7. General Paragraph Line
+    return _parseInlineStyles(lineText, baseStyle, theme);
+  }
+
+  TextSpan _parseInlineStyles(String text, TextStyle baseStyle, ThemeData theme) {
+    final List<TextSpan> spans = [];
+    int index = 0;
+
+    while (index < text.length) {
+      // Bold `**`
+      if (text.startsWith('**', index)) {
+        final end = text.indexOf('**', index + 2);
+        if (end != -1) {
+          spans.add(TextSpan(
+            text: '**',
+            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+          ));
+          final innerText = text.substring(index + 2, end);
+          spans.add(TextSpan(
+            text: innerText,
+            style: baseStyle.copyWith(fontWeight: FontWeight.bold),
+          ));
+          spans.add(TextSpan(
+            text: '**',
+            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+          ));
+          index = end + 2;
+          continue;
+        }
+      }
+
+      // Italic `*`
+      if (text.startsWith('*', index)) {
+        final end = text.indexOf('*', index + 1);
+        if (end != -1) {
+          spans.add(TextSpan(
+            text: '*',
+            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+          ));
+          final innerText = text.substring(index + 1, end);
+          spans.add(TextSpan(
+            text: innerText,
+            style: baseStyle.copyWith(fontStyle: FontStyle.italic),
+          ));
+          spans.add(TextSpan(
+            text: '*',
+            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+          ));
+          index = end + 1;
+          continue;
+        }
+      }
+
+      // Monospace code `` ` ``
+      if (text.startsWith('`', index)) {
+        final end = text.indexOf('`', index + 1);
+        if (end != -1) {
+          spans.add(TextSpan(
+            text: '`',
+            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+          ));
+          final innerText = text.substring(index + 1, end);
+          spans.add(TextSpan(
+            text: innerText,
+            style: baseStyle.copyWith(
+              fontFamily: 'monospace',
+              backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+              color: theme.colorScheme.primary,
+            ),
+          ));
+          spans.add(TextSpan(
+            text: '`',
+            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+          ));
+          index = end + 1;
+          continue;
+        }
+      }
+
+      // Strikethrough `~~`
+      if (text.startsWith('~~', index)) {
+        final end = text.indexOf('~~', index + 2);
+        if (end != -1) {
+          spans.add(TextSpan(
+            text: '~~',
+            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+          ));
+          final innerText = text.substring(index + 2, end);
+          spans.add(TextSpan(
+            text: innerText,
+            style: baseStyle.copyWith(decoration: TextDecoration.lineThrough),
+          ));
+          spans.add(TextSpan(
+            text: '~~',
+            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+          ));
+          index = end + 2;
+          continue;
+        }
+      }
+
+      // Default
+      spans.add(TextSpan(text: text[index].toString(), style: baseStyle));
+      index++;
+    }
+
+    return TextSpan(children: spans);
   }
 }
