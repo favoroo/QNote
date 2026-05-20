@@ -641,10 +641,24 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
         final root = <String, dynamic>{'id': s.id, 'name': s.name};
         if (s.hasPopup) {
           if (s.fields.isNotEmpty) {
-            root['fields'] = s.fields.map((f) => {'id': f.id, 'type': f.type, if (f.options.isNotEmpty) 'options': f.options}).toList();
+            root['fields'] = s.fields.map((f) => {
+              'id': f.id, 
+              'name': f.label, 
+              'type': f.type, 
+              if (f.options.isNotEmpty) 'options': f.options
+            }).toList();
           }
           if (s.categories != null && s.categories!.isNotEmpty) {
-            root['categories'] = s.categories!.map((c) => {'id': c.id, 'name': c.name, 'fields': c.fields.map((f) => {'id': f.id, 'type': f.type, if (f.options.isNotEmpty) 'options': f.options}).toList()}).toList();
+            root['categories'] = s.categories!.map((c) => {
+              'id': c.id, 
+              'name': c.name, 
+              'fields': c.fields.map((f) => {
+                'id': f.id, 
+                'name': f.label, 
+                'type': f.type, 
+                if (f.options.isNotEmpty) 'options': f.options
+              }).toList()
+            }).toList();
           }
         }
         return root;
@@ -720,14 +734,95 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
           final fields = Map<String, dynamic>.from(result['fields'] as Map? ?? {});
 
           if (foundShortcut?.id == 'sleep') {
-            if (parsedEndTime != null && parsedStartOffset == null && parsedEndOffset == null) {
-              final startMin = parsedTime.hour * 60 + parsedTime.minute;
-              final endMin = parsedEndTime.hour * 60 + parsedEndTime.minute;
-              if (endMin < startMin) {
-                parsedStartOffset = -1;
-                parsedEndOffset = 0;
+            // Get duration hours
+            double durationHours = 8.0;
+            final rawDuration = fields['duration'];
+            if (rawDuration != null) {
+              final parsed = double.tryParse(rawDuration.toString());
+              if (parsed != null && parsed > 0) {
+                durationHours = parsed > 24 ? parsed / 60.0 : parsed;
               }
             }
+
+            if (result['time'] == null) {
+              // Case 1: AI didn't return any time block at all.
+              // Default to starting sleep at 22:30 yesterday.
+              parsedTime = const TimeOfDay(hour: 22, minute: 30);
+              parsedStartOffset = -1;
+              
+              final startMinutes = 22 * 60 + 30;
+              final durationMinutes = (durationHours * 60).toInt();
+              final totalMinutes = startMinutes + durationMinutes;
+              final endHour = (totalMinutes ~/ 60) % 24;
+              final endMinute = totalMinutes % 60;
+              final daysOffset = totalMinutes ~/ 1440;
+              
+              parsedEndTime = TimeOfDay(hour: endHour, minute: endMinute);
+              parsedEndOffset = -1 + daysOffset;
+            } else {
+              // Case 2: AI returned a time block. Let's make sure start/end and offsets are filled.
+              // If start is missing but end is present:
+              if (result['time']['start'] == null && result['time']['end'] != null) {
+                final endMin = parsedEndTime!.hour * 60 + parsedEndTime.minute;
+                final durationMinutes = (durationHours * 60).toInt();
+                var startMin = endMin - durationMinutes;
+                var daysOffset = 0;
+                while (startMin < 0) {
+                  startMin += 1440;
+                  daysOffset -= 1;
+                }
+                parsedTime = TimeOfDay(hour: startMin ~/ 60, minute: startMin % 60);
+                parsedStartOffset = (parsedEndOffset ?? 0) + daysOffset;
+              }
+              // If end is missing but start is present:
+              else if (result['time']['start'] != null && result['time']['end'] == null) {
+                final startMin = parsedTime.hour * 60 + parsedTime.minute;
+                final durationMinutes = (durationHours * 60).toInt();
+                final totalMinutes = startMin + durationMinutes;
+                
+                final endHour = (totalMinutes ~/ 60) % 24;
+                final endMinute = totalMinutes % 60;
+                final daysOffset = totalMinutes ~/ 1440;
+                
+                parsedEndTime = TimeOfDay(hour: endHour, minute: endMinute);
+                parsedEndOffset = (parsedStartOffset ?? 0) + daysOffset;
+              }
+              // If both are missing:
+              else if (result['time']['start'] == null && result['time']['end'] == null) {
+                parsedTime = const TimeOfDay(hour: 22, minute: 30);
+                parsedStartOffset = -1;
+                
+                final startMinutes = 22 * 60 + 30;
+                final durationMinutes = (durationHours * 60).toInt();
+                final totalMinutes = startMinutes + durationMinutes;
+                final endHour = (totalMinutes ~/ 60) % 24;
+                final endMinute = totalMinutes % 60;
+                final daysOffset = totalMinutes ~/ 1440;
+                
+                parsedEndTime = TimeOfDay(hour: endHour, minute: endMinute);
+                parsedEndOffset = -1 + daysOffset;
+              }
+              
+              // If offsets are missing but times are present:
+              if (parsedStartOffset == null || parsedEndOffset == null) {
+                if (parsedEndTime != null) {
+                  final startMin = parsedTime.hour * 60 + parsedTime.minute;
+                  final endMin = parsedEndTime.hour * 60 + parsedEndTime.minute;
+                  if (endMin < startMin) {
+                    parsedStartOffset ??= -1;
+                    parsedEndOffset ??= 0;
+                  } else {
+                    parsedStartOffset ??= 0;
+                    parsedEndOffset ??= 0;
+                  }
+                } else {
+                  parsedStartOffset ??= 0;
+                }
+              }
+            }
+
+            // Always update fields['duration'] to hours, so it renders correctly in the number input
+            fields['duration'] = durationHours;
             fields['fallAsleepTime'] = '${parsedTime.hour.toString().padLeft(2, '0')}:${parsedTime.minute.toString().padLeft(2, '0')}';
           }
 
@@ -988,19 +1083,13 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
       );
     }
 
-    final currentTimeline = ref.read(diaryInputTimeProvider);
+    ref.read(diaryInputTimeProvider.notifier).state = null;
+    ref.read(currentInputTimeProvider.notifier).state = TimeOfDay.now();
     setState(() {
       _drafts = [
         _Draft(
           id: const Uuid().v4(),
-          startTime: currentTimeline?.time,
-          endTime: currentTimeline?.endTime,
-          startOffset: currentTimeline != null
-              ? currentTimeline.date.difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day)).inDays
-              : null,
-          endOffset: (currentTimeline != null && currentTimeline.endDate != null)
-              ? currentTimeline.endDate!.difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day)).inDays
-              : null,
+          startTime: TimeOfDay.now(),
         )
       ];
       _activeDraftIndex = 0;

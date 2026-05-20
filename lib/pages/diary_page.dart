@@ -71,8 +71,24 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
     });
   }
 
-  void _scrollToCurrentTime({bool smooth = true, int attempts = 0}) {
+  void _scrollToCurrentTime({bool smooth = true, int attempts = 0, int layoutAttempts = 0}) {
     if (!_scrollController.hasClients) return;
+
+    // If the scroll position is not fully laid out yet (maxScrollExtent is stale/too small),
+    // defer and retry to avoid clamping the target scroll offset to a wrong position.
+    final expectedMinScroll = (_windowDays - 1) * _dayHeight;
+    if (_scrollController.position.maxScrollExtent < expectedMinScroll && layoutAttempts < 10) {
+      Future.delayed(const Duration(milliseconds: 30), () {
+        if (mounted) {
+          _scrollToCurrentTime(
+            smooth: smooth,
+            attempts: attempts,
+            layoutAttempts: layoutAttempts + 1,
+          );
+        }
+      });
+      return;
+    }
 
     // Phase 1: rough jump/animate using static math to get near the target so the
     // ListView renders the item. On first attempt only.
@@ -148,7 +164,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
     });
   }
 
-  void _scrollToTime(DateTime targetTime, {bool smooth = true, int attempts = 0}) {
+  void _scrollToTime(DateTime targetTime, {bool smooth = true, int attempts = 0, int layoutAttempts = 0}) {
     if (!_scrollController.hasClients) return;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -157,10 +173,15 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
       // If the scroll position is not fully laid out yet (maxScrollExtent is stale/too small),
       // defer and retry to avoid clamping the target scroll offset to a wrong position.
       final expectedMinScroll = (_windowDays - 1) * _dayHeight;
-      if (_scrollController.position.maxScrollExtent < expectedMinScroll && attempts < 10) {
+      if (_scrollController.position.maxScrollExtent < expectedMinScroll && layoutAttempts < 10) {
         Future.delayed(const Duration(milliseconds: 30), () {
           if (mounted) {
-            _scrollToTime(targetTime, smooth: smooth, attempts: attempts + 1);
+            _scrollToTime(
+              targetTime,
+              smooth: smooth,
+              attempts: attempts,
+              layoutAttempts: layoutAttempts + 1,
+            );
           }
         });
         return;
