@@ -26,13 +26,191 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   final Map<String, bool> _testingMap = {};
   final Map<String, String> _latencyMap = {};
   bool _batchTesting = false;
+  List<String> _openRouterFreeModels = [];
+  bool _isFetchingFreeModels = false;
+  String? _fetchMessage;
+  bool _fetchMessageIsError = false;
 
   @override
   void initState() {
     super.initState();
     _loadRoles();
     _loadLatencies();
+    _loadOpenRouterFreeModels();
   }
+
+  Future<void> _loadOpenRouterFreeModels() async {
+    final prefs = await SharedPreferences.getInstance();
+    final cachedModels = prefs.getStringList('openrouter_free_models');
+    if (cachedModels != null && cachedModels.isNotEmpty) {
+      if (mounted) {
+        setState(() {
+          _openRouterFreeModels = cachedModels;
+        });
+      }
+    }
+  }
+
+  Future<void> _fetchOpenRouterFreeModels(StateSetter setDialogState) async {
+    if (_isFetchingFreeModels) return;
+    setDialogState(() {
+      _isFetchingFreeModels = true;
+      _fetchMessage = null;
+    });
+    setState(() {
+      _isFetchingFreeModels = true;
+      _fetchMessage = null;
+    });
+
+    try {
+      final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 15),
+      ));
+      
+      final response = await dio.get(
+        'https://openrouter.ai/api/frontend/models/find?active=true&fmt=cards&q=free',
+        options: Options(
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json',
+            'Referer': 'https://openrouter.ai/',
+          },
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        final data = response.data;
+        if (data is Map && data['data'] != null) {
+          final nestedData = data['data'];
+          final modelsList = nestedData['models'];
+          final Map<String, dynamic> analytics = nestedData['analytics'] is Map ? nestedData['analytics'] : {};
+
+          if (modelsList is List) {
+            final List<Map<String, dynamic>> parsedModels = [];
+            for (final item in modelsList) {
+              if (item is Map) {
+                final endpoint = item['endpoint'];
+                if (endpoint is Map && endpoint['is_free'] == true) {
+                  final slug = endpoint['model_variant_slug'];
+                  final permaslug = endpoint['model_variant_permaslug'];
+                  if (slug is String && slug.isNotEmpty) {
+                    int usage = 0;
+                    
+                    int getUsage(String key) {
+                      final cleanKey = key.replaceAll(':free', '');
+                      if (analytics[cleanKey] != null) {
+                        final a = analytics[cleanKey];
+                        if (a is Map) {
+                          return ((a['total_prompt_tokens'] ?? 0) as num).toInt() + ((a['total_completion_tokens'] ?? 0) as num).toInt();
+                        }
+                      }
+                      if (analytics[key] != null) {
+                        final a = analytics[key];
+                        if (a is Map) {
+                          return ((a['total_prompt_tokens'] ?? 0) as num).toInt() + ((a['total_completion_tokens'] ?? 0) as num).toInt();
+                        }
+                      }
+                      return 0;
+                    }
+
+                    usage = getUsage(permaslug ?? slug);
+                    if (usage == 0) usage = getUsage(slug);
+
+                    parsedModels.add({
+                      'slug': slug,
+                      'usage': usage,
+                    });
+                  }
+                }
+              }
+            }
+
+            parsedModels.sort((a, b) => (b['usage'] as int).compareTo(a['usage'] as int));
+            final List<String> freeModelsList = parsedModels.map((m) => m['slug'] as String).toList();
+
+            if (freeModelsList.isNotEmpty) {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setStringList('openrouter_free_models', freeModelsList);
+
+              if (mounted) {
+                setDialogState(() {
+                  _openRouterFreeModels = freeModelsList;
+                  _fetchMessage = '成功获取并更新了 ${freeModelsList.length} 个免费模型！';
+                  _fetchMessageIsError = false;
+                });
+                setState(() {
+                  _openRouterFreeModels = freeModelsList;
+                  _fetchMessage = '成功获取并更新了 ${freeModelsList.length} 个免费模型！';
+                  _fetchMessageIsError = false;
+                });
+                }
+// Success dialog removed; using in-dialog banner
+            } else {
+              throw Exception('未找到任何免费模型');
+            }
+          } else {
+            throw Exception('模型数据列表格式无效');
+          }
+        } else {
+          throw Exception('返回数据结构无效');
+        }
+      } else {
+        throw Exception('HTTP 错误: ${response.statusCode}');
+      }
+    } catch (e) {
+      if (mounted) {
+        String errorMsg = e.toString();
+        if (e is DioException) {
+          if (kIsWeb && (errorMsg.contains('XMLHttpRequest') || errorMsg.contains('CORS'))) {
+            errorMsg = 'Web端存在CORS跨域限制，请在模拟器或真机中点击获取。';
+          } else {
+            errorMsg = '网络连接失败，请检查网络设置。';
+          }
+        }
+        setDialogState(() {
+          _fetchMessage = '获取失败: $errorMsg';
+          _fetchMessageIsError = true;
+        });
+        setState(() {
+          _fetchMessage = '获取失败: $errorMsg';
+          _fetchMessageIsError = true;
+        });
+// Snackbar removed; using in-dialog banner for error feedback
+      }
+    } finally {
+      if (mounted) {
+        setDialogState(() {
+          _isFetchingFreeModels = false;
+        });
+        setState(() {
+          _isFetchingFreeModels = false;
+        });
+      }
+    }
+  }
+
+  void _showModelPickerBottomSheet({
+    required BuildContext context,
+    required List<String> models,
+    required String currentSelected,
+    required ValueChanged<String> onSelected,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return _ModelPickerBottomSheet(
+          models: models,
+          currentSelected: currentSelected,
+          onSelected: onSelected,
+        );
+      },
+    );
+  }
+
 
   Future<void> _loadRoles() async {
     final roles = await AiRoleService.instance.getRoles();
@@ -584,6 +762,10 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     String? testResult;
     bool isTesting = false;
 
+    // Reset fetch status message when dialog opens
+    _fetchMessage = null;
+    _fetchMessageIsError = false;
+
     if (!isEditing) {
       final defaultProvider = getProviderById(selectedVendorId);
       if (defaultProvider != null) {
@@ -623,6 +805,8 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                           final provider = getProviderById(value);
                           setDialogState(() {
                             selectedVendorId = value;
+                            _fetchMessage = null;
+                            _fetchMessageIsError = false;
                             if (provider != null) {
                               selectedProvider = provider.provider;
                               nameCtl.text = provider.name;
@@ -656,8 +840,73 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                       Text('显示名称', style: Theme.of(context).textTheme.labelSmall),
                       TextField(controller: nameCtl, decoration: const InputDecoration(hintText: '例如：我的模型')),
                       const SizedBox(height: 12),
-                      Text('模型名称', style: Theme.of(context).textTheme.labelSmall),
-                      _buildModelSelector(selectedVendorId, modelCtl, setDialogState),
+                      Row(
+                        children: [
+                          Text('模型名称', style: Theme.of(context).textTheme.labelSmall),
+                          const Spacer(),
+                          if (selectedVendorId == 'openrouter')
+                            TextButton.icon(
+                              onPressed: _isFetchingFreeModels
+                                  ? null
+                                  : () => _fetchOpenRouterFreeModels(setDialogState),
+                              icon: _isFetchingFreeModels
+                                  ? const SizedBox(
+                                      width: 12,
+                                      height: 12,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.refresh, size: 14),
+                              label: Text(
+                                _isFetchingFreeModels ? '更新中...' : '一键获取免费模型',
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                              style: TextButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                            ),
+                        ],
+                      ),
+                      if (selectedVendorId == 'openrouter' && _fetchMessage != null) ...[
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: _fetchMessageIsError 
+                                ? Colors.red.shade50.withValues(alpha: 0.8) 
+                                : Colors.green.shade50.withValues(alpha: 0.8),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: _fetchMessageIsError 
+                                  ? Colors.red.shade200.withValues(alpha: 0.5) 
+                                  : Colors.green.shade200.withValues(alpha: 0.5),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                _fetchMessageIsError ? Icons.error_outline : Icons.check_circle_outline,
+                                size: 14,
+                                color: _fetchMessageIsError ? Colors.red.shade700 : Colors.green.shade700,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  _fetchMessage!,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: _fetchMessageIsError ? Colors.red.shade800 : Colors.green.shade800,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 4),
+                      _buildModelSelector(ctx, selectedVendorId, modelCtl, setDialogState),
                       const SizedBox(height: 12),
                       Text('API Key', style: Theme.of(context).textTheme.labelSmall),
                       TextField(
@@ -777,42 +1026,483 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     );
   }
 
-  Widget _buildModelSelector(String vendorId, TextEditingController modelCtl, StateSetter setDialogState) {
+  Widget _buildModelSelector(BuildContext dialogContext, String vendorId, TextEditingController modelCtl, StateSetter setDialogState) {
     final providerConfig = getProviderById(vendorId);
-    if (providerConfig != null && providerConfig.models.isNotEmpty) {
-      final isModelInList = providerConfig.models.contains(modelCtl.text);
+    
+    List<String> modelsList = [];
+    if (vendorId == 'openrouter') {
+      modelsList = _openRouterFreeModels.isNotEmpty ? _openRouterFreeModels : (providerConfig?.models ?? []);
+    } else {
+      modelsList = providerConfig?.models ?? [];
+    }
+
+    final hasPredefinedModels = modelsList.isNotEmpty;
+    final isModelInList = modelsList.contains(modelCtl.text);
+
+    if (hasPredefinedModels) {
       return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          DropdownButton<String>(
-            value: isModelInList ? modelCtl.text : null,
-            isExpanded: true,
-            hint: Text(modelCtl.text.isEmpty ? '选择模型' : modelCtl.text),
-            items: [
-              ...providerConfig.models.map((m) => DropdownMenuItem(
-                value: m,
-                child: Text(m, overflow: TextOverflow.ellipsis),
-              )),
-              const DropdownMenuItem(value: '__custom__', child: Text('自定义...')),
-            ],
-            onChanged: (value) {
-              if (value == '__custom__') {
-                setDialogState(() => modelCtl.text = '');
-              } else if (value != null) {
-                setDialogState(() => modelCtl.text = value);
-              }
+          const SizedBox(height: 4),
+          InkWell(
+            onTap: () {
+              _showModelPickerBottomSheet(
+                context: dialogContext,
+                models: modelsList,
+                currentSelected: modelCtl.text,
+                onSelected: (selectedVal) {
+                  if (selectedVal == '__custom__') {
+                    setDialogState(() => modelCtl.text = '');
+                  } else {
+                    setDialogState(() => modelCtl.text = selectedVal);
+                  }
+                },
+              );
             },
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Theme.of(dialogContext).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Theme.of(dialogContext).colorScheme.outlineVariant.withValues(alpha: 0.5),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      modelCtl.text.isEmpty
+                          ? '点击选择模型...'
+                          : (modelCtl.text.contains('/')
+                              ? modelCtl.text.split('/').last.replaceAll(':free', '')
+                              : modelCtl.text),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: modelCtl.text.isEmpty ? FontWeight.normal : FontWeight.bold,
+                        color: modelCtl.text.isEmpty
+                            ? Theme.of(dialogContext).colorScheme.onSurfaceVariant
+                            : Theme.of(dialogContext).colorScheme.onSurface,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Icon(
+                    Icons.arrow_drop_down,
+                    color: Theme.of(dialogContext).colorScheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
           ),
-          if (!isModelInList)
+          if (modelCtl.text.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              '完整 ID: ${modelCtl.text}',
+              style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(fontSize: 10, color: Theme.of(dialogContext).colorScheme.onSurfaceVariant),
+            ),
+          ],
+          if (!isModelInList) ...[
+            const SizedBox(height: 8),
             TextField(
               controller: modelCtl,
-              decoration: InputDecoration(hintText: providerConfig.placeholder),
+              decoration: InputDecoration(
+                hintText: providerConfig?.placeholder ?? '请输入自定义模型名称',
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              style: const TextStyle(fontSize: 13),
             ),
+          ],
         ],
       );
     }
+
     return TextField(
       controller: modelCtl,
-      decoration: InputDecoration(hintText: providerConfig?.placeholder ?? '请输入模型名称'),
+      decoration: InputDecoration(
+        hintText: providerConfig?.placeholder ?? '请输入模型名称',
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      style: const TextStyle(fontSize: 13),
+    );
+  }
+}
+
+class _ModelPickerBottomSheet extends StatefulWidget {
+  final List<String> models;
+  final String currentSelected;
+  final ValueChanged<String> onSelected;
+
+  const _ModelPickerBottomSheet({
+    required this.models,
+    required this.currentSelected,
+    required this.onSelected,
+  });
+
+  @override
+  State<_ModelPickerBottomSheet> createState() => _ModelPickerBottomSheetState();
+}
+
+class _ModelPickerBottomSheetState extends State<_ModelPickerBottomSheet> {
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  String _parseProvider(String model) {
+    if (!model.contains('/')) return '';
+    return model.split('/').first.toLowerCase();
+  }
+
+  Widget _buildProviderChip(String provider, ThemeData theme) {
+    if (provider.isEmpty) return const SizedBox.shrink();
+
+    Color bgColor;
+    Color textColor;
+
+    switch (provider) {
+      case 'google':
+        bgColor = Colors.blue.shade50;
+        textColor = Colors.blue.shade700;
+        break;
+      case 'openai':
+        bgColor = Colors.teal.shade50;
+        textColor = Colors.teal.shade700;
+        break;
+      case 'meta':
+      case 'meta-llama':
+        bgColor = Colors.purple.shade50;
+        textColor = Colors.purple.shade700;
+        break;
+      case 'mistral':
+      case 'mistralai':
+        bgColor = Colors.orange.shade50;
+        textColor = Colors.orange.shade700;
+        break;
+      case 'deepseek':
+        bgColor = Colors.indigo.shade50;
+        textColor = Colors.indigo.shade700;
+        break;
+      case 'qwen':
+        bgColor = Colors.cyan.shade50;
+        textColor = Colors.cyan.shade700;
+        break;
+      case 'nvidia':
+        bgColor = Colors.green.shade50;
+        textColor = Colors.green.shade700;
+        break;
+      case 'microsoft':
+        bgColor = Colors.blueGrey.shade50;
+        textColor = Colors.blueGrey.shade700;
+        break;
+      case 'cohere':
+        bgColor = Colors.amber.shade50;
+        textColor = Colors.amber.shade900;
+        break;
+      default:
+        bgColor = Colors.grey.shade100;
+        textColor = Colors.grey.shade700;
+    }
+
+    final displayName = provider.toUpperCase() == 'OPENAI' || provider.toUpperCase() == 'GLM'
+        ? provider.toUpperCase()
+        : provider[0].toUpperCase() + provider.substring(1);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        displayName,
+        style: TextStyle(
+          color: textColor,
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final filteredModels = widget.models
+        .where((m) => m.toLowerCase().contains(_searchQuery.toLowerCase()))
+        .toList();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 20,
+            offset: const Offset(0, -5),
+          ),
+        ],
+      ),
+      padding: EdgeInsets.only(
+        top: 16,
+        left: 16,
+        right: 16,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+      ),
+      child: FractionallySizedBox(
+        heightFactor: 0.7,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '选择模型',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  '共 ${widget.models.length} 个模型',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: '搜索模型名称...',
+                prefixIcon: const Icon(Icons.search, size: 20),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          setState(() {
+                            _searchController.clear();
+                            _searchQuery = '';
+                          });
+                        },
+                      )
+                    : null,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                filled: true,
+                fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.5),
+                    width: 1.5,
+                  ),
+                ),
+              ),
+              onChanged: (val) {
+                setState(() {
+                  _searchQuery = val;
+                });
+              },
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: filteredModels.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.search_off_outlined,
+                            size: 48,
+                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '未找到匹配的模型',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: filteredModels.length + 1,
+                      itemBuilder: (context, index) {
+                        if (index == filteredModels.length) {
+                          final isSelected = widget.currentSelected == '__custom__' || 
+                              (!widget.models.contains(widget.currentSelected) && widget.currentSelected.isNotEmpty);
+                          return ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            leading: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.edit_note_outlined,
+                                size: 18,
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                            title: const Text(
+                              '自定义模型标识符...',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                            ),
+                            subtitle: const Text(
+                              '手动输入其他模型 ID',
+                              style: TextStyle(fontSize: 11),
+                            ),
+                            trailing: isSelected
+                                ? Icon(Icons.check_circle, color: theme.colorScheme.primary, size: 20)
+                                : null,
+                            selected: isSelected,
+                            onTap: () {
+                              Navigator.pop(context);
+                              widget.onSelected('__custom__');
+                            },
+                          );
+                        }
+
+                        final model = filteredModels[index];
+                        final isSelected = model == widget.currentSelected;
+                        final provider = _parseProvider(model);
+                        
+                        String displayName = model;
+                        if (model.contains('/')) {
+                          displayName = model.split('/').last;
+                        }
+                        displayName = displayName.replaceAll(':free', '');
+
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.pop(context);
+                              widget.onSelected(model);
+                            },
+                            borderRadius: BorderRadius.circular(12),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? theme.colorScheme.primaryContainer.withValues(alpha: 0.15)
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? theme.colorScheme.primary.withValues(alpha: 0.3)
+                                      : Colors.transparent,
+                                  width: 1,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 12,
+                                    height: 12,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: isSelected
+                                            ? theme.colorScheme.primary
+                                            : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                                        width: isSelected ? 3.5 : 1.5,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          displayName,
+                                          style: theme.textTheme.bodyMedium?.copyWith(
+                                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                            color: isSelected
+                                                ? theme.colorScheme.primary
+                                                : theme.colorScheme.onSurface,
+                                            fontSize: 13,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          model,
+                                          style: theme.textTheme.bodySmall?.copyWith(
+                                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                                            fontSize: 10.5,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (provider.isNotEmpty) ...[
+                                    const SizedBox(width: 8),
+                                    _buildProviderChip(provider, theme),
+                                  ],
+                                  if (model.endsWith(':free')) ...[
+                                    const SizedBox(width: 4),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                      decoration: BoxDecoration(
+                                        color: Colors.green.shade50,
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: const Text(
+                                        'FREE',
+                                        style: TextStyle(
+                                          color: Colors.green,
+                                          fontSize: 8,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

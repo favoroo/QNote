@@ -42,6 +42,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
   Offset? _lastDragPosition;
   bool _isScrollingFromList = false;
   bool _hasPerformedInitialScroll = false;
+  bool _isProgrammaticScrolling = false;
 
   static double? _savedScrollOffset;
 
@@ -53,16 +54,17 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
     _today = DateTime(now.year, now.month, now.day);
     _windowStartDate = _today.subtract(const Duration(days: 3));
 
+    // Use saved offset to restore scroll position when navigating back within the same session.
+    // But always mark _hasPerformedInitialScroll = false so that on first build after
+    // data loads, we re-scroll to current time (which also fixes the restored-offset-but-wrong-date bug).
     final nodeIndex = now.hour * 2 + (now.minute >= 30 ? 1 : 0);
-    // 350.0 is used to subtract half of a typical viewport height for instant centering
     final initialOffset = _savedScrollOffset ?? (3 * _dayHeight + _dividerHeight + nodeIndex * _nodeHeight - 350.0);
 
     _scrollController = ScrollController(initialScrollOffset: initialOffset.clamp(0.0, double.infinity));
     _scrollController.addListener(_onScroll);
 
-    if (_savedScrollOffset != null) {
-      _hasPerformedInitialScroll = true;
-    }
+    // Always perform an accurate scroll-to-current-time when entering/re-entering the page.
+    _hasPerformedInitialScroll = false;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -73,6 +75,21 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
 
   void _scrollToCurrentTime({bool smooth = true, int attempts = 0, int layoutAttempts = 0}) {
     if (!_scrollController.hasClients) return;
+
+    if (attempts == 0 && layoutAttempts == 0) {
+      _isProgrammaticScrolling = true;
+    }
+
+    final now = DateTime.now();
+    final dayOffset = _dateToDayOffset(now);
+    if (dayOffset < 0 || dayOffset >= _windowDays) {
+      _ensureDateInWindow(now);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _scrollToCurrentTime(smooth: smooth, attempts: 0);
+      });
+      return;
+    }
 
     // If the scroll position is not fully laid out yet (maxScrollExtent is stale/too small),
     // defer and retry to avoid clamping the target scroll offset to a wrong position.
@@ -90,28 +107,20 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
       return;
     }
 
-    // Phase 1: rough jump/animate using static math to get near the target so the
-    // ListView renders the item. On first attempt only.
+    // Phase 1: jump (not animate) to near the target so the ListView renders the item.
+    // We always use jumpTo here because Phase 2 needs the node to be mounted and painted
+    // before it can read the RenderBox position. animateTo is async and won't have moved
+    // the scroll position by the time the next frame fires.
     if (attempts == 0) {
-      final now = DateTime.now();
-      final dayOffset = _dateToDayOffset(now);
       final nodeIndex = now.hour * 2 + (now.minute >= 30 ? 1 : 0);
       final viewportHeight = _scrollController.position.viewportDimension;
       final rough = dayOffset * _dayHeight + _dividerHeight + nodeIndex * _nodeHeight
-          - (viewportHeight > 0 ? viewportHeight / 2 : 350.0);
+          - (viewportHeight > 0 ? (viewportHeight - _nodeHeight) / 2 : 326.0);
       final targetRough = rough.clamp(0.0, _scrollController.position.maxScrollExtent);
       
-      // Only jump/animate if we are not already close to the target rough position
+      // Jump only if meaningfully far from target to avoid jank when already near
       if ((_scrollController.offset - targetRough).abs() > 50.0) {
-        if (smooth) {
-          _scrollController.animateTo(
-            targetRough,
-            duration: const Duration(milliseconds: 500),
-            curve: Curves.easeInOutCubic,
-          );
-        } else {
-          _scrollController.jumpTo(targetRough);
-        }
+        _scrollController.jumpTo(targetRough);
       }
     }
 
@@ -139,6 +148,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
           // If we are already extremely close to the centered target (within 20 pixels),
           // don't trigger any redundant scroll animation to keep the interface still
           if ((scrollOffset - target).abs() < 20.0) {
+            _isProgrammaticScrolling = false;
+            final now = DateTime.now();
+            ref.read(selectedDateProvider.notifier).state = DateTime(now.year, now.month, now.day);
             return;
           }
 
@@ -147,9 +159,18 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
               target,
               duration: const Duration(milliseconds: 500),
               curve: Curves.easeInOutCubic,
-            );
+            ).then((_) {
+              if (mounted) {
+                ref.read(selectedDateProvider.notifier).state = DateTime(now.year, now.month, now.day);
+                setState(() {
+                  _isProgrammaticScrolling = false;
+                });
+              }
+            });
           } else {
             _scrollController.jumpTo(target);
+            ref.read(selectedDateProvider.notifier).state = DateTime(now.year, now.month, now.day);
+            _isProgrammaticScrolling = false;
           }
           return;
         }
@@ -160,12 +181,20 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
         Future.delayed(const Duration(milliseconds: 40), () {
           if (mounted) _scrollToCurrentTime(smooth: smooth, attempts: attempts + 1);
         });
+      } else {
+        setState(() {
+          _isProgrammaticScrolling = false;
+        });
       }
     });
   }
 
   void _scrollToTime(DateTime targetTime, {bool smooth = true, int attempts = 0, int layoutAttempts = 0}) {
     if (!_scrollController.hasClients) return;
+
+    if (attempts == 0 && layoutAttempts == 0) {
+      _isProgrammaticScrolling = true;
+    }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
@@ -192,7 +221,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
         _ensureDateInWindow(targetTime);
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
-          _scrollToTime(targetTime, smooth: smooth, attempts: attempts + 1);
+          _scrollToTime(targetTime, smooth: smooth, attempts: 0);
         });
         return;
       }
@@ -200,7 +229,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
       final nodeIndex = targetTime.hour * 2 + (targetTime.minute >= 30 ? 1 : 0);
       final targetIndex = dayOffset * _itemsPerDay + (nodeIndex + 1);
 
-      // Phase 1: Rough scroll near the target to trigger item mounting if not mounted yet
+      // Phase 1: jump (not animate) near the target to trigger item mounting.
+      // We always use jumpTo here so the node is mounted by the time Phase 2's
+      // postFrameCallback fires. animateTo is async and would leave the node unmounted.
       final targetCtx = _itemContexts[targetIndex];
       if (targetCtx == null && attempts == 0) {
         final viewportHeight = _scrollController.position.viewportDimension;
@@ -209,15 +240,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
         final targetRough = rough.clamp(0.0, _scrollController.position.maxScrollExtent);
 
         if ((_scrollController.offset - targetRough).abs() > 50.0) {
-          if (smooth) {
-            _scrollController.animateTo(
-              targetRough,
-              duration: const Duration(milliseconds: 500),
-              curve: Curves.easeInOutCubic,
-            );
-          } else {
-            _scrollController.jumpTo(targetRough);
-          }
+          _scrollController.jumpTo(targetRough);
         }
       }
 
@@ -242,16 +265,29 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
             final target = (nodeTopInScroll - (viewportHeight - nodeHeight) / 2)
                 .clamp(0.0, _scrollController.position.maxScrollExtent);
 
-            if ((scrollOffset - target).abs() < 2.0) return;
+            if ((scrollOffset - target).abs() < 2.0) {
+              _isProgrammaticScrolling = false;
+              ref.read(selectedDateProvider.notifier).state = DateTime(targetTime.year, targetTime.month, targetTime.day);
+              return;
+            }
 
             if (smooth) {
               _scrollController.animateTo(
                 target,
                 duration: const Duration(milliseconds: 500),
                 curve: Curves.easeInOutCubic,
-              );
+              ).then((_) {
+                if (mounted) {
+                  ref.read(selectedDateProvider.notifier).state = DateTime(targetTime.year, targetTime.month, targetTime.day);
+                  setState(() {
+                    _isProgrammaticScrolling = false;
+                  });
+                }
+              });
             } else {
               _scrollController.jumpTo(target);
+              ref.read(selectedDateProvider.notifier).state = DateTime(targetTime.year, targetTime.month, targetTime.day);
+              _isProgrammaticScrolling = false;
             }
             return;
           }
@@ -263,6 +299,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
             if (mounted) {
               _scrollToTime(targetTime, smooth: smooth, attempts: attempts + 1);
             }
+          });
+        } else {
+          setState(() {
+            _isProgrammaticScrolling = false;
           });
         }
       });
@@ -381,7 +421,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
   }
 
   void _onScroll() {
-    if (_isShiftingWindow || !_scrollController.hasClients) return;
+    if (_isShiftingWindow || _isProgrammaticScrolling || !_scrollController.hasClients) return;
 
     final offset = _scrollController.offset;
     _savedScrollOffset = offset;
@@ -517,6 +557,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
     ref.read(selectedDateProvider.notifier).state = date;
     if (_isScrollingFromList) return;
 
+    if (attempts == 0) {
+      _isProgrammaticScrolling = true;
+    }
+
     final dayOffset = _dateToDayOffset(date);
     
     // If target is outside the current window, shift the window first.
@@ -524,7 +568,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
       _ensureDateInWindow(date);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        _goToDate(date, attempts: attempts + 1);
+        _goToDate(date, attempts: 0);
       });
       return;
     }
@@ -561,13 +605,22 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
           final nodeTopInScroll = scrollOffset + (nodeTopOnScreen - viewportTopOnScreen);
           final target = nodeTopInScroll.clamp(0.0, _scrollController.position.maxScrollExtent);
 
-          if ((scrollOffset - target).abs() < 2.0) return;
+          if ((scrollOffset - target).abs() < 2.0) {
+            _isProgrammaticScrolling = false;
+            return;
+          }
 
           _scrollController.animateTo(
             target,
             duration: const Duration(milliseconds: 500),
             curve: Curves.easeInOut,
-          );
+          ).then((_) {
+            if (mounted) {
+              setState(() {
+                _isProgrammaticScrolling = false;
+              });
+            }
+          });
           return;
         }
       }
@@ -578,6 +631,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
           if (mounted) {
             _goToDate(date, attempts: attempts + 1);
           }
+        });
+      } else {
+        setState(() {
+          _isProgrammaticScrolling = false;
         });
       }
     });
@@ -596,16 +653,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
 
     _windowStartDate = _today.add(Duration(days: newStartDiff));
 
-    final dayOffset = _dateToDayOffset(date);
-    final targetOffset = dayOffset * _dayHeight;
-
     setState(() {});
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.jumpTo(targetOffset);
-      }
-    });
   }
 
   void _showColorMarkDialog() {
@@ -769,7 +817,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
   @override
   Widget build(BuildContext context) {
     ref.listen<DateTime>(selectedDateProvider, (previous, next) {
-      if (next != null) {
+      if (next != null && !_isProgrammaticScrolling) {
         _goToDate(next);
       }
     });
@@ -1026,6 +1074,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
                             }
 
                             final bool finalIsSelected = isDraggedSelected || isStandardNodeSelected;
+                            final bool isMultiSelect = isDraggedSelected || (isUserSelected && selectEvent.endTime != null);
 
                             final inputMinutes = currentInputTime.hour * 60 + currentInputTime.minute;
                             final now = TimeOfDay.now();
@@ -1059,6 +1108,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
                                   key: ValueKey('n_${dayOffset}_${nodeIndex}'),
                                   time: time,
                                   isSelected: finalIsSelected,
+                                  isMultiSelect: isMultiSelect,
                                   isDraggedSelected: isDraggedSelected,
                                   isCurrentTime: isStandardNodeCurrentTime,
                                   onTap: () => _handleNodeTap(date, time),
@@ -1250,6 +1300,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
 class _EmptyTimeNode extends StatelessWidget {
   final TimeOfDay time;
   final bool isSelected;
+  final bool isMultiSelect;
   final bool isDraggedSelected;
   final bool isCurrentTime;
   final VoidCallback onTap;
@@ -1259,6 +1310,7 @@ class _EmptyTimeNode extends StatelessWidget {
     super.key,
     required this.time,
     required this.isSelected,
+    this.isMultiSelect = false,
     this.isDraggedSelected = false,
     this.isCurrentTime = false,
     required this.onTap,
@@ -1270,9 +1322,10 @@ class _EmptyTimeNode extends StatelessWidget {
     final theme = Theme.of(context);
     final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
     final distinctColor = theme.colorScheme.secondary;
+    final bool isSingleSelected = isSelected && !isMultiSelect;
 
     final circleColor = isSelected
-        ? theme.colorScheme.primary
+        ? (isSingleSelected ? Colors.transparent : theme.colorScheme.primary)
         : (isCurrentTime ? distinctColor : theme.colorScheme.outlineVariant);
 
     final double circleSize = isSelected ? 16 : (isCurrentTime ? 12 : 8);
@@ -1295,11 +1348,15 @@ class _EmptyTimeNode extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(isDraggedSelected ? 4 : 16),
           color: isSelected
-              ? theme.colorScheme.primary.withValues(alpha: 0.08)
+              ? (isSingleSelected
+                  ? theme.colorScheme.primary.withValues(alpha: 0.04)
+                  : theme.colorScheme.primary.withValues(alpha: 0.08))
               : (isCurrentTime ? distinctColor.withValues(alpha: 0.04) : Colors.transparent),
           border: Border.all(
             color: isSelected && !isDraggedSelected
-                ? theme.colorScheme.primary.withValues(alpha: 0.15)
+                ? (isSingleSelected
+                    ? theme.colorScheme.primary.withValues(alpha: 0.25)
+                    : theme.colorScheme.primary.withValues(alpha: 0.15))
                 : (isCurrentTime ? distinctColor.withValues(alpha: 0.1) : Colors.transparent),
             width: 1,
           ),
@@ -1317,6 +1374,9 @@ class _EmptyTimeNode extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: circleColor,
                     shape: BoxShape.circle,
+                    border: isSingleSelected
+                        ? Border.all(color: theme.colorScheme.primary, width: 2)
+                        : null,
                     boxShadow: isSelected
                         ? [
                             BoxShadow(
@@ -1335,29 +1395,40 @@ class _EmptyTimeNode extends StatelessWidget {
                               ]
                             : null),
                   ),
-                  child: isSelected
+                  child: isSingleSelected
                       ? Center(
                           child: Container(
-                            width: 6,
-                            height: 6,
-                            decoration: const BoxDecoration(
-                              color: Colors.white,
+                            width: 4,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary,
                               shape: BoxShape.circle,
                             ),
                           ),
                         )
-                      : (isCurrentTime
+                      : (isSelected
                           ? Center(
                               child: Container(
-                                width: 4,
-                                height: 4,
+                                width: 6,
+                                height: 6,
                                 decoration: const BoxDecoration(
                                   color: Colors.white,
                                   shape: BoxShape.circle,
                                 ),
                               ),
                             )
-                          : null),
+                          : (isCurrentTime
+                              ? Center(
+                                  child: Container(
+                                    width: 4,
+                                    height: 4,
+                                    decoration: const BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                )
+                              : null)),
                 ),
               ),
             ),
@@ -1418,9 +1489,9 @@ class _SelectedTimeNode extends StatelessWidget {
         margin: const EdgeInsets.only(left: 0.0, right: 4.0, top: 2.0, bottom: 2.0),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          color: theme.colorScheme.primary.withValues(alpha: 0.08),
+          color: theme.colorScheme.primary.withValues(alpha: 0.04),
           border: Border.all(
-            color: theme.colorScheme.primary.withValues(alpha: 0.15),
+            color: theme.colorScheme.primary.withValues(alpha: 0.25),
             width: 1,
           ),
         ),
@@ -1435,8 +1506,9 @@ class _SelectedTimeNode extends StatelessWidget {
                   width: 16,
                   height: 16,
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.primary,
+                    color: Colors.transparent,
                     shape: BoxShape.circle,
+                    border: Border.all(color: theme.colorScheme.primary, width: 2),
                     boxShadow: [
                       BoxShadow(
                         color: theme.colorScheme.primary.withValues(alpha: 0.3),
@@ -1447,10 +1519,10 @@ class _SelectedTimeNode extends StatelessWidget {
                   ),
                   child: Center(
                     child: Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
+                      width: 4,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
                         shape: BoxShape.circle,
                       ),
                     ),
