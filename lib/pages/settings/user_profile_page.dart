@@ -10,8 +10,10 @@ import 'package:qnote_flutter/models/user_profile.dart';
 import 'package:qnote_flutter/providers/user_profile_provider.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
+import 'package:qnote_flutter/widgets/birthday_picker.dart';
 import 'dart:math' as math;
 import 'package:fl_chart/fl_chart.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:qnote_flutter/models/weight_record.dart';
 
 class UserProfilePage extends ConsumerStatefulWidget {
@@ -27,6 +29,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   final _weightController = TextEditingController();
   final _ageController = TextEditingController();
   DateTime? _birthday;
+  String? _gender;
   DateTime _weightDate = DateTime.now();
   bool _showWeightHistory = false;
   int _historyTab = 0; // 0: 折线趋势图, 1: 历史记录列表
@@ -55,6 +58,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
         _nicknameController.text = profile.nickname ?? '';
         _heightController.text = profile.height?.toString() ?? '';
         _avatarPath = profile.avatarPath;
+        _gender = profile.gender;
         if (profile.birthday != null) {
           _birthday = DateTime.tryParse(profile.birthday!);
         }
@@ -102,13 +106,12 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     });
   }
 
-  Future<void> _showBirthdayPicker(DatePickerMode initialMode) async {
-    final picked = await showDatePicker(
+  Future<void> _showBirthdayPicker() async {
+    final picked = await showBirthdayPicker(
       context: context,
       initialDate: _birthday ?? DateTime(2000, 1, 1),
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
-      initialDatePickerMode: initialMode,
     );
     if (picked != null && mounted) {
       setState(() {
@@ -123,14 +126,18 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     final image = await GalleryHelper.pickSingleImage(context);
     if (image == null) return;
 
+    // Add cropping step
+    final croppedFile = await GalleryHelper.cropImage(context, image.path);
+    if (croppedFile == null) return;
+
     String savedPath;
     if (kIsWeb) {
-      final bytes = await image.readAsBytes();
+      final bytes = await croppedFile.readAsBytes();
       final base64Str = base64Encode(bytes);
       final ext = image.path.contains('.png') ? 'png' : 'jpeg';
       savedPath = 'data:image/$ext;base64,$base64Str';
     } else {
-      final file = File(image.path);
+      final file = File(croppedFile.path);
       savedPath = await _imageRepo.saveImage(file, subfolder: 'avatar');
     }
 
@@ -163,6 +170,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
         birthday: _birthday?.toIso8601String().split('T').first,
         height: double.tryParse(_heightController.text),
         avatarPath: _avatarPath,
+        gender: _gender,
         updatedAt: DateTime.now(),
       );
       await notifier.save(profile);
@@ -382,97 +390,120 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
           const SizedBox(height: 20),
           Divider(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4), thickness: 1),
           const SizedBox(height: 16),
-          // Birthday Selector Row
+          // Gender and Birthday Row
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.cake_outlined, size: 18, color: theme.colorScheme.onSurfaceVariant),
-              const SizedBox(width: 8),
-              Text(
-                '出生年月',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              // Year
+              // Gender Section
               Expanded(
-                child: GestureDetector(
-                  onTap: () => _showBirthdayPicker(DatePickerMode.year),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                flex: 4,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
+                        Icon(Icons.wc_outlined, size: 16, color: theme.colorScheme.onSurfaceVariant),
+                        const SizedBox(width: 6),
                         Text(
-                          _birthday != null ? DateFormat('yyyy年').format(_birthday!) : '年',
-                          style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                          '性别',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                        Icon(Icons.keyboard_arrow_down, size: 14, color: theme.colorScheme.onSurfaceVariant),
                       ],
                     ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Month
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => _showBirthdayPicker(DatePickerMode.day),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    const SizedBox(height: 10),
+                    Row(
                       children: [
-                        Text(
-                          _birthday != null ? DateFormat('MM月').format(_birthday!) : '月',
-                          style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
-                        ),
-                        Icon(Icons.keyboard_arrow_down, size: 14, color: theme.colorScheme.onSurfaceVariant),
+                        _buildGenderOption(theme, '男', 'male'),
+                        const SizedBox(width: 8),
+                        _buildGenderOption(theme, '女', 'female'),
                       ],
                     ),
-                  ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 8),
-              // Day
+              const SizedBox(width: 16),
+              // Birthday Section
               Expanded(
-                child: GestureDetector(
-                  onTap: () => _showBirthdayPicker(DatePickerMode.day),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                flex: 5,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
+                        Icon(Icons.cake_outlined, size: 16, color: theme.colorScheme.onSurfaceVariant),
+                        const SizedBox(width: 6),
                         Text(
-                          _birthday != null ? DateFormat('dd日').format(_birthday!) : '日',
-                          style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                          '出生年月',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                        Icon(Icons.keyboard_arrow_down, size: 14, color: theme.colorScheme.onSurfaceVariant),
                       ],
                     ),
-                  ),
+                    const SizedBox(height: 10),
+                    GestureDetector(
+                      onTap: () => _showBirthdayPicker(),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              _birthday != null 
+                                  ? DateFormat('yyyy-MM-dd').format(_birthday!) 
+                                  : '选择日期',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                            Icon(Icons.calendar_today, size: 12, color: theme.colorScheme.onSurfaceVariant),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildGenderOption(ThemeData theme, String label, String value) {
+    final isSelected = _gender == value;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _gender = value),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? theme.colorScheme.primaryContainer.withValues(alpha: 0.15) : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected ? theme.colorScheme.primary : Colors.transparent,
+              width: 1.5,
+            ),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -82,13 +82,20 @@ class DiaryInputBar extends ConsumerStatefulWidget {
   ConsumerState<DiaryInputBar> createState() => _DiaryInputBarState();
 }
 
-class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
+class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
+    with TickerProviderStateMixin {
   bool _isExpanded = true;
   bool _isExtracting = false;
   _ExtractPhase _extractPhase = _ExtractPhase.idle;
 
   List<_Draft> _drafts = [];
   int _activeDraftIndex = 0;
+
+  List<_Draft>? _preExtractDrafts;
+  int? _preExtractActiveIndex;
+  String? _preExtractText;
+  late AnimationController _undoController;
+  bool _canUndo = false;
 
   final TextEditingController _textController = TextEditingController();
   final FocusNode _textFocusNode = FocusNode();
@@ -120,6 +127,20 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
     super.initState();
     _drafts = [_Draft(id: const Uuid().v4())];
     _textController.addListener(_onTextChanged);
+    _undoController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 5),
+    );
+    _undoController.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        setState(() {
+          _canUndo = false;
+        });
+        _preExtractDrafts = null;
+        _preExtractActiveIndex = null;
+        _preExtractText = null;
+      }
+    });
   }
 
   @override
@@ -128,6 +149,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
     _textController.dispose();
     _textFocusNode.dispose();
     _shortcutScrollController.dispose();
+    _undoController.dispose();
     _removeModelMenuOverlay();
     for (final c in _formControllers.values) {
       c.dispose();
@@ -337,6 +359,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
 
   void _clearCurrentDraft() {
     _formControllers.clear();
+    _undoController.stop();
     final currentTimeline = ref.read(diaryInputTimeProvider);
     final selectedDate = ref.read(selectedDateProvider);
     setState(() {
@@ -352,6 +375,10 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
             : null,
       );
       _textController.text = '';
+      _canUndo = false;
+      _preExtractDrafts = null;
+      _preExtractActiveIndex = null;
+      _preExtractText = null;
     });
   }
 
@@ -694,6 +721,10 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
       }
 
       if (results.isNotEmpty) {
+        final savedDrafts = List<_Draft>.from(_drafts);
+        final savedActiveIndex = _activeDraftIndex;
+        final savedText = _textController.text;
+
         final newDrafts = <_Draft>[];
         for (int i = 0; i < results.length; i++) {
           final result = results[i];
@@ -844,7 +875,13 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
           _activeDraftIndex = 0;
           _textController.text = _drafts[0].inputText;
           _extractPhase = _ExtractPhase.idle;
+          _canUndo = true;
+          _preExtractDrafts = savedDrafts;
+          _preExtractActiveIndex = savedActiveIndex;
+          _preExtractText = savedText;
         });
+
+        _undoController.forward(from: 0);
 
         // Explicitly sync the AI-extracted time of the first draft to the timeline selection
         final firstDraft = newDrafts[0];
@@ -904,6 +941,35 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
     } finally {
       setState(() => _isExtracting = false);
     }
+  }
+
+  void _undoExtract() {
+    if (!_canUndo || _preExtractDrafts == null) return;
+
+    _undoController.stop();
+    _formControllers.clear();
+
+    final selectedDate = ref.read(selectedDateProvider);
+    final restoredDraft = _preExtractDrafts![_preExtractActiveIndex ?? 0];
+
+    setState(() {
+      _drafts = _preExtractDrafts!;
+      _activeDraftIndex = _preExtractActiveIndex ?? 0;
+      _textController.text = _preExtractText ?? '';
+      _canUndo = false;
+      _preExtractDrafts = null;
+      _preExtractActiveIndex = null;
+      _preExtractText = null;
+    });
+
+    final targetDate = _calculateStartDateTime(restoredDraft, selectedDate);
+    final targetEndDate = restoredDraft.endTime != null ? _calculateEndDateTime(restoredDraft, selectedDate) : null;
+    ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+      restoredDraft.startTime,
+      endTime: restoredDraft.endTime,
+      date: targetDate,
+      endDate: targetEndDate,
+    );
   }
 
   void _showModelMenu() async {
@@ -1085,6 +1151,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
 
     ref.read(diaryInputTimeProvider.notifier).state = null;
     ref.read(currentInputTimeProvider.notifier).state = TimeOfDay.now();
+    _undoController.stop();
     setState(() {
       _drafts = [
         _Draft(
@@ -1094,6 +1161,10 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
       ];
       _activeDraftIndex = 0;
       _textController.text = '';
+      _canUndo = false;
+      _preExtractDrafts = null;
+      _preExtractActiveIndex = null;
+      _preExtractText = null;
     });
 
     if (mounted) {
@@ -2282,13 +2353,15 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
           ),
           const SizedBox(width: 12),
           GestureDetector(
-            onTap: _handleAiExtract,
-            onLongPress: _showModelMenu,
+            onTap: _canUndo ? _undoExtract : _handleAiExtract,
+            onLongPress: _canUndo ? null : _showModelMenu,
             child: Container(
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                color: _canUndo
+                    ? theme.colorScheme.error.withValues(alpha: 0.08)
+                    : theme.colorScheme.primary.withValues(alpha: 0.08),
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
@@ -2298,28 +2371,55 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar> {
                   ),
                 ],
               ),
-              child: _isExtracting
-                  ? Center(
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: _extractPhase == _ExtractPhase.sending
-                              ? theme.colorScheme.primary
-                              : theme.colorScheme.tertiary,
-                        ),
+              child: _canUndo
+                  ? AnimatedBuilder(
+                      animation: _undoController,
+                      builder: (context, child) {
+                        return Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            SizedBox(
+                              width: 40,
+                              height: 40,
+                              child: CustomPaint(
+                                painter: _UndoCountdownPainter(
+                                  progress: _undoController.value,
+                                  color: theme.colorScheme.error,
+                                ),
+                              ),
+                            ),
+                            child!,
+                          ],
+                        );
+                      },
+                      child: Icon(
+                        Icons.undo,
+                        size: 18,
+                        color: theme.colorScheme.error,
                       ),
                     )
-                  : Center(
-                      child: Icon(
-                        Icons.auto_awesome,
-                        size: 20,
-                        color: isExtractButtonEnabled
-                            ? theme.colorScheme.primary
-                            : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
-                      ),
-                    ),
+                  : _isExtracting
+                      ? Center(
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: _extractPhase == _ExtractPhase.sending
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.tertiary,
+                            ),
+                          ),
+                        )
+                      : Center(
+                          child: Icon(
+                            Icons.auto_awesome,
+                            size: 20,
+                            color: isExtractButtonEnabled
+                                ? theme.colorScheme.primary
+                                : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                          ),
+                        ),
             ),
           ),
           const SizedBox(width: 12),
@@ -2482,6 +2582,52 @@ class _ModelItem extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _UndoCountdownPainter extends CustomPainter {
+  final double progress;
+  final Color color;
+
+  _UndoCountdownPainter({
+    required this.progress,
+    required this.color,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.width - 4) / 2;
+
+    final bgPaint = Paint()
+      ..color = color.withValues(alpha: 0.15)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawCircle(center, radius, bgPaint);
+
+    final fgPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5
+      ..strokeCap = StrokeCap.round;
+
+    final sweepAngle = (1.0 - progress) * 2 * 3.141592653589793;
+    if (sweepAngle > 0.01) {
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        -3.141592653589793 / 2,
+        sweepAngle,
+        false,
+        fgPaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _UndoCountdownPainter oldDelegate) {
+    return oldDelegate.progress != progress || oldDelegate.color != color;
   }
 }
 

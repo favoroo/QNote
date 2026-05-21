@@ -10,6 +10,7 @@ import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
+import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/config/defaults.dart';
 
@@ -56,12 +57,19 @@ class _AiPageState extends ConsumerState<AiPage> {
   }
 
   Future<void> _initActiveModelId() async {
-    final roles = await ref.read(aiRolesProvider.future);
-    if (roles?.assistant != null) {
-      if (mounted) setState(() => _activeModelId = roles!.assistant);
-    } else {
-      final config = await ref.read(defaultAiConfigProvider.future);
-      if (config != null && mounted) setState(() => _activeModelId = config.id);
+    try {
+      final config = await AiRoleService.instance.getEffectiveConfigForRole('assistant');
+      if (mounted) {
+        setState(() => _activeModelId = config.id);
+      }
+    } catch (_) {
+      final roles = await ref.read(aiRolesProvider.future);
+      if (roles?.assistant != null) {
+        if (mounted) setState(() => _activeModelId = roles!.assistant);
+      } else {
+        final config = await ref.read(defaultAiConfigProvider.future);
+        if (config != null && mounted) setState(() => _activeModelId = config.id);
+      }
     }
   }
 

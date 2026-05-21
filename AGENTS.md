@@ -15,12 +15,29 @@ qnote_flutter/
 ├── lib/                    # Flutter Dart 源代码
 │   ├── main.dart           # 应用入口
 │   ├── app.dart            # App 配置
+│   ├── database_init.dart  # 数据库初始化（Web）
+│   ├── database_init_io.dart # 数据库初始化（IO 平台）
 │   ├── config/             # 配置文件
+│   │   ├── defaults.dart   # 默认提示词和快捷记录配置
+│   │   └── models.dart     # AI 服务商配置模型
 │   ├── core/               # 核心功能模块
+│   │   ├── ai/             # AI 服务
+│   │   ├── export/         # 数据导出
+│   │   ├── logger/         # 日志服务
+│   │   ├── network/        # 网络与同步
+│   │   ├── notification/   # 本地通知
+│   │   ├── router/         # 路由导航
+│   │   ├── storage/        # 数据存储层
+│   │   ├── theme/          # 主题定义
+│   │   └── utils/          # 工具函数
 │   ├── models/             # 数据模型
 │   ├── pages/              # 页面
+│   │   └── settings/       # 设置子页面
 │   ├── providers/          # 状态管理 (Provider)
 │   └── widgets/            # UI 组件
+│       ├── diary/          # 日记相关组件
+│       ├── notes/          # 笔记相关组件
+│       └── statistics/     # 统计相关组件
 ├── 01旧架构数据/            # 原始 React 项目（参考用）
 ├── web/                    # Web 平台配置
 └── AGENTS.md               # 本文件 - Agent 工作指南
@@ -38,8 +55,10 @@ qnote_flutter/
 |------|-------------|-----------|
 | 页面 | `lib/pages/diary_page.dart` | `src/pages/DiaryPage.tsx` |
 | 编辑器 | `lib/widgets/diary/diary_editor_view.dart` | `src/components/DiaryEditorView.tsx` |
+| 输入栏 | `lib/widgets/diary/diary_input_bar.dart` | - |
 | 列表项 | `lib/widgets/diary/diary_item.dart` | `src/components/DiaryItem.tsx` |
 | 批量管理 | `lib/widgets/diary/diary_batch_manage_view.dart` | `src/components/DiaryBatchManageView.tsx` |
+| 日期选择器 | `lib/widgets/diary/custom_date_picker.dart` | - |
 | 状态管理 | `lib/providers/diary_provider.dart` | `src/hooks/useDiary.ts` |
 | 数据存储 | `lib/core/storage/diary_repository.dart` | - |
 
@@ -75,6 +94,7 @@ qnote_flutter/
 | 角色配置 | `lib/core/ai/ai_role_service.dart` | - |
 | 状态管理 | `lib/providers/ai_provider.dart` | `src/context/AIContext.tsx` |
 | AI 配置模型 | `lib/models/ai_config.dart`, `lib/models/ai_roles.dart` | - |
+| AI 服务商模型 | `lib/config/models.dart` | - |
 | 默认提示词 | `lib/config/defaults.dart` | `src/config/defaults.ts` |
 
 ### 5. 数据统计 (Statistics)
@@ -115,6 +135,7 @@ qnote_flutter/
 | 文件夹存储 | `lib/core/storage/folder_repository.dart` | - |
 | 图片存储 | `lib/core/storage/image_repository.dart` | - |
 | 配置存储 | `lib/core/storage/config_repository.dart` | - |
+| 日期标记存储 | `lib/core/storage/color_mark_repository.dart` | - |
 
 ### 8. 同步与网络 (Sync)
 
@@ -147,7 +168,48 @@ qnote_flutter/
 | 模型 | `lib/models/user_profile.dart` | - |
 | 状态管理 | `lib/providers/user_profile_provider.dart` | `src/hooks/useUser.ts` |
 
-### 12. 其他核心模块
+### 12. 导航管理 (Navigation)
+
+核心功能：应用底部导航栏、侧边抽屉、顶部标签切换等导航状态管理
+
+| 模块 | Flutter 文件 | 说明 |
+|------|-------------|------|
+| 导航状态 | `lib/providers/navigation_provider.dart` | 导航索引状态管理 |
+| 底部导航栏 | `lib/widgets/bottom_nav_bar.dart` | 自定义底部导航栏 |
+| 侧边抽屉 | `lib/widgets/side_drawer.dart` | 侧边导航抽屉 |
+| 顶部标签切换 | `lib/widgets/top_tab_switcher.dart` | 顶部标签页切换器 |
+
+### 13. 文件夹管理 (Folder)
+
+核心功能：日记/笔记的分类文件夹管理
+
+| 模块 | Flutter 文件 | 说明 |
+|------|-------------|------|
+| 状态管理 | `lib/providers/folder_provider.dart` | 文件夹增删改查 |
+| 数据存储 | `lib/core/storage/folder_repository.dart` | 文件夹数据持久化 |
+| 数据模型 | `lib/models/folder.dart` | 文件夹数据结构 |
+
+### 14. 通用 UI 组件 (Common Widgets)
+
+核心功能：跨模块复用的通用 UI 组件
+
+| 模块 | Flutter 文件 | 说明 |
+|------|-------------|------|
+| 操作菜单 | `lib/widgets/action_menu.dart` | 下拉式操作菜单 |
+| 生日选择器 | `lib/widgets/birthday_picker.dart` | 年月日滚轮式生日选择 |
+| 日期输入框 | `lib/widgets/date_picker_input.dart` | 带颜色标记的日期输入 |
+| 日期范围选择 | `lib/widgets/date_range_picker.dart` | 日期范围选择器 |
+| 时间选择器 | `lib/widgets/time_picker.dart` | 时分选择器 |
+| 时间范围选择 | `lib/widgets/time_range_selector.dart` | 时间段选择器 |
+| 滚动时间选择 | `lib/widgets/time_scroll_picker.dart` | 滚轮式时间选择 |
+| 标签选择器 | `lib/widgets/tag_picker.dart` | 多选标签选择器 |
+| 下拉选择 | `lib/widgets/select.dart` | 可搜索多选下拉框 |
+| 搜索视图 | `lib/widgets/search_view.dart` | 带过滤和标签建议的搜索 |
+| 统计卡片 | `lib/widgets/stats_card.dart` | 统计数据卡片展示 |
+| 统一图片 | `lib/widgets/unified_image.dart` | 本地/网络图片统一展示 |
+| 调试控制台 | `lib/widgets/debug_console.dart` | 调试日志显示面板 |
+
+### 15. 其他核心模块
 
 | 模块 | Flutter 文件 | 说明 |
 |------|-------------|------|
@@ -156,6 +218,8 @@ qnote_flutter/
 | 导出 | `lib/core/export/export_service.dart` | 数据导出 |
 | 日志 | `lib/core/logger/logger_service.dart` | 调试日志 |
 | 返回处理 | `lib/core/back_handler.dart` | 物理返回键 |
+| 图片选择 | `lib/core/utils/gallery_helper.dart` | 相机/相册图片选择 |
+| Delta 转换 | `lib/core/utils/delta_markdown.dart` | Delta JSON 转 Markdown/纯文本 |
 
 ---
 
@@ -169,6 +233,7 @@ qnote_flutter/
 | 文件夹 | `lib/models/folder.dart` | 分类文件夹 |
 | AI 配置 | `lib/models/ai_config.dart` | AI 服务配置 |
 | AI 角色 | `lib/models/ai_roles.dart` | AI 角色定义 |
+| AI 服务商 | `lib/config/models.dart` | AI 服务商配置模型及默认值 |
 | 用户资料 | `lib/models/user_profile.dart` | 用户身高体重等 |
 | WebDAV 配置 | `lib/models/webdav_config.dart` | 同步服务配置 |
 | 体重记录 | `lib/models/weight_record.dart` | 体重追踪 |
@@ -191,7 +256,7 @@ qnote_flutter/
 为了保持 QNote 应用的整体风格统一且具有现代高级感，后续 Agent 在设计或修改 UI 时，必须严格遵循以下设计规范（继承自旧架构 React Web 应用）：
 
 ### 1. 整体美学 (Overall Aesthetic)
-- **极简与纯净**：避免复杂的背景和生硬的线条，多使用留白（Padding / Margin）来区分视觉层级。
+- **信息密度优先**：优先保证内容可读和信息展示完整，在信息不拥挤的前提下再适当使用留白。避免为了"极简"而牺牲信息密度，导致用户需要频繁滚动才能看到完整内容。
 - **背景颜色**：页面的底层背景通常使用浅色/柔和色调，如 `colorScheme.surfaceContainerLowest.withValues(alpha: 0.5)`。
 - **阴影与质感**：广泛使用柔和、弥散的微阴影来突出卡片层级，避免使用强烈的投影。
 

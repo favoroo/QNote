@@ -9,6 +9,9 @@ class DiaryItem extends StatelessWidget {
   final VoidCallback? onTap;
   final void Function(DiaryRecord)? onEdit;
   final void Function(DiaryRecord)? onDelete;
+  final VoidCallback? onAiExtract;
+  final VoidCallback? onAiExtractLongPress;
+  final bool isExtracting;
 
   const DiaryItem({
     super.key,
@@ -16,6 +19,9 @@ class DiaryItem extends StatelessWidget {
     this.onTap,
     this.onEdit,
     this.onDelete,
+    this.onAiExtract,
+    this.onAiExtractLongPress,
+    this.isExtracting = false,
   });
 
   static const _tagIcons = <String, IconData>{
@@ -178,6 +184,37 @@ class DiaryItem extends StatelessWidget {
                             ),
                           ),
                         const Spacer(),
+                        if (onAiExtract != null)
+                          GestureDetector(
+                            onTap: isExtracting ? null : onAiExtract,
+                            onLongPress: isExtracting ? null : onAiExtractLongPress,
+                            child: Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                                shape: BoxShape.circle,
+                              ),
+                              child: isExtracting
+                                  ? Center(
+                                      child: SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 1.8,
+                                          color: theme.colorScheme.primary,
+                                        ),
+                                      ),
+                                    )
+                                  : Icon(
+                                      Icons.auto_awesome,
+                                      size: 14,
+                                      color: theme.colorScheme.primary.withValues(alpha: 0.8),
+                                    ),
+                            ),
+                          ),
+                        ),
+                        if (onAiExtract != null) const SizedBox(width: 4),
                         // More Button
                         IconButton(
                           key: actionMenuKey,

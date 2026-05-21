@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:qnote_flutter/config/defaults.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
@@ -305,7 +306,11 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         buffer.writeln('- **身高**: ${userProfile.height}cm');
       }
       if (userProfile.gender != null && userProfile.gender!.isNotEmpty) {
-        buffer.writeln('- **性别**: ${userProfile.gender}');
+        String genderLabel = userProfile.gender!;
+        if (genderLabel == 'male') genderLabel = '男';
+        else if (genderLabel == 'female') genderLabel = '女';
+        else if (genderLabel == 'other') genderLabel = '保密';
+        buffer.writeln('- **性别**: $genderLabel');
       }
       if (userProfile.weightHistory.isNotEmpty) {
         buffer.writeln('- **体重记录**:');
@@ -416,15 +421,13 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
     _streamingContent.clear();
 
     final aiService = _ref.read(aiServiceProvider);
-    final defaultConfig = await _ref.read(defaultAiConfigProvider.future);
-    if (defaultConfig != null) {
-      final roleSettings = await AiRoleService.instance.getSettingsForRole('assistant');
-      aiService.updateConfig(
-        defaultConfig,
-        temperature: roleSettings.temperature,
-        maxTokens: roleSettings.maxTokens,
-      );
-    }
+    final assistantConfig = await AiRoleService.instance.getEffectiveConfigForRole('assistant');
+    final roleSettings = await AiRoleService.instance.getSettingsForRole('assistant');
+    aiService.updateConfig(
+      assistantConfig,
+      temperature: roleSettings.temperature,
+      maxTokens: roleSettings.maxTokens,
+    );
 
     // 6. Build enriched messages history to send to LLM (with system instruction and contextualized last message)
     final List<ChatMessage> messagesToSend = [];
@@ -458,10 +461,15 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
           messages: [...updatedMessages, assistantMessage],
         );
       }
-    } catch (_) {
+    } catch (e, stackTrace) {
+      LoggerService.instance.logAI(
+        'AI对话发送失败: $e',
+        level: LogLevel.error,
+        details: stackTrace.toString(),
+      );
       final errorMessage = ChatMessage(
         role: 'assistant',
-        content: '抱歉，发生了错误，请稍后重试。',
+        content: '抱歉，发生了错误，请稍后重试。\n\n错误详情: $e',
         timestamp: DateTime.now(),
       );
       state = state!.copyWith(

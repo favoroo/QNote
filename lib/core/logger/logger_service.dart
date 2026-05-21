@@ -71,7 +71,8 @@ class LoggerService extends ChangeNotifier {
 
     debugPrint = (String? message, {int? wrapWidth}) {
       if (message != null && message.isNotEmpty) {
-        final lines = message.split('\n');
+        final filteredMessage = _filterSensitiveData(message);
+        final lines = filteredMessage.split('\n');
         for (final line in lines) {
           if (line.trim().isNotEmpty) {
             _addEntry(
@@ -102,6 +103,29 @@ class LoggerService extends ChangeNotifier {
       logger.error(errorMsg, category: LogCategory.system, stackTrace: stack);
       return true;
     };
+  }
+
+  String _filterSensitiveData(String message) {
+    if (message.length < 500) return message;
+
+    String result = message;
+
+    result = result.replaceAllMapped(
+      RegExp(r'data:image/[^;]+;base64,[A-Za-z0-9+/=]{200,}'),
+      (match) => 'data:image/*;base64;<IMAGE_DATA>',
+    );
+
+    result = result.replaceAllMapped(
+      RegExp(r'"/[A-Za-z0-9+/=]{1000,}"'),
+      (match) => '"<BASE64_IMAGE_STRING>"',
+    );
+
+    result = result.replaceAllMapped(
+      RegExp(r'(?:^|\n)([A-Za-z0-9+/=]{3000,})(?:\n|$)'),
+      (match) => '\n<LONG_BASE64_DATA_OMITTED>\n',
+    );
+
+    return result;
   }
 
   void info(

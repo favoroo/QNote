@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:wechat_assets_picker/wechat_assets_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 
 class GalleryHelper {
   static final ImagePicker _imagePicker = ImagePicker();
@@ -42,6 +43,36 @@ class GalleryHelper {
         );
       }
     }
+  }
+
+  /// Crops an image file.
+  static Future<CroppedFile?> cropImage(BuildContext context, String sourcePath) async {
+    final theme = Theme.of(context);
+    return await ImageCropper().cropImage(
+      sourcePath: sourcePath,
+      aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+      uiSettings: [
+        AndroidUiSettings(
+          toolbarTitle: '裁剪头像',
+          toolbarColor: theme.colorScheme.surface,
+          toolbarWidgetColor: theme.colorScheme.onSurface,
+          activeControlsWidgetColor: theme.colorScheme.primary,
+          initAspectRatio: CropAspectRatioPreset.square,
+          lockAspectRatio: true,
+          hideBottomControls: false,
+        ),
+        IOSUiSettings(
+          title: '裁剪头像',
+          aspectRatioLockEnabled: true,
+          resetAspectRatioEnabled: false,
+        ),
+        WebUiSettings(
+          context: context,
+          presentStyle: WebPresentStyle.dialog,
+          size: const CropperSize(width: 480, height: 480),
+        ),
+      ],
+    );
   }
 
   /// Picks multiple images and returns a list of XFile.

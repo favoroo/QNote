@@ -38,13 +38,12 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
   bool _isShiftingWindow = false;
   double? _shiftTargetOffset;
   final Map<int, BuildContext> _itemContexts = {};
+  final Map<int, double> _itemHeights = {};
   Timer? _autoScrollTimer;
   Offset? _lastDragPosition;
   bool _isScrollingFromList = false;
   bool _hasPerformedInitialScroll = false;
-  bool _isProgrammaticScrolling = false;
-
-  static double? _savedScrollOffset;
+  bool _isProgrammaticScrolling = true;
 
   @override
   void initState() {
@@ -53,18 +52,14 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
     final now = DateTime.now();
     _today = DateTime(now.year, now.month, now.day);
     _windowStartDate = _today.subtract(const Duration(days: 3));
-
-    // Use saved offset to restore scroll position when navigating back within the same session.
-    // But always mark _hasPerformedInitialScroll = false so that on first build after
-    // data loads, we re-scroll to current time (which also fixes the restored-offset-but-wrong-date bug).
-    final nodeIndex = now.hour * 2 + (now.minute >= 30 ? 1 : 0);
-    final initialOffset = _savedScrollOffset ?? (3 * _dayHeight + _dividerHeight + nodeIndex * _nodeHeight - 350.0);
-
-    _scrollController = ScrollController(initialScrollOffset: initialOffset.clamp(0.0, double.infinity));
-    _scrollController.addListener(_onScroll);
-
-    // Always perform an accurate scroll-to-current-time when entering/re-entering the page.
     _hasPerformedInitialScroll = false;
+    _itemContexts.clear();
+    _itemHeights.clear();
+
+    _scrollController = ScrollController(
+      keepScrollOffset: false,
+    );
+    _scrollController.addListener(_onScroll);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -73,240 +68,295 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
     });
   }
 
-  void _scrollToCurrentTime({bool smooth = true, int attempts = 0, int layoutAttempts = 0}) {
-    if (!_scrollController.hasClients) return;
+  double _estimateOffsetForIndex(int targetIndex) {
+    double offset = 0;
+    for (int i = 0; i < targetIndex; i++) {
+      if (_itemHeights.containsKey(i)) {
+        offset += _itemHeights[i]!;
+      } else if (i % _itemsPerDay == 0) {
+        offset += _dividerHeight;
+      } else {
+        offset += _nodeHeight;
+      }
+    }
+    return offset;
+  }
 
-    if (attempts == 0 && layoutAttempts == 0) {
-      _isProgrammaticScrolling = true;
+  static const double _averageRecordExtraHeight = 80.0;
+
+  double _estimateOffsetForTimeWithRecords(
+    DateTime targetTime,
+    Map<String, List<DiaryRecord>> recordsByDate,
+  ) {
+    final targetDate = DateTime(targetTime.year, targetTime.month, targetTime.day);
+    final dayOffset = _dateToDayOffset(targetDate);
+    final nodeIndex = targetTime.hour * 2 + (targetTime.minute >= 30 ? 1 : 0);
+
+    double offset = 0;
+    for (int d = 0; d <= dayOffset; d++) {
+      final date = _indexToDate(d);
+      final dateKey = '${date.year}-${date.month}-${date.day}';
+      final dayRecords = recordsByDate[dateKey] ?? [];
+
+      offset += _dividerHeight;
+
+      if (d < dayOffset) {
+        offset += 48 * _nodeHeight;
+        offset += dayRecords.length * _averageRecordExtraHeight;
+      } else {
+        offset += nodeIndex * _nodeHeight;
+        for (final r in dayRecords) {
+          final rNodeIndex = r.time.hour * 2 + (r.time.minute >= 30 ? 1 : 0);
+          if (rNodeIndex < nodeIndex) {
+            offset += _averageRecordExtraHeight;
+          }
+        }
+      }
+    }
+
+    return offset;
+  }
+
+  void _performInitialScrollToCurrentTime(
+    Map<String, List<DiaryRecord>> recordsByDate, {
+    int frameCount = 0,
+  }) {
+    if (!_scrollController.hasClients || !mounted) {
+      if (frameCount < 20) {
+        Future.delayed(const Duration(milliseconds: 50), () {
+          if (mounted) {
+            _performInitialScrollToCurrentTime(recordsByDate, frameCount: frameCount + 1);
+          }
+        });
+      }
+      return;
     }
 
     final now = DateTime.now();
-    final dayOffset = _dateToDayOffset(now);
-    if (dayOffset < 0 || dayOffset >= _windowDays) {
-      _ensureDateInWindow(now);
+    final estimatedOffset = _estimateOffsetForTimeWithRecords(now, recordsByDate);
+    final viewportHeight = _scrollController.position.viewportDimension;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final targetOffset = (estimatedOffset - viewportHeight / 2).clamp(0.0, maxScroll);
+
+    _isProgrammaticScrolling = true;
+    _scrollController.jumpTo(targetOffset);
+
+    if (frameCount < 3) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _scrollToCurrentTime(smooth: smooth, attempts: 0);
-      });
-      return;
-    }
-
-    // If the scroll position is not fully laid out yet (maxScrollExtent is stale/too small),
-    // defer and retry to avoid clamping the target scroll offset to a wrong position.
-    final expectedMinScroll = (_windowDays - 1) * _dayHeight;
-    if (_scrollController.position.maxScrollExtent < expectedMinScroll && layoutAttempts < 10) {
-      Future.delayed(const Duration(milliseconds: 30), () {
-        if (mounted) {
-          _scrollToCurrentTime(
-            smooth: smooth,
-            attempts: attempts,
-            layoutAttempts: layoutAttempts + 1,
-          );
-        }
-      });
-      return;
-    }
-
-    // Phase 1: jump (not animate) to near the target so the ListView renders the item.
-    // We always use jumpTo here because Phase 2 needs the node to be mounted and painted
-    // before it can read the RenderBox position. animateTo is async and won't have moved
-    // the scroll position by the time the next frame fires.
-    if (attempts == 0) {
-      final nodeIndex = now.hour * 2 + (now.minute >= 30 ? 1 : 0);
-      final viewportHeight = _scrollController.position.viewportDimension;
-      final rough = dayOffset * _dayHeight + _dividerHeight + nodeIndex * _nodeHeight
-          - (viewportHeight > 0 ? (viewportHeight - _nodeHeight) / 2 : 326.0);
-      final targetRough = rough.clamp(0.0, _scrollController.position.maxScrollExtent);
-      
-      // Jump only if meaningfully far from target to avoid jank when already near
-      if ((_scrollController.offset - targetRough).abs() > 50.0) {
-        _scrollController.jumpTo(targetRough);
-      }
-    }
-
-    // Phase 2: wait one frame then use the GlobalKey RenderBox for the exact position.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-
-      final keyCtx = _currentTimeNodeKey.currentContext;
-      if (keyCtx != null) {
-        // Read the node's actual pixel offset in the scroll coordinate space.
-        final renderBox = keyCtx.findRenderObject() as RenderBox?;
-        if (renderBox != null && renderBox.hasSize) {
-          final nodeHeight = renderBox.size.height;
-          // localToGlobal gives position relative to top-left of screen.
-          // We want the scroll offset that centres this node.
-          final viewportHeight = _scrollController.position.viewportDimension;
-          final scrollOffset = _scrollController.offset;
-          // Position of the node top relative to the viewport top:
-          final nodeTopOnScreen = renderBox.localToGlobal(Offset.zero).dy;
-          // Translate to scroll-space:
-          final nodeTopInScroll = scrollOffset + nodeTopOnScreen;
-          final target = (nodeTopInScroll - (viewportHeight - nodeHeight) / 2)
-              .clamp(0.0, _scrollController.position.maxScrollExtent);
-
-          // If we are already extremely close to the centered target (within 20 pixels),
-          // don't trigger any redundant scroll animation to keep the interface still
-          if ((scrollOffset - target).abs() < 20.0) {
-            _isProgrammaticScrolling = false;
-            final now = DateTime.now();
-            ref.read(selectedDateProvider.notifier).state = DateTime(now.year, now.month, now.day);
-            return;
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) {
+            _performInitialScrollToCurrentTime(recordsByDate, frameCount: frameCount + 1);
           }
-
-          if (smooth) {
-            _scrollController.animateTo(
-              target,
-              duration: const Duration(milliseconds: 500),
-              curve: Curves.easeInOutCubic,
-            ).then((_) {
-              if (mounted) {
-                ref.read(selectedDateProvider.notifier).state = DateTime(now.year, now.month, now.day);
-                setState(() {
-                  _isProgrammaticScrolling = false;
-                });
-              }
-            });
-          } else {
-            _scrollController.jumpTo(target);
-            ref.read(selectedDateProvider.notifier).state = DateTime(now.year, now.month, now.day);
-            _isProgrammaticScrolling = false;
-          }
-          return;
-        }
-      }
-
-      // GlobalKey not resolved yet — retry up to 8 times with short delay.
-      if (attempts < 8) {
-        Future.delayed(const Duration(milliseconds: 40), () {
-          if (mounted) _scrollToCurrentTime(smooth: smooth, attempts: attempts + 1);
         });
-      } else {
-        setState(() {
-          _isProgrammaticScrolling = false;
-        });
-      }
-    });
+      });
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _isProgrammaticScrolling = false;
+      });
+    }
+
+    ref.read(selectedDateProvider.notifier).state = DateTime(now.year, now.month, now.day);
   }
 
-  void _scrollToTime(DateTime targetTime, {bool smooth = true, int attempts = 0, int layoutAttempts = 0}) {
+  void _scrollToTarget({
+    required int targetIndex,
+    GlobalKey? targetKey,
+    bool smooth = true,
+    double alignment = 0.5,
+    int attempts = 0,
+    Map<String, List<DiaryRecord>>? recordsByDate,
+    DateTime? targetTime,
+  }) {
     if (!_scrollController.hasClients) return;
 
-    if (attempts == 0 && layoutAttempts == 0) {
+    if (attempts == 0) {
       _isProgrammaticScrolling = true;
     }
 
+    if (attempts > 15) {
+      _fallbackScroll(targetIndex, smooth, alignment);
+      return;
+    }
+
+    BuildContext? targetContext;
+    if (targetKey != null) {
+      targetContext = targetKey.currentContext;
+    }
+    targetContext ??= _itemContexts[targetIndex];
+
+    if (targetContext != null && targetContext.mounted) {
+      _scrollToContext(targetContext, smooth: smooth, alignment: alignment);
+      return;
+    }
+
+    double estimatedOffset;
+    if (attempts == 0 && recordsByDate != null && targetTime != null) {
+      estimatedOffset = _estimateOffsetForTimeWithRecords(targetTime, recordsByDate);
+    } else {
+      estimatedOffset = _estimateOffsetForIndex(targetIndex);
+    }
+    final viewportHeight = _scrollController.position.viewportDimension;
+    final targetOffset = (estimatedOffset - viewportHeight * alignment)
+        .clamp(0.0, _scrollController.position.maxScrollExtent);
+
+    _scrollController.jumpTo(targetOffset);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
-
-      // If the scroll position is not fully laid out yet (maxScrollExtent is stale/too small),
-      // defer and retry to avoid clamping the target scroll offset to a wrong position.
-      final expectedMinScroll = (_windowDays - 1) * _dayHeight;
-      if (_scrollController.position.maxScrollExtent < expectedMinScroll && layoutAttempts < 10) {
-        Future.delayed(const Duration(milliseconds: 30), () {
-          if (mounted) {
-            _scrollToTime(
-              targetTime,
-              smooth: smooth,
-              attempts: attempts,
-              layoutAttempts: layoutAttempts + 1,
-            );
-          }
-        });
-        return;
-      }
-
-      final dayOffset = _dateToDayOffset(targetTime);
-      if (dayOffset < 0 || dayOffset >= _windowDays) {
-        _ensureDateInWindow(targetTime);
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          _scrollToTime(targetTime, smooth: smooth, attempts: 0);
-        });
-        return;
-      }
-
-      final nodeIndex = targetTime.hour * 2 + (targetTime.minute >= 30 ? 1 : 0);
-      final targetIndex = dayOffset * _itemsPerDay + (nodeIndex + 1);
-
-      // Phase 1: jump (not animate) near the target to trigger item mounting.
-      // We always use jumpTo here so the node is mounted by the time Phase 2's
-      // postFrameCallback fires. animateTo is async and would leave the node unmounted.
-      final targetCtx = _itemContexts[targetIndex];
-      if (targetCtx == null && attempts == 0) {
-        final viewportHeight = _scrollController.position.viewportDimension;
-        final rough = dayOffset * _dayHeight + _dividerHeight + nodeIndex * _nodeHeight
-            - (viewportHeight > 0 ? (viewportHeight - _nodeHeight) / 2 : 326.0);
-        final targetRough = rough.clamp(0.0, _scrollController.position.maxScrollExtent);
-
-        if ((_scrollController.offset - targetRough).abs() > 50.0) {
-          _scrollController.jumpTo(targetRough);
-        }
-      }
-
-      // Phase 2: Once mounted, fine-tune using actual RenderBox coordinates to get perfect centering.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_scrollController.hasClients) return;
-
-        final targetCtx = _itemContexts[targetIndex];
-        if (targetCtx != null) {
-          final renderBox = targetCtx.findRenderObject() as RenderBox?;
-          if (renderBox != null && renderBox.hasSize) {
-            final nodeHeight = renderBox.size.height;
-            final viewportBox = _viewportKey.currentContext?.findRenderObject() as RenderBox?;
-            final viewportTopOnScreen = viewportBox?.localToGlobal(Offset.zero).dy ?? 0.0;
-            final nodeTopOnScreen = renderBox.localToGlobal(Offset.zero).dy;
-            
-            final viewportHeight = viewportBox?.size.height ?? _scrollController.position.viewportDimension;
-            final scrollOffset = _scrollController.offset;
-            
-            // Translate the screen-space position to scroll-container coordinates:
-            final nodeTopInScroll = scrollOffset + (nodeTopOnScreen - viewportTopOnScreen);
-            final target = (nodeTopInScroll - (viewportHeight - nodeHeight) / 2)
-                .clamp(0.0, _scrollController.position.maxScrollExtent);
-
-            if ((scrollOffset - target).abs() < 2.0) {
-              _isProgrammaticScrolling = false;
-              ref.read(selectedDateProvider.notifier).state = DateTime(targetTime.year, targetTime.month, targetTime.day);
-              return;
-            }
-
-            if (smooth) {
-              _scrollController.animateTo(
-                target,
-                duration: const Duration(milliseconds: 500),
-                curve: Curves.easeInOutCubic,
-              ).then((_) {
-                if (mounted) {
-                  ref.read(selectedDateProvider.notifier).state = DateTime(targetTime.year, targetTime.month, targetTime.day);
-                  setState(() {
-                    _isProgrammaticScrolling = false;
-                  });
-                }
-              });
-            } else {
-              _scrollController.jumpTo(target);
-              ref.read(selectedDateProvider.notifier).state = DateTime(targetTime.year, targetTime.month, targetTime.day);
-              _isProgrammaticScrolling = false;
-            }
-            return;
-          }
-        }
-
-        // Context or renderBox not resolved yet — retry with delay to let it build and render
-        if (attempts < 8) {
-          Future.delayed(const Duration(milliseconds: 40), () {
-            if (mounted) {
-              _scrollToTime(targetTime, smooth: smooth, attempts: attempts + 1);
-            }
-          });
-        } else {
-          setState(() {
-            _isProgrammaticScrolling = false;
-          });
+      Future.delayed(const Duration(milliseconds: 80), () {
+        if (mounted) {
+          _scrollToTarget(
+            targetIndex: targetIndex,
+            targetKey: targetKey,
+            smooth: smooth,
+            alignment: alignment,
+            attempts: attempts + 1,
+          );
         }
       });
     });
+  }
+
+  void _scrollToContext(BuildContext targetContext, {
+    bool smooth = true,
+    double alignment = 0.5,
+  }) {
+    if (!targetContext.mounted) return;
+
+    final renderBox = targetContext.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.hasSize) {
+      Scrollable.ensureVisible(
+        targetContext,
+        alignment: alignment,
+        duration: smooth ? const Duration(milliseconds: 400) : Duration.zero,
+        curve: Curves.easeOutCubic,
+      );
+      _finishProgrammaticScroll();
+      return;
+    }
+
+    final viewportBox = _viewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (viewportBox == null || !viewportBox.hasSize) {
+      Scrollable.ensureVisible(
+        targetContext,
+        alignment: alignment,
+        duration: smooth ? const Duration(milliseconds: 400) : Duration.zero,
+        curve: Curves.easeOutCubic,
+      );
+      _finishProgrammaticScroll();
+      return;
+    }
+
+    final viewportHeight = viewportBox.size.height;
+    final nodeHeight = renderBox.size.height;
+    final viewportTopOnScreen = viewportBox.localToGlobal(Offset.zero).dy;
+    final nodeTopOnScreen = renderBox.localToGlobal(Offset.zero).dy;
+    final scrollOffset = _scrollController.offset;
+    final nodeTopInScroll = scrollOffset + (nodeTopOnScreen - viewportTopOnScreen);
+    final preciseTarget = (nodeTopInScroll - (viewportHeight - nodeHeight) * alignment)
+        .clamp(0.0, _scrollController.position.maxScrollExtent);
+
+    if ((scrollOffset - preciseTarget).abs() < 5.0) {
+      _finishProgrammaticScroll();
+      return;
+    }
+
+    if (smooth) {
+      _scrollController.animateTo(
+        preciseTarget,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeOutCubic,
+      ).then((_) {
+        if (mounted) {
+          _finishProgrammaticScroll();
+        }
+      });
+    } else {
+      _scrollController.jumpTo(preciseTarget);
+      _finishProgrammaticScroll();
+    }
+  }
+
+  void _fallbackScroll(int targetIndex, bool smooth, double alignment) {
+    final estimatedOffset = _estimateOffsetForIndex(targetIndex);
+    final viewportHeight = _scrollController.position.viewportDimension;
+    final targetOffset = (estimatedOffset - viewportHeight * alignment)
+        .clamp(0.0, _scrollController.position.maxScrollExtent);
+
+    if (smooth) {
+      _scrollController.animateTo(
+        targetOffset,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeOutCubic,
+      ).then((_) {
+        if (mounted) {
+          _finishProgrammaticScroll();
+        }
+      });
+    } else {
+      _scrollController.jumpTo(targetOffset);
+      _finishProgrammaticScroll();
+    }
+  }
+
+  void _finishProgrammaticScroll() {
+    _isProgrammaticScrolling = false;
+  }
+
+  void _scrollToCurrentTime({
+    bool smooth = true,
+    Map<String, List<DiaryRecord>>? recordsByDate,
+  }) {
+    if (!_scrollController.hasClients) return;
+
+    final now = DateTime.now();
+    final dayOffset = _dateToDayOffset(now);
+
+    if (dayOffset < 0 || dayOffset >= _windowDays) {
+      _ensureDateInWindow(now);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _scrollToCurrentTime(smooth: smooth, recordsByDate: recordsByDate);
+      });
+      return;
+    }
+
+    final nodeIndex = now.hour * 2 + (now.minute >= 30 ? 1 : 0);
+    final targetIndex = dayOffset * _itemsPerDay + (nodeIndex + 1);
+
+    _scrollToTarget(
+      targetIndex: targetIndex,
+      targetKey: _currentTimeNodeKey,
+      smooth: smooth,
+      alignment: 0.5,
+      recordsByDate: recordsByDate,
+      targetTime: now,
+    );
+
+    ref.read(selectedDateProvider.notifier).state = DateTime(now.year, now.month, now.day);
+  }
+
+  void _scrollToTime(DateTime targetTime, {bool smooth = true}) {
+    if (!_scrollController.hasClients) return;
+
+    final dayOffset = _dateToDayOffset(targetTime);
+
+    if (dayOffset < 0 || dayOffset >= _windowDays) {
+      _ensureDateInWindow(targetTime);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _scrollToTime(targetTime, smooth: smooth);
+      });
+      return;
+    }
+
+    final nodeIndex = targetTime.hour * 2 + (targetTime.minute >= 30 ? 1 : 0);
+    final targetIndex = dayOffset * _itemsPerDay + (nodeIndex + 1);
+
+    _scrollToTarget(
+      targetIndex: targetIndex,
+      smooth: smooth,
+      alignment: 0.5,
+    );
+
+    ref.read(selectedDateProvider.notifier).state = DateTime(targetTime.year, targetTime.month, targetTime.day);
   }
 
   void _handleNodeTap(DateTime date, TimeOfDay time) {
@@ -415,6 +465,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
     WidgetsBinding.instance.removeObserver(this);
     _stopAutoScrollTimer();
     _itemContexts.clear();
+    _itemHeights.clear();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
@@ -424,8 +475,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
     if (_isShiftingWindow || _isProgrammaticScrolling || !_scrollController.hasClients) return;
 
     final offset = _scrollController.offset;
-    _savedScrollOffset = offset;
-
     final maxScroll = _scrollController.position.maxScrollExtent;
     final viewportHeight = _scrollController.position.viewportDimension;
 
@@ -553,91 +602,27 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
-  void _goToDate(DateTime date, {int attempts = 0}) {
+  void _goToDate(DateTime date) {
     ref.read(selectedDateProvider.notifier).state = date;
     if (_isScrollingFromList) return;
 
-    if (attempts == 0) {
-      _isProgrammaticScrolling = true;
-    }
-
     final dayOffset = _dateToDayOffset(date);
-    
-    // If target is outside the current window, shift the window first.
+
     if (dayOffset < 0 || dayOffset >= _windowDays) {
       _ensureDateInWindow(date);
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _goToDate(date, attempts: 0);
+        if (mounted) _goToDate(date);
       });
       return;
     }
 
     final targetIndex = dayOffset * _itemsPerDay;
 
-    // Phase 1: Rough scroll near the target to trigger item mounting if not mounted yet
-    final targetCtx = _itemContexts[targetIndex];
-    if (targetCtx == null && attempts == 0) {
-      final rough = dayOffset * _dayHeight;
-      final targetRough = rough.clamp(0.0, _scrollController.position.maxScrollExtent);
-
-      if ((_scrollController.offset - targetRough).abs() > 50.0) {
-        _scrollController.jumpTo(targetRough);
-      }
-    }
-
-    // Phase 2: Once mounted, fine-tune using actual RenderBox coordinates to align perfectly at the top.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
-
-      final targetCtx = _itemContexts[targetIndex];
-      if (targetCtx != null) {
-        final renderBox = targetCtx.findRenderObject() as RenderBox?;
-        if (renderBox != null && renderBox.hasSize) {
-          final viewportBox = _viewportKey.currentContext?.findRenderObject() as RenderBox?;
-          final viewportTopOnScreen = viewportBox?.localToGlobal(Offset.zero).dy ?? 0.0;
-          final nodeTopOnScreen = renderBox.localToGlobal(Offset.zero).dy;
-          
-          final scrollOffset = _scrollController.offset;
-          
-          // Translate the screen-space position to scroll-container coordinates:
-          // We want the top of the divider line to align perfectly with the top of the viewport.
-          final nodeTopInScroll = scrollOffset + (nodeTopOnScreen - viewportTopOnScreen);
-          final target = nodeTopInScroll.clamp(0.0, _scrollController.position.maxScrollExtent);
-
-          if ((scrollOffset - target).abs() < 2.0) {
-            _isProgrammaticScrolling = false;
-            return;
-          }
-
-          _scrollController.animateTo(
-            target,
-            duration: const Duration(milliseconds: 500),
-            curve: Curves.easeInOut,
-          ).then((_) {
-            if (mounted) {
-              setState(() {
-                _isProgrammaticScrolling = false;
-              });
-            }
-          });
-          return;
-        }
-      }
-
-      // Context or renderBox not resolved yet — retry with delay to let it build and render
-      if (attempts < 8) {
-        Future.delayed(const Duration(milliseconds: 40), () {
-          if (mounted) {
-            _goToDate(date, attempts: attempts + 1);
-          }
-        });
-      } else {
-        setState(() {
-          _isProgrammaticScrolling = false;
-        });
-      }
-    });
+    _scrollToTarget(
+      targetIndex: targetIndex,
+      smooth: true,
+      alignment: 0.0,
+    );
   }
 
   void _ensureDateInWindow(DateTime date) {
@@ -652,6 +637,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
     }
 
     _windowStartDate = _today.add(Duration(days: newStartDiff));
+    _itemContexts.clear();
+    _itemHeights.clear();
 
     setState(() {});
   }
@@ -844,10 +831,19 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
 
     if (diaryListAsync is AsyncData && !_hasPerformedInitialScroll) {
       _hasPerformedInitialScroll = true;
+      final allRecords = diaryListAsync.value ?? [];
+      final Map<String, List<DiaryRecord>> recordsByDate = {};
+      for (final r in allRecords) {
+        if (r.isDeleted) continue;
+        final key = '${r.time.year}-${r.time.month}-${r.time.day}';
+        recordsByDate.putIfAbsent(key, () => []).add(r);
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _scrollToCurrentTime(smooth: false);
-        }
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) {
+            _performInitialScrollToCurrentTime(recordsByDate);
+          }
+        });
       });
     }
 
@@ -1140,6 +1136,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
                             index: i,
                             onMount: (index, ctx) => _itemContexts[index] = ctx,
                             onUnmount: (index) => _itemContexts.remove(index),
+                            onHeightChange: (index, height) => _itemHeights[index] = height,
                             child: childWidget,
                           );
                         },
@@ -1325,59 +1322,36 @@ class _EmptyTimeNode extends StatelessWidget {
     final bool isSingleSelected = isSelected && !isMultiSelect;
 
     final circleColor = isSelected
-        ? (isSingleSelected ? Colors.transparent : theme.colorScheme.primary)
-        : (isCurrentTime ? distinctColor : theme.colorScheme.outlineVariant);
+        ? (isSingleSelected ? theme.colorScheme.primary.withValues(alpha: 0.6) : theme.colorScheme.primary)
+        : (isCurrentTime ? distinctColor.withValues(alpha: 0.6) : theme.colorScheme.outlineVariant);
 
-    final double circleSize = isSelected ? 16 : (isCurrentTime ? 12 : 8);
+    final double circleSize = isSelected
+        ? (isSingleSelected ? 10 : 16)
+        : (isCurrentTime ? 10 : 8);
+
+    final labelColor = isSelected ? theme.colorScheme.primary : distinctColor;
 
     return GestureDetector(
       onTap: onTap,
       onDoubleTap: onDoubleTap,
       behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
+      child: Container(
         height: 44.0,
-        padding: EdgeInsets.zero,
-        margin: EdgeInsets.only(
-          left: 0.0,
-          right: 4.0,
-          top: isDraggedSelected ? 0.0 : 2.0,
-          bottom: isDraggedSelected ? 0.0 : 2.0,
-        ),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(isDraggedSelected ? 4 : 16),
-          color: isSelected
-              ? (isSingleSelected
-                  ? theme.colorScheme.primary.withValues(alpha: 0.04)
-                  : theme.colorScheme.primary.withValues(alpha: 0.08))
-              : (isCurrentTime ? distinctColor.withValues(alpha: 0.04) : Colors.transparent),
-          border: Border.all(
-            color: isSelected && !isDraggedSelected
-                ? (isSingleSelected
-                    ? theme.colorScheme.primary.withValues(alpha: 0.25)
-                    : theme.colorScheme.primary.withValues(alpha: 0.15))
-                : (isCurrentTime ? distinctColor.withValues(alpha: 0.1) : Colors.transparent),
-            width: 1,
-          ),
-        ),
+        margin: const EdgeInsets.only(left: 0.0, right: 4.0, top: 2.0, bottom: 2.0),
         child: Row(
           children: [
             SizedBox(
               width: 48,
               child: Center(
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeInOut,
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOut,
                   width: circleSize,
                   height: circleSize,
                   decoration: BoxDecoration(
                     color: circleColor,
                     shape: BoxShape.circle,
-                    border: isSingleSelected
-                        ? Border.all(color: theme.colorScheme.primary, width: 2)
-                        : null,
-                    boxShadow: isSelected
+                    boxShadow: isSelected && !isSingleSelected
                         ? [
                             BoxShadow(
                               color: theme.colorScheme.primary.withValues(alpha: 0.3),
@@ -1385,55 +1359,26 @@ class _EmptyTimeNode extends StatelessWidget {
                               spreadRadius: 2,
                             )
                           ]
-                        : (isCurrentTime
-                            ? [
-                                BoxShadow(
-                                  color: distinctColor.withValues(alpha: 0.2),
-                                  blurRadius: 4,
-                                  spreadRadius: 1,
-                                )
-                              ]
-                            : null),
+                        : null,
                   ),
-                  child: isSingleSelected
+                  child: isSelected && !isSingleSelected
                       ? Center(
                           child: Container(
-                            width: 4,
-                            height: 4,
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.primary,
+                            width: 6,
+                            height: 6,
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
                               shape: BoxShape.circle,
                             ),
                           ),
                         )
-                      : (isSelected
-                          ? Center(
-                              child: Container(
-                                width: 6,
-                                height: 6,
-                                decoration: const BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            )
-                          : (isCurrentTime
-                              ? Center(
-                                  child: Container(
-                                    width: 4,
-                                    height: 4,
-                                    decoration: const BoxDecoration(
-                                      color: Colors.white,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                )
-                              : null)),
+                      : null,
                 ),
               ),
             ),
             AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 300),
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
               style: (theme.textTheme.bodySmall ?? const TextStyle()).copyWith(
                 color: isSelected
                     ? theme.colorScheme.primary
@@ -1443,9 +1388,29 @@ class _EmptyTimeNode extends StatelessWidget {
               ),
               child: Text(timeStr),
             ),
+            if (isCurrentTime) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: labelColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '当前时间',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: labelColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 9,
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(width: 12),
             Expanded(
-              child: Container(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
                 height: 1,
                 color: isSelected
                     ? theme.colorScheme.primary.withValues(alpha: 0.3)
@@ -1580,49 +1545,20 @@ class _CurrentTimeNode extends StatelessWidget {
       onTap: onTap,
       onDoubleTap: onDoubleTap,
       behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-        padding: const EdgeInsets.symmetric(vertical: 16.0),
+      child: Container(
+        height: 44.0,
         margin: const EdgeInsets.only(left: 0.0, right: 4.0, top: 2.0, bottom: 2.0),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          color: distinctColor.withValues(alpha: 0.08),
-          border: Border.all(
-            color: distinctColor.withValues(alpha: 0.15),
-            width: 1,
-          ),
-        ),
         child: Row(
           children: [
             SizedBox(
               width: 48,
               child: Center(
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeInOut,
-                  width: 16,
-                  height: 16,
+                child: Container(
+                  width: 10,
+                  height: 10,
                   decoration: BoxDecoration(
-                    color: distinctColor,
+                    color: distinctColor.withValues(alpha: 0.6),
                     shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: distinctColor.withValues(alpha: 0.3),
-                        blurRadius: 8,
-                        spreadRadius: 2,
-                      )
-                    ],
-                  ),
-                  child: Center(
-                    child: Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
                   ),
                 ),
               ),
@@ -1677,6 +1613,7 @@ class TimelineItemWrapper extends StatefulWidget {
   final Widget child;
   final void Function(int index, BuildContext context) onMount;
   final void Function(int index) onUnmount;
+  final void Function(int index, double height) onHeightChange;
 
   const TimelineItemWrapper({
     super.key,
@@ -1684,6 +1621,7 @@ class TimelineItemWrapper extends StatefulWidget {
     required this.child,
     required this.onMount,
     required this.onUnmount,
+    required this.onHeightChange,
   });
 
   @override
@@ -1697,8 +1635,16 @@ class _TimelineItemWrapperState extends State<TimelineItemWrapper> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         widget.onMount(widget.index, context);
+        _reportHeight();
       }
     });
+  }
+
+  void _reportHeight() {
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox != null && renderBox.hasSize) {
+      widget.onHeightChange(widget.index, renderBox.size.height);
+    }
   }
 
   @override
@@ -1709,7 +1655,12 @@ class _TimelineItemWrapperState extends State<TimelineItemWrapper> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           widget.onMount(widget.index, context);
+          _reportHeight();
         }
+      });
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _reportHeight();
       });
     }
   }

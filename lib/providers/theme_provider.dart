@@ -54,16 +54,16 @@ class AccentColorNotifier extends StateNotifier<Color> {
 }
 
 final presetAccentColors = [
-  const Color(0xFF005BCB), // 经典蓝 (Default Blue)
-  const Color(0xFF5E5CE6), // 皇家紫 (Royal Indigo)
-  const Color(0xFFD32F2F), // 珊瑚红 (Coral Crimson)
-  const Color(0xFF006A6A), // 深湖绿 (Lake Teal)
-  const Color(0xFF994D00), // 琥珀橙 (Amber Orange)
-  const Color(0xFFF43F5E), // 玫瑰粉 (Rose Coral)
-  const Color(0xFF10B981), // 薄荷绿 (Mint Emerald)
-  const Color(0xFF8B5CF6), // 罗兰紫 (Lavender Violet)
-  const Color(0xFF0284C7), // 晴空蓝 (Sky Ocean)
-  const Color(0xFF8D6E63), // 摩卡棕 (Mocha Earth)
-  const Color(0xFF64748B), // 蓝灰 (Slate Grey)
-  const Color(0xFFEAB308), // 金盏黄 (Amber Gold)
+  const Color(0xFF005BCB), // 经典蓝 (Classic Blue)
+  const Color(0xFF0284C7), // 晴空蓝 (Sky Blue)
+  const Color(0xFF0D9488), // 碧青色 (Teal)
+  const Color(0xFF16A34A), // 森绿色 (Green)
+  const Color(0xFFEAB308), // 琥珀黄 (Amber)
+  const Color(0xFFEA580C), // 熔岩橙 (Orange)
+  const Color(0xFFDC2626), // 珊瑚红 (Red)
+  const Color(0xFFDB2777), // 玫瑰粉 (Pink)
+  const Color(0xFF9333EA), // 紫罗兰 (Purple)
+  const Color(0xFF4F46E5), // 靛蓝色 (Indigo)
+  const Color(0xFF475569), // 蓝灰色 (Slate)
+  const Color(0xFF7C2D12), // 焦糖棕 (Brown)
 ];

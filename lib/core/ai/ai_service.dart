@@ -186,12 +186,15 @@ class AiService {
         final respData = e.response?.data;
         final reqData = e.requestOptions.data;
         final reqHeaders = e.requestOptions.headers;
+        final sanitizedReqData = _sanitizeRequestBodyForLogging(reqData);
         debugPrint('=== AI REQUEST ERROR DIAGNOSTICS ===');
         debugPrint('URL: ${e.requestOptions.uri}');
         debugPrint('Headers: $reqHeaders');
-        debugPrint('Payload: $reqData');
+        debugPrint('Payload: ${_formatJsonForLogging(sanitizedReqData)}');
         debugPrint('Response Status: ${e.response?.statusCode}');
-        debugPrint('Response Data: $respData');
+        if (respData != null) {
+          debugPrint('Response Data: ${_formatJsonForLogging(respData)}');
+        }
         debugPrint('====================================');
         if (respData != null) {
           details = 'Response Body: $respData\n\n$details';
@@ -527,7 +530,7 @@ class AiService {
         'AI提取日记结构响应:\n${_formatJsonForLogging(response.data)}'
       );
 
-      final jsonResult = jsonDecode(content);
+      final jsonResult = _parseJsonFromAiContent(content);
       LoggerService.instance.logAI(
         '日记结构提取完成',
         details: '结果类型=${jsonResult is List ? "数组" : "对象"}',
@@ -587,7 +590,7 @@ class AiService {
         'AI提取图片响应:\n${_formatJsonForLogging(response.data)}'
       );
 
-      final result = jsonDecode(content) as Map<String, dynamic>;
+      final result = _parseJsonFromAiContent(content) as Map<String, dynamic>;
       LoggerService.instance.logAI('单张图片信息提取完成');
       return result;
     } catch (e, stackTrace) {
@@ -641,7 +644,7 @@ class AiService {
         'AI提取全局图片响应:\n${_formatJsonForLogging(response.data)}'
       );
 
-      final jsonResult = jsonDecode(content);
+      final jsonResult = _parseJsonFromAiContent(content);
       LoggerService.instance.logAI(
         '全局图片信息提取完成',
         details: '结果数量=${jsonResult is List ? jsonResult.length : 1}',
@@ -745,6 +748,21 @@ class AiService {
     return data['choices']?[0]?['message']?['content'] ?? '';
   }
 
+  dynamic _parseJsonFromAiContent(String content) {
+    final stripped = _stripMarkdownCodeBlock(content);
+    return jsonDecode(stripped);
+  }
+
+  String _stripMarkdownCodeBlock(String content) {
+    final trimmed = content.trim();
+    final codeBlockRegex = RegExp(r'^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$', multiLine: false);
+    final match = codeBlockRegex.firstMatch(trimmed);
+    if (match != null) {
+      return match.group(1)!.trim();
+    }
+    return trimmed;
+  }
+
   dynamic _sanitizeRequestBodyForLogging(dynamic body) {
     try {
       if (body is String) {
@@ -763,14 +781,21 @@ class AiService {
       for (final key in val.keys) {
         final kStr = key.toString();
         final value = val[key];
-        if (kStr == 'data' && value is String && value.length > 200) {
-          newMap[kStr] = '<IMAGE_BASE64_DATA_OMITTED>';
+        if (kStr == 'data' && value is String && _isLikelyBase64Image(value)) {
+          newMap[kStr] = '<IMAGE_DATA: ${_estimateImageSize(value)}>';
         } else if (kStr == 'image_url' && value is Map && value['url'] is String && (value['url'] as String).startsWith('data:')) {
-          newMap[kStr] = {'url': 'data:image/...;<BASE64_OMITTED>'};
-        } else if (kStr == 'input_image' && value is Map && value['input_image'] is Map && value['input_image']['data'] is List) {
+          final url = value['url'] as String;
+          final mime = _extractMimeTypeFromDataUrl(url);
+          newMap[kStr] = {'url': 'data:$mime;<BASE64_IMAGE_DATA>'};
+        } else if (kStr == 'input_image' && value is Map) {
           newMap[kStr] = {
-            'type': 'base64',
-            'data': ['<IMAGE_BASE64_DATA_OMITTED>']
+            'type': value['type'] ?? 'base64',
+            'data': '<IMAGE_BASE64_DATA>'
+          };
+        } else if (kStr == 'inline_data' && value is Map && value['data'] is String && _isLikelyBase64Image(value['data'])) {
+          newMap[kStr] = {
+            'mime_type': value['mime_type'] ?? 'image/...',
+            'data': '<INLINE_IMAGE_DATA>'
           };
         } else {
           newMap[kStr] = _sanitizeMapOrList(value);
@@ -779,8 +804,37 @@ class AiService {
       return newMap;
     } else if (val is List) {
       return val.map((item) => _sanitizeMapOrList(item)).toList();
+    } else if (val is String && _isLikelyBase64Image(val)) {
+      return '<BASE64_IMAGE_STRING: ${_estimateImageSize(val)}>';
     }
     return val;
+  }
+
+  bool _isLikelyBase64Image(String str) {
+    if (str.length < 500) return false;
+    final trimmed = str.trim();
+    if (trimmed.startsWith('data:image/')) return true;
+    if (trimmed.startsWith('/') && trimmed.length > 1000) return true;
+    if (trimmed.length > 2000 && RegExp(r'^[A-Za-z0-9+/=]+$').hasMatch(trimmed)) return true;
+    if (trimmed.length > 5000 && !trimmed.contains('\n') && !trimmed.contains('\r') && !trimmed.contains('\t')) return true;
+    return false;
+  }
+
+  String _estimateImageSize(String base64) {
+    try {
+      final kb = (base64.length * 3 / 4 / 1024);
+      if (kb >= 1024) {
+        return '${(kb / 1024).toStringAsFixed(1)}MB';
+      }
+      return '${kb.toStringAsFixed(1)}KB';
+    } catch (_) {
+      return 'unknown';
+    }
+  }
+
+  String _extractMimeTypeFromDataUrl(String dataUrl) {
+    final match = RegExp(r'data:([^;]+)').firstMatch(dataUrl);
+    return match?.group(1) ?? 'image/...';
   }
 
   String _formatJsonForLogging(dynamic data) {

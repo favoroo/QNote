@@ -106,12 +106,15 @@ final aiProviders = <AiProviderConfig>[
     urlRequired: false,
     placeholder: '内置官方接口，无需填写URL(或填写自定义url)',
     models: [
+      'gemini-3.5-flash',
       'gemini-3.1-pro',
-      'gemini-flash-lite-latest',
+      'gemini-3.1-flash-lite',
+      'gemini-3-flash-preview',
       'gemini-flash-latest',
+      'gemini-flash-lite-latest',
       'gemini-pro-latest',
-      'gemma-4-26b-a4b-it',
       'gemma-4-31b-it',
+      'gemma-4-26b-a4b-it',
     ],
   ),
   const AiProviderConfig(

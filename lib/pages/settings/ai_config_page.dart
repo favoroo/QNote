@@ -26,6 +26,8 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   final Map<String, bool> _testingMap = {};
   final Map<String, String> _latencyMap = {};
   bool _batchTesting = false;
+  bool _isBatchTestingModels = false;
+  final ValueNotifier<Map<String, String>> _modelLatencyNotifier = ValueNotifier({});
   List<String> _openRouterFreeModels = [];
   bool _isFetchingFreeModels = false;
   String? _fetchMessage;
@@ -37,6 +39,12 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     _loadRoles();
     _loadLatencies();
     _loadOpenRouterFreeModels();
+  }
+
+  @override
+  void dispose() {
+    _modelLatencyNotifier.dispose();
+    super.dispose();
   }
 
   Future<void> _loadOpenRouterFreeModels() async {
@@ -194,6 +202,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     required BuildContext context,
     required List<String> models,
     required String currentSelected,
+    required String vendorId,
     required ValueChanged<String> onSelected,
   }) {
     showModalBottomSheet(
@@ -205,6 +214,8 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         return _ModelPickerBottomSheet(
           models: models,
           currentSelected: currentSelected,
+          vendorId: vendorId,
+          modelLatencyNotifier: _modelLatencyNotifier,
           onSelected: onSelected,
         );
       },
@@ -226,13 +237,28 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
 
   Future<void> _loadLatencies() async {
     final prefs = await SharedPreferences.getInstance();
-    final keys = prefs.getKeys().where((k) => k.startsWith('ai_latency_'));
-    final map = <String, String>{};
-    for (final key in keys) {
+    final keys = prefs.getKeys();
+    final configKeys = keys.where((k) => k.startsWith('ai_latency_'));
+    final modelKeys = keys.where((k) => k.startsWith('batch_latency_'));
+    
+    final configMap = <String, String>{};
+    for (final key in configKeys) {
       final val = prefs.getString(key);
-      if (val != null) map[key] = val;
+      if (val != null) configMap[key.replaceFirst('ai_latency_', '')] = val;
     }
-    if (mounted) setState(() => _latencyMap..addAll(map));
+    
+    final modelMap = <String, String>{};
+    for (final key in modelKeys) {
+      final val = prefs.getString(key);
+      if (val != null) modelMap[key.replaceFirst('batch_latency_', '')] = val;
+    }
+
+    if (mounted) {
+      setState(() {
+        _latencyMap.addAll(configMap);
+        _modelLatencyNotifier.value = {..._modelLatencyNotifier.value, ...modelMap};
+      });
+    }
   }
 
   Future<void> _saveLatency(String configId, String value) async {
@@ -240,6 +266,91 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     await prefs.setString('ai_latency_$configId', value);
     if (mounted) setState(() => _latencyMap[configId] = value);
   }
+
+  Future<void> _saveModelLatency(String vendorId, String modelName, String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = '$vendorId:$modelName';
+    await prefs.setString('batch_latency_$key', value);
+    _modelLatencyNotifier.value = {..._modelLatencyNotifier.value, key: value};
+  }
+
+  Future<void> _batchTestModels({
+    required String vendorId,
+    required String apiKey,
+    required String baseUrl,
+    required String provider,
+    required List<String> models,
+    required StateSetter setDialogState,
+  }) async {
+    if (_isBatchTestingModels || models.isEmpty) return;
+
+    setDialogState(() => _isBatchTestingModels = true);
+    setState(() => _isBatchTestingModels = true);
+
+    try {
+      final service = AiService();
+      
+      // 使用并发池，限制并发数为 5，兼顾速度与准确性
+      const int maxConcurrency = 5;
+      final List<Future<void>> tasks = [];
+      final List<String> remainingModels = List.from(models);
+
+      Future<void> runNext() async {
+        if (remainingModels.isEmpty || !mounted) return;
+        
+        final model = remainingModels.removeAt(0);
+        final key = '$vendorId:$model';
+        
+        if (mounted) {
+          setDialogState(() => _modelLatencyNotifier.value = {..._modelLatencyNotifier.value, key: '测试中...'});
+        }
+
+        try {
+          final testConfig = AiConfig(
+            id: 'batch_test',
+            name: 'Batch Test',
+            provider: provider,
+            modelName: model,
+            apiKey: apiKey,
+            baseUrl: baseUrl,
+            vendorId: vendorId,
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          );
+          service.updateConfig(testConfig);
+          
+          final sw = Stopwatch()..start();
+          await service.chat([
+            ChatMessage(role: 'user', content: 'Hi', timestamp: DateTime.now()),
+          ]);
+          sw.stop();
+          
+          final latencyStr = '${sw.elapsedMilliseconds}ms';
+          await _saveModelLatency(vendorId, model, latencyStr);
+        } catch (e) {
+          await _saveModelLatency(vendorId, model, '失败');
+        }
+        
+        if (mounted) {
+          setDialogState(() {});
+        }
+        await runNext();
+      }
+
+      // 启动初始并发任务
+      for (int i = 0; i < maxConcurrency && i < models.length; i++) {
+        tasks.add(runNext());
+      }
+
+      await Future.wait(tasks);
+    } finally {
+      if (mounted) {
+        setDialogState(() => _isBatchTestingModels = false);
+        setState(() => _isBatchTestingModels = false);
+      }
+    }
+  }
+
 
   String _formatTestError(Object e) {
     if (e is DioException) {
@@ -866,6 +977,49 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
                             ),
+                          if (selectedVendorId != 'custom') ...[
+                            if (selectedVendorId == 'openrouter') const SizedBox(width: 8),
+                            TextButton.icon(
+                              onPressed: _isBatchTestingModels
+                                  ? null
+                                  : () {
+                                      final providerConfig = getProviderById(selectedVendorId);
+                                      List<String> modelsToTest = [];
+                                      if (selectedVendorId == 'openrouter') {
+                                        modelsToTest = _openRouterFreeModels.isNotEmpty 
+                                            ? _openRouterFreeModels 
+                                            : (providerConfig?.models ?? []);
+                                      } else {
+                                        modelsToTest = providerConfig?.models ?? [];
+                                      }
+                                      
+                                      _batchTestModels(
+                                        vendorId: selectedVendorId,
+                                        apiKey: apiKeyCtl.text,
+                                        baseUrl: baseUrlCtl.text,
+                                        provider: selectedProvider,
+                                        models: modelsToTest,
+                                        setDialogState: setDialogState,
+                                      );
+                                    },
+                              icon: _isBatchTestingModels
+                                  ? const SizedBox(
+                                      width: 12,
+                                      height: 12,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.bolt, size: 14),
+                              label: Text(
+                                _isBatchTestingModels ? '测试中...' : '批量测试',
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                              style: TextButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                       if (selectedVendorId == 'openrouter' && _fetchMessage != null) ...[
@@ -1050,6 +1204,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                 context: dialogContext,
                 models: modelsList,
                 currentSelected: modelCtl.text,
+                vendorId: vendorId,
                 onSelected: (selectedVal) {
                   if (selectedVal == '__custom__') {
                     setDialogState(() => modelCtl.text = '');
@@ -1135,11 +1290,15 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
 class _ModelPickerBottomSheet extends StatefulWidget {
   final List<String> models;
   final String currentSelected;
+  final String vendorId;
+  final ValueNotifier<Map<String, String>> modelLatencyNotifier;
   final ValueChanged<String> onSelected;
 
   const _ModelPickerBottomSheet({
     required this.models,
     required this.currentSelected,
+    required this.vendorId,
+    required this.modelLatencyNotifier,
     required this.onSelected,
   });
 
@@ -1160,6 +1319,33 @@ class _ModelPickerBottomSheetState extends State<_ModelPickerBottomSheet> {
   String _parseProvider(String model) {
     if (!model.contains('/')) return '';
     return model.split('/').first.toLowerCase();
+  }
+
+  Widget _buildLatency(String model, ThemeData theme, Map<String, String> latencyMap) {
+    final key = '${widget.vendorId}:$model';
+    final latency = latencyMap[key];
+    if (latency == null) return const SizedBox.shrink();
+
+    final isTesting = latency == '测试中...';
+    final isError = latency == '失败';
+    
+    return Container(
+      margin: const EdgeInsets.only(left: 8),
+      child: isTesting
+          ? const SizedBox(
+              width: 10,
+              height: 10,
+              child: CircularProgressIndicator(strokeWidth: 1.5),
+            )
+          : Text(
+              latency,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: isError ? Colors.red : Colors.green.shade600,
+              ),
+            ),
+    );
   }
 
   Widget _buildProviderChip(String provider, ThemeData theme) {
@@ -1331,174 +1517,186 @@ class _ModelPickerBottomSheetState extends State<_ModelPickerBottomSheet> {
             ),
             const SizedBox(height: 16),
             Expanded(
-              child: filteredModels.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.search_off_outlined,
-                            size: 48,
-                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '未找到匹配的模型',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: filteredModels.length + 1,
-                      itemBuilder: (context, index) {
-                        if (index == filteredModels.length) {
-                          final isSelected = widget.currentSelected == '__custom__' || 
-                              (!widget.models.contains(widget.currentSelected) && widget.currentSelected.isNotEmpty);
-                          return ListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            leading: Container(
-                              width: 32,
-                              height: 32,
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
-                                shape: BoxShape.circle,
+              child: ValueListenableBuilder<Map<String, String>>(
+                valueListenable: widget.modelLatencyNotifier,
+                builder: (context, latencyMap, child) {
+                  return filteredModels.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.search_off_outlined,
+                                size: 48,
+                                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
                               ),
-                              child: Icon(
-                                Icons.edit_note_outlined,
-                                size: 18,
-                                color: theme.colorScheme.primary,
-                              ),
-                            ),
-                            title: const Text(
-                              '自定义模型标识符...',
-                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                            ),
-                            subtitle: const Text(
-                              '手动输入其他模型 ID',
-                              style: TextStyle(fontSize: 11),
-                            ),
-                            trailing: isSelected
-                                ? Icon(Icons.check_circle, color: theme.colorScheme.primary, size: 20)
-                                : null,
-                            selected: isSelected,
-                            onTap: () {
-                              Navigator.pop(context);
-                              widget.onSelected('__custom__');
-                            },
-                          );
-                        }
-
-                        final model = filteredModels[index];
-                        final isSelected = model == widget.currentSelected;
-                        final provider = _parseProvider(model);
-                        
-                        String displayName = model;
-                        if (model.contains('/')) {
-                          displayName = model.split('/').last;
-                        }
-                        displayName = displayName.replaceAll(':free', '');
-
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: InkWell(
-                            onTap: () {
-                              Navigator.pop(context);
-                              widget.onSelected(model);
-                            },
-                            borderRadius: BorderRadius.circular(12),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? theme.colorScheme.primaryContainer.withValues(alpha: 0.15)
-                                    : Colors.transparent,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: isSelected
-                                      ? theme.colorScheme.primary.withValues(alpha: 0.3)
-                                      : Colors.transparent,
-                                  width: 1,
+                              const SizedBox(height: 8),
+                              Text(
+                                '未找到匹配的模型',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
                                 ),
                               ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 12,
-                                    height: 12,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: isSelected
-                                            ? theme.colorScheme.primary
-                                            : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
-                                        width: isSelected ? 3.5 : 1.5,
-                                      ),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: filteredModels.length + 1,
+                          itemBuilder: (context, index) {
+                            if (index == filteredModels.length) {
+                              final isSelected = widget.currentSelected == '__custom__' || 
+                                  (!widget.models.contains(widget.currentSelected) && widget.currentSelected.isNotEmpty);
+                              return ListTile(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                leading: Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.edit_note_outlined,
+                                    size: 18,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                                title: const Text(
+                                  '自定义模型标识符...',
+                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                                ),
+                                subtitle: const Text(
+                                  '手动输入其他模型 ID',
+                                  style: TextStyle(fontSize: 11),
+                                ),
+                                trailing: isSelected
+                                    ? Icon(Icons.check_circle, color: theme.colorScheme.primary, size: 20)
+                                    : null,
+                                selected: isSelected,
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  widget.onSelected('__custom__');
+                                },
+                              );
+                            }
+
+                            final model = filteredModels[index];
+                            final isSelected = model == widget.currentSelected;
+                            final provider = _parseProvider(model);
+                            
+                            String displayName = model;
+                            if (model.contains('/')) {
+                              displayName = model.split('/').last;
+                            }
+                            displayName = displayName.replaceAll(':free', '');
+
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: InkWell(
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  widget.onSelected(model);
+                                },
+                                borderRadius: BorderRadius.circular(12),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? theme.colorScheme.primaryContainer.withValues(alpha: 0.15)
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? theme.colorScheme.primary.withValues(alpha: 0.3)
+                                          : Colors.transparent,
+                                      width: 1,
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          displayName,
-                                          style: theme.textTheme.bodyMedium?.copyWith(
-                                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 12,
+                                        height: 12,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
                                             color: isSelected
                                                 ? theme.colorScheme.primary
-                                                : theme.colorScheme.onSurface,
-                                            fontSize: 13,
+                                                : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                                            width: isSelected ? 3.5 : 1.5,
                                           ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          model,
-                                          style: theme.textTheme.bodySmall?.copyWith(
-                                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                                            fontSize: 10.5,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Flexible(
+                                                  child: Text(
+                                                    displayName,
+                                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                                      color: isSelected
+                                                          ? theme.colorScheme.primary
+                                                          : theme.colorScheme.onSurface,
+                                                      fontSize: 13,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                                _buildLatency(model, theme, latencyMap),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              model,
+                                              style: theme.textTheme.bodySmall?.copyWith(
+                                                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                                                fontSize: 10.5,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      if (provider.isNotEmpty) ...[
+                                        const SizedBox(width: 8),
+                                        _buildProviderChip(provider, theme),
+                                      ],
+                                      if (model.endsWith(':free')) ...[
+                                        const SizedBox(width: 4),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                          decoration: BoxDecoration(
+                                            color: Colors.green.shade50,
+                                            borderRadius: BorderRadius.circular(6),
                                           ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
+                                          child: const Text(
+                                            'FREE',
+                                            style: TextStyle(
+                                              color: Colors.green,
+                                              fontSize: 8,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
                                         ),
                                       ],
-                                    ),
+                                    ],
                                   ),
-                                  if (provider.isNotEmpty) ...[
-                                    const SizedBox(width: 8),
-                                    _buildProviderChip(provider, theme),
-                                  ],
-                                  if (model.endsWith(':free')) ...[
-                                    const SizedBox(width: 4),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                                      decoration: BoxDecoration(
-                                        color: Colors.green.shade50,
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: const Text(
-                                        'FREE',
-                                        style: TextStyle(
-                                          color: Colors.green,
-                                          fontSize: 8,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ],
+                                ),
                               ),
-                            ),
-                          ),
+                            );
+                          },
                         );
-                      },
-                    ),
+                },
+              ),
             ),
           ],
         ),
