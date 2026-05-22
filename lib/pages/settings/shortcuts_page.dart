@@ -127,7 +127,6 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
     final isEditing = existingConfig != null;
     final nameCtl = TextEditingController(text: existingConfig?.name ?? '');
     bool hasPopup = existingConfig?.hasPopup ?? false;
-    final promptCtl = TextEditingController(text: existingConfig?.imageExtractionPrompt ?? '');
     List<ShortcutField> fields = existingConfig != null
         ? existingConfig.fields.map((f) => f.copyWith()).toList()
         : [];
@@ -165,13 +164,6 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                             onChanged: (v) => setDialogState(() => hasPopup = v),
                           ),
                         ],
-                      ),
-                      const SizedBox(height: 12),
-                      Text('图片提取提示词', style: Theme.of(context).textTheme.labelSmall),
-                      TextField(
-                        controller: promptCtl,
-                        maxLines: 3,
-                        decoration: const InputDecoration(hintText: '请从图片中提取相关信息。'),
                       ),
                       const Divider(),
                       Row(
@@ -314,7 +306,6 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                       hasPopup: hasPopup,
                       fields: fields,
                       categories: categories.isNotEmpty ? categories : null,
-                      imageExtractionPrompt: promptCtl.text.isEmpty ? null : promptCtl.text,
                       sortOrder: existingConfig?.sortOrder ?? ref.read(shortcutListNotifierProvider).length,
                       createdAt: existingConfig?.createdAt ?? now,
                       updatedAt: now,
@@ -342,6 +333,7 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
     required ValueChanged<ShortcutField> onChanged,
     required VoidCallback onDelete,
   }) {
+    final theme = Theme.of(context);
     const fieldTypeMap = {
       'input': '文本',
       'number': '数字',
@@ -356,9 +348,9 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.02),
@@ -374,23 +366,24 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
           children: [
             Row(
               children: [
-                Icon(Icons.drag_indicator, size: 16, color: Theme.of(context).disabledColor),
+                Icon(Icons.drag_indicator, size: 16, color: theme.disabledColor),
                 const SizedBox(width: 8),
                 Expanded(
-                  flex: 3,
+                  flex: 4,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('名称', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).disabledColor)),
+                      Text('名称', style: theme.textTheme.labelSmall?.copyWith(color: theme.disabledColor)),
                       const SizedBox(height: 4),
                       TextField(
                         controller: labelCtl,
+                        style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
                         decoration: InputDecoration(
                           hintText: '字段名',
                           isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                           filled: true,
-                          fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                          fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
                         ),
                         onChanged: (v) => onChanged(field.copyWith(label: v)),
@@ -404,12 +397,12 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('类型', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).disabledColor)),
+                      Text('类型', style: theme.textTheme.labelSmall?.copyWith(color: theme.disabledColor)),
                       const SizedBox(height: 4),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8),
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: DropdownButton<String>(
@@ -417,7 +410,7 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                           isExpanded: true,
                           underline: const SizedBox.shrink(),
                           icon: const Icon(Icons.keyboard_arrow_down, size: 16),
-                          style: Theme.of(context).textTheme.bodySmall,
+                          style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
                           items: fieldTypeMap.entries.map((e) => DropdownMenuItem(
                             value: e.key,
                             child: Text(e.value),
@@ -433,21 +426,21 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                 const SizedBox(width: 4),
                 IconButton(
                   icon: const Icon(Icons.delete_outline, size: 18),
-                  color: Theme.of(context).colorScheme.error.withValues(alpha: 0.7),
+                  color: theme.colorScheme.error.withValues(alpha: 0.7),
                   onPressed: onDelete,
                 ),
               ],
             ),
             if (field.type == 'select' || field.type == 'multi-select') ...[
               const SizedBox(height: 12),
-              Text('选项', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).disabledColor)),
+              Text('选项', style: theme.textTheme.labelSmall?.copyWith(color: theme.disabledColor)),
               const SizedBox(height: 4),
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.3), style: BorderStyle.values[1]), // Dash not directly supported, using dotted style via custom painter would be complex, using thin line
+                  border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
                 ),
                 child: Wrap(
                   spacing: 6,
@@ -459,16 +452,16 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                       return Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surface,
+                          color: theme.colorScheme.surface,
                           borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                          border: Border.all(color: theme.colorScheme.outlineVariant),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.drag_indicator, size: 12, color: Theme.of(context).disabledColor),
+                            Icon(Icons.drag_indicator, size: 12, color: theme.disabledColor),
                             const SizedBox(width: 4),
-                            Text(opt, style: Theme.of(context).textTheme.bodySmall),
+                            Text(opt, style: theme.textTheme.bodySmall),
                             const SizedBox(width: 4),
                             GestureDetector(
                               onTap: () {
@@ -476,7 +469,7 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                                 opts.removeAt(optIdx);
                                 onChanged(field.copyWith(options: opts));
                               },
-                              child: Icon(Icons.close, size: 12, color: Theme.of(context).disabledColor),
+                              child: Icon(Icons.close, size: 12, color: theme.disabledColor),
                             ),
                           ],
                         ),
@@ -492,11 +485,11 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
+                          color: theme.colorScheme.primary.withValues(alpha: 0.05),
                           borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)),
+                          border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.2)),
                         ),
-                        child: Icon(Icons.add, size: 12, color: Theme.of(context).colorScheme.primary),
+                        child: Icon(Icons.add, size: 12, color: theme.colorScheme.primary),
                       ),
                     ),
                   ],

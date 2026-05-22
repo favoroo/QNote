@@ -4,10 +4,17 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/date_color_mark.dart';
+import 'package:qnote_flutter/models/shortcut_field.dart';
+import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
+import 'package:qnote_flutter/providers/shortcut_provider.dart';
+import 'package:qnote_flutter/core/utils/toast_utils.dart';
+import 'package:qnote_flutter/widgets/diary/ai_extract_helper.dart';
 import 'package:qnote_flutter/widgets/search_view.dart';
 import 'package:qnote_flutter/widgets/diary/diary_item.dart';
 import 'package:qnote_flutter/widgets/diary/diary_input_bar.dart';
@@ -20,7 +27,7 @@ class DiaryPage extends ConsumerStatefulWidget {
   ConsumerState<DiaryPage> createState() => _DiaryPageState();
 }
 
-class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserver {
+class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateMixin, WidgetsBindingObserver {
   static const int _itemsPerDay = 49;
   static const double _dayHeight = 2384.0;
   static const double _dividerHeight = 80.0;
@@ -44,6 +51,23 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
   bool _isScrollingFromList = false;
   bool _hasPerformedInitialScroll = false;
   bool _isProgrammaticScrolling = true;
+  String? _extractingRecordId;
+  // Multi-record undo mapping
+  final Map<String, DiaryRecord> _undoRecords = {};
+  final Map<String, AnimationController> _undoControllers = {};
+
+  // Batch extraction state
+  bool _isBatchExtracting = false;
+  int _batchExtractTotal = 0;
+  int _batchExtractCompleted = 0;
+  bool _batchExtractCancelled = false;
+
+  // Triple-click detection
+  int _smartExtractTapCount = 0;
+  Timer? _smartExtractTapTimer;
+
+  bool _showBatchConfirmButton = false;
+  final Set<String> _batchExtractedRecordIds = {};
 
   @override
   void initState() {
@@ -117,45 +141,78 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
     return offset;
   }
 
-  void _performInitialScrollToCurrentTime(
-    Map<String, List<DiaryRecord>> recordsByDate, {
-    int frameCount = 0,
-  }) {
-    if (!_scrollController.hasClients || !mounted) {
-      if (frameCount < 20) {
-        Future.delayed(const Duration(milliseconds: 50), () {
-          if (mounted) {
-            _performInitialScrollToCurrentTime(recordsByDate, frameCount: frameCount + 1);
-          }
+  void _performInitialScrollToCurrentTime({int retryCount = 0}) {
+    if (!mounted) return;
+
+    if (!_scrollController.hasClients) {
+      if (retryCount < 20) {
+        Future.delayed(const Duration(milliseconds: 100), () {
+          _performInitialScrollToCurrentTime(retryCount: retryCount + 1);
         });
       }
       return;
     }
 
+    _isProgrammaticScrolling = true;
+
     final now = DateTime.now();
-    final estimatedOffset = _estimateOffsetForTimeWithRecords(now, recordsByDate);
+    final dayOffset = _dateToDayOffset(now);
+    final nodeIndex = now.hour * 2 + (now.minute >= 30 ? 1 : 0);
+    final targetIndex = dayOffset * _itemsPerDay + (nodeIndex + 1);
+
+    final targetCtx = _itemContexts[targetIndex];
+    final keyCtx = _currentTimeNodeKey.currentContext;
+
+    BuildContext? bestCtx = targetCtx ?? keyCtx;
+    if (bestCtx != null && bestCtx.mounted) {
+      final renderBox = bestCtx.findRenderObject() as RenderBox?;
+      if (renderBox != null && renderBox.hasSize) {
+        final viewportBox = _viewportKey.currentContext?.findRenderObject() as RenderBox?;
+        if (viewportBox != null && viewportBox.hasSize) {
+          final viewportHeight = viewportBox.size.height;
+          final nodeHeight = renderBox.size.height;
+          final viewportTopOnScreen = viewportBox.localToGlobal(Offset.zero).dy;
+          final nodeTopOnScreen = renderBox.localToGlobal(Offset.zero).dy;
+          final scrollOffset = _scrollController.offset;
+          final nodeTopInScroll = scrollOffset + (nodeTopOnScreen - viewportTopOnScreen);
+          final preciseTarget = (nodeTopInScroll - (viewportHeight - nodeHeight) / 2)
+              .clamp(0.0, _scrollController.position.maxScrollExtent);
+
+          _scrollController.jumpTo(preciseTarget);
+        }
+      }
+
+      ref.read(selectedDateProvider.notifier).state = DateTime(now.year, now.month, now.day);
+
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (mounted) {
+          _isProgrammaticScrolling = false;
+        }
+      });
+      return;
+    }
+
+    double estimatedOffset = _estimateOffsetForIndex(targetIndex);
     final viewportHeight = _scrollController.position.viewportDimension;
     final maxScroll = _scrollController.position.maxScrollExtent;
     final targetOffset = (estimatedOffset - viewportHeight / 2).clamp(0.0, maxScroll);
 
-    _isProgrammaticScrolling = true;
     _scrollController.jumpTo(targetOffset);
 
-    if (frameCount < 3) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        Future.delayed(const Duration(milliseconds: 100), () {
-          if (mounted) {
-            _performInitialScrollToCurrentTime(recordsByDate, frameCount: frameCount + 1);
-          }
-        });
+    if (retryCount < 10) {
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted) {
+          _performInitialScrollToCurrentTime(retryCount: retryCount + 1);
+        }
       });
     } else {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _isProgrammaticScrolling = false;
+      ref.read(selectedDateProvider.notifier).state = DateTime(now.year, now.month, now.day);
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (mounted) {
+          _isProgrammaticScrolling = false;
+        }
       });
     }
-
-    ref.read(selectedDateProvider.notifier).state = DateTime(now.year, now.month, now.day);
   }
 
   void _scrollToTarget({
@@ -460,14 +517,20 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
   @override
   void dispose() {
     try {
-      ScaffoldMessenger.of(context).clearSnackBars();
+      Toast.dismiss();
     } catch (_) {}
     WidgetsBinding.instance.removeObserver(this);
     _stopAutoScrollTimer();
+    _smartExtractTapTimer?.cancel();
     _itemContexts.clear();
     _itemHeights.clear();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+    for (final c in _undoControllers.values) {
+      c.dispose();
+    }
+    _undoControllers.clear();
+    _undoRecords.clear();
     super.dispose();
   }
 
@@ -770,35 +833,510 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
   }
 
   void _handleDelete(DiaryRecord record) {
+    _clearUndoForRecord(record.id);
     ref.read(diaryListProvider.notifier).deleteDiary(record.id);
-    ScaffoldMessenger.of(context).clearSnackBars();
-    final controller = ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('已删除记录'),
-        action: SnackBarAction(
-          label: '撤销',
-          onPressed: () {
-            ref.read(diaryListProvider.notifier).undoDelete();
-          },
-        ),
-        duration: const Duration(seconds: 3),
-      ),
+    Toast.show(
+      context,
+      '已删除',
+      type: ToastType.info,
+      duration: const Duration(seconds: 4),
+      actionLabel: '撤销',
+      onAction: () {
+        ref.read(diaryListProvider.notifier).undoDelete();
+      },
     );
-
-    // Force close the SnackBar after 3.2 seconds to bypass any system-level 
-    // accessibility timeout or ROM-specific SnackBar persistence settings.
-    Future.delayed(const Duration(milliseconds: 3200), () {
-      try {
-        controller.close();
-      } catch (_) {}
-    });
   }
 
   void _handleEdit(DiaryRecord record) {
-    try {
-      ScaffoldMessenger.of(context).clearSnackBars();
-    } catch (_) {}
+    _clearUndoForRecord(record.id);
+    Toast.dismiss();
     context.push('/diary/editor', extra: record);
+  }
+
+  Future<void> _handleAiExtract(DiaryRecord record) async {
+    if (_extractingRecordId != null) return;
+    final contentText = record.content.trim();
+    if (contentText.isEmpty && record.photos.isEmpty) return;
+
+    setState(() {
+      _extractingRecordId = record.id;
+    });
+
+    final result = await extractExistingRecord(
+      ref: ref,
+      context: context,
+      content: contentText,
+      photos: record.photos,
+      recordTime: record.time,
+    );
+
+    if (result != null && mounted) {
+      final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
+      final foundShortcut = findShortcutById(result.shortcutId, shortcuts);
+
+      List<String> newTags = List.from(record.tags);
+      String newDisplayTag = record.displayTag;
+      DateTime? newStartTime = record.startTime;
+      DateTime? newEndTime = record.endTime;
+      DateTime newTime = record.time;
+      String newContent = result.notes.isNotEmpty ? result.notes : record.content;
+      Map<String, dynamic>? newBodyState = record.bodyState != null ? Map.from(record.bodyState!) : null;
+
+      if (foundShortcut != null) {
+        if (!newTags.contains(foundShortcut.name)) {
+          newTags = [foundShortcut.name, ...newTags.where((t) => t != newDisplayTag)];
+        }
+        newDisplayTag = foundShortcut.name;
+
+        if (result.fields.isNotEmpty) {
+          List<ShortcutField> fieldsToProcess = foundShortcut.fields;
+          Map<String, dynamic> finalFormValues = Map.from(result.fields);
+          String categoryPrefix = '';
+
+          if (foundShortcut.categories != null && foundShortcut.categories!.isNotEmpty) {
+            final currentCategory = foundShortcut.categories!.firstWhere(
+              (c) => c.id == result.fields['_category'],
+              orElse: () => foundShortcut.categories!.first,
+            );
+            fieldsToProcess = currentCategory.fields;
+            categoryPrefix = '${currentCategory.name} - ';
+          }
+
+          final details = fieldsToProcess.map((f) {
+            final val = finalFormValues[f.id];
+            if (val == null) return null;
+            if (val is List) return '${f.label}：${val.join('、')}';
+            return '${f.label}：$val';
+          }).where((s) => s != null).join('，');
+
+          if (details.isNotEmpty) {
+            final fullDetails = categoryPrefix.isNotEmpty ? '$categoryPrefix$details' : details;
+            final notesText = result.notes.isNotEmpty ? result.notes : '';
+            newContent = '$fullDetails${notesText.isNotEmpty ? '\n备注：$notesText' : ''}';
+          }
+        }
+      }
+
+      if (result.time.isNotEmpty) {
+        final baseDate = DateTime(record.time.year, record.time.month, record.time.day);
+        if (result.time['start'] != null) {
+          final parts = (result.time['start'] as String).split(':');
+          if (parts.length >= 2) {
+            final hour = int.tryParse(parts[0]) ?? record.time.hour;
+            final minute = int.tryParse(parts[1]) ?? record.time.minute;
+            final startOffset = result.time['startOffset'] as int? ?? 0;
+            final dt = baseDate.add(Duration(days: startOffset, hours: hour, minutes: minute));
+            newTime = dt;
+            newStartTime = dt;
+          }
+        }
+        if (result.time['end'] != null) {
+          final parts = (result.time['end'] as String).split(':');
+          if (parts.length >= 2) {
+            final hour = int.tryParse(parts[0]) ?? 0;
+            final minute = int.tryParse(parts[1]) ?? 0;
+            final endOffset = result.time['endOffset'] as int? ?? 0;
+            newEndTime = baseDate.add(Duration(days: endOffset, hours: hour, minutes: minute));
+          }
+        }
+      }
+
+      if (result.fields.isNotEmpty) {
+        newBodyState = Map<String, dynamic>.from(result.fields);
+      }
+
+      final updated = record.copyWith(
+        time: newTime,
+        startTime: newStartTime,
+        endTime: newEndTime,
+        tags: newTags,
+        displayTag: newDisplayTag,
+        content: newContent,
+        bodyState: newBodyState,
+        updatedAt: DateTime.now(),
+      );
+
+      // Store pre-extract record and create undo controller
+      _undoRecords[record.id] = record;
+      if (_isBatchExtracting) {
+        _batchExtractedRecordIds.add(record.id);
+      } else {
+        _createUndoController(record.id);
+      }
+
+      await ref.read(diaryListProvider.notifier).updateDiary(updated);
+      if (mounted && !_isBatchExtracting) {
+        Toast.success(context, '优化完成');
+      }
+
+      if (!_isBatchExtracting) {
+        _undoControllers[record.id]?.forward(from: 0);
+      }
+    }
+
+    if (mounted) {
+      setState(() => _extractingRecordId = null);
+    }
+  }
+
+  void _undoExtract(DiaryRecord record) async {
+    final preRecord = _undoRecords[record.id];
+    if (preRecord == null) return;
+
+    _clearUndoForRecord(record.id);
+
+    await ref.read(diaryListProvider.notifier).updateDiary(preRecord);
+    if (mounted) {
+      Toast.success(context, '已撤回优化');
+    }
+  }
+
+  /// Clear undo state for a specific record
+  void _clearUndoForRecord(String recordId) {
+    final controller = _undoControllers.remove(recordId);
+    controller?.stop();
+    controller?.dispose();
+    _undoRecords.remove(recordId);
+    _batchExtractedRecordIds.remove(recordId);
+    if (_batchExtractedRecordIds.isEmpty && !_isBatchExtracting) {
+      _showBatchConfirmButton = false;
+    }
+    if (mounted) setState(() {});
+  }
+
+  /// Create an undo countdown controller for a record
+  void _createUndoController(String recordId) {
+    // Dispose existing if any
+    _undoControllers[recordId]?.dispose();
+    
+    final controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 5),
+    );
+    controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        _undoControllers.remove(recordId)?.dispose();
+        _undoRecords.remove(recordId);
+        if (mounted) setState(() {});
+      }
+    });
+    _undoControllers[recordId] = controller;
+  }
+
+  /// Handle smart extract button tap with triple-click detection
+  void _handleSmartExtractTap() {
+    if (_isBatchExtracting) {
+      // Stop ongoing batch extraction
+      setState(() {
+        _batchExtractCancelled = true;
+      });
+      return;
+    }
+
+    _smartExtractTapCount++;
+    _smartExtractTapTimer?.cancel();
+
+    if (_smartExtractTapCount >= 3) {
+      _smartExtractTapCount = 0;
+      _startBatchExtract(allDates: true);
+    } else {
+      _smartExtractTapTimer = Timer(const Duration(milliseconds: 300), () {
+        _smartExtractTapCount = 0;
+        _startBatchExtract(allDates: false);
+      });
+    }
+  }
+
+  /// Start batch extraction of untagged records
+  Future<void> _startBatchExtract({required bool allDates}) async {
+    final allRecords = ref.read(diaryListProvider).valueOrNull;
+    if (allRecords == null) return;
+
+    final selectedDate = ref.read(selectedDateProvider);
+
+    // Filter records: no displayTag (or default '记录'), not deleted, has content or photos
+    final untaggedRecords = allRecords.where((r) {
+      if (r.isDeleted) return false;
+      if (r.displayTag.isNotEmpty && r.displayTag != '记录') return false;
+      if (r.content.trim().isEmpty && r.photos.isEmpty) return false;
+      if (!allDates) {
+        return _isSameDay(r.time, selectedDate);
+      }
+      return true;
+    }).toList();
+
+    if (untaggedRecords.isEmpty) {
+      if (mounted) {
+        Toast.info(context, allDates ? '没有需要提取的记录' : '当天没有需要提取的记录');
+      }
+      return;
+    }
+
+    // Sort by time
+    untaggedRecords.sort((a, b) => a.time.compareTo(b.time));
+
+    setState(() {
+      _isBatchExtracting = true;
+      _batchExtractTotal = untaggedRecords.length;
+      _batchExtractCompleted = 0;
+      _batchExtractCancelled = false;
+      _showBatchConfirmButton = false;
+      _batchExtractedRecordIds.clear();
+    });
+
+    if (mounted) {
+      Toast.info(context, '开始提取 ${untaggedRecords.length} 条记录${allDates ? '（全部日期）' : ''}');
+    }
+
+    for (int i = 0; i < untaggedRecords.length; i++) {
+      if (_batchExtractCancelled || !mounted) break;
+
+      final record = untaggedRecords[i];
+      
+      // Re-read the record from provider in case it was modified
+      final currentRecords = ref.read(diaryListProvider).valueOrNull;
+      DiaryRecord currentRecord = record;
+      if (currentRecords != null) {
+        try {
+          currentRecord = currentRecords.firstWhere((r) => r.id == record.id);
+        } catch (_) {}
+      }
+      
+      // Skip if already tagged (might have been manually tagged during batch)
+      if (currentRecord.displayTag.isNotEmpty && currentRecord.displayTag != '记录') {
+        setState(() {
+          _batchExtractCompleted = i + 1;
+        });
+        continue;
+      }
+
+      // Scroll to the record being extracted
+      _scrollToTime(currentRecord.time, smooth: true);
+      
+      // Small delay to let scroll animation settle
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (!mounted || _batchExtractCancelled) break;
+
+      // Extract
+      await _handleAiExtract(currentRecord);
+
+      if (mounted) {
+        setState(() {
+          _batchExtractCompleted = i + 1;
+        });
+      }
+
+      // Pause for a few seconds to let user review the extraction result before moving on
+      if (i < untaggedRecords.length - 1 && !_batchExtractCancelled) {
+        await Future.delayed(const Duration(seconds: 3));
+      }
+    }
+
+    if (mounted) {
+      final cancelled = _batchExtractCancelled;
+      setState(() {
+        _isBatchExtracting = false;
+        _batchExtractCancelled = false;
+        if (_batchExtractedRecordIds.isNotEmpty) {
+          _showBatchConfirmButton = true;
+        }
+      });
+      if (cancelled) {
+        Toast.info(context, '已停止提取（完成 $_batchExtractCompleted/$_batchExtractTotal）');
+      } else {
+        Toast.success(context, '批量提取完成（$_batchExtractTotal 条）');
+      }
+    }
+  }
+
+  /// Long press on smart extract button to select model
+  Future<void> _handleSmartExtractLongPress() async {
+    if (_isBatchExtracting) return;
+    
+    List<AiConfig> configs = [];
+    try {
+      configs = await ref.read(aiConfigListProvider.future);
+    } catch (_) {}
+
+    if (!mounted || configs.isEmpty) {
+      Toast.warning(context, '无可用模型');
+      return;
+    }
+
+    final roles = await AiRoleService.instance.getRoles();
+    final currentModelId = roles.timelineOptimization;
+    if (!mounted) return;
+
+    final selectedConfig = await showDialog<AiConfig>(
+      context: context,
+      builder: (context) => _TimelineModelDialog(configs: configs, selectedId: currentModelId),
+    );
+
+    if (selectedConfig != null && mounted) {
+      await AiRoleService.instance.saveRoles(roles.copyWith(timelineOptimization: selectedConfig.id));
+      if (mounted) {
+        Toast.success(context, '已切换：${selectedConfig.name}', duration: const Duration(seconds: 1));
+      }
+    }
+  }
+
+  /// Build the smart extract floating action button
+  Widget _buildSmartExtractFAB(ThemeData theme) {
+    if (_showBatchConfirmButton) return const SizedBox.shrink();
+    return GestureDetector(
+      onTap: _handleSmartExtractTap,
+      onLongPress: _handleSmartExtractLongPress,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+        width: _isBatchExtracting ? 52 : 44,
+        height: _isBatchExtracting ? 52 : 44,
+        decoration: BoxDecoration(
+          gradient: _isBatchExtracting
+              ? LinearGradient(
+                  colors: [
+                    theme.colorScheme.primary,
+                    theme.colorScheme.tertiary,
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : null,
+          color: _isBatchExtracting ? null : theme.colorScheme.primary.withValues(alpha: 0.1),
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: _isBatchExtracting
+                  ? theme.colorScheme.primary.withValues(alpha: 0.3)
+                  : Colors.black.withValues(alpha: 0.06),
+              blurRadius: _isBatchExtracting ? 12 : 6,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: _isBatchExtracting
+            ? Stack(
+                alignment: Alignment.center,
+                children: [
+                  SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: CircularProgressIndicator(
+                      value: _batchExtractTotal > 0
+                          ? _batchExtractCompleted / _batchExtractTotal
+                          : null,
+                      strokeWidth: 2.5,
+                      color: Colors.white.withValues(alpha: 0.9),
+                      backgroundColor: Colors.white.withValues(alpha: 0.2),
+                    ),
+                  ),
+                  Text(
+                    '$_batchExtractCompleted',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              )
+            : Icon(
+                Icons.auto_fix_high,
+                size: 20,
+                color: theme.colorScheme.primary,
+              ),
+      ),
+    );
+  }
+
+  Future<void> _handleAiExtractModelSelect(DiaryRecord record) async {
+    List<AiConfig> configs = [];
+    try {
+      configs = await ref.read(aiConfigListProvider.future);
+    } catch (_) {}
+
+    if (!mounted || configs.isEmpty) {
+      Toast.warning(context, '无可用模型');
+      return;
+    }
+
+    final roles = await AiRoleService.instance.getRoles();
+    final currentModelId = roles.timelineOptimization;
+    if (!mounted) return;
+
+    final selectedConfig = await showDialog<AiConfig>(
+      context: context,
+      builder: (context) => _TimelineModelDialog(configs: configs, selectedId: currentModelId),
+    );
+
+    if (selectedConfig != null && mounted) {
+      await AiRoleService.instance.saveRoles(roles.copyWith(timelineOptimization: selectedConfig.id));
+      if (mounted) {
+        Toast.success(context, '已切换：${selectedConfig.name}', duration: const Duration(seconds: 1));
+      }
+    }
+  }
+
+  void _confirmBatchExtract() {
+    setState(() {
+      for (final id in _batchExtractedRecordIds) {
+        _undoRecords.remove(id);
+        final controller = _undoControllers.remove(id);
+        controller?.stop();
+        controller?.dispose();
+      }
+      _batchExtractedRecordIds.clear();
+      _showBatchConfirmButton = false;
+    });
+    Toast.success(context, '已确认保存');
+  }
+
+  Widget _buildBatchConfirmPanel(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainer,
+        border: Border(
+          top: BorderSide(
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+            width: 1,
+          ),
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Row(
+          children: [
+            Icon(
+              Icons.auto_awesome,
+              color: theme.colorScheme.primary,
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '已批量提取并优化 ${_batchExtractedRecordIds.length} 条记录',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const Spacer(),
+            FilledButton(
+              onPressed: _confirmBatchExtract,
+              style: FilledButton.styleFrom(
+                elevation: 0,
+                backgroundColor: theme.colorScheme.primary,
+                foregroundColor: theme.colorScheme.onPrimary,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              ),
+              child: const Text('确认保存'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -831,17 +1369,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
 
     if (diaryListAsync is AsyncData && !_hasPerformedInitialScroll) {
       _hasPerformedInitialScroll = true;
-      final allRecords = diaryListAsync.value ?? [];
-      final Map<String, List<DiaryRecord>> recordsByDate = {};
-      for (final r in allRecords) {
-        if (r.isDeleted) continue;
-        final key = '${r.time.year}-${r.time.month}-${r.time.day}';
-        recordsByDate.putIfAbsent(key, () => []).add(r);
-      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        Future.delayed(const Duration(milliseconds: 100), () {
+        Future.delayed(const Duration(milliseconds: 300), () {
           if (mounted) {
-            _performInitialScrollToCurrentTime(recordsByDate);
+            _performInitialScrollToCurrentTime();
           }
         });
       });
@@ -956,32 +1487,34 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
           ),
           const Divider(height: 1),
           Expanded(
-            child: diaryListAsync.when(
-              data: (allRecords) {
-                final Map<String, List<DiaryRecord>> recordsByDate = {};
-                for (final r in allRecords) {
-                  if (r.isDeleted) continue;
-                  final key = '${r.time.year}-${r.time.month}-${r.time.day}';
-                  recordsByDate.putIfAbsent(key, () => []).add(r);
-                }
+            child: Stack(
+              children: [
+                diaryListAsync.when(
+                  data: (allRecords) {
+                    final Map<String, List<DiaryRecord>> recordsByDate = {};
+                    for (final r in allRecords) {
+                      if (r.isDeleted) continue;
+                      final key = '${r.time.year}-${r.time.month}-${r.time.day}';
+                      recordsByDate.putIfAbsent(key, () => []).add(r);
+                    }
 
-                return Stack(
-                  children: [
-                    Positioned(
-                      left: 40,
-                      top: 0,
-                      bottom: 0,
-                      child: Container(
-                        width: 2,
-                        color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-                      ),
-                    ),
-                    GestureDetector(
-                      key: _viewportKey,
-                      onLongPressStart: _handleDragStart,
-                      onLongPressMoveUpdate: _handleDragUpdate,
-                      onLongPressEnd: _handleDragEnd,
-                      child: ListView.builder(
+                    return Stack(
+                      children: [
+                        Positioned(
+                          left: 39,
+                          top: 0,
+                          bottom: 0,
+                          child: Container(
+                            width: 2,
+                            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+                          ),
+                        ),
+                        GestureDetector(
+                          key: _viewportKey,
+                          onLongPressStart: _handleDragStart,
+                          onLongPressMoveUpdate: _handleDragUpdate,
+                          onLongPressEnd: _handleDragEnd,
+                          child: ListView.builder(
                         cacheExtent: 1500,
                         controller: _scrollController,
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -1089,10 +1622,30 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
                                 ? nowMinutes >= currentMinutes
                                 : (nowMinutes >= currentMinutes && nowMinutes < nextMinutes);
 
+                            final selectionStartForCurrentTime = isUserSelected && selectEvent != null
+                                ? DateTime(
+                                    selectEvent.date.year,
+                                    selectEvent.date.month,
+                                    selectEvent.date.day,
+                                    selectEvent.time.hour,
+                                    selectEvent.time.minute,
+                                  )
+                                : DateTime(0);
+                            final selectionEndForCurrentTime = isUserSelected && selectEvent != null && selectEvent.endTime != null
+                                ? DateTime(
+                                    (selectEvent.endDate ?? selectEvent.date).year,
+                                    (selectEvent.endDate ?? selectEvent.date).month,
+                                    (selectEvent.endDate ?? selectEvent.date).day,
+                                    selectEvent.endTime!.hour,
+                                    selectEvent.endTime!.minute,
+                                  )
+                                : DateTime(0);
+
                             final showDedicatedCurrentTimeNode = isNowInThisInterval &&
                                 _isToday(date) &&
                                 !(now.minute == 0 || now.minute == 30) &&
-                                (!isUserSelected || !_isSameDay(selectEvent.date, date) || (now.hour != currentInputTime.hour || now.minute != currentInputTime.minute));
+                                (!isUserSelected || !_isSameDay(selectEvent.date, date) || (now.hour != currentInputTime.hour || now.minute != currentInputTime.minute)) &&
+                                !(isUserSelected && selectEvent.endTime != null && _isSameDay(selectEvent.date, date) && _isSameDay(selectEvent.endDate ?? selectEvent.date, date) && !nodeStartDateTime.isBefore(selectionStartForCurrentTime) && !nodeStartDateTime.isAfter(selectionEndForCurrentTime));
 
                             final isStandardNodeCurrentTime = _isToday(date) && (now.hour == time.hour && now.minute == time.minute);
 
@@ -1113,6 +1666,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
                                 if (showDedicatedSelectedNode)
                                   _SelectedTimeNode(
                                     time: currentInputTime,
+                                    isCurrentTime: _isToday(date) && (now.hour == currentInputTime.hour && now.minute == currentInputTime.minute),
                                     onTap: () => _handleNodeTap(date, currentInputTime),
                                     onDoubleTap: () => _handleNodeDoubleTap(date, currentInputTime),
                                   ),
@@ -1127,6 +1681,12 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
                                       onTap: () => _handleEdit(record),
                                       onEdit: _handleEdit,
                                       onDelete: _handleDelete,
+                                      onAiExtract: () => _handleAiExtract(record),
+                                      onAiExtractLongPress: () => _handleAiExtractModelSelect(record),
+                                      isExtracting: _extractingRecordId == record.id,
+                                      onUndo: () => _undoExtract(record),
+                                      isUndoable: _undoRecords.containsKey(record.id),
+                                      undoAnimation: _undoControllers[record.id],
                                     )),
                               ],
                             );
@@ -1148,11 +1708,21 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with WidgetsBindingObserv
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(child: Text('加载失败: $e')),
             ),
-          ),
-          const DiaryInputBar(),
-        ],
+            // Smart Extract FAB
+            Positioned(
+              right: 16,
+              bottom: 12,
+              child: _buildSmartExtractFAB(theme),
+            ),
+          ],
+        ),
       ),
-    );
+      if (_showBatchConfirmButton)
+        _buildBatchConfirmPanel(theme),
+      const DiaryInputBar(),
+    ],
+  ),
+);
   }
 
   Color _hexToColor(String hex) {
@@ -1429,11 +1999,13 @@ class _EmptyTimeNode extends StatelessWidget {
 
 class _SelectedTimeNode extends StatelessWidget {
   final TimeOfDay time;
+  final bool isCurrentTime;
   final VoidCallback onTap;
   final VoidCallback? onDoubleTap;
 
   const _SelectedTimeNode({
     required this.time,
+    this.isCurrentTime = false,
     required this.onTap,
     this.onDoubleTap,
   });
@@ -1442,65 +2014,44 @@ class _SelectedTimeNode extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    final distinctColor = theme.colorScheme.secondary;
+    final labelColor = isCurrentTime ? distinctColor : theme.colorScheme.primary;
 
     return GestureDetector(
       onTap: onTap,
       onDoubleTap: onDoubleTap,
       behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-        padding: const EdgeInsets.symmetric(vertical: 16.0),
+      child: Container(
+        height: 44.0,
         margin: const EdgeInsets.only(left: 0.0, right: 4.0, top: 2.0, bottom: 2.0),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          color: theme.colorScheme.primary.withValues(alpha: 0.04),
-          border: Border.all(
-            color: theme.colorScheme.primary.withValues(alpha: 0.25),
-            width: 1,
-          ),
-        ),
         child: Row(
           children: [
             SizedBox(
               width: 48,
               child: Center(
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeInOut,
-                  width: 16,
-                  height: 16,
-                  decoration: BoxDecoration(
-                    color: Colors.transparent,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: theme.colorScheme.primary, width: 2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.3),
-                        blurRadius: 8,
-                        spreadRadius: 2,
-                      )
-                    ],
-                  ),
-                  child: Center(
-                    child: Container(
-                      width: 4,
-                      height: 4,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 10,
+                      height: 10,
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.primary,
+                        color: theme.colorScheme.primary.withValues(alpha: 0.6),
                         shape: BoxShape.circle,
                       ),
                     ),
-                  ),
+                    if (isCurrentTime) ...[
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.access_time_rounded,
+                        size: 12,
+                        color: labelColor,
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
-            Icon(
-              Icons.access_time_filled,
-              size: 14,
-              color: theme.colorScheme.primary,
-            ),
-            const SizedBox(width: 6),
             Text(
               timeStr,
               style: theme.textTheme.bodySmall?.copyWith(
@@ -1509,7 +2060,25 @@ class _SelectedTimeNode extends StatelessWidget {
                 fontSize: 13,
               ),
             ),
-            const SizedBox(width: 8),
+            if (isCurrentTime) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: labelColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '当前时间',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: labelColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 9,
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(width: 12),
             Expanded(
               child: Container(
                 height: 1,
@@ -1674,5 +2243,80 @@ class _TimelineItemWrapperState extends State<TimelineItemWrapper> {
   @override
   Widget build(BuildContext context) {
     return widget.child;
+  }
+}
+
+class _TimelineModelDialog extends StatelessWidget {
+  final List<AiConfig> configs;
+  final String? selectedId;
+
+  const _TimelineModelDialog({required this.configs, this.selectedId});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Dialog(
+      backgroundColor: theme.colorScheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Text('选择模型', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(height: 16),
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  children: configs.map((config) => _TimelineModelItem(
+                    config: config,
+                    isSelected: config.id == selectedId,
+                    onTap: () => Navigator.pop(context, config),
+                  )).toList(),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TimelineModelItem extends StatelessWidget {
+  final AiConfig config;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _TimelineModelItem({required this.config, required this.isSelected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        child: Row(
+          children: [
+            Icon(Icons.smart_toy, size: 20, color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
+            const SizedBox(width: 12),
+            Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(config.name, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+                Text(config.modelName, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              ],
+            )),
+            if (isSelected) Icon(Icons.check_circle, size: 20, color: theme.colorScheme.primary),
+          ],
+        ),
+      ),
+    );
   }
 }

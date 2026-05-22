@@ -7,7 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/core/storage/diary_repository.dart';
-import 'package:qnote_flutter/core/storage/diary_repository.dart';
+import 'package:qnote_flutter/widgets/unified_image.dart';
 
 class DiaryBatchManageView extends ConsumerStatefulWidget {
   const DiaryBatchManageView({super.key});
@@ -192,6 +192,45 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
 
   String _formatTime(DateTime dt) {
     return DateFormat('MM-dd HH:mm').format(dt);
+  }
+
+  String _formatTimeRange(DiaryRecord record) {
+    final start = record.startTime ?? record.time;
+    final dateStr = DateFormat('MM-dd HH:mm').format(start);
+    if (record.endTime != null) {
+      final endStr = DateFormat('HH:mm').format(record.endTime!);
+      return '$dateStr - $endStr';
+    }
+    return dateStr;
+  }
+
+  void _openRecordDetails(DiaryRecord record) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return _RecordDetailSheet(
+          records: _filteredRecords,
+          initialIndex: _filteredRecords.indexOf(record),
+          selectedIds: _selectedIds,
+          onToggleSelect: (id) {
+            _toggleSelect(id);
+          },
+        );
+      },
+    );
+  }
+
+  void _openGallery(DiaryRecord record, int index) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _FullScreenImageGallery(
+          photos: record.photos,
+          initialIndex: index,
+        ),
+      ),
+    );
   }
 
   @override
@@ -454,7 +493,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
-                                _formatTime(record.time),
+                                _formatTimeRange(record),
                                 style: theme.textTheme.labelSmall?.copyWith(
                                   fontWeight: FontWeight.bold,
                                   color: colorScheme.onSurfaceVariant,
@@ -480,14 +519,59 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                             ],
                           ],
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 6),
                         Text(
-                          record.content,
-                          maxLines: 1,
+                          record.content.isNotEmpty ? record.content : '无备注内容',
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: record.content.isNotEmpty
+                                ? colorScheme.onSurface
+                                : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                          ),
                         ),
+                        if (record.photos.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {}, // Prevent card tap selection
+                            child: Row(
+                              children: record.photos.asMap().entries.map((entry) {
+                                final idx = entry.key;
+                                final photo = entry.value;
+                                return GestureDetector(
+                                  onTap: () => _openGallery(record, idx),
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(right: 8),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: UnifiedImage(
+                                        imagePath: photo,
+                                        width: 48,
+                                        height: 48,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                        ],
                       ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _openRecordDetails(record), // Prevent card tap selection and open detail view
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                      child: Icon(
+                        Icons.visibility_outlined,
+                        color: colorScheme.primary,
+                        size: 20,
+                      ),
                     ),
                   ),
                 ],
@@ -547,4 +631,440 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
       ),
     );
   }
+}
+
+class _FullScreenImageGallery extends StatefulWidget {
+  final List<String> photos;
+  final int initialIndex;
+
+  const _FullScreenImageGallery({
+    required this.photos,
+    required this.initialIndex,
+  });
+
+  @override
+  State<_FullScreenImageGallery> createState() => _FullScreenImageGalleryState();
+}
+
+class _FullScreenImageGalleryState extends State<_FullScreenImageGallery> {
+  late PageController _pageController;
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        title: Text(
+          '${_currentIndex + 1} / ${widget.photos.length}',
+          style: const TextStyle(color: Colors.white, fontSize: 16),
+        ),
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: PageView.builder(
+        controller: _pageController,
+        itemCount: widget.photos.length,
+        onPageChanged: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        itemBuilder: (context, index) {
+          return Center(
+            child: InteractiveViewer(
+              minScale: 1.0,
+              maxScale: 4.0,
+              child: UnifiedImage(
+                imagePath: widget.photos[index],
+                fit: BoxFit.contain,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _RecordDetailSheet extends StatefulWidget {
+  final List<DiaryRecord> records;
+  final int initialIndex;
+  final Set<String> selectedIds;
+  final void Function(String) onToggleSelect;
+
+  const _RecordDetailSheet({
+    required this.records,
+    required this.initialIndex,
+    required this.selectedIds,
+    required this.onToggleSelect,
+  });
+
+  @override
+  State<_RecordDetailSheet> createState() => _RecordDetailSheetState();
+}
+
+class _RecordDetailSheetState extends State<_RecordDetailSheet> {
+  late PageController _pageController;
+  late int _currentIndex;
+  late Set<String> _localSelectedIds;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+    _localSelectedIds = Set.from(widget.selectedIds);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _toggleLocalSelect(String id) {
+    setState(() {
+      if (_localSelectedIds.contains(id)) {
+        _localSelectedIds.remove(id);
+      } else {
+        _localSelectedIds.add(id);
+      }
+    });
+    widget.onToggleSelect(id);
+  }
+
+  String _formatTimeRange(DiaryRecord record) {
+    final start = record.startTime ?? record.time;
+    final dateStr = DateFormat('yyyy-MM-dd HH:mm').format(start);
+    if (record.endTime != null) {
+      final endStr = DateFormat('HH:mm').format(record.endTime!);
+      return '$dateStr - $endStr';
+    }
+    return dateStr;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: SafeArea(
+        child: Column(
+          children: [
+            // Top Drag Handle
+            const SizedBox(height: 12),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // Top Bar
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                  Text(
+                    '记录详情 (${_currentIndex + 1} / ${widget.records.length})',
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  // Checkbox to select/deselect current record
+                  Builder(
+                    builder: (context) {
+                      final currentRecord = widget.records[_currentIndex];
+                      final isSelected = _localSelectedIds.contains(currentRecord.id);
+                      return FilterChip(
+                        selected: isSelected,
+                        label: Text(isSelected ? '已选择' : '选择此项'),
+                        onSelected: (_) => _toggleLocalSelect(currentRecord.id),
+                        selectedColor: colorScheme.primary.withValues(alpha: 0.15),
+                        checkmarkColor: colorScheme.primary,
+                        labelStyle: TextStyle(
+                          color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            // PageView
+            Expanded(
+              child: PageView.builder(
+                controller: _pageController,
+                itemCount: widget.records.length,
+                onPageChanged: (index) {
+                  setState(() {
+                    _currentIndex = index;
+                  });
+                },
+                itemBuilder: (context, index) {
+                  final record = widget.records[index];
+                  return _buildRecordDetail(context, record, theme, colorScheme);
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecordDetail(
+    BuildContext context,
+    DiaryRecord record,
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
+    final tagColor = _tagColor(record.displayTag);
+    final tagIcon = _tagIcon(record.displayTag);
+    final fields = record.bodyState ?? {};
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Time and Tag Badge Row
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: colorScheme.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.access_time, size: 14, color: colorScheme.primary),
+                    const SizedBox(width: 6),
+                    Text(
+                      _formatTimeRange(record),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (record.displayTag.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: tagColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(tagIcon, size: 14, color: tagColor),
+                      const SizedBox(width: 6),
+                      Text(
+                        record.displayTag,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: tagColor,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // Body State fields (if any)
+          if (fields.isNotEmpty) ...[
+            Text(
+              '记录数据',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerLowest,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.4),
+                ),
+              ),
+              child: Wrap(
+                spacing: 16,
+                runSpacing: 12,
+                children: fields.entries.map((entry) {
+                  if (entry.value == null || entry.value.toString().isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${entry.key}：',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                      Text(
+                        entry.value.toString(),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+
+          // Content Box
+          Text(
+            '详细内容',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Text(
+              record.content.isNotEmpty ? record.content : '（无备注内容）',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                height: 1.6,
+                color: colorScheme.onSurface,
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Photos
+          if (record.photos.isNotEmpty) ...[
+            Text(
+              '照片附件',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: record.photos.asMap().entries.map((entry) {
+                final idx = entry.key;
+                final photo = entry.value;
+                return GestureDetector(
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => _FullScreenImageGallery(
+                          photos: record.photos,
+                          initialIndex: idx,
+                        ),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                      ),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: UnifiedImage(
+                        imagePath: photo,
+                        width: 100,
+                        height: 100,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // Mappings copied from DiaryItem
+  static const _tagIcons = <String, IconData>{
+    '睡眠': Icons.nightlight_round,
+    '饮食': Icons.restaurant,
+    '活动': Icons.directions_run,
+    '记账': Icons.account_balance_wallet,
+  };
+
+  static const _defaultIcon = Icons.description_outlined;
+
+  static const _tagColors = <String, Color>{
+    '睡眠': Color(0xFF6366F1),
+    '饮食': Color(0xFFF59E0B),
+    '活动': Color(0xFF10B981),
+    '记账': Color(0xFFEF4444),
+  };
+
+  static const _defaultColor = Color(0xFF6B7280);
+
+  IconData _tagIcon(String displayTag) => _tagIcons[displayTag] ?? _defaultIcon;
+  Color _tagColor(String displayTag) => _tagColors[displayTag] ?? _defaultColor;
 }

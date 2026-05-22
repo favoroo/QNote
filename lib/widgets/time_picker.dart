@@ -214,7 +214,7 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
-              height: 44,
+              height: 46,
               child: ElevatedButton(
                 onPressed: () {
                   final result = DateTime(
@@ -231,6 +231,7 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 0),
                 ),
                 child: const Row(
                   mainAxisAlignment: MainAxisAlignment.center,

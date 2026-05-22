@@ -55,7 +55,10 @@ class _TodoPageState extends ConsumerState<TodoPage> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.menu),
-          onPressed: () => rootScaffoldKey.currentState?.openDrawer(),
+          onPressed: () {
+            FocusScope.of(context).unfocus();
+            rootScaffoldKey.currentState?.openDrawer();
+          },
         ),
         title: Text(
           '待办',
@@ -67,7 +70,10 @@ class _TodoPageState extends ConsumerState<TodoPage> {
         actions: [
           IconButton(
             icon: Icon(Icons.history_rounded, color: colorScheme.onSurfaceVariant),
-            onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
+            onPressed: () {
+              FocusScope.of(context).unfocus();
+              _scaffoldKey.currentState?.openEndDrawer();
+            },
           ),
         ],
       ),
@@ -437,7 +443,7 @@ class _TodoItemState extends State<_TodoItem> with SingleTickerProviderStateMixi
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.todo.title);
-    _focusNode = FocusNode();
+    _focusNode = FocusNode(skipTraversal: true);
     _focusNode.addListener(_onFocusChange);
 
     _animController = AnimationController(

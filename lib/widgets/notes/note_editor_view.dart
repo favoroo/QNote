@@ -9,6 +9,7 @@ import 'package:qnote_flutter/providers/note_provider.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/core/utils/delta_markdown.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
+import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
@@ -383,9 +384,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
 
   void _copyMarkdown() {
     Clipboard.setData(ClipboardData(text: _serializeToMarkdown()));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已复制 Markdown'), duration: Duration(seconds: 1)),
-    );
+    Toast.success(context, '已复制', duration: const Duration(seconds: 1));
   }
 
   // ---------------------------------------------------------------------------

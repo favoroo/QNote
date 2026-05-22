@@ -141,7 +141,7 @@ class AppTheme {
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       ),
       dialogTheme: DialogThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -331,7 +331,7 @@ class AppTheme {
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       ),
       dialogTheme: DialogThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),

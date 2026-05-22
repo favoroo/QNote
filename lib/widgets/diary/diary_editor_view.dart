@@ -3,13 +3,18 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:intl/intl.dart';
-
+import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/utils/gallery_helper.dart';
+import 'package:qnote_flutter/core/utils/toast_utils.dart';
+import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
+import 'package:qnote_flutter/models/shortcut_field.dart';
+import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
+import 'package:qnote_flutter/widgets/diary/ai_extract_helper.dart';
 import 'package:qnote_flutter/widgets/time_picker.dart';
 import 'package:qnote_flutter/widgets/tag_picker.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
@@ -33,6 +38,8 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   late List<String> _photos;
   late List<String> _newlyUploadedPaths;
   late List<String> _removedPaths;
+  late Map<String, dynamic>? _bodyState;
+  bool _isExtracting = false;
 
   @override
   void initState() {
@@ -47,6 +54,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     _photos = List.from(r.photos);
     _newlyUploadedPaths = [];
     _removedPaths = [];
+    _bodyState = r.bodyState != null ? Map.from(r.bodyState!) : null;
   }
 
   @override
@@ -156,6 +164,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       displayTag: _displayTag,
       content: _contentController.text,
       photos: _photos,
+      bodyState: _bodyState,
       updatedAt: DateTime.now(),
     );
     await ref.read(diaryListProvider.notifier).updateDiary(updated);
@@ -195,6 +204,138 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       ImageRepository().deleteImage(path);
     }
     Navigator.of(context).pop();
+  }
+
+  Future<void> _handleAiExtract() async {
+    if (_isExtracting) return;
+    final contentText = _contentController.text.trim();
+    if (contentText.isEmpty && _photos.isEmpty) return;
+
+    setState(() => _isExtracting = true);
+
+    final result = await extractExistingRecord(
+      ref: ref,
+      context: context,
+      content: contentText,
+      photos: _photos,
+      recordTime: _time,
+      onLoadingChanged: (loading) { if (mounted) setState(() => _isExtracting = loading); },
+    );
+
+    if (result != null && mounted) {
+      final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
+      final foundShortcut = findShortcutById(result.shortcutId, shortcuts);
+
+      if (foundShortcut != null) {
+        setState(() {
+          if (!_tags.contains(foundShortcut.name)) {
+            _tags = [foundShortcut.name, ..._tags.where((t) => t != _displayTag)];
+          }
+          _displayTag = foundShortcut.name;
+        });
+      }
+
+      if (result.time.isNotEmpty) {
+        final baseDate = DateTime(_time.year, _time.month, _time.day);
+        if (result.time['start'] != null) {
+          final parts = (result.time['start'] as String).split(':');
+          if (parts.length >= 2) {
+            final hour = int.tryParse(parts[0]) ?? _time.hour;
+            final minute = int.tryParse(parts[1]) ?? _time.minute;
+            final startOffset = result.time['startOffset'] as int? ?? 0;
+            final dt = baseDate.add(Duration(days: startOffset, hours: hour, minutes: minute));
+            setState(() {
+              _time = dt;
+              _startTime = dt;
+            });
+          }
+        }
+        if (result.time['end'] != null) {
+          final parts = (result.time['end'] as String).split(':');
+          if (parts.length >= 2) {
+            final hour = int.tryParse(parts[0]) ?? 0;
+            final minute = int.tryParse(parts[1]) ?? 0;
+            final endOffset = result.time['endOffset'] as int? ?? 0;
+            setState(() {
+              _endTime = baseDate.add(Duration(days: endOffset, hours: hour, minutes: minute));
+            });
+          }
+        }
+      }
+
+      if (foundShortcut != null && foundShortcut.hasPopup) {
+        List<ShortcutField> fieldsToProcess = foundShortcut.fields;
+        Map<String, dynamic> finalFormValues = Map.from(result.fields);
+        String categoryPrefix = '';
+
+        if (foundShortcut.categories != null && foundShortcut.categories!.isNotEmpty) {
+          final currentCategory = foundShortcut.categories!.firstWhere(
+            (c) => c.id == result.fields['_category'],
+            orElse: () => foundShortcut.categories!.first,
+          );
+          fieldsToProcess = currentCategory.fields;
+          categoryPrefix = '${currentCategory.name} - ';
+        }
+
+        final details = fieldsToProcess.map((f) {
+          final val = finalFormValues[f.id];
+          if (val == null) return null;
+          if (val is List) return '${f.label}：${val.join('、')}';
+          return '${f.label}：$val';
+        }).where((s) => s != null).join('，');
+
+        final fullDetails = categoryPrefix.isNotEmpty ? '$categoryPrefix$details' : details;
+        final notesText = result.notes.isNotEmpty ? result.notes : '';
+        final newContent = '$fullDetails${notesText.isNotEmpty ? '\n备注：$notesText' : ''}';
+
+        setState(() {
+          _contentController.text = newContent;
+        });
+      } else {
+        if (result.notes.isNotEmpty) {
+          setState(() {
+            _contentController.text = result.notes;
+          });
+        }
+      }
+
+      if (result.fields.isNotEmpty) {
+        setState(() {
+          _bodyState = Map<String, dynamic>.from(result.fields);
+        });
+      }
+      Toast.success(context, '优化完成');
+    }
+
+    setState(() => _isExtracting = false);
+  }
+
+  Future<void> _showModelMenu() async {
+    List<AiConfig> configs = [];
+    try {
+      configs = await ref.read(aiConfigListProvider.future);
+    } catch (_) {}
+
+    if (!mounted || configs.isEmpty) {
+      Toast.warning(context, '无可用模型');
+      return;
+    }
+
+    final roles = await AiRoleService.instance.getRoles();
+    final currentModelId = roles.timelineOptimization;
+    if (!mounted) return;
+
+    final selectedConfig = await showDialog<AiConfig>(
+      context: context,
+      builder: (context) => _ExtractModelDialog(configs: configs, selectedId: currentModelId),
+    );
+
+    if (selectedConfig != null && mounted) {
+      await AiRoleService.instance.saveRoles(roles.copyWith(timelineOptimization: selectedConfig.id));
+      if (mounted) {
+        Toast.success(context, '已切换：${selectedConfig.name}', duration: const Duration(seconds: 1));
+      }
+    }
   }
 
   String _formatDateTime(DateTime dt) {
@@ -569,18 +710,49 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-        child: SizedBox(
-          width: double.infinity,
-          height: 52,
-          child: FilledButton(
-            onPressed: _save,
-            style: FilledButton.styleFrom(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(26),
+        child: Row(
+          children: [
+            GestureDetector(
+              onTap: _isExtracting ? null : _handleAiExtract,
+              onLongPress: _isExtracting ? null : _showModelMenu,
+              child: Container(
+                height: 52,
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(26),
+                  border: Border.all(color: _isExtracting ? colorScheme.outlineVariant : colorScheme.primary.withValues(alpha: 0.5)),
+                  color: _isExtracting ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.3) : colorScheme.primary.withValues(alpha: 0.06),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_isExtracting)
+                      SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: colorScheme.primary))
+                    else
+                      Icon(Icons.auto_awesome, size: 18, color: colorScheme.primary),
+                    const SizedBox(width: 6),
+                    Text(
+                      _isExtracting ? '优化中...' : '智能优化',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                    ),
+                  ],
+                ),
               ),
             ),
-            child: const Text('保存修改', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: SizedBox(
+                height: 52,
+                child: FilledButton(
+                  onPressed: _save,
+                  style: FilledButton.styleFrom(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
+                  ),
+                  child: const Text('保存修改', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -607,6 +779,81 @@ class _FullScreenImageView extends StatelessWidget {
             imagePath: imagePath,
             fit: BoxFit.contain,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ExtractModelDialog extends StatelessWidget {
+  final List<AiConfig> configs;
+  final String? selectedId;
+
+  const _ExtractModelDialog({required this.configs, this.selectedId});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Dialog(
+      backgroundColor: theme.colorScheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Text('选择模型', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(height: 16),
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  children: configs.map((config) => _ExtractModelItem(
+                    config: config,
+                    isSelected: config.id == selectedId,
+                    onTap: () => Navigator.pop(context, config),
+                  )).toList(),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ExtractModelItem extends StatelessWidget {
+  final AiConfig config;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _ExtractModelItem({required this.config, required this.isSelected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        child: Row(
+          children: [
+            Icon(Icons.smart_toy, size: 20, color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
+            const SizedBox(width: 12),
+            Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(config.name, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+                Text(config.modelName, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              ],
+            )),
+            if (isSelected) Icon(Icons.check_circle, size: 20, color: theme.colorScheme.primary),
+          ],
         ),
       ),
     );

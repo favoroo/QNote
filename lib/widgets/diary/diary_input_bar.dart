@@ -13,6 +13,7 @@ import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
+import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
@@ -20,6 +21,8 @@ import 'package:qnote_flutter/widgets/time_picker.dart';
 import 'package:qnote_flutter/widgets/time_scroll_picker.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
+import 'package:qnote_flutter/widgets/diary/ai_extract_helper.dart';
+import 'package:qnote_flutter/widgets/animated_gradient_border.dart';
 
 class _Draft {
   final String id;
@@ -691,34 +694,31 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         return root;
       }).toList();
 
-      final now = DateTime.now();
+      final selectedDate = ref.read(selectedDateProvider);
+      final draftTime = _calculateStartDateTime(draft, selectedDate);
       final weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
       final contextStr = {
-        'date': DateFormat('yyyy-MM-dd').format(now),
-        'time': DateFormat('HH:mm').format(now),
-        'weekday': weekdays[now.weekday - 1],
+        'date': DateFormat('yyyy-MM-dd').format(draftTime),
+        'time': DateFormat('HH:mm').format(draftTime),
+        'weekday': weekdays[draftTime.weekday - 1],
       };
 
       setState(() => _extractPhase = _ExtractPhase.waiting);
 
       List<Map<String, dynamic>> results;
       final bool shouldSendImage = extractImages && draft.selectedPhotos.isNotEmpty;
+      String? base64;
       if (shouldSendImage) {
-        final base64 = await _imageRepo.getBase64Image(draft.selectedPhotos.first);
-        results = await aiService.extractGlobalImageInfo(
-          imageBase64: base64,
-          mimeType: 'image/jpeg',
-          prompt: draft.inputText.isNotEmpty ? draft.inputText : '请提取图片中的所有可能记录事件。',
-          schema: schemaContext.toString(),
-          contextStr: contextStr.toString(),
-        );
-      } else {
-        results = await aiService.extractDiaryStructure(
-          text: draft.inputText,
-          schemaContext: schemaContext.toString(),
-          contextStr: contextStr.toString(),
-        );
+        base64 = await _imageRepo.getBase64Image(draft.selectedPhotos.first);
       }
+
+      results = await aiService.extractUnified(
+        text: draft.inputText.isNotEmpty ? draft.inputText : null,
+        imageBase64: base64,
+        mimeType: 'image/jpeg',
+        schema: schemaContext.toString(),
+        contextStr: contextStr.toString(),
+      );
 
       if (results.isNotEmpty) {
         final savedDrafts = List<_Draft>.from(_drafts);
@@ -741,7 +741,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           int? parsedEndOffset;
 
           if (result['time'] != null) {
-            final timeMap = result['time'] as Map<String, dynamic>;
+            final timeMap = Map<String, dynamic>.from(result['time'] as Map);
             if (timeMap['start'] != null) {
               final parts = (timeMap['start'] as String).split(':');
               if (parts.length >= 2) {
@@ -857,9 +857,12 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
             fields['fallAsleepTime'] = '${parsedTime.hour.toString().padLeft(2, '0')}:${parsedTime.minute.toString().padLeft(2, '0')}';
           }
 
+          final rawNotes = result['notes'] as String? ?? '';
+          final cleanNotes = cleanExtractedNotes(rawNotes, fields, foundShortcut);
+
           newDrafts.add(_Draft(
             id: const Uuid().v4(),
-            inputText: result['notes'] as String? ?? '',
+            inputText: cleanNotes,
             selectedShortcut: foundShortcut,
             formValues: fields,
             selectedPhotos: i == 0 ? draft.selectedPhotos : [],
@@ -919,13 +922,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       );
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage),
-            duration: const Duration(seconds: 3),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        Toast.error(context, errorMessage);
       }
       
       setState(() {
@@ -986,7 +983,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     if (!mounted) return;
 
     if (configs.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('暂无模型配置')));
+      Toast.warning(context, '无可用模型');
       return;
     }
 
@@ -1007,12 +1004,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       await AiRoleService.instance.saveRoles(
         roles.copyWith(timelineOptimization: selectedConfig.id),
       );
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('已切换模型：${selectedConfig.name}'),
-          duration: const Duration(seconds: 1),
-        ),
-      );
+      Toast.success(context, '已切换：${selectedConfig.name}', duration: const Duration(seconds: 1));
     }
   }
 
@@ -1024,11 +1016,11 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
   bool _validateDraft(_Draft draft) {
     if (draft.selectedShortcut != null && draft.selectedShortcut!.hasPopup) {
       if (draft.selectedShortcut!.id == 'consumption' && draft.formValues['amount'] == null) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请输入金额')));
+        Toast.warning(context, '请输入金额');
         return false;
       }
       if (draft.selectedShortcut!.id == 'sleep' && draft.formValues['duration'] == null) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请输入睡眠时长')));
+        Toast.warning(context, '请输入睡眠时长');
         return false;
       }
     }
@@ -1114,6 +1106,8 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
             'duration': '未知',
             'notes': draft.inputText,
           };
+        } else {
+          bodyState = finalFormValues;
         }
       } else {
         content = draft.inputText;
@@ -1205,9 +1199,8 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     return end;
   }
 
-  String _formatTime(TimeOfDay time, {int? offset}) {
-    final now = ref.read(selectedDateProvider);
-    final date = offset != null ? now.add(Duration(days: offset)) : now;
+  String _formatTime(DateTime selectedDate, TimeOfDay time, {int? offset}) {
+    final date = offset != null ? selectedDate.add(Duration(days: offset)) : selectedDate;
     final dateStr = DateFormat('MM-dd').format(date);
     final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
     return '$dateStr $timeStr';
@@ -1215,6 +1208,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
 
   @override
   Widget build(BuildContext context) {
+    final selectedDate = ref.watch(selectedDateProvider);
     ref.listen<TimelineTimeSelectEvent?>(diaryInputTimeProvider, (previous, next) {
       if (next != null) {
         final selectedDate = ref.read(selectedDateProvider);
@@ -1272,7 +1266,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       child: AnimatedCrossFade(
         alignment: Alignment.bottomCenter,
         firstChild: _buildCollapsedContent(theme),
-        secondChild: _buildExpandedContent(theme, shortcuts),
+        secondChild: _buildExpandedContent(theme, shortcuts, selectedDate),
         crossFadeState: _isExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
         duration: const Duration(milliseconds: 300),
         sizeCurve: Curves.easeInOut,
@@ -1284,8 +1278,10 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     return GestureDetector(
       onTap: () => setState(() => _isExpanded = true),
       child: SafeArea(
+        bottom: false,
+        top: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -1325,9 +1321,10 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     );
   }
 
-  Widget _buildExpandedContent(ThemeData theme, AsyncValue<List<ShortcutConfig>> shortcuts) {
+  Widget _buildExpandedContent(ThemeData theme, AsyncValue<List<ShortcutConfig>> shortcuts, DateTime selectedDate) {
     return SafeArea(
       top: false,
+      bottom: false,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1337,7 +1334,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           ),
           _buildDraftTabs(theme),
           _buildShortcutRow(theme, shortcuts),
-          _buildTimeAndImageRow(theme),
+          _buildTimeAndImageRow(theme, selectedDate),
           if (_activeDraft.selectedPhotos.isNotEmpty) _buildPhotoPreview(theme),
           _buildInputAndActions(theme),
         ],
@@ -1976,7 +1973,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     }
   }
 
-  Widget _buildTimeAndImageRow(ThemeData theme) {
+  Widget _buildTimeAndImageRow(ThemeData theme, DateTime selectedDate) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
       child: Row(
@@ -2007,7 +2004,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                             child: FittedBox(
                               fit: BoxFit.scaleDown,
                               child: Text(
-                                _formatTime(_activeDraft.startTime, offset: _activeDraft.startOffset),
+                                _formatTime(selectedDate, _activeDraft.startTime, offset: _activeDraft.startOffset),
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   fontWeight: FontWeight.bold,
                                   color: theme.colorScheme.primary,
@@ -2022,7 +2019,19 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                if (_activeDraft.endTime != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Text(
+                      '-',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.primary.withValues(alpha: 0.5),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  )
+                else
+                  const SizedBox(width: 8),
                 Expanded(
                   child: _activeDraft.endTime != null
                       ? Container(
@@ -2050,7 +2059,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                                         child: FittedBox(
                                           fit: BoxFit.scaleDown,
                                           child: Text(
-                                            _formatTime(_activeDraft.endTime!, offset: _activeDraft.endOffset),
+                                            _formatTime(selectedDate, _activeDraft.endTime!, offset: _activeDraft.endOffset),
                                             style: theme.textTheme.bodySmall?.copyWith(
                                               fontWeight: FontWeight.bold,
                                               color: theme.colorScheme.primary,
@@ -2168,6 +2177,10 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
   }
 
   Widget _buildPhotoPreview(ThemeData theme) {
+    final aiTempsAsync = ref.watch(aiTemperaturesProvider);
+    final extractImages = aiTempsAsync.valueOrNull?.timelineOptimization.extractImages ?? false;
+    final isImageExtracting = _isExtracting && extractImages;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
       child: SizedBox(
@@ -2181,13 +2194,18 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
               children: [
                 GestureDetector(
                   onTap: () => _showFullImage(_activeDraft.selectedPhotos[index]),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: UnifiedImage(
-                      imagePath: _activeDraft.selectedPhotos[index],
-                      width: 56,
-                      height: 56,
+                  child: AnimatedGradientBorder(
+                    isAnimating: isImageExtracting,
+                    borderRadius: 12,
+                    strokeWidth: 2,
+                    child: ClipRRect(
                       borderRadius: BorderRadius.circular(12),
+                      child: UnifiedImage(
+                        imagePath: _activeDraft.selectedPhotos[index],
+                        width: 56,
+                        height: 56,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
                 ),
@@ -2267,15 +2285,19 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Expanded(
-            child: Container(
-              constraints: const BoxConstraints(maxHeight: 140),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: Stack(
-                alignment: Alignment.bottomRight,
-                children: [
+            child: AnimatedGradientBorder(
+              isAnimating: _isExtracting,
+              borderRadius: 24,
+              strokeWidth: 2,
+              child: Container(
+                constraints: const BoxConstraints(maxHeight: 140),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Stack(
+                  alignment: Alignment.bottomRight,
+                  children: [
                   TextField(
                     controller: _textController,
                     focusNode: _textFocusNode,
@@ -2351,6 +2373,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
               ),
             ),
           ),
+        ),
           const SizedBox(width: 12),
           GestureDetector(
             onTap: _canUndo ? _undoExtract : _handleAiExtract,

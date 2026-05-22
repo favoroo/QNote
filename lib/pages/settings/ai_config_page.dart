@@ -9,6 +9,7 @@ import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/config/models.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
@@ -542,9 +543,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       direction: DismissDirection.endToStart,
       confirmDismiss: (_) async {
         if (allConfigs.length <= 1) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('至少保留一个配置')),
-          );
+          Toast.warning(context, '至少保留一个');
           return false;
         }
         return showDialog<bool>(
@@ -632,7 +631,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                 tooltip: '删除',
                 onPressed: () async {
                   if (allConfigs.length <= 1) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('至少保留一个配置')));
+                    Toast.warning(context, '至少保留一个');
                     return;
                   }
                   final confirmed = await showDialog<bool>(

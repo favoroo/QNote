@@ -12,108 +12,41 @@ final defaultSystemPrompts = <String, String>{
       '1. 如果包含日记或笔记记录，请结合用户的身体数据（如身高体重），提供专业的建议、趋势发现和定性定量分析。\n'
       '2. 发现数据之间的关联（例如：吃了高热量食物 but 有运动，或者睡眠不好导致活动量低）。\n'
       '3. 语气保持亲切、鼓励。使用 Markdown 格式排版，重点内容加粗。',
-  'diary_extraction':
-      '你是一个智能自然语言解析助手。你的任务是将用户的自然语言日记记录，'
-      '准确地提取和映射到给定的 Schema 中。'
-      '如果用户一次输入了多个无关或顺序发生的事件（例如"先...然后...接着..."），'
-      '你需要提取出多个事件的数组。\n'
-      '{{contextStr}}\n'
-      '==== [可用的分类和字段 Schema] ====\n'
-      '{{schemaContext}}\n\n'
-      '==== [提取规范] ====\n'
-      '1. 时间默认规则（硬性）：若遇到模糊时间词，请使用标准默认值'
-      '（早上=08:00，中午=12:30，晚上=19:00，宵夜=23:00）。\n'
-      '2. 严格留空原则（硬性）：如果提供的 Schema 字段在用户输入中完全没有提及'
-      '（如没有提到喝水），**绝对不能**在 fields 中编造并输出该字段。\n'
-      '3. 兜底备注规则（硬性）：所有无法映射到具体 field 的细节（如食物口味、心情），'
-      '必须全部合并填入 notes 字段中。\n'
-      '4. "date" 应当是该记录逻辑上归属的日期（格式为 "yyyy-MM-dd"）。'
-      '基于真实时间上下文计算。\n'
-      '5. "time" 对象中的 "start" 和 "end" 必须是 "HH:mm"。'
-      '睡眠记录的时间应特别注意区分是否在昨晚'
-      '（如果是昨晚入睡并跨天，对应的 startOffset 设为 -1，endOffset 设为 0。'
-      '并在 fields 中准确计算 duration 时长，其数值单位必须与 schema 里的 fields.name '
-      '(如"时长 (小时)") 保持一致，若单位为小时，需将分钟换算为小时，例如 6.7，而不是 399）。\n'
-      '6. 将用户的输入映射到最佳分类（Shortcut）中。'
-      '如果输入包含"钱/元/花费/收入/买/卖/花了/收入了"等财务意向，'
-      '优先匹配到"记账"（consumption）。'
-      '如果 Shortcut 包含 `categories`，必须在返回的 `fields` 内添加 `_category` 字段'
-      '标明子分类 of the id（如：若是支出，则 `_category: "expense"`）。\n\n'
-      '==== [例子] ====\n'
-      '[Example 1]\n'
-      'User: 昨晚11点半才睡，睡得极差\n'
-      'Assistant: [{"shortcutId": "sleep", "time": {"start": "23:30", "startOffset": -1}, '
-      '"fields": {"quality": "较差"}}]\n\n'
-      '[Example 2]\n'
-      'User: 我昨天晚上吃了一碗邵阳米粉，有点辣\n'
-      'Assistant: [{"shortcutId": "diet", "date": "2026-05-12", '
-      '"time": {"start": "19:00"}, "fields": {"item": "正餐"}, '
-      '"notes": "一碗邵阳米粉，有点辣"}]\n\n'
-      '[Example 3]\n'
-      'User: 昨晚十点睡的，一共睡了十个小时，睡得极好\n'
-      'Assistant: [{"shortcutId": "sleep", "time": {"start": "22:00", "end": "08:00", '
-      '"startOffset": -1, "endOffset": 0}, "fields": {"duration": 10, "quality": "极好"}}]\n\n'
-      '==== [当前真实任务] ====\n'
-      'User: {{text}}\n'
-      'Assistant: ',
-  'image_extraction_base':
-      '{{prompt}}\n'
-      '当前可用的所需填写的字段和选项如下：\n'
-      '{{schema}}\n\n'
-      '==== [提取准则] ====\n'
-      '1. 严格按照提供的字段 id 作为 JSON 的 key。\n'
-      '2. 必须返回纯 JSON 对象，严禁包含任何 Markdown 标记（如 ```json）或解释性文字。\n'
-      '3. 如果图片中没有匹配某项字段的信息，请直接忽略该字段。\n'
-      '4. **备注（remark）字段处理**:\n'
-      '   - 仅用于记录 Schema 之外的、图片中存在的关键核心信息。\n'
-      '   - **严禁重复**：不要记录已经映射到具体字段的信息（如金额、种类等）。\n'
-      '   - **风格要求**: 极简关键词/短语，剥离所有修饰性、功能性词汇。\n'
-      '   - **长度限制**: 建议在 10 个字以内。\n\n'
-      '请开始处理图片任务并直接输出 JSON：',
-  'global_image_extraction':
-      '{{prompt}}\n'
-      '========== [可用的分类和字段 Schema] ==========\n'
-      '{{schema}}\n\n'
-      '========== [上下文] ==========\n'
-      '{{contextStr}}\n\n'
-      '========== [提取规范] ==========\n'
-      '1. 将图片中的内容与用户输入的附言（即上面的文本）相结合，'
-      '映射到给出的最佳分类（Shortcut）中。'
-      '如果包含多个分类或多段事件的信息（无论是图里体现还是文里描述），'
-      '请提取出**多个**事件的数组。\n'
-      '2. 只能使用 schema 中提供的 key。提取的值必须属于选项列表。\n'
-      '3. "date" 格式为 "yyyy-MM-dd"。优先使用上下文计算的逻辑日期。\n'
-      '4. "time" 对象中的 "start" 和 "end" 必须是 "HH:mm"。'
-      '如果是昨晚入睡并跨天，对应的 startOffset 设为 -1，endOffset 设为 0。'
-      '对于睡眠（sleep）记录，即使图片中没有显示具体的入睡或醒来时刻，'
-      '也必须根据睡眠时长估算出一个合理的入睡与醒来时间'
-      '（例如：如果当前上下文日期为 2026-05-19，而睡眠时长为 6小时39分，'
-      '则应估算为昨晚 23:00 或 00:00 入睡，今天早上醒来，'
-      '昨晚入睡的 startOffset 设为 -1，今天醒来的 endOffset 设为 0），'
-      '从而生成 time 对象，绝不能留空或缺失。'
-      '且 fields.duration 的数值单位必须和 schema 里的 fields.name '
-      '(如"时长 (小时)") 保持一致（若单位为小时，需将分钟换算为小时，例如 6.7，而不是 399）。\n'
-      '5. **备注（notes）字段逻辑**：\n'
-      '   - 仅保留未被分类和字段捕获的辅助信息（如餐点描述、消费商户等）。\n'
-      '   - 剥离冗余：如果已识别出是"饮食 - 正餐"，不要在 notes 里写"吃饭"或"午餐"。\n'
-      '   - 保持极简。\n\n'
-      '========== [例子] ==========\n'
-      '[Example 1]\n'
-      'User Text (prompt): "今天下午喝的，一大杯美式，花了18元"\n'
-      'Image Content: (一张星巴克杯子的照片)\n'
-      'Assistant: [{"shortcutId": "diet", "time": {"start": "15:00"}, '
-      '"fields": {"item": "咖啡"}, "notes": "一大杯美式"}, '
-      '{"shortcutId": "consumption", "time": {"start": "15:00"}, '
-      '"fields": {"_category": "expense", "type": "饮食", "amount": 18}, '
-      '"notes": "星巴克美式咖啡"}]\n\n'
-      '[Example 2]\n'
-      'User Text (prompt): "昨晚1点才睡着，今天早上吃了这个"\n'
-      'Image Content: (一碗粉的照片)\n'
-      'Assistant: [{"shortcutId": "sleep", "time": {"start": "01:00", "startOffset": -1}, '
-      '"fields": {"quality": "一般"}}, {"shortcutId": "diet", '
-      '"time": {"start": "08:30"}, "fields": {"item": "正餐"}, "notes": "一碗粉"}]\n\n'
-      '==== [当前真实任务] ====\n'
-      '请结合用户附言文本与图片内容进行智能提取，直接输出严格的 JSON 数组结果：',
+  'unified_extraction': '''
+[角色]
+你是智能提取助手，负责将用户输入映射到 Schema 结构，输出 JSON 数组。
+
+[当前时间]
+{{contextStr}}
+
+[Schema 定义]
+{{schema}}
+
+[提取规则]
+1. 多个事件 → 输出多个数组元素
+2. 未提及的字段不输出，无法映射的细节放入 notes 字段
+3. date 格式: yyyy-MM-dd
+4. time (时间) 格式: HH:mm
+   - 跨天用 - 前缀，如 -23:00 表示昨晚23点
+   - 时间范围用 ~ 连接，如 -23:00~8:00
+5. 模糊时间转换: 早→8:00, 午→12:00, 晚→19:00, 宵→23:00
+6. 财务相关 → 输出 consumption，如有 categories 则加 _category 字段
+7. 去重原则: consumption 已记录的金额/类型，其他标签不再重复记录
+8. notes 字段保持极简，不重复已映射的信息
+
+[示例]
+输入: "昨晚十点睡，睡了八个小时"
+输出: [{"id":"sleep","time":"-22:00~6:00","fields":{"duration":8}}]
+
+输入: "吃了一碗螺蛳粉，花了10元"
+输出: [{"id":"diet","fields":{"item":"正餐"},"notes":"螺蛳粉"},{"id":"consumption","fields":{"_category":"expense","type":"饮食","amount":10}}]
+
+输入: "早上吃了玉米鸡蛋油条"
+输出: [{"id":"diet","time":"8:00","fields":{"item":"正餐"},"notes":"玉米鸡蛋油条"}]
+
+[用户输入] ({{inputType}})
+{{text}}
+''',
 };
 
 final defaultShortcutConfigs = <ShortcutConfig>[
@@ -141,7 +74,6 @@ final defaultShortcutConfigs = <ShortcutConfig>[
         options: ['极好', '良好', '一般', '较差'],
       ),
     ],
-    imageExtractionPrompt: '请从图片中提取可能与睡眠相关的信息。',
     sortOrder: 0,
     createdAt: DateTime.now(),
     updatedAt: DateTime.now(),
@@ -164,8 +96,6 @@ final defaultShortcutConfigs = <ShortcutConfig>[
         options: ['100ml', '200ml', '300ml', '500ml'],
       ),
     ],
-    imageExtractionPrompt:
-        '请从图片中提取食物信息，包含菜品名称、估算卡路里、健康度评价等。如果图片是营养标签，请提取其中的热量和营养素。',
     sortOrder: 1,
     createdAt: DateTime.now(),
     updatedAt: DateTime.now(),
@@ -182,7 +112,6 @@ final defaultShortcutConfigs = <ShortcutConfig>[
         options: ['玩手机', '玩电脑', '运动', '阅读'],
       ),
     ],
-    imageExtractionPrompt: '请从图片中提取活动相关的信息，例如运动步数、里程、消耗卡路里等。',
     sortOrder: 2,
     createdAt: DateTime.now(),
     updatedAt: DateTime.now(),
@@ -231,7 +160,6 @@ final defaultShortcutConfigs = <ShortcutConfig>[
         ],
       ),
     ],
-    imageExtractionPrompt: '从图片中提取收据、账单 or 订单信息，包含消费金额、消费类型、商品名称或商家名称等。',
     sortOrder: 3,
     createdAt: DateTime.now(),
     updatedAt: DateTime.now(),

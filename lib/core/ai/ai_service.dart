@@ -440,84 +440,173 @@ class AiService {
     return await chat(messages);
   }
 
-  Future<List<Map<String, dynamic>>> extractDiaryStructure({
-    required String text,
-    required String schemaContext,
+  Map<String, dynamic> _parseSimplifiedTime(String t) {
+    final result = <String, dynamic>{};
+    
+    if (t.contains('~')) {
+      final parts = t.split('~');
+      final startPart = parts[0];
+      final endPart = parts[1];
+      
+      if (startPart.isNotEmpty) {
+        if (startPart.startsWith('-')) {
+          result['start'] = startPart.substring(1);
+          result['startOffset'] = -1;
+        } else {
+          result['start'] = startPart;
+        }
+      }
+      
+      if (endPart.isNotEmpty) {
+        if (endPart.startsWith('-')) {
+          result['end'] = endPart.substring(1);
+          result['endOffset'] = -1;
+        } else {
+          result['end'] = endPart;
+          result['endOffset'] = 0;
+        }
+      }
+    } else {
+      if (t.startsWith('-')) {
+        result['start'] = t.substring(1);
+        result['startOffset'] = -1;
+      } else {
+        result['start'] = t;
+      }
+    }
+    
+    return result;
+  }
+
+  Map<String, dynamic> _convertSimplifiedExtractResult(Map<String, dynamic> simplified) {
+    final result = <String, dynamic>{};
+    
+    result['shortcutId'] = simplified['id'] ?? simplified['shortcutId'];
+    
+    if (simplified.containsKey('t')) {
+      result['time'] = _parseSimplifiedTime(simplified['t'] as String);
+    } else if (simplified.containsKey('time')) {
+      result['time'] = simplified['time'];
+    } else {
+      result['time'] = {};
+    }
+    
+    result['fields'] = simplified['f'] ?? simplified['fields'] ?? {};
+    
+    result['notes'] = simplified['n'] ?? simplified['notes'] ?? '';
+    
+    if (simplified.containsKey('date')) {
+      result['date'] = simplified['date'];
+    }
+    
+    return result;
+  }
+
+  Future<List<Map<String, dynamic>>> extractUnified({
+    String? text,
+    String? imageBase64,
+    String? mimeType,
+    required String schema,
     String? contextStr,
   }) async {
     if (_config == null) throw Exception('AI config not set');
 
-    LoggerService.instance.logAI('提取日记结构化数据', details: '文本长度=${text.length}字符');
+    final hasImage = imageBase64 != null && imageBase64.isNotEmpty;
+    final hasText = text != null && text.isNotEmpty;
 
-    var systemPrompt = defaultSystemPrompts['diary_extraction'] ?? '';
+    String inputType;
+    if (hasImage && hasText) {
+      inputType = '图文';
+    } else if (hasImage) {
+      inputType = '图片';
+    } else {
+      inputType = '文本';
+    }
+
+    LoggerService.instance.logAI(
+      '统一提取请求',
+      details: '类型=$inputType, 有文本=$hasText, 有图片=$hasImage',
+    );
+
+    var systemPrompt = defaultSystemPrompts['unified_extraction'] ?? '';
     systemPrompt = systemPrompt
-        .replaceAll('{{text}}', text)
-        .replaceAll('{{schemaContext}}', schemaContext)
-        .replaceAll('{{contextStr}}', contextStr ?? '');
+        .replaceAll('{{inputType}}', inputType)
+        .replaceAll('{{contextStr}}', contextStr ?? '')
+        .replaceAll('{{schema}}', schema)
+        .replaceAll('{{text}}', text ?? '');
 
     dynamic requestBody;
-    if (_config!.provider == 'gemini') {
-      requestBody = {
-        'contents': [
-          {
-            'role': 'user',
-            'parts': [
-              {'text': text}
-            ]
-          }
-        ],
-        'systemInstruction': {
-          'parts': [
-            {'text': systemPrompt}
-          ]
-        },
-        'generationConfig': {
-          'temperature': _temperature,
-          'maxOutputTokens': _maxTokens,
-          'responseMimeType': 'application/json',
-        }
-      };
+
+    if (hasImage) {
+      requestBody = _buildMultimodalRequestBody(
+        systemPrompt: systemPrompt,
+        imageBase64: imageBase64!,
+        mimeType: mimeType ?? 'image/jpeg',
+      );
     } else {
-      final isOmni = _config!.modelName.toLowerCase().contains('omni');
-      final formattedMessages = [
-        if (isOmni) ...[
-          {
-            'role': 'system',
-            'content': [
-              {'type': 'text', 'text': systemPrompt}
+      if (_config!.provider == 'gemini') {
+        requestBody = {
+          'contents': [
+            {
+              'role': 'user',
+              'parts': [
+                {'text': text ?? ''}
+              ]
+            }
+          ],
+          'systemInstruction': {
+            'parts': [
+              {'text': systemPrompt}
             ]
           },
-          {
-            'role': 'user',
-            'content': [
-              {'type': 'text', 'text': text}
-            ]
+          'generationConfig': {
+            'temperature': _temperature,
+            'maxOutputTokens': _maxTokens,
+            'responseMimeType': 'application/json',
           }
-        ] else ...[
-          {'role': 'system', 'content': systemPrompt},
-          {'role': 'user', 'content': text},
-        ]
-      ];
+        };
+      } else {
+        final isOmni = _config!.modelName.toLowerCase().contains('omni');
+        final formattedMessages = [
+          if (isOmni) ...[
+            {
+              'role': 'system',
+              'content': [
+                {'type': 'text', 'text': systemPrompt}
+              ]
+            },
+            {
+              'role': 'user',
+              'content': [
+                {'type': 'text', 'text': text ?? ''}
+              ]
+            }
+          ] else ...[
+            {'role': 'system', 'content': systemPrompt},
+            {'role': 'user', 'content': text ?? ''},
+          ]
+        ];
 
-      final bodyMap = <String, dynamic>{
-        'model': _config!.modelName,
-        'messages': formattedMessages,
-        'temperature': _temperature,
-        'max_tokens': _maxTokens,
-        'response_format': {'type': 'json_object'},
-      };
+        final bodyMap = <String, dynamic>{
+          'model': _config!.modelName,
+          'messages': formattedMessages,
+          'temperature': _temperature,
+          'max_tokens': _maxTokens,
+          'response_format': {'type': 'json_object'},
+        };
 
-      if (isOmni) {
-        bodyMap['sessionId'] = DateTime.now().millisecondsSinceEpoch.toString();
-        bodyMap['output_modalities'] = ['text'];
+        if (isOmni) {
+          bodyMap['sessionId'] = DateTime.now().millisecondsSinceEpoch.toString();
+          bodyMap['output_modalities'] = ['text'];
+        }
+
+        requestBody = bodyMap;
       }
-
-      requestBody = bodyMap;
     }
 
     final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
     LoggerService.instance.logAI(
-      'AI提取日记结构请求 [${_config!.provider}] [${_config!.modelName}] $_generateContentEndpoint:\n${_formatJsonForLogging(sanitizedBody)}'
+      'AI统一提取请求 [${_config!.provider}] [${_config!.modelName}] $_generateContentEndpoint:\n${_formatJsonForLogging(sanitizedBody)}'
     );
 
     try {
@@ -527,136 +616,26 @@ class AiService {
       );
       final content = _extractTextFromResponse(response.data);
       LoggerService.instance.logAI(
-        'AI提取日记结构响应:\n${_formatJsonForLogging(response.data)}'
+        'AI统一提取响应:\n${_formatJsonForLogging(response.data)}'
       );
 
       final jsonResult = _parseJsonFromAiContent(content);
       LoggerService.instance.logAI(
-        '日记结构提取完成',
-        details: '结果类型=${jsonResult is List ? "数组" : "对象"}',
-      );
-
-      if (jsonResult is List) {
-        return jsonResult.cast<Map<String, dynamic>>();
-      }
-      return [jsonResult as Map<String, dynamic>];
-    } catch (e, stackTrace) {
-      LoggerService.instance.logAI(
-        '日记结构提取失败: $e',
-        level: LogLevel.error,
-        details: stackTrace.toString(),
-      );
-      rethrow;
-    }
-  }
-
-  Future<Map<String, dynamic>> extractImageInfo({
-    required String imageBase64,
-    required String mimeType,
-    required String prompt,
-    required String schema,
-  }) async {
-    if (_config == null) throw Exception('AI config not set');
-
-    LoggerService.instance.logAI(
-      '提取单张图片信息',
-      details:
-          '图片类型=$mimeType, 大小≈${(imageBase64.length * 3 / 4 / 1024).toStringAsFixed(1)}KB',
-    );
-
-    var systemPrompt = defaultSystemPrompts['image_extraction_base'] ?? '';
-    systemPrompt = systemPrompt
-        .replaceAll('{{prompt}}', prompt)
-        .replaceAll('{{schema}}', schema);
-
-    final requestBody = _buildMultimodalRequestBody(
-      systemPrompt: systemPrompt,
-      imageBase64: imageBase64,
-      mimeType: mimeType,
-    );
-
-    final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
-    LoggerService.instance.logAI(
-      'AI提取图片请求 [${_config!.provider}] [${_config!.modelName}] $_generateContentEndpoint:\n${_formatJsonForLogging(sanitizedBody)}'
-    );
-
-    try {
-      final response = await _dio.post(
-        _generateContentEndpoint,
-        data: requestBody,
-      );
-      final content = _extractTextFromResponse(response.data);
-      LoggerService.instance.logAI(
-        'AI提取图片响应:\n${_formatJsonForLogging(response.data)}'
-      );
-
-      final result = _parseJsonFromAiContent(content) as Map<String, dynamic>;
-      LoggerService.instance.logAI('单张图片信息提取完成');
-      return result;
-    } catch (e, stackTrace) {
-      LoggerService.instance.logAI(
-        '单张图片信息提取失败: $e',
-        level: LogLevel.error,
-        details: stackTrace.toString(),
-      );
-      rethrow;
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> extractGlobalImageInfo({
-    required String imageBase64,
-    required String mimeType,
-    required String prompt,
-    required String schema,
-    String? contextStr,
-  }) async {
-    if (_config == null) throw Exception('AI config not set');
-
-    LoggerService.instance.logAI(
-      '提取全局图片信息',
-      details: '图片类型=$mimeType, 有上下文=${contextStr != null}',
-    );
-
-    var systemPrompt = defaultSystemPrompts['global_image_extraction'] ?? '';
-    systemPrompt = systemPrompt
-        .replaceAll('{{prompt}}', prompt)
-        .replaceAll('{{schema}}', schema)
-        .replaceAll('{{contextStr}}', contextStr ?? '');
-
-    final requestBody = _buildMultimodalRequestBody(
-      systemPrompt: systemPrompt,
-      imageBase64: imageBase64,
-      mimeType: mimeType,
-    );
-
-    final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
-    LoggerService.instance.logAI(
-      'AI提取全局图片请求 [${_config!.provider}] [${_config!.modelName}] $_generateContentEndpoint:\n${_formatJsonForLogging(sanitizedBody)}'
-    );
-
-    try {
-      final response = await _dio.post(
-        _generateContentEndpoint,
-        data: requestBody,
-      );
-      final content = _extractTextFromResponse(response.data);
-      LoggerService.instance.logAI(
-        'AI提取全局图片响应:\n${_formatJsonForLogging(response.data)}'
-      );
-
-      final jsonResult = _parseJsonFromAiContent(content);
-      LoggerService.instance.logAI(
-        '全局图片信息提取完成',
+        '统一提取完成',
         details: '结果数量=${jsonResult is List ? jsonResult.length : 1}',
       );
 
+      List<Map<String, dynamic>> results;
       if (jsonResult is List) {
-        return jsonResult.cast<Map<String, dynamic>>();
+        results = jsonResult.cast<Map<String, dynamic>>();
+      } else {
+        results = [jsonResult as Map<String, dynamic>];
       }
-      return [jsonResult as Map<String, dynamic>];
+      
+      return results.map(_convertSimplifiedExtractResult).toList();
     } catch (e, stackTrace) {
       LoggerService.instance.logAI(
-        '全局图片信息提取失败: $e',
+        '统一提取失败: $e',
         level: LogLevel.error,
         details: stackTrace.toString(),
       );

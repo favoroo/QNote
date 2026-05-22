@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'package:qnote_flutter/core/export/export_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/database_helper.dart';
+import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/note_provider.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
@@ -36,15 +37,11 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
       final jsonStr = await _exportService.exportAllToJson();
       await _exportService.shareJson(jsonStr);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('数据导出成功')),
-        );
+        Toast.success(context, '导出成功');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('导出失败: $e')),
-        );
+        Toast.error(context, '导出失败');
       }
     } finally {
       if (mounted) setState(() => _isExporting = false);
@@ -110,9 +107,7 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
         ref.invalidate(chatSessionListProvider);
         ref.invalidate(webdavConfigProvider);
         ref.invalidate(diaryColorMarkProvider);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('数据导入成功')),
-        );
+        Toast.success(context, '导入成功');
       }
     } catch (e, stackTrace) {
       LoggerService.instance.logImport(
@@ -121,9 +116,7 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
         details: '${e.toString()}\n堆栈: ${stackTrace.toString()}',
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('导入失败: $e')),
-        );
+        Toast.error(context, '导入失败');
       }
     } finally {
       if (mounted) setState(() => _isImporting = false);
@@ -198,15 +191,11 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('数据已清除')),
-        );
+        Toast.success(context, '已清除');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('清除失败: $e')),
-        );
+        Toast.error(context, '清除失败');
       }
     }
   }
@@ -442,9 +431,7 @@ class _LogViewerPageState extends State<_LogViewerPage> {
                             _isSelectMode = false;
                             _selectedLogs.clear();
                           });
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('已复制选中的日志')),
-                          );
+                          Toast.success(context, '已复制选中的日志');
                         },
                   tooltip: '复制选中',
                 ),
@@ -489,9 +476,7 @@ class _LogViewerPageState extends State<_LogViewerPage> {
                       filterLevel: _selectedLevel,
                     );
                     Clipboard.setData(ClipboardData(text: text));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('日志已复制到剪贴板')),
-                    );
+                    Toast.success(context, '日志已复制到剪贴板');
                   },
                 ),
                 IconButton(
@@ -592,9 +577,7 @@ class _LogViewerPageState extends State<_LogViewerPage> {
           ? null
           : () {
               Clipboard.setData(ClipboardData(text: entry.message));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('已复制该条日志内容')),
-              );
+              Toast.success(context, '已复制该条日志内容');
             },
       child: Container(
         color: isSelected ? Colors.blue.withValues(alpha: 0.2) : Colors.transparent,

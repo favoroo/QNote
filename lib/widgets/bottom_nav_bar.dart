@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/widgets/side_drawer.dart';
+import 'package:qnote_flutter/widgets/debug_console.dart';
 
 class ScaffoldWithNavBar extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
@@ -83,7 +84,9 @@ class BottomNavBar extends ConsumerWidget {
                         ref.read(diaryScrollTriggerProvider.notifier).state =
                             DateTime.now().millisecondsSinceEpoch;
                       }
-                    : null,
+                    : (index == 2
+                        ? () => showDebugConsole(context)
+                        : null),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
