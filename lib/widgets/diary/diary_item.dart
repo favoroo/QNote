@@ -65,6 +65,7 @@ class DiaryItem extends StatelessWidget {
   List<String> _buildAdditionalTags(TagEntry entry) {
     final tags = <String>[];
     final bs = entry.fields;
+    final handledKeys = <String>{};
 
     if (entry.name == '睡眠') {
       final durationVal = _getVal(bs, ['duration', '时长', '睡眠时长']);
@@ -72,11 +73,25 @@ class DiaryItem extends StatelessWidget {
         final formatted = _formatDouble(durationVal);
         if (formatted.isNotEmpty) tags.add('$formatted小时');
       }
+      handledKeys.addAll(['duration', '时长', '睡眠时长']);
+
+      final qualityVal = _getVal(bs, ['quality', '质量', '睡眠质量']);
+      if (qualityVal != null && qualityVal.toString().isNotEmpty) {
+        tags.add(qualityVal.toString());
+      }
+      handledKeys.addAll(['quality', '质量', '睡眠质量']);
+
+      final fallAsleepVal = _getVal(bs, ['fallAsleepTime', '入睡时间']);
+      if (fallAsleepVal != null && fallAsleepVal.toString().isNotEmpty) {
+        tags.add('入睡: ${fallAsleepVal.toString()}');
+      }
+      handledKeys.addAll(['fallAsleepTime', '入睡时间']);
     } else if (entry.name == '饮食') {
       final typeVal = _getVal(bs, ['type', 'item', '种类', '类别']);
       if (typeVal != null && typeVal.toString().isNotEmpty) tags.add(typeVal.toString());
       final ratingVal = _getVal(bs, ['rating', 'health', '评价']);
       if (ratingVal != null && ratingVal.toString().isNotEmpty) tags.add(ratingVal.toString());
+      handledKeys.addAll(['type', 'item', '种类', '类别', 'rating', 'health', '评价']);
     } else if (entry.name == '活动') {
       final typeVal = _getVal(bs, ['type', 'item', '项目', '类型']);
       if (typeVal != null && typeVal.toString().isNotEmpty) tags.add(typeVal.toString());
@@ -85,6 +100,27 @@ class DiaryItem extends StatelessWidget {
         final formatted = _formatDouble(durationVal);
         if (formatted.isNotEmpty) tags.add('$formatted小时');
       }
+      handledKeys.addAll(['type', 'item', '项目', '类型', 'duration', '时长']);
+    } else if (entry.name == '健康') {
+      final symptomVal = _getVal(bs, ['symptom', '症状']);
+      if (symptomVal != null) {
+        if (symptomVal is List) {
+          for (final s in symptomVal) {
+            if (s.toString().isNotEmpty) tags.add(s.toString());
+          }
+        } else if (symptomVal.toString().isNotEmpty) {
+          tags.add(symptomVal.toString());
+        }
+      }
+      final severityVal = _getVal(bs, ['severity', '严重程度']);
+      if (severityVal != null && severityVal.toString().isNotEmpty) {
+        tags.add(severityVal.toString());
+      }
+      final medicationVal = _getVal(bs, ['medication', '用药']);
+      if (medicationVal != null && medicationVal.toString().isNotEmpty) {
+        tags.add('💊 ${medicationVal.toString()}');
+      }
+      handledKeys.addAll(['symptom', '症状', 'severity', '严重程度', 'medication', '用药']);
     } else if (entry.name == '记账') {
       final categoryVal = _getVal(bs, ['_category', 'category', '收支类型', '收支']);
       String? direction;
@@ -110,6 +146,26 @@ class DiaryItem extends StatelessWidget {
       if (amountVal != null) {
         final formatted = _formatDouble(amountVal);
         if (formatted.isNotEmpty) tags.add('$formatted元');
+      }
+      handledKeys.addAll([
+        '_category', 'category', '收支类型', '收支',
+        'type', 'incomeType', '支出类型', '收入类型', '分类', '类型',
+        'amount', '金额', '钱数'
+      ]);
+    }
+
+    for (final f in bs.entries) {
+      if (f.key.startsWith('_')) continue;
+      final normKey = f.key.trim().toLowerCase();
+      if (handledKeys.contains(normKey)) continue;
+
+      final label = _getFieldLabel(entry.name, f.key, bs);
+      final normLabel = label.trim().toLowerCase();
+      if (handledKeys.contains(normLabel)) continue;
+
+      final val = _formatFieldValue(entry.name, f.key, f.value);
+      if (val.isNotEmpty) {
+        tags.add('$label: $val');
       }
     }
 
@@ -351,7 +407,7 @@ class DiaryItem extends StatelessWidget {
                             right: -22,
                             child: GestureDetector(
                               behavior: HitTestBehavior.opaque,
-                              onTap: isUndoable ? onUndo : (isExtracting ? null : onAiExtract),
+                              onTap: isUndoable ? onUndo : onAiExtract,
                               onLongPress: isUndoable ? null : (isExtracting ? null : onAiExtractLongPress),
                               child: Padding(
                                 padding: const EdgeInsets.all(16),
@@ -544,36 +600,26 @@ class DiaryItem extends StatelessWidget {
     );
   }
 
-  Widget _buildMultiTagSections(ThemeData theme) {
-    final sections = <Widget>[];
+  Widget _buildTagEntryPills(ThemeData theme, TagEntry entry, {bool showIcon = false, String? showTime}) {
+    final color = _tagColor(entry.name);
+    final icon = _tagIcon(entry.name);
+    
+    final rowItems = <Widget>[];
 
-    for (int i = 0; i < record.tagEntries.length; i++) {
-      final entry = record.tagEntries[i];
-      final color = _tagColor(entry.name);
-      final icon = _tagIcon(entry.name);
-
-      if (i > 0) {
-        sections.add(Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Divider(
-            height: 1,
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-          ),
-        ));
-      }
-
-      sections.add(Row(
+    // 1. Tag name pill (filled)
+    rowItems.add(Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 20,
-            height: 20,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, size: 10, color: color),
-          ),
-          const SizedBox(width: 6),
+          if (showIcon) ...[
+            Icon(icon, size: 11, color: color),
+            const SizedBox(width: 4),
+          ],
           Text(
             entry.name,
             style: theme.textTheme.labelSmall?.copyWith(
@@ -581,39 +627,79 @@ class DiaryItem extends StatelessWidget {
               fontWeight: FontWeight.bold,
             ),
           ),
-          if (entry.time != null && entry.time!.isNotEmpty) ...[
-            const SizedBox(width: 8),
-            Text(
-              entry.time!,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
         ],
-      ));
+      ),
+    ));
 
-      if (entry.fields.isNotEmpty) {
-        final fieldParts = <String>[];
-        for (final f in entry.fields.entries) {
-          if (f.key.startsWith('_')) continue;
-          final label = _getFieldLabel(entry.name, f.key, entry.fields);
-          final val = _formatFieldValue(entry.name, f.key, f.value);
-          if (val.isNotEmpty) fieldParts.add('$label: $val');
-        }
-        if (fieldParts.isNotEmpty) {
-          sections.add(Padding(
-            padding: const EdgeInsets.only(left: 26, top: 2),
-            child: Text(
-              fieldParts.join('  '),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                fontSize: 12,
-              ),
-            ),
-          ));
-        }
+    // 2. Optional time display
+    if (showTime != null && showTime.isNotEmpty) {
+      rowItems.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: Text(
+          showTime,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ));
+    }
+
+    // 3. Field pills (outlined)
+    final additionalTags = _buildAdditionalTags(entry);
+    for (final tagText in additionalTags) {
+      rowItems.add(Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.02),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: color.withValues(alpha: 0.35),
+            width: 1,
+          ),
+        ),
+        child: Text(
+          tagText,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: color.withValues(alpha: 0.9),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ));
+    }
+
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: rowItems,
+    );
+  }
+
+  Widget _buildMultiTagSections(ThemeData theme) {
+    final sections = <Widget>[];
+
+    for (int i = 0; i < record.tagEntries.length; i++) {
+      final entry = record.tagEntries[i];
+
+      if (i > 0) {
+        sections.add(Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Divider(
+            height: 1,
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+          ),
+        ));
       }
+
+      sections.add(
+        _buildTagEntryPills(
+          theme,
+          entry,
+          showIcon: true,
+          showTime: entry.time,
+        ),
+      );
     }
 
     final richContent = _buildRichContent(
@@ -626,7 +712,7 @@ class DiaryItem extends StatelessWidget {
     );
     if (richContent != null) {
       sections.add(Padding(
-        padding: const EdgeInsets.only(top: 6),
+        padding: const EdgeInsets.only(top: 8),
         child: Divider(
           height: 1,
           color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
@@ -681,7 +767,8 @@ class DiaryItem extends StatelessWidget {
     final keysToSkip = {
       'duration', 'quality', 'fallasleeptime', 'type', 'rating', 'item', 'amount', 'incometype',
       'symptom', 'severity', 'notes', 'note', 'remark', 'remarks', 'health',
-      '时长', '质量', '入睡时间', '类型', '评价', '项目', '金额', '收入类型', '症状', '严重程度', '备注', '种类', '睡眠质量', '类别'
+      'medication',
+      '时长', '质量', '入睡时间', '类型', '评价', '项目', '金额', '收入类型', '症状', '严重程度', '备注', '种类', '睡眠质量', '类别', '用药'
     };
 
     String normalizeKey(String key) {
@@ -739,7 +826,20 @@ class DiaryItem extends StatelessWidget {
         }
         final val = match.group(3)?.trim() ?? '';
 
-        if (keysToSkip.contains(normKey) || (lastPartNorm.isNotEmpty && keysToSkip.contains(lastPartNorm))) {
+        bool shouldSkip = false;
+        for (final skipKey in keysToSkip) {
+          if (normKey == skipKey || normKey.contains(skipKey) || skipKey.contains(normKey)) {
+            shouldSkip = true;
+            break;
+          }
+          if (lastPartNorm.isNotEmpty && 
+              (lastPartNorm == skipKey || lastPartNorm.contains(skipKey) || skipKey.contains(lastPartNorm))) {
+            shouldSkip = true;
+            break;
+          }
+        }
+
+        if (shouldSkip) {
           lastIndex = match.end;
           continue;
         }
@@ -751,8 +851,18 @@ class DiaryItem extends StatelessWidget {
 
       if (lastIndex < trimmedLine.length) {
         final suffix = trimmedLine.substring(lastIndex).trim().replaceAll(RegExp(r'^[，,;；]+|[，,;；]+$'), '');
-        if (suffix.isNotEmpty && !keysToSkip.contains(normalizeKey(suffix))) {
-          remainingSegments.add(suffix);
+        if (suffix.isNotEmpty) {
+          final normSuffix = normalizeKey(suffix);
+          bool suffixShouldSkip = false;
+          for (final skipKey in keysToSkip) {
+            if (normSuffix == skipKey || normSuffix.contains(skipKey) || skipKey.contains(normSuffix)) {
+              suffixShouldSkip = true;
+              break;
+            }
+          }
+          if (!suffixShouldSkip) {
+            remainingSegments.add(suffix);
+          }
         }
       }
 

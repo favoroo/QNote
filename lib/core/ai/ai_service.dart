@@ -511,6 +511,7 @@ class AiService {
     String? mimeType,
     required String schema,
     String? contextStr,
+    CancelToken? cancelToken,
   }) async {
     if (_config == null) throw Exception('AI config not set');
 
@@ -617,6 +618,7 @@ class AiService {
       final response = await _dio.post(
         _generateContentEndpoint,
         data: requestBody,
+        cancelToken: cancelToken,
       );
       final content = _extractTextFromResponse(response.data);
       LoggerService.instance.logAI(

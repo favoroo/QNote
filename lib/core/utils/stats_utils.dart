@@ -440,10 +440,10 @@ MoodStatistics calculateMoodStats(
 ) {
   final filtered = _filterByDateRange(records, startDate, endDate);
   final moodRecords = filtered
-      .where((r) => r.displayTag == '状态' && r.bodyState != null)
+      .where((r) => (r.displayTag == '状态' || r.displayTag == '健康') && r.bodyState != null)
       .toList();
 
-  const severityMap = {'mild': 3, 'moderate': 2, 'severe': 1};
+  const severityMap = {'mild': 3, 'moderate': 2, 'severe': 1, '轻微': 3, '中度': 2, '严重': 1};
   final symptomDistribution = <String, int>{};
   final durationDistribution = <String, int>{};
   final dailyDataMap = <String, ({num severity, int count, String? symptom})>{};
@@ -452,13 +452,24 @@ MoodStatistics calculateMoodStats(
   for (final r in moodRecords) {
     final bs = r.bodyState!;
     final date = _formatDate(r.time);
-    final name = bs['name'] as String? ?? '未知';
+
+    final rawSymptom = bs['symptom'] ?? bs['name'] ?? '未知';
+    final List<String> symptomNames;
+    if (rawSymptom is List) {
+      symptomNames = rawSymptom.map((e) => e.toString()).toList();
+    } else {
+      symptomNames = [rawSymptom.toString()];
+    }
+    final primarySymptom = symptomNames.isNotEmpty ? symptomNames.first : '未知';
+
     final duration = bs['duration'] as String? ?? '未知';
     final severityStr = bs['severity'] as String? ?? 'moderate';
     final sevValue = severityMap[severityStr] ?? 2;
     totalSeverity += sevValue;
 
-    symptomDistribution[name] = (symptomDistribution[name] ?? 0) + 1;
+    for (final name in symptomNames) {
+      symptomDistribution[name] = (symptomDistribution[name] ?? 0) + 1;
+    }
     durationDistribution[duration] = (durationDistribution[duration] ?? 0) + 1;
 
     final existing = dailyDataMap[date];
@@ -466,10 +477,10 @@ MoodStatistics calculateMoodStats(
       dailyDataMap[date] = (
         severity: existing.severity + sevValue,
         count: existing.count + 1,
-        symptom: existing.symptom ?? name,
+        symptom: existing.symptom ?? primarySymptom,
       );
     } else {
-      dailyDataMap[date] = (severity: sevValue, count: 1, symptom: name);
+      dailyDataMap[date] = (severity: sevValue, count: 1, symptom: primarySymptom);
     }
   }
 

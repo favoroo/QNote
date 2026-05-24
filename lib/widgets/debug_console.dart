@@ -63,9 +63,13 @@ class _DebugConsoleOverlayState extends State<_DebugConsoleOverlay> {
   }
 
   void _scrollToBottom() {
-    if (_scrollController.hasClients) {
-      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
-    }
+    if (!_scrollController.hasClients) return;
+    _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      }
+    });
   }
 
   void _showToast(String message) {
@@ -369,7 +373,14 @@ class _DebugConsoleOverlayState extends State<_DebugConsoleOverlay> {
   Widget _filterChip(String label, LogLevel? level) {
     final selected = _filter == level;
     return GestureDetector(
-      onTap: () => setState(() => _filter = level),
+      onTap: () {
+        if (_filter != level) {
+          setState(() => _filter = level);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _scrollToBottom();
+          });
+        }
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         decoration: BoxDecoration(

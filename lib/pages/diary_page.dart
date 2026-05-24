@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -53,6 +54,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   bool _hasPerformedInitialScroll = false;
   bool _isProgrammaticScrolling = true;
   String? _extractingRecordId;
+  CancelToken? _cancelToken;
   // Multi-record undo mapping
   final Map<String, DiaryRecord> _undoRecords = {};
   final Map<String, AnimationController> _undoControllers = {};
@@ -907,7 +909,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   }
 
   Future<void> _handleAiExtract(DiaryRecord record) async {
-    if (_extractingRecordId != null) return;
+    if (_extractingRecordId != null) {
+      if (_extractingRecordId == record.id) {
+        _cancelToken?.cancel();
+        _cancelToken = null;
+      }
+      return;
+    }
     final contentText = record.content.trim();
     if (contentText.isEmpty && record.photos.isEmpty) return;
 
@@ -915,12 +923,14 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       _extractingRecordId = record.id;
     });
 
+    _cancelToken = CancelToken();
     final result = await extractExistingRecord(
       ref: ref,
       context: context,
       content: contentText,
       photos: record.photos,
       recordTime: record.time,
+      cancelToken: _cancelToken,
     );
 
     if (result != null && mounted) {
@@ -1018,6 +1028,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       }
     }
 
+    _cancelToken = null;
     if (mounted) {
       setState(() => _extractingRecordId = null);
     }
@@ -1091,6 +1102,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       setState(() {
         _batchExtractCancelled = true;
       });
+      _cancelToken?.cancel();
+      _cancelToken = null;
       return;
     }
 

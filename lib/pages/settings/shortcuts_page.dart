@@ -132,58 +132,46 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
     final theme = Theme.of(context);
     final fieldCount = config.fields.length + (config.categories?.fold<int>(0, (sum, c) => sum + c.fields.length) ?? 0);
 
-    return Dismissible(
+    return Card(
       key: key,
-      direction: DismissDirection.endToStart,
-      confirmDismiss: (_) async {
-        return showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('确认删除'),
-            content: Text('确定要删除 "${config.name}" 吗？'),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-              TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('删除')),
-            ],
-          ),
-        );
-      },
-      onDismissed: (_) {
-        ref.read(shortcutListNotifierProvider.notifier).delete(config.id);
-      },
-      background: Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
-        decoration: BoxDecoration(
-          color: Colors.red.shade100,
-          borderRadius: BorderRadius.circular(16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ListTile(
+        leading: ReorderableDragStartListener(
+          index: shortcutsIndexOf(config),
+          child: const Icon(Icons.drag_handle),
         ),
-        child: const Icon(Icons.delete, color: Colors.red),
-      ),
-      child: Card(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: ListTile(
-          leading: ReorderableDragStartListener(
-            index: shortcutsIndexOf(config),
-            child: const Icon(Icons.drag_handle),
-          ),
-          title: Text(
-            config.name,
-            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
-          ),
-          subtitle: Row(
-            children: [
-              Text('$fieldCount 个字段', style: theme.textTheme.bodySmall),
-              if (config.hasPopup) ...[
-                const SizedBox(width: 8),
-                Icon(Icons.open_in_new, size: 12, color: theme.colorScheme.primary),
-                Text('弹窗', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary)),
-              ],
-            ],
-          ),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => _showEditDialog(context, config),
+        title: Text(
+          config.name,
+          style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
         ),
+        subtitle: Row(
+          children: [
+            Text('$fieldCount 个字段', style: theme.textTheme.bodySmall),
+            if (config.hasPopup) ...[
+              const SizedBox(width: 8),
+              Icon(Icons.open_in_new, size: 12, color: theme.colorScheme.primary),
+              Text('弹窗', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary)),
+            ],
+          ],
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Switch(
+              value: config.isVisible,
+              onChanged: (value) async {
+                final updated = config.copyWith(isVisible: value);
+                await ref.read(shortcutListNotifierProvider.notifier).update(updated);
+              },
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              Icons.chevron_right,
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+            ),
+          ],
+        ),
+        onTap: () => _showEditDialog(context, config),
       ),
     );
   }
@@ -363,31 +351,81 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                 ),
               ),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('取消'),
-                ),
-                FilledButton(
-                  onPressed: () async {
-                    final now = DateTime.now();
-                    final config = ShortcutConfig(
-                      id: existingConfig?.id ?? const Uuid().v4(),
-                      name: nameCtl.text.isEmpty ? '未命名' : nameCtl.text,
-                      hasPopup: hasPopup,
-                      fields: fields,
-                      categories: categories.isNotEmpty ? categories : null,
-                      sortOrder: existingConfig?.sortOrder ?? ref.read(shortcutListNotifierProvider).length,
-                      createdAt: existingConfig?.createdAt ?? now,
-                      updatedAt: now,
-                    );
-                    if (isEditing) {
-                      await ref.read(shortcutListNotifierProvider.notifier).update(config);
-                    } else {
-                      await ref.read(shortcutListNotifierProvider.notifier).add(config);
-                    }
-                    if (ctx.mounted) Navigator.pop(ctx);
-                  },
-                  child: const Text('保存'),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    if (isEditing)
+                      TextButton(
+                        onPressed: () async {
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx2) => AlertDialog(
+                              title: const Text('确认删除'),
+                              content: Text('确定要删除 "${existingConfig.name}" 吗？'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx2, false),
+                                  child: const Text('取消'),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx2, true),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: Theme.of(context).colorScheme.error,
+                                  ),
+                                  child: const Text('删除'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirmed == true && context.mounted) {
+                            Navigator.pop(ctx); // Close edit dialog
+                            await ref.read(shortcutListNotifierProvider.notifier).delete(existingConfig.id);
+                            if (context.mounted) {
+                              Toast.success(context, '已删除');
+                            }
+                          }
+                        },
+                        style: TextButton.styleFrom(
+                          foregroundColor: Theme.of(context).colorScheme.error,
+                        ),
+                        child: const Text('删除'),
+                      )
+                    else
+                      const SizedBox.shrink(),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('取消'),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          onPressed: () async {
+                            final now = DateTime.now();
+                            final config = ShortcutConfig(
+                              id: existingConfig?.id ?? const Uuid().v4(),
+                              name: nameCtl.text.isEmpty ? '未命名' : nameCtl.text,
+                              hasPopup: hasPopup,
+                              fields: fields,
+                              categories: categories.isNotEmpty ? categories : null,
+                              sortOrder: existingConfig?.sortOrder ?? ref.read(shortcutListNotifierProvider).length,
+                              isVisible: existingConfig?.isVisible ?? true,
+                              createdAt: existingConfig?.createdAt ?? now,
+                              updatedAt: now,
+                            );
+                            if (isEditing) {
+                              await ref.read(shortcutListNotifierProvider.notifier).update(config);
+                            } else {
+                              await ref.read(shortcutListNotifierProvider.notifier).add(config);
+                            }
+                            if (ctx.mounted) Navigator.pop(ctx);
+                          },
+                          child: const Text('保存'),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ],
             );

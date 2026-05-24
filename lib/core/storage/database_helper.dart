@@ -25,7 +25,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 7,
+      version: 8,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -131,6 +131,7 @@ class DatabaseHelper {
         categories TEXT,
         image_extraction_prompt TEXT,
         sort_order INTEGER DEFAULT 0,
+        is_visible INTEGER DEFAULT 1,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
@@ -402,6 +403,13 @@ class DatabaseHelper {
         );
         await db.execute(
           'CREATE INDEX IF NOT EXISTS idx_sync_log_table ON sync_log(table_name, record_id)',
+        );
+      } catch (_) {}
+    }
+    if (oldVersion < 8) {
+      try {
+        await db.execute(
+          'ALTER TABLE shortcut_configs ADD COLUMN is_visible INTEGER DEFAULT 1',
         );
       } catch (_) {}
     }

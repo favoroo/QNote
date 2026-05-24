@@ -29,6 +29,7 @@ final defaultSystemPrompts = <String, String>{
 5. time格式: HH:mm，跨天加-前缀(如-23:00)，范围用~连接(如-23:00~8:00)；模糊时间: 早→8:00,午→12:00,晚→19:00,宵→23:00；结合当前时间推断(如当前22:00说"刚跑了步"→time:"21:00")
 6. 记账: 如有categories则加_category字段
 7. 饮食: 推断健康评价(蔬菜/水果/清淡/水→"健康"，普通正餐/零食/茶/咖啡→"一般"，烧烤/油炸/甜食/含糖饮料/泡面→"不健康")
+8. 健康: 识别身体症状(symptom为multi-select可多选)、严重程度(severity)、用药(medication为自由文本)
 
 [输出] JSON: {"results":[{"id":"标签id","time":"时间","fields":{},"notes":"备注"}]}
 若未提取到任何有用信息，输出: {"results":[],"message":"NO_USEFUL_INFO"}
@@ -40,6 +41,9 @@ final defaultSystemPrompts = <String, String>{
 "早上吃了玉米鸡蛋油条，味道一般" → {"results":[{"id":"diet","time":"8:00","fields":{"type":"正餐","rating":"一般"}}]}
 "昨晚十点睡，今早七点起，去公园跑了5公里" → {"results":[{"id":"sleep","time":"-22:00~7:00"},{"id":"activity","time":"7:00","fields":{"type":"运动"}}]}
 "下午3点喝了杯奶茶，下班坐地铁花了5元，晚上去健身房跑了一个小时" → {"results":[{"id":"diet","time":"15:00","fields":{"type":"饮品","rating":"不健康"}},{"id":"consumption","time":"18:00","fields":{"_category":"expense","type":"交通","amount":5}},{"id":"activity","time":"20:00","fields":{"type":"运动","duration":1}}]}
+"今天头痛得厉害，吃了布洛芬" → {"results":[{"id":"health","fields":{"symptom":["头痛"],"severity":"严重","medication":"布洛芬"}}]}
+"有点疲劳和脑雾，轻微不适" → {"results":[{"id":"health","fields":{"symptom":["疲劳","脑雾"],"severity":"轻微"}}]}
+"胃不太舒服，吃了奥美拉唑" → {"results":[{"id":"health","fields":{"symptom":["胃胀"],"severity":"中度","medication":"奥美拉唑"}}]}
 
 [图片示例]
 [运动App截图:步数2951/活动11次/中高强度13分钟/睡眠6h4m] → {"results":[{"id":"sleep","fields":{"duration":6,"quality":"良好"},"notes":"图：步数2951/活动11次/中高强度13分钟/睡眠6时4分"},{"id":"activity","fields":{"type":"运动","duration":0.5},"notes":"图：步数2951/活动11次/中高强度13分钟/睡眠6时4分"}]}
@@ -131,6 +135,34 @@ final defaultShortcutConfigs = <ShortcutConfig>[
     updatedAt: DateTime.now(),
   ),
   ShortcutConfig(
+    id: 'health',
+    name: '健康',
+    hasPopup: true,
+    fields: [
+      ShortcutField(
+        id: 'symptom',
+        label: '症状',
+        type: 'multi-select',
+        options: ['脑雾', '疲劳', '头痛', '胃胀', '发热', '过敏', '失眠', '疼痛'],
+      ),
+      ShortcutField(
+        id: 'severity',
+        label: '严重程度',
+        type: 'select',
+        options: ['轻微', '中度', '严重'],
+      ),
+      ShortcutField(
+        id: 'medication',
+        label: '用药',
+        type: 'input',
+        options: [],
+      ),
+    ],
+    sortOrder: 3,
+    createdAt: DateTime.now(),
+    updatedAt: DateTime.now(),
+  ),
+  ShortcutConfig(
     id: 'consumption',
     name: '记账',
     hasPopup: true,
@@ -174,7 +206,7 @@ final defaultShortcutConfigs = <ShortcutConfig>[
         ],
       ),
     ],
-    sortOrder: 3,
+    sortOrder: 4,
     createdAt: DateTime.now(),
     updatedAt: DateTime.now(),
   ),
@@ -183,7 +215,7 @@ final defaultShortcutConfigs = <ShortcutConfig>[
     name: '其他',
     hasPopup: false,
     fields: [],
-    sortOrder: 4,
+    sortOrder: 5,
     createdAt: DateTime.now(),
     updatedAt: DateTime.now(),
   ),
@@ -222,9 +254,9 @@ const defaultAiRoles = AiRoles(
 
 const defaultAiTemperatures = AiTemperatures();
 
-const defaultActiveShortcuts = ['睡眠', '饮食', '活动', '记账', '其他'];
+const defaultActiveShortcuts = ['睡眠', '饮食', '活动', '健康', '记账', '其他'];
 
 const defaultMoodLabels = ['很差', '较差', '一般', '较好', '很好'];
 const defaultWeatherOptions = ['晴天', '多云', '阴天', '小雨', '大雨', '雪', '雾'];
 const defaultPriorityLabels = ['低', '中', '高'];
-const defaultSymptomTypes = ['脑雾', '疲劳', '头痛', '胃胀'];
+const defaultSymptomTypes = ['脑雾', '疲劳', '头痛', '胃胀', '发热', '过敏', '失眠', '疼痛'];

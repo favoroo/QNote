@@ -287,7 +287,11 @@ class _AiPageState extends ConsumerState<AiPage> {
     AsyncValue shortcutsAsync,
     ThemeData theme,
   ) {
-    final tags = shortcutsAsync.valueOrNull?.map((s) => s.name).toList() ?? [];
+    final tags = shortcutsAsync.valueOrNull
+            ?.where((s) => s.isVisible)
+            .map((s) => s.name)
+            .toList() ??
+        [];
     final showTags =
         tags.isNotEmpty && _activeScope != '笔记' && _activeScope != '无';
 

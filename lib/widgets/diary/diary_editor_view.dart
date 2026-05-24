@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -43,6 +44,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   late List<String> _removedPaths;
   late List<TagEntry> _tagEntries;
   bool _isExtracting = false;
+  CancelToken? _cancelToken;
 
   final Map<String, TextEditingController> _formControllers = {};
 
@@ -234,7 +236,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   Future<void> _pickTags() async {
     final shortcuts = ref.read(shortcutListProvider);
     final availableTags =
-        shortcuts.valueOrNull?.map((s) => s.name).toList() ?? [];
+        shortcuts.valueOrNull?.where((s) => s.isVisible).map((s) => s.name).toList() ?? [];
     final result = await showTagPickerDialog(
       context: context,
       availableTags: availableTags,
@@ -374,11 +376,20 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
           (s) => s.id == entry.id || s.name == entry.name,
         );
         if (config.hasPopup) {
-          if (config.id == 'body') {
+          if (config.id == 'health') {
+            final symptomVal = entry.fields['symptom'];
+            String symptomName;
+            if (symptomVal is List && symptomVal.isNotEmpty) {
+              symptomName = symptomVal.join('、');
+            } else if (symptomVal != null && symptomVal.toString().isNotEmpty) {
+              symptomName = symptomVal.toString();
+            } else {
+              symptomName = '不适';
+            }
             bodyState = {
-              'name': entry.fields['symptom'] ?? '未知症状',
+              'name': symptomName,
               'severity': entry.fields['severity'] ?? '轻微',
-              'duration': '未知',
+              'medication': entry.fields['medication'],
               'notes': _contentController.text,
             };
           } else
@@ -519,12 +530,17 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   }
 
   Future<void> _handleAiExtract() async {
-    if (_isExtracting) return;
+    if (_isExtracting) {
+      _cancelToken?.cancel();
+      _cancelToken = null;
+      return;
+    }
     final contentText = _contentController.text.trim();
     if (contentText.isEmpty && _photos.isEmpty) return;
 
     setState(() => _isExtracting = true);
 
+    _cancelToken = CancelToken();
     final result = await extractExistingRecord(
       ref: ref,
       context: context,
@@ -534,6 +550,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       onLoadingChanged: (loading) {
         if (mounted) setState(() => _isExtracting = loading);
       },
+      cancelToken: _cancelToken,
     );
 
     if (result != null && mounted) {
@@ -605,6 +622,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       Toast.success(context, '优化完成');
     }
 
+    _cancelToken = null;
     setState(() => _isExtracting = false);
   }
 
@@ -860,7 +878,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            ...shortcuts.map((config) {
+            ...shortcuts.where((s) => s.isVisible).map((config) {
               final isSelected = _tags.contains(config.name);
               final color = tagColors[config.name] ?? colorScheme.primary;
               final icon = tagIcons[config.name] ?? Icons.label;
@@ -1704,7 +1722,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         child: Row(
           children: [
             GestureDetector(
-              onTap: _isExtracting ? null : _handleAiExtract,
+              onTap: _handleAiExtract,
               onLongPress: _isExtracting ? null : _showModelMenu,
               child: Container(
                 height: 52,

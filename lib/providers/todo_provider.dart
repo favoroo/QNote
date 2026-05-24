@@ -192,8 +192,15 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
         updatedAt: now,
       ));
     }
+    // Update the state immediately in memory to prevent flashing/lag in the UI
+    state = AsyncData(updated);
+    
+    // Save to database in the background
     await repo.batchUpdate(updated);
-    await refresh();
+    
+    // Invalidate other related providers
+    ref.invalidate(completedTodoListProvider);
+    ref.invalidate(upcomingRemindersProvider);
   }
 }
 

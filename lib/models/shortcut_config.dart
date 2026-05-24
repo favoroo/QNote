@@ -9,6 +9,7 @@ class ShortcutConfig {
   List<ShortcutField> fields;
   List<ShortcutCategory>? categories;
   int sortOrder;
+  bool isVisible;
   DateTime createdAt;
   DateTime updatedAt;
 
@@ -19,6 +20,7 @@ class ShortcutConfig {
     this.fields = const [],
     this.categories,
     this.sortOrder = 0,
+    this.isVisible = true,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -35,6 +37,7 @@ class ShortcutConfig {
           ? jsonEncode(categories!.map((c) => c.toMap()).toList())
           : null,
       'sort_order': sortOrder,
+      'is_visible': isVisible ? 1 : 0,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
@@ -56,6 +59,7 @@ class ShortcutConfig {
               .toList()
           : null,
       sortOrder: map['sort_order'] as int? ?? 0,
+      isVisible: (map['is_visible'] as int? ?? 1) == 1,
       createdAt: DateTime.parse(map['created_at'] as String),
       updatedAt: DateTime.parse(map['updated_at'] as String),
     );
@@ -68,6 +72,7 @@ class ShortcutConfig {
     List<ShortcutField>? fields,
     List<ShortcutCategory>? categories,
     int? sortOrder,
+    bool? isVisible,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -78,8 +83,10 @@ class ShortcutConfig {
       fields: fields ?? this.fields,
       categories: categories ?? this.categories,
       sortOrder: sortOrder ?? this.sortOrder,
+      isVisible: isVisible ?? this.isVisible,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 }
+

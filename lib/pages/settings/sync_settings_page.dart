@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:qnote_flutter/providers/sync_provider.dart' hide SyncStatus;
+import 'package:qnote_flutter/providers/sync_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/note_provider.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
@@ -192,10 +192,92 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
     if (!mounted) return;
     final scheduler = SyncScheduler.instance;
     if (scheduler.status == SyncStatus.success) {
-      _showNotification('云端同步成功！', isSuccess: true);
+      final sizeInfo = scheduler.lastSyncSizeBytes != null
+          ? ' (${(scheduler.lastSyncSizeBytes! / 1024).toStringAsFixed(1)}KB)'
+          : '';
+      final typeInfo = scheduler.lastSyncWasFull ? '全量同步' : '增量同步';
+      _showNotification('$typeInfo成功！$sizeInfo', isSuccess: true);
     } else if (scheduler.status == SyncStatus.error) {
       _showNotification('同步失败: ${scheduler.lastError ?? "请查看运行日志获取详情"}', isError: true);
     }
+  }
+
+  Future<void> _performFullSync() async {
+    final config = await ref.read(webdavConfigProvider.future).catchError((_) => null);
+    if (!mounted) return;
+    if (config == null) {
+      _showNotification('请先配置 WebDAV', isError: true);
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('强制全量同步'),
+        content: const Text('将上传完整数据快照到云端，可能需要较长时间。是否继续？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('确认'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    if (!mounted) return;
+
+    WebdavService.instance.updateConfig(config);
+    await SyncScheduler.instance.fullSync();
+
+    if (!mounted) return;
+    final scheduler = SyncScheduler.instance;
+    if (scheduler.status == SyncStatus.success) {
+      final sizeInfo = scheduler.lastSyncSizeBytes != null
+          ? ' (${(scheduler.lastSyncSizeBytes! / 1024).toStringAsFixed(1)}KB)'
+          : '';
+      _showNotification('全量同步成功！$sizeInfo', isSuccess: true);
+    } else if (scheduler.status == SyncStatus.error) {
+      _showNotification('全量同步失败: ${scheduler.lastError ?? "请查看运行日志获取详情"}', isError: true);
+    }
+  }
+
+  Future<void> _cleanupOldBackups() async {
+    final config = await ref.read(webdavConfigProvider.future).catchError((_) => null);
+    if (!mounted) return;
+    if (config == null) {
+      _showNotification('请先配置 WebDAV', isError: true);
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('清理远程旧备份'),
+        content: const Text('将删除云端所有旧格式的按日期命名的备份文件（qnote_backup_*.json），仅保留新格式的快照和增量文件。是否继续？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('确认'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    if (!mounted) return;
+
+    WebdavService.instance.updateConfig(config);
+    final deletedCount = await SyncScheduler.instance.cleanupRemoteBackups();
+
+    if (!mounted) return;
+    _showNotification('已清理 $deletedCount 个旧备份文件', isSuccess: true);
   }
 
   Future<void> _restoreFromBackup() async {
@@ -513,32 +595,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
                         controller: _serverUrlController,
                         hint: 'https://dav.jianguoyun.com/dav/',
                       ),
-                      Padding(
-                        padding: const EdgeInsets.only(left: 4, top: 8, bottom: 16),
-                        child: Row(
-                          children: [
-                            Icon(Icons.info_outline, size: 14, color: Colors.orange.shade700),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: RichText(
-                                text: TextSpan(
-                                  style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor),
-                                  children: [
-                                    const TextSpan(text: '提示：'),
-                                    TextSpan(
-                                      text: '坚果云用户请务必在 URL 末尾包含 /dav/',
-                                      style: TextStyle(
-                                        color: Colors.orange.shade700,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      const SizedBox(height: 16),
                       _buildInputField(
                         label: '账户',
                         controller: _usernameController,
@@ -579,113 +636,105 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
                       ),
                     ],
                   ),
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: colorScheme.primary.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Icon(Icons.construction_outlined, color: colorScheme.primary, size: 18),
-                          ),
-                          const SizedBox(width: 10),
-                          Text(
-                            '同步维护与操作',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildActionButton(
-                              icon: Icons.wifi_protected_setup_outlined,
-                              color: Colors.blue,
-                              title: '连接测试',
-                              desc: '检查配置正确性',
-                              onTap: _testing ? null : _testConnection,
-                              isLoading: _testing,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: _buildActionButton(
-                              icon: Icons.sync,
-                              color: Colors.green,
-                              title: '手动同步',
-                              desc: '增量同步合并',
-                              onTap: syncStatus == SyncStatus.syncing ? null : _performSync,
-                              isLoading: syncStatus == SyncStatus.syncing,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildActionButton(
-                              icon: Icons.cloud_upload_outlined,
-                              color: Colors.purple,
-                              title: '全量同步',
-                              desc: '上传完整数据快照',
-                              onTap: syncStatus == SyncStatus.syncing ? null : _performFullSync,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: _buildActionButton(
-                              icon: Icons.cleaning_services_outlined,
-                              color: Colors.amber.shade700,
-                              title: '清理旧备份',
-                              desc: '释放远程多余空间',
-                              onTap: syncStatus == SyncStatus.syncing ? null : _cleanupOldBackups,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Container(
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          color: Colors.red.withValues(alpha: 0.05),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: Colors.red.withValues(alpha: 0.2),
-                          ),
-                        ),
-                        child: InkWell(
-                          onTap: syncStatus == SyncStatus.syncing ? null : _restoreFromBackup,
-                          borderRadius: BorderRadius.circular(16),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.settings_backup_restore, size: 20, color: Colors.red.shade400),
-                                const SizedBox(width: 8),
-                                Text(
-                                  '从远程恢复本地数据',
-                                  style: TextStyle(
-                                    color: Colors.red.shade400,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(left: 20, top: 20, right: 20, bottom: 8),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: colorScheme.primary.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
-                              ],
+                                child: Icon(Icons.construction_outlined, color: colorScheme.primary, size: 18),
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                '同步维护与操作',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        _buildActionRow(
+                          icon: Icons.wifi_protected_setup_outlined,
+                          color: Colors.blue,
+                          title: '连接测试',
+                          desc: '检查当前配置能否成功连接 WebDAV 服务器',
+                          onTap: _testing ? null : _testConnection,
+                          isLoading: _testing,
+                        ),
+                        const Divider(height: 1, indent: 56, endIndent: 16),
+                        _buildActionRow(
+                          icon: Icons.sync,
+                          color: Colors.green,
+                          title: '手动同步',
+                          desc: '对比本地与云端，执行增量数据同步合并',
+                          onTap: syncStatus == SyncStatus.syncing ? null : _performSync,
+                          isLoading: syncStatus == SyncStatus.syncing,
+                        ),
+                        const Divider(height: 1, indent: 56, endIndent: 16),
+                        _buildActionRow(
+                          icon: Icons.cloud_upload_outlined,
+                          color: Colors.purple,
+                          title: '全量同步',
+                          desc: '忽略历史状态，强制上传完整数据快照到云端',
+                          onTap: syncStatus == SyncStatus.syncing ? null : _performFullSync,
+                        ),
+                        const Divider(height: 1, indent: 56, endIndent: 16),
+                        _buildActionRow(
+                          icon: Icons.cleaning_services_outlined,
+                          color: Colors.amber.shade700,
+                          title: '清理旧备份',
+                          desc: '清理云端冗余的旧格式备份文件，释放网盘空间',
+                          onTap: syncStatus == SyncStatus.syncing ? null : _cleanupOldBackups,
+                        ),
+                        const SizedBox(height: 16),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Container(
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: Colors.red.withValues(alpha: 0.05),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: Colors.red.withValues(alpha: 0.2),
+                              ),
+                            ),
+                            child: InkWell(
+                              onTap: syncStatus == SyncStatus.syncing ? null : _restoreFromBackup,
+                              borderRadius: BorderRadius.circular(16),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.settings_backup_restore, size: 20, color: Colors.red.shade400),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      '从远程恢复本地数据',
+                                      style: TextStyle(
+                                        color: Colors.red.shade400,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 20),
+                      ],
+                    ),
                   ),
                 ),
 
@@ -827,7 +876,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
     );
   }
 
-  Widget _buildActionButton({
+  Widget _buildActionRow({
     required IconData icon,
     required Color color,
     required String title,
@@ -836,68 +885,60 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
     bool isLoading = false,
   }) {
     final theme = Theme.of(context);
-
-    return Card(
-      elevation: 0,
-      color: theme.colorScheme.surfaceContainerLow,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-        ),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: isLoading
-                    ? SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(color),
-                        ),
-                      )
-                    : Icon(icon, color: color, size: 20),
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
+              child: isLoading
+                  ? SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(color),
                       ),
+                    )
+                  : Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      desc,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.hintColor,
-                        fontSize: 10,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    desc,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.hintColor,
+                      fontSize: 11,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              Icons.chevron_right,
+              color: theme.hintColor.withValues(alpha: 0.5),
+              size: 18,
+            ),
+          ],
         ),
       ),
     );
@@ -952,4 +993,11 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
     );
   }
 
+  String _formatCompactLastSyncTime(DateTime dateTime) {
+    final now = DateTime.now();
+    if (dateTime.year == now.year && dateTime.month == now.month && dateTime.day == now.day) {
+      return '今天 ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+    }
+    return '${dateTime.month}/${dateTime.day} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+  }
 }

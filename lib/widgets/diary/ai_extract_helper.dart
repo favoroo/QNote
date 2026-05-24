@@ -35,6 +35,7 @@ Future<AiExtractResult?> extractExistingRecord({
   required List<String> photos,
   required DateTime recordTime,
   void Function(bool)? onLoadingChanged,
+  CancelToken? cancelToken,
 }) async {
   onLoadingChanged?.call(true);
   try {
@@ -43,7 +44,7 @@ Future<AiExtractResult?> extractExistingRecord({
     aiService.updateConfig(roleConfig);
 
     final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
-    final schemaContext = shortcuts.map((s) {
+    final schemaContext = shortcuts.where((s) => s.isVisible).map((s) {
       final root = <String, dynamic>{'id': s.id, 'name': s.name};
       if (s.fields.isNotEmpty) {
         root['fields'] = s.fields.map((f) => {
@@ -95,6 +96,7 @@ Future<AiExtractResult?> extractExistingRecord({
       mimeType: 'image/jpeg',
       schema: schemaContext.toString(),
       contextStr: contextStr.toString(),
+      cancelToken: cancelToken,
     );
 
     if (results.isNotEmpty) {
@@ -140,6 +142,12 @@ Future<AiExtractResult?> extractExistingRecord({
     }
     return null;
   } on DioException catch (e) {
+    if (CancelToken.isCancel(e)) {
+      if (context.mounted) {
+        Toast.info(context, '已停止提取');
+      }
+      return null;
+    }
     String errorMessage = '提取失败';
     if (e.type == DioExceptionType.connectionError) {
       errorMessage = '网络连接失败，请检查网络或API配置';

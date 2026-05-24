@@ -97,6 +97,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     with TickerProviderStateMixin {
   bool _isExpanded = true;
   bool _isExtracting = false;
+  CancelToken? _cancelToken;
   _ExtractPhase _extractPhase = _ExtractPhase.idle;
 
   late _Draft _draft;
@@ -746,7 +747,11 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
   }
 
   Future<void> _handleAiExtract() async {
-    if (_isExtracting) return;
+    if (_isExtracting) {
+      _cancelToken?.cancel();
+      _cancelToken = null;
+      return;
+    }
     final draft = _activeDraft;
 
     final aiTempsAsync = ref.read(aiTemperaturesProvider);
@@ -761,6 +766,8 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       _isExtracting = true;
       _extractPhase = _ExtractPhase.sending;
     });
+
+    _cancelToken = CancelToken();
 
     try {
       final aiService = ref.read(aiServiceProvider);
@@ -836,6 +843,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         mimeType: 'image/jpeg',
         schema: schemaContext.toString(),
         contextStr: contextStr.toString(),
+        cancelToken: _cancelToken,
       );
 
       if (results.isNotEmpty) {
@@ -1080,6 +1088,16 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         );
       }
     } catch (e, stackTrace) {
+      if (e is DioException && CancelToken.isCancel(e)) {
+        if (mounted) {
+          Toast.info(context, '已停止提取');
+          setState(() {
+            _extractPhase = _ExtractPhase.idle;
+          });
+        }
+        return;
+      }
+
       if (e is NoUsefulInfoException) {
         if (mounted) {
           Toast.warning(context, '未提取到有用信息');
@@ -1128,6 +1146,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         }
       });
     } finally {
+      _cancelToken = null;
       setState(() => _isExtracting = false);
     }
   }
@@ -1328,11 +1347,20 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
             : details;
         if (fullDetails.isNotEmpty) detailParts.add(fullDetails);
 
-        if (config.id == 'body') {
+        if (config.id == 'health') {
+          final symptomVal = entryFields['symptom'];
+          String symptomName;
+          if (symptomVal is List && symptomVal.isNotEmpty) {
+            symptomName = symptomVal.join('、');
+          } else if (symptomVal != null && symptomVal.toString().isNotEmpty) {
+            symptomName = symptomVal.toString();
+          } else {
+            symptomName = '不适';
+          }
           bodyState = {
-            'name': entryFields['symptom'] ?? '未知症状',
+            'name': symptomName,
             'severity': entryFields['severity'] ?? '轻微',
-            'duration': '未知',
+            'medication': entryFields['medication'],
             'notes': draft.inputText,
           };
         } else
@@ -2128,7 +2156,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: shortcuts.when(
-                  data: (list) => list.map<Widget>((config) {
+                  data: (list) => list.where((s) => s.isVisible).map<Widget>((config) {
                     final isSelected = _activeDraft.tagEntries.any(
                       (e) => e.id == config.id,
                     );
@@ -2248,6 +2276,8 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         return Icons.restaurant_menu_outlined;
       case '活动':
         return Icons.bolt_rounded;
+      case '健康':
+        return Icons.favorite_outline;
       case '记账':
         return Icons.wallet_rounded;
       default:
