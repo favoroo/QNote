@@ -7,6 +7,8 @@ import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 
+class NoUsefulInfoException implements Exception {}
+
 class AiService {
   final Dio _dio = Dio(
     BaseOptions(
@@ -46,8 +48,10 @@ class AiService {
     _config = config;
     if (temperature != null) _temperature = temperature;
     if (maxTokens != null) _maxTokens = maxTokens;
-    _dio.options.baseUrl = cleanedBaseUrl;
-    
+    _dio.options.baseUrl = cleanedBaseUrl.endsWith('/')
+        ? cleanedBaseUrl
+        : '$cleanedBaseUrl/';
+
     _dio.options.headers['Content-Type'] = 'application/json';
     if (config.provider == 'gemini') {
       _dio.options.headers['x-goog-api-key'] = config.apiKey;
@@ -96,8 +100,8 @@ class AiService {
             contents.add({
               'role': role,
               'parts': [
-                {'text': m.content}
-              ]
+                {'text': m.content},
+              ],
             });
           }
         }
@@ -107,13 +111,13 @@ class AiService {
           'generationConfig': {
             'temperature': _temperature,
             'maxOutputTokens': _maxTokens,
-          }
+          },
         };
         if (systemInstruction != null) {
           requestBody['systemInstruction'] = {
             'parts': [
-              {'text': systemInstruction}
-            ]
+              {'text': systemInstruction},
+            ],
           };
         }
         endpoint = '/v1beta/models/${_config!.modelName}:generateContent';
@@ -124,14 +128,11 @@ class AiService {
             return {
               'role': m.role,
               'content': [
-                {'type': 'text', 'text': m.content}
+                {'type': 'text', 'text': m.content},
               ],
             };
           } else {
-            return {
-              'role': m.role,
-              'content': m.content,
-            };
+            return {'role': m.role, 'content': m.content};
           }
         }).toList();
 
@@ -143,7 +144,8 @@ class AiService {
         };
 
         if (isOmni) {
-          bodyMap['sessionId'] = DateTime.now().millisecondsSinceEpoch.toString();
+          bodyMap['sessionId'] = DateTime.now().millisecondsSinceEpoch
+              .toString();
           bodyMap['output_modalities'] = ['text'];
         }
 
@@ -152,19 +154,14 @@ class AiService {
 
       final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
       LoggerService.instance.logAI(
-        'AI请求 [${_config!.provider}] [${_config!.modelName}] $endpoint:\n${_formatJsonForLogging(sanitizedBody)}'
+        'AI请求 [${_config!.provider}] [${_config!.modelName}] $endpoint:\n${_formatJsonForLogging(sanitizedBody)}',
       );
 
-      final response = await _dio.post(
-        endpoint,
-        data: requestBody,
-      );
+      final response = await _dio.post(endpoint, data: requestBody);
 
       final duration = DateTime.now().difference(startTime).inMilliseconds;
       final data = response.data;
-      LoggerService.instance.logAI(
-        'AI响应:\n${_formatJsonForLogging(data)}'
-      );
+      LoggerService.instance.logAI('AI响应:\n${_formatJsonForLogging(data)}');
       String result;
 
       if (_config!.provider == 'gemini') {
@@ -231,8 +228,8 @@ class AiService {
           contents.add({
             'role': role,
             'parts': [
-              {'text': m.content}
-            ]
+              {'text': m.content},
+            ],
           });
         }
       }
@@ -242,13 +239,13 @@ class AiService {
         'generationConfig': {
           'temperature': _temperature,
           'maxOutputTokens': _maxTokens,
-        }
+        },
       };
       if (systemInstruction != null) {
         bodyMap['systemInstruction'] = {
           'parts': [
-            {'text': systemInstruction}
-          ]
+            {'text': systemInstruction},
+          ],
         };
       }
       requestBody = jsonEncode(bodyMap);
@@ -259,14 +256,11 @@ class AiService {
           return {
             'role': m.role,
             'content': [
-              {'type': 'text', 'text': m.content}
+              {'type': 'text', 'text': m.content},
             ],
           };
         } else {
-          return {
-            'role': m.role,
-            'content': m.content,
-          };
+          return {'role': m.role, 'content': m.content};
         }
       }).toList();
 
@@ -288,7 +282,7 @@ class AiService {
 
     final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
     LoggerService.instance.logAI(
-      'AI流式请求 [${_config!.provider}] [${_config!.modelName}] $_chatEndpoint:\n${_formatJsonForLogging(sanitizedBody)}'
+      'AI流式请求 [${_config!.provider}] [${_config!.modelName}] $_chatEndpoint:\n${_formatJsonForLogging(sanitizedBody)}',
     );
 
     try {
@@ -321,7 +315,7 @@ class AiService {
                 .difference(startTime)
                 .inMilliseconds;
             LoggerService.instance.logAI(
-              'AI流式响应完成 [总输出=$totalChars字符]:\n$accumulatedResponse'
+              'AI流式响应完成 [总输出=$totalChars字符]:\n$accumulatedResponse',
             );
             return;
           }
@@ -345,7 +339,7 @@ class AiService {
 
       final duration = DateTime.now().difference(startTime).inMilliseconds;
       LoggerService.instance.logAI(
-        'AI流式响应结束 [总输出=$totalChars字符]:\n$accumulatedResponse'
+        'AI流式响应结束 [总输出=$totalChars字符]:\n$accumulatedResponse',
       );
     } catch (e, stackTrace) {
       String details = stackTrace.toString();
@@ -366,24 +360,24 @@ class AiService {
 
   String get _chatEndpoint {
     if (_config!.provider == 'gemini') {
-      return '/v1beta/models/${_config!.modelName}:streamGenerateContent?alt=sse';
+      return 'v1beta/models/${_config!.modelName}:streamGenerateContent?alt=sse';
     }
     final baseUrl = _config!.baseUrl;
     if (baseUrl.endsWith('/v1') || baseUrl.endsWith('/v1/')) {
-      return '/chat/completions';
+      return 'chat/completions';
     }
-    return '/v1/chat/completions';
+    return 'v1/chat/completions';
   }
 
   String get _generateContentEndpoint {
     if (_config!.provider == 'gemini') {
-      return '/v1beta/models/${_config!.modelName}:generateContent';
+      return 'v1beta/models/${_config!.modelName}:generateContent';
     }
     final baseUrl = _config!.baseUrl;
     if (baseUrl.endsWith('/v1') || baseUrl.endsWith('/v1/')) {
-      return '/chat/completions';
+      return 'chat/completions';
     }
-    return '/v1/chat/completions';
+    return 'v1/chat/completions';
   }
 
   Future<String> generateDiarySummary(String diaryContent) async {
@@ -442,12 +436,12 @@ class AiService {
 
   Map<String, dynamic> _parseSimplifiedTime(String t) {
     final result = <String, dynamic>{};
-    
+
     if (t.contains('~')) {
       final parts = t.split('~');
       final startPart = parts[0];
       final endPart = parts[1];
-      
+
       if (startPart.isNotEmpty) {
         if (startPart.startsWith('-')) {
           result['start'] = startPart.substring(1);
@@ -456,7 +450,7 @@ class AiService {
           result['start'] = startPart;
         }
       }
-      
+
       if (endPart.isNotEmpty) {
         if (endPart.startsWith('-')) {
           result['end'] = endPart.substring(1);
@@ -474,31 +468,40 @@ class AiService {
         result['start'] = t;
       }
     }
-    
+
     return result;
   }
 
-  Map<String, dynamic> _convertSimplifiedExtractResult(Map<String, dynamic> simplified) {
+  Map<String, dynamic> _convertSimplifiedExtractResult(
+    Map<String, dynamic> simplified,
+  ) {
     final result = <String, dynamic>{};
-    
+
     result['shortcutId'] = simplified['id'] ?? simplified['shortcutId'];
-    
+
     if (simplified.containsKey('t')) {
       result['time'] = _parseSimplifiedTime(simplified['t'] as String);
     } else if (simplified.containsKey('time')) {
-      result['time'] = simplified['time'];
+      final timeVal = simplified['time'];
+      if (timeVal is String) {
+        result['time'] = _parseSimplifiedTime(timeVal);
+      } else if (timeVal is Map) {
+        result['time'] = timeVal;
+      } else {
+        result['time'] = {};
+      }
     } else {
       result['time'] = {};
     }
-    
+
     result['fields'] = simplified['f'] ?? simplified['fields'] ?? {};
-    
+
     result['notes'] = simplified['n'] ?? simplified['notes'] ?? '';
-    
+
     if (simplified.containsKey('date')) {
       result['date'] = simplified['date'];
     }
-    
+
     return result;
   }
 
@@ -540,7 +543,7 @@ class AiService {
     if (hasImage) {
       requestBody = _buildMultimodalRequestBody(
         systemPrompt: systemPrompt,
-        imageBase64: imageBase64!,
+        imageBase64: imageBase64,
         mimeType: mimeType ?? 'image/jpeg',
       );
     } else {
@@ -550,20 +553,20 @@ class AiService {
             {
               'role': 'user',
               'parts': [
-                {'text': text ?? ''}
-              ]
-            }
+                {'text': text ?? ''},
+              ],
+            },
           ],
           'systemInstruction': {
             'parts': [
-              {'text': systemPrompt}
-            ]
+              {'text': systemPrompt},
+            ],
           },
           'generationConfig': {
             'temperature': _temperature,
             'maxOutputTokens': _maxTokens,
             'responseMimeType': 'application/json',
-          }
+          },
         };
       } else {
         final isOmni = _config!.modelName.toLowerCase().contains('omni');
@@ -572,19 +575,19 @@ class AiService {
             {
               'role': 'system',
               'content': [
-                {'type': 'text', 'text': systemPrompt}
-              ]
+                {'type': 'text', 'text': systemPrompt},
+              ],
             },
             {
               'role': 'user',
               'content': [
-                {'type': 'text', 'text': text ?? ''}
-              ]
-            }
+                {'type': 'text', 'text': text ?? ''},
+              ],
+            },
           ] else ...[
             {'role': 'system', 'content': systemPrompt},
             {'role': 'user', 'content': text ?? ''},
-          ]
+          ],
         ];
 
         final bodyMap = <String, dynamic>{
@@ -596,7 +599,8 @@ class AiService {
         };
 
         if (isOmni) {
-          bodyMap['sessionId'] = DateTime.now().millisecondsSinceEpoch.toString();
+          bodyMap['sessionId'] = DateTime.now().millisecondsSinceEpoch
+              .toString();
           bodyMap['output_modalities'] = ['text'];
         }
 
@@ -606,7 +610,7 @@ class AiService {
 
     final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
     LoggerService.instance.logAI(
-      'AI统一提取请求 [${_config!.provider}] [${_config!.modelName}] $_generateContentEndpoint:\n${_formatJsonForLogging(sanitizedBody)}'
+      'AI统一提取请求 [${_config!.provider}] [${_config!.modelName}] $_generateContentEndpoint:\n${_formatJsonForLogging(sanitizedBody)}',
     );
 
     try {
@@ -616,7 +620,7 @@ class AiService {
       );
       final content = _extractTextFromResponse(response.data);
       LoggerService.instance.logAI(
-        'AI统一提取响应:\n${_formatJsonForLogging(response.data)}'
+        'AI统一提取响应:\n${_formatJsonForLogging(response.data)}',
       );
 
       final jsonResult = _parseJsonFromAiContent(content);
@@ -628,10 +632,36 @@ class AiService {
       List<Map<String, dynamic>> results;
       if (jsonResult is List) {
         results = jsonResult.cast<Map<String, dynamic>>();
+      } else if (jsonResult is Map<String, dynamic>) {
+        if (jsonResult['message'] == 'NO_USEFUL_INFO') {
+          throw NoUsefulInfoException();
+        }
+        List<Map<String, dynamic>>? foundList;
+        if (jsonResult['tags'] is List &&
+            (jsonResult['tags'] as List).every((e) => e is Map)) {
+          foundList = (jsonResult['tags'] as List).cast<Map<String, dynamic>>();
+        } else if (jsonResult['results'] is List &&
+            (jsonResult['results'] as List).every((e) => e is Map)) {
+          foundList = (jsonResult['results'] as List)
+              .cast<Map<String, dynamic>>();
+        } else {
+          for (final entry in jsonResult.entries) {
+            final val = entry.value;
+            if (val is List && val.every((e) => e is Map)) {
+              foundList = val.cast<Map<String, dynamic>>();
+              break;
+            }
+          }
+        }
+        if (foundList != null) {
+          results = foundList;
+        } else {
+          results = [jsonResult];
+        }
       } else {
-        results = [jsonResult as Map<String, dynamic>];
+        results = [];
       }
-      
+
       return results.map(_convertSimplifiedExtractResult).toList();
     } catch (e, stackTrace) {
       LoggerService.instance.logAI(
@@ -677,7 +707,7 @@ class AiService {
           {
             'role': 'system',
             'content': [
-              {'type': 'text', 'text': systemPrompt}
+              {'type': 'text', 'text': systemPrompt},
             ],
           },
           {
@@ -687,9 +717,9 @@ class AiService {
                 'type': 'input_image',
                 'input_image': {
                   'type': 'base64',
-                  'data': [imageBase64]
-                }
-              }
+                  'data': [imageBase64],
+                },
+              },
             ],
           },
         ],
@@ -734,7 +764,10 @@ class AiService {
 
   String _stripMarkdownCodeBlock(String content) {
     final trimmed = content.trim();
-    final codeBlockRegex = RegExp(r'^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$', multiLine: false);
+    final codeBlockRegex = RegExp(
+      r'^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$',
+      multiLine: false,
+    );
     final match = codeBlockRegex.firstMatch(trimmed);
     if (match != null) {
       return match.group(1)!.trim();
@@ -762,19 +795,25 @@ class AiService {
         final value = val[key];
         if (kStr == 'data' && value is String && _isLikelyBase64Image(value)) {
           newMap[kStr] = '<IMAGE_DATA: ${_estimateImageSize(value)}>';
-        } else if (kStr == 'image_url' && value is Map && value['url'] is String && (value['url'] as String).startsWith('data:')) {
+        } else if (kStr == 'image_url' &&
+            value is Map &&
+            value['url'] is String &&
+            (value['url'] as String).startsWith('data:')) {
           final url = value['url'] as String;
           final mime = _extractMimeTypeFromDataUrl(url);
           newMap[kStr] = {'url': 'data:$mime;<BASE64_IMAGE_DATA>'};
         } else if (kStr == 'input_image' && value is Map) {
           newMap[kStr] = {
             'type': value['type'] ?? 'base64',
-            'data': '<IMAGE_BASE64_DATA>'
+            'data': '<IMAGE_BASE64_DATA>',
           };
-        } else if (kStr == 'inline_data' && value is Map && value['data'] is String && _isLikelyBase64Image(value['data'])) {
+        } else if (kStr == 'inline_data' &&
+            value is Map &&
+            value['data'] is String &&
+            _isLikelyBase64Image(value['data'])) {
           newMap[kStr] = {
             'mime_type': value['mime_type'] ?? 'image/...',
-            'data': '<INLINE_IMAGE_DATA>'
+            'data': '<INLINE_IMAGE_DATA>',
           };
         } else {
           newMap[kStr] = _sanitizeMapOrList(value);
@@ -794,8 +833,13 @@ class AiService {
     final trimmed = str.trim();
     if (trimmed.startsWith('data:image/')) return true;
     if (trimmed.startsWith('/') && trimmed.length > 1000) return true;
-    if (trimmed.length > 2000 && RegExp(r'^[A-Za-z0-9+/=]+$').hasMatch(trimmed)) return true;
-    if (trimmed.length > 5000 && !trimmed.contains('\n') && !trimmed.contains('\r') && !trimmed.contains('\t')) return true;
+    if (trimmed.length > 2000 && RegExp(r'^[A-Za-z0-9+/=]+$').hasMatch(trimmed))
+      return true;
+    if (trimmed.length > 5000 &&
+        !trimmed.contains('\n') &&
+        !trimmed.contains('\r') &&
+        !trimmed.contains('\t'))
+      return true;
     return false;
   }
 

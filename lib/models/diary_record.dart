@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:qnote_flutter/models/tag_entry.dart';
 
 class DiaryRecord {
   final String id;
@@ -10,6 +11,7 @@ class DiaryRecord {
   String displayTag;
   String content;
   Map<String, dynamic>? bodyState;
+  List<TagEntry> tagEntries;
   List<String> photos;
   String colorMark;
   int mood;
@@ -29,6 +31,7 @@ class DiaryRecord {
     this.displayTag = '',
     this.content = '',
     this.bodyState,
+    this.tagEntries = const [],
     this.photos = const [],
     this.colorMark = '',
     this.mood = 3,
@@ -50,6 +53,7 @@ class DiaryRecord {
       'display_tag': displayTag,
       'content': content,
       'body_state': bodyState != null ? jsonEncode(bodyState) : null,
+      'tag_entries': tagEntries.isNotEmpty ? TagEntry.listToJson(tagEntries) : null,
       'photos': jsonEncode(photos),
       'color_mark': colorMark,
       'mood': mood,
@@ -62,6 +66,29 @@ class DiaryRecord {
   }
 
   factory DiaryRecord.fromMap(Map<String, dynamic> map) {
+    List<TagEntry> tagEntries = [];
+    if (map['tag_entries'] != null && (map['tag_entries'] as String).isNotEmpty) {
+      tagEntries = TagEntry.listFromJson(map['tag_entries'] as String);
+    }
+
+    final tags = map['tags'] != null
+        ? List<String>.from(jsonDecode(map['tags'] as String) as List)
+        : <String>[];
+    final displayTag = map['display_tag'] as String? ?? '';
+    final bodyState = map['body_state'] != null
+        ? jsonDecode(map['body_state'] as String) as Map<String, dynamic>
+        : null;
+
+    if (tagEntries.isEmpty && tags.isNotEmpty) {
+      tagEntries = tags.map((tag) {
+        return TagEntry(
+          id: tag,
+          name: tag,
+          fields: (tag == displayTag && bodyState != null) ? Map<String, dynamic>.from(bodyState) : {},
+        );
+      }).toList();
+    }
+
     return DiaryRecord(
       id: map['id'] as String,
       title: map['title'] as String,
@@ -72,14 +99,11 @@ class DiaryRecord {
       endTime: map['end_time'] != null
           ? DateTime.parse(map['end_time'] as String)
           : null,
-      tags: map['tags'] != null
-          ? List<String>.from(jsonDecode(map['tags'] as String) as List)
-          : [],
-      displayTag: map['display_tag'] as String? ?? '',
+      tags: tags,
+      displayTag: displayTag,
       content: map['content'] as String? ?? '',
-      bodyState: map['body_state'] != null
-          ? jsonDecode(map['body_state'] as String) as Map<String, dynamic>
-          : null,
+      bodyState: bodyState,
+      tagEntries: tagEntries,
       photos: map['photos'] != null
           ? List<String>.from(jsonDecode(map['photos'] as String) as List)
           : [],
@@ -103,6 +127,7 @@ class DiaryRecord {
     String? displayTag,
     String? content,
     Map<String, dynamic>? bodyState,
+    List<TagEntry>? tagEntries,
     List<String>? photos,
     String? colorMark,
     int? mood,
@@ -122,6 +147,7 @@ class DiaryRecord {
       displayTag: displayTag ?? this.displayTag,
       content: content ?? this.content,
       bodyState: bodyState ?? this.bodyState,
+      tagEntries: tagEntries ?? this.tagEntries,
       photos: photos ?? this.photos,
       colorMark: colorMark ?? this.colorMark,
       mood: mood ?? this.mood,

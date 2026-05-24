@@ -25,7 +25,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 3,
+      version: 7,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -46,6 +46,7 @@ class DatabaseHelper {
         end_time TEXT,
         display_tag TEXT DEFAULT '',
         body_state TEXT,
+        tag_entries TEXT,
         photos TEXT DEFAULT '[]',
         color_mark TEXT DEFAULT '',
         created_at TEXT NOT NULL,
@@ -95,6 +96,7 @@ class DatabaseHelper {
         is_long_term INTEGER DEFAULT 0,
         reminder_time TEXT,
         deadline TEXT,
+        sort_order INTEGER DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         is_deleted INTEGER DEFAULT 0
@@ -144,6 +146,7 @@ class DatabaseHelper {
         height REAL,
         weight_history TEXT DEFAULT '[]',
         gender TEXT,
+        other_info TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
@@ -206,6 +209,17 @@ class DatabaseHelper {
       )
     ''');
 
+    await db.execute('''
+      CREATE TABLE sync_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        table_name TEXT NOT NULL,
+        record_id TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        data TEXT,
+        timestamp TEXT NOT NULL
+      )
+    ''');
+
     // Performance indexes
     await _createIndexes(db);
   }
@@ -221,6 +235,8 @@ class DatabaseHelper {
       'CREATE INDEX IF NOT EXISTS idx_todos_is_deleted ON todos(is_deleted)',
       'CREATE INDEX IF NOT EXISTS idx_todos_long_term ON todos(is_long_term)',
       'CREATE INDEX IF NOT EXISTS idx_color_marks_date ON date_color_marks(date)',
+      'CREATE INDEX IF NOT EXISTS idx_sync_log_timestamp ON sync_log(timestamp)',
+      'CREATE INDEX IF NOT EXISTS idx_sync_log_table ON sync_log(table_name, record_id)',
     ];
     for (final sql in indexes) {
       try {
@@ -347,6 +363,47 @@ class DatabaseHelper {
     }
     if (oldVersion < 3) {
       await _createIndexes(db);
+    }
+    if (oldVersion < 4) {
+      try {
+        await db.execute(
+          'ALTER TABLE diary_records ADD COLUMN tag_entries TEXT',
+        );
+      } catch (_) {}
+    }
+    if (oldVersion < 5) {
+      try {
+        await db.execute(
+          'ALTER TABLE user_profiles ADD COLUMN other_info TEXT',
+        );
+      } catch (_) {}
+    }
+    if (oldVersion < 6) {
+      try {
+        await db.execute(
+          'ALTER TABLE todos ADD COLUMN sort_order INTEGER DEFAULT 0',
+        );
+      } catch (_) {}
+    }
+    if (oldVersion < 7) {
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS sync_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            table_name TEXT NOT NULL,
+            record_id TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            data TEXT,
+            timestamp TEXT NOT NULL
+          )
+        ''');
+        await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_sync_log_timestamp ON sync_log(timestamp)',
+        );
+        await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_sync_log_table ON sync_log(table_name, record_id)',
+        );
+      } catch (_) {}
     }
   }
 }

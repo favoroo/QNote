@@ -33,6 +33,12 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   bool _isFetchingFreeModels = false;
   String? _fetchMessage;
   bool _fetchMessageIsError = false;
+  SharedPreferences? _prefs;
+
+  Future<SharedPreferences> _getPrefs() async {
+    _prefs ??= await SharedPreferences.getInstance();
+    return _prefs!;
+  }
 
   @override
   void initState() {
@@ -49,7 +55,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   }
 
   Future<void> _loadOpenRouterFreeModels() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _getPrefs();
     final cachedModels = prefs.getStringList('openrouter_free_models');
     if (cachedModels != null && cachedModels.isNotEmpty) {
       if (mounted) {
@@ -139,8 +145,8 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
             final List<String> freeModelsList = parsedModels.map((m) => m['slug'] as String).toList();
 
             if (freeModelsList.isNotEmpty) {
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.setStringList('openrouter_free_models', freeModelsList);
+              final prefs = await _getPrefs();
+              prefs.setStringList('openrouter_free_models', freeModelsList);
 
               if (mounted) {
                 setDialogState(() {
@@ -237,7 +243,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   }
 
   Future<void> _loadLatencies() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _getPrefs();
     final keys = prefs.getKeys();
     final configKeys = keys.where((k) => k.startsWith('ai_latency_'));
     final modelKeys = keys.where((k) => k.startsWith('batch_latency_'));
@@ -262,17 +268,20 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     }
   }
 
-  Future<void> _saveLatency(String configId, String value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('ai_latency_$configId', value);
-    if (mounted) setState(() => _latencyMap[configId] = value);
+  Future<void> _saveLatency(String configId, String value, {bool rebuild = true}) async {
+    final prefs = await _getPrefs();
+    prefs.setString('ai_latency_$configId', value);
+    _latencyMap[configId] = value;
+    if (rebuild && mounted) setState(() {});
   }
 
   Future<void> _saveModelLatency(String vendorId, String modelName, String value) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _getPrefs();
     final key = '$vendorId:$modelName';
-    await prefs.setString('batch_latency_$key', value);
-    _modelLatencyNotifier.value = {..._modelLatencyNotifier.value, key: value};
+    prefs.setString('batch_latency_$key', value);
+    if (mounted) {
+      _modelLatencyNotifier.value = {..._modelLatencyNotifier.value, key: value};
+    }
   }
 
   Future<void> _batchTestModels({
@@ -289,8 +298,6 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     setState(() => _isBatchTestingModels = true);
 
     try {
-      final service = AiService();
-      
       // 使用并发池，限制并发数为 5，兼顾速度与准确性
       const int maxConcurrency = 5;
       final List<Future<void>> tasks = [];
@@ -303,10 +310,11 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         final key = '$vendorId:$model';
         
         if (mounted) {
-          setDialogState(() => _modelLatencyNotifier.value = {..._modelLatencyNotifier.value, key: '测试中...'});
+          _modelLatencyNotifier.value = {..._modelLatencyNotifier.value, key: '测试中...'};
         }
 
         try {
+          final service = AiService();
           final testConfig = AiConfig(
             id: 'batch_test',
             name: 'Batch Test',
@@ -332,9 +340,6 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           await _saveModelLatency(vendorId, model, '失败');
         }
         
-        if (mounted) {
-          setDialogState(() {});
-        }
         await runNext();
       }
 
@@ -415,9 +420,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         ChatMessage(role: 'user', content: 'Hi', timestamp: DateTime.now()),
       ]);
       sw.stop();
-      await _saveLatency(config.id, '${sw.elapsedMilliseconds}ms');
+      await _saveLatency(config.id, '${sw.elapsedMilliseconds}ms', rebuild: false);
     } catch (e) {
-      await _saveLatency(config.id, _formatTestError(e));
+      await _saveLatency(config.id, _formatTestError(e), rebuild: false);
     } finally {
       if (mounted) setState(() => _testingMap[config.id] = false);
     }
@@ -426,11 +431,26 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   Future<void> _testAllConfigs(List<AiConfig> configs) async {
     if (_batchTesting || configs.isEmpty) return;
     setState(() => _batchTesting = true);
-    for (final config in configs) {
-      if (!mounted) break;
-      await _testSingleConfig(config);
+    try {
+      // Limit concurrency to 3 to prevent network/CPU congestion
+      const int maxConcurrency = 3;
+      final List<Future<void>> tasks = [];
+      final List<AiConfig> remainingConfigs = List.from(configs);
+
+      Future<void> runNext() async {
+        if (remainingConfigs.isEmpty || !mounted) return;
+        final config = remainingConfigs.removeAt(0);
+        await _testSingleConfig(config);
+        await runNext();
+      }
+
+      for (int i = 0; i < maxConcurrency && i < configs.length; i++) {
+        tasks.add(runNext());
+      }
+      await Future.wait(tasks);
+    } finally {
+      if (mounted) setState(() => _batchTesting = false);
     }
-    if (mounted) setState(() => _batchTesting = false);
   }
 
   Widget _buildLatencyText(String configId, ThemeData theme) {
@@ -443,7 +463,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       style: theme.textTheme.bodySmall?.copyWith(
         color: isError ? Colors.red : Colors.orange,
         fontWeight: FontWeight.w500,
-        fontSize: isLong ? 10 : null,
+        fontSize: isLong ? 9 : 10,
       ),
       maxLines: 2,
       overflow: TextOverflow.ellipsis,
@@ -589,7 +609,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                             displayName,
                             style: theme.textTheme.bodyMedium?.copyWith(
                               fontWeight: FontWeight.bold,
-                              fontSize: 13,
+                              fontSize: 11,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -601,7 +621,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                     const SizedBox(height: 2),
                     Text(
                       config.modelName,
-                      style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+                      style: theme.textTheme.bodySmall?.copyWith(fontSize: 10),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
@@ -723,7 +743,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                 ),
                 const SizedBox(width: 8),
                 SizedBox(
-                  width: 130,
+                  width: 170,
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String?>(
                       isExpanded: true,
@@ -860,14 +880,51 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     );
   }
 
-  void _showEditDialog(BuildContext context, AiConfig? existingConfig) {
+  Future<void> _showEditDialog(BuildContext context, AiConfig? existingConfig) async {
+    final prefs = await _getPrefs();
+    if (!context.mounted) return;
+    
+    // Load previously saved API keys for all providers
+    final tempSavedApiKeys = <String, String>{};
+    for (final provider in aiProviders) {
+      final key = prefs.getString('last_api_key_${provider.id}');
+      if (key != null && key.isNotEmpty) {
+        tempSavedApiKeys[provider.id] = key;
+      }
+    }
+    
+    // Seed keys from existing configurations if not present in SharedPreferences
+    final currentConfigs = ref.read(aiConfigListProvider).value ?? [];
+    for (final config in currentConfigs) {
+      if (config.vendorId != null && !tempSavedApiKeys.containsKey(config.vendorId)) {
+        if (config.apiKey.isNotEmpty) {
+          tempSavedApiKeys[config.vendorId!] = config.apiKey;
+        }
+      }
+    }
+
     final isEditing = existingConfig != null;
     final nameCtl = TextEditingController(text: existingConfig?.name ?? '');
     final modelCtl = TextEditingController(text: existingConfig?.modelName ?? '');
-    final apiKeyCtl = TextEditingController(text: existingConfig?.apiKey ?? '');
     final baseUrlCtl = TextEditingController(text: existingConfig?.baseUrl ?? '');
     String selectedVendorId = existingConfig?.vendorId ?? 'deepseek';
     String selectedProvider = existingConfig?.provider ?? 'openai';
+    
+    bool isNameManuallyEdited = isEditing;
+
+    String getCleanModelName(String model) {
+      if (model.contains('/')) {
+        model = model.split('/').last;
+      }
+      return model.replaceAll(':free', '');
+    }
+    
+    // Determine the initial API key: 
+    // 1. If editing, use the configuration's API key.
+    // 2. If adding, use the saved key for the selected vendor.
+    final initialApiKey = existingConfig?.apiKey ?? tempSavedApiKeys[selectedVendorId] ?? '';
+    final apiKeyCtl = TextEditingController(text: initialApiKey);
+    
     bool showApiKey = false;
     String? testResult;
     bool isTesting = false;
@@ -879,12 +936,12 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     if (!isEditing) {
       final defaultProvider = getProviderById(selectedVendorId);
       if (defaultProvider != null) {
-        nameCtl.text = defaultProvider.name;
         baseUrlCtl.text = defaultProvider.defaultBaseUrl;
         if (defaultProvider.models.isNotEmpty) {
           modelCtl.text = defaultProvider.models.first;
         }
         selectedProvider = defaultProvider.provider;
+        nameCtl.text = getCleanModelName(modelCtl.text);
       }
     }
 
@@ -914,17 +971,26 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                           if (value == null) return;
                           final provider = getProviderById(value);
                           setDialogState(() {
+                            // Remember the current API key input for this vendor in the temporary map
+                            tempSavedApiKeys[selectedVendorId] = apiKeyCtl.text;
+
                             selectedVendorId = value;
                             _fetchMessage = null;
                             _fetchMessageIsError = false;
+                            
+                            // Load the API key of the newly selected vendor
+                            apiKeyCtl.text = tempSavedApiKeys[value] ?? '';
+
                             if (provider != null) {
                               selectedProvider = provider.provider;
-                              nameCtl.text = provider.name;
                               baseUrlCtl.text = provider.defaultBaseUrl;
                               if (provider.models.isNotEmpty) {
                                 modelCtl.text = provider.models.first;
                               } else {
                                 modelCtl.text = '';
+                              }
+                              if (!isNameManuallyEdited) {
+                                nameCtl.text = getCleanModelName(modelCtl.text);
                               }
                             }
                           });
@@ -947,9 +1013,6 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                         ),
                         const SizedBox(height: 12),
                       ],
-                      Text('显示名称', style: Theme.of(context).textTheme.labelSmall),
-                      TextField(controller: nameCtl, decoration: const InputDecoration(hintText: '例如：我的模型')),
-                      const SizedBox(height: 12),
                       Row(
                         children: [
                           Text('模型名称', style: Theme.of(context).textTheme.labelSmall),
@@ -1059,7 +1122,28 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                         ),
                       ],
                       const SizedBox(height: 4),
-                      _buildModelSelector(ctx, selectedVendorId, modelCtl, setDialogState),
+                      _buildModelSelector(
+                        ctx,
+                        selectedVendorId,
+                        modelCtl,
+                        setDialogState,
+                        (newModel) {
+                          setDialogState(() {
+                            if (!isNameManuallyEdited) {
+                              nameCtl.text = getCleanModelName(newModel);
+                            }
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      Text('显示名称', style: Theme.of(context).textTheme.labelSmall),
+                      TextField(
+                        controller: nameCtl,
+                        decoration: const InputDecoration(hintText: '例如：我的模型'),
+                        onChanged: (val) {
+                          isNameManuallyEdited = true;
+                        },
+                      ),
                       const SizedBox(height: 12),
                       Text('API Key', style: Theme.of(context).textTheme.labelSmall),
                       TextField(
@@ -1150,6 +1234,12 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                 ),
                 FilledButton(
                   onPressed: () async {
+                    // Save API Key to SharedPreferences
+                    final prefs = await _getPrefs();
+                    if (selectedVendorId.isNotEmpty && apiKeyCtl.text.isNotEmpty) {
+                      prefs.setString('last_api_key_$selectedVendorId', apiKeyCtl.text);
+                    }
+
                     final config = AiConfig(
                       id: existingConfig?.id ?? const Uuid().v4(),
                       name: nameCtl.text.isEmpty ? '未命名' : nameCtl.text,
@@ -1179,7 +1269,13 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     );
   }
 
-  Widget _buildModelSelector(BuildContext dialogContext, String vendorId, TextEditingController modelCtl, StateSetter setDialogState) {
+  Widget _buildModelSelector(
+    BuildContext dialogContext,
+    String vendorId,
+    TextEditingController modelCtl,
+    StateSetter setDialogState,
+    ValueChanged<String> onModelChanged,
+  ) {
     final providerConfig = getProviderById(vendorId);
     
     List<String> modelsList = [];
@@ -1207,21 +1303,23 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                 onSelected: (selectedVal) {
                   if (selectedVal == '__custom__') {
                     setDialogState(() => modelCtl.text = '');
+                    onModelChanged('');
                   } else {
                     setDialogState(() => modelCtl.text = selectedVal);
+                    onModelChanged(selectedVal);
                   }
                 },
               );
             },
             borderRadius: BorderRadius.circular(12),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
               decoration: BoxDecoration(
-                color: Theme.of(dialogContext).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: Theme.of(dialogContext).colorScheme.outlineVariant.withValues(alpha: 0.5),
-                  width: 1,
+                border: Border(
+                  bottom: BorderSide(
+                    color: Theme.of(dialogContext).colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
+                    width: 1,
+                  ),
                 ),
               ),
               child: Row(
@@ -1234,8 +1332,8 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                               ? modelCtl.text.split('/').last.replaceAll(':free', '')
                               : modelCtl.text),
                       style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: modelCtl.text.isEmpty ? FontWeight.normal : FontWeight.bold,
+                        fontSize: 14,
+                        fontWeight: FontWeight.normal,
                         color: modelCtl.text.isEmpty
                             ? Theme.of(dialogContext).colorScheme.onSurfaceVariant
                             : Theme.of(dialogContext).colorScheme.onSurface,
@@ -1268,6 +1366,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
               style: const TextStyle(fontSize: 13),
+              onChanged: (val) {
+                onModelChanged(val);
+              },
             ),
           ],
         ],
@@ -1282,6 +1383,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       ),
       style: const TextStyle(fontSize: 13),
+      onChanged: (val) {
+        onModelChanged(val);
+      },
     );
   }
 }

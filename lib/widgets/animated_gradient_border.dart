@@ -39,33 +39,28 @@ class GradientBorderPainter extends CustomPainter {
       Radius.circular(math.max(0, borderRadius - strokeWidth / 2)),
     );
 
-    // Calculate a breathing factor for the flashing/shimmering effect
-    // Oscillates 2 times per rotation cycle
-    final breathingFactor = (math.sin(animationValue * 4 * math.pi) + 1.0) / 2.0;
-
     final shader = SweepGradient(
       colors: gradientColors,
-      stops: const [0.0, 0.25, 0.5, 0.75, 1.0],
       transform: RotatingGradientTransform(animationValue),
     ).createShader(rect);
 
-    // 1. Draw the blurred glow border underneath for the "glowing / flashing" effect
+    // 1. Draw the blurred glow border underneath for the "glowing" effect
     final glowPaint = Paint()
-      ..strokeWidth = strokeWidth * 2.5 + 2.0 * breathingFactor
+      ..strokeWidth = strokeWidth * 2.0
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, 2.0 + 3.0 * breathingFactor)
-      ..color = Colors.white.withValues(alpha: 0.15 + 0.35 * breathingFactor)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.0)
+      ..color = Colors.white.withValues(alpha: 0.25)
       ..shader = shader;
 
     canvas.drawRRect(rrect, glowPaint);
 
     // 2. Draw the main sharp flowing border on top
     final sharpPaint = Paint()
-      ..strokeWidth = strokeWidth + 0.5 * breathingFactor
+      ..strokeWidth = strokeWidth
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
-      ..color = Colors.white.withValues(alpha: 0.85 + 0.15 * breathingFactor)
+      ..color = Colors.white.withValues(alpha: 0.85)
       ..shader = shader;
 
     canvas.drawRRect(rrect, sharpPaint);
@@ -107,7 +102,7 @@ class _AnimatedGradientBorderState extends State<AnimatedGradientBorder>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 3000),
     );
     if (widget.isAnimating) {
       _controller.repeat();
@@ -143,7 +138,6 @@ class _AnimatedGradientBorderState extends State<AnimatedGradientBorder>
       theme.colorScheme.primary,
       theme.colorScheme.tertiary,
       theme.colorScheme.secondary,
-      Colors.white.withValues(alpha: 0.9), // Bright flowing spark
       theme.colorScheme.primary,
     ];
 

@@ -1,15 +1,17 @@
 import 'package:qnote_flutter/core/storage/database_helper.dart';
+import 'package:qnote_flutter/core/storage/sync_log_repository.dart';
 import 'package:qnote_flutter/models/todo.dart';
 
 class TodoRepository {
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
+  final SyncLogRepository _syncLog = SyncLogRepository.instance;
 
   Future<List<Todo>> getAll({bool includeDeleted = false}) async {
     final db = await _dbHelper.database;
     final maps = await db.query(
       'todos',
       where: includeDeleted ? null : 'is_deleted = 0',
-      orderBy: 'CASE priority WHEN \'important\' THEN 0 ELSE 1 END, created_at ASC',
+      orderBy: 'sort_order ASC, created_at ASC',
     );
     return maps.map((m) => Todo.fromMap(m)).toList();
   }
@@ -20,7 +22,7 @@ class TodoRepository {
       'todos',
       where: 'folder_id = ? AND is_deleted = 0',
       whereArgs: [folderId],
-      orderBy: 'CASE priority WHEN \'important\' THEN 0 ELSE 1 END, created_at ASC',
+      orderBy: 'sort_order ASC, created_at ASC',
     );
     return maps.map((m) => Todo.fromMap(m)).toList();
   }
@@ -40,7 +42,7 @@ class TodoRepository {
     final maps = await db.query(
       'todos',
       where: 'is_completed = 0 AND is_deleted = 0',
-      orderBy: 'CASE priority WHEN \'important\' THEN 0 ELSE 1 END, created_at ASC',
+      orderBy: 'sort_order ASC, created_at ASC',
     );
     return maps.map((m) => Todo.fromMap(m)).toList();
   }
@@ -51,7 +53,7 @@ class TodoRepository {
       'todos',
       where: 'is_long_term = ? AND is_deleted = 0',
       whereArgs: [isLongTerm ? 1 : 0],
-      orderBy: 'CASE priority WHEN \'important\' THEN 0 ELSE 1 END, created_at ASC',
+      orderBy: 'sort_order ASC, created_at ASC',
     );
     return maps.map((m) => Todo.fromMap(m)).toList();
   }
@@ -87,6 +89,12 @@ class TodoRepository {
   Future<Todo> insert(Todo todo) async {
     final db = await _dbHelper.database;
     await db.insert('todos', todo.toMap());
+    await _syncLog.logChange(
+      tableName: 'todos',
+      recordId: todo.id,
+      operation: 'insert',
+      data: todo.toMap(),
+    );
     return todo;
   }
 
@@ -99,6 +107,12 @@ class TodoRepository {
       where: 'id = ?',
       whereArgs: [todo.id],
     );
+    await _syncLog.logChange(
+      tableName: 'todos',
+      recordId: todo.id,
+      operation: 'update',
+      data: updated.toMap(),
+    );
     return updated;
   }
 
@@ -110,11 +124,25 @@ class TodoRepository {
       where: 'id = ?',
       whereArgs: [id],
     );
+    final existing = await getById(id);
+    if (existing != null) {
+      await _syncLog.logChange(
+        tableName: 'todos',
+        recordId: id,
+        operation: 'update',
+        data: existing.toMap(),
+      );
+    }
   }
 
   Future<void> hardDelete(String id) async {
     final db = await _dbHelper.database;
     await db.delete('todos', where: 'id = ?', whereArgs: [id]);
+    await _syncLog.logChange(
+      tableName: 'todos',
+      recordId: id,
+      operation: 'delete',
+    );
   }
 
   Future<void> toggleComplete(String id, bool isCompleted) async {
@@ -125,6 +153,15 @@ class TodoRepository {
       where: 'id = ?',
       whereArgs: [id],
     );
+    final existing = await getById(id);
+    if (existing != null) {
+      await _syncLog.logChange(
+        tableName: 'todos',
+        recordId: id,
+        operation: 'update',
+        data: existing.toMap(),
+      );
+    }
   }
 
   Future<void> moveToLongTerm(String id) async {
@@ -135,6 +172,15 @@ class TodoRepository {
       where: 'id = ?',
       whereArgs: [id],
     );
+    final existing = await getById(id);
+    if (existing != null) {
+      await _syncLog.logChange(
+        tableName: 'todos',
+        recordId: id,
+        operation: 'update',
+        data: existing.toMap(),
+      );
+    }
   }
 
   Future<void> moveToToday(String id) async {
@@ -145,6 +191,15 @@ class TodoRepository {
       where: 'id = ?',
       whereArgs: [id],
     );
+    final existing = await getById(id);
+    if (existing != null) {
+      await _syncLog.logChange(
+        tableName: 'todos',
+        recordId: id,
+        operation: 'update',
+        data: existing.toMap(),
+      );
+    }
   }
 
   Future<void> batchUpdate(List<Todo> todos) async {
@@ -159,6 +214,14 @@ class TodoRepository {
       );
     }
     await batch.commit(noResult: true);
+    for (final todo in todos) {
+      await _syncLog.logChange(
+        tableName: 'todos',
+        recordId: todo.id,
+        operation: 'update',
+        data: todo.toMap(),
+      );
+    }
   }
 
   Future<List<Todo>> search(String keyword) async {
@@ -167,7 +230,7 @@ class TodoRepository {
       'todos',
       where: '(title LIKE ? OR description LIKE ? OR tags LIKE ?) AND is_deleted = 0',
       whereArgs: ['%$keyword%', '%$keyword%', '%$keyword%'],
-      orderBy: 'CASE priority WHEN \'important\' THEN 0 ELSE 1 END, created_at ASC',
+      orderBy: 'sort_order ASC, created_at ASC',
     );
     return maps.map((m) => Todo.fromMap(m)).toList();
   }

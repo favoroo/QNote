@@ -313,12 +313,13 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
             ],
           ),
           body: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.all(16),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // Sync Status Banner Card
                 Container(
-                  margin: const EdgeInsets.only(bottom: 16),
+                  margin: const EdgeInsets.only(bottom: 20),
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
                     color: _statusColor(syncStatus).withValues(alpha: 0.1),
@@ -373,7 +374,8 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
                     ],
                   ),
                 ),
-                // Top Control Card
+
+                // Top Control Card (Sync Policies)
                 Container(
                   decoration: BoxDecoration(
                     color: theme.cardColor,
@@ -389,159 +391,301 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
                   ),
                   child: Column(
                     children: [
-                      _buildSwitchTile(
-                        icon: Icons.cloud_outlined,
+                      _buildSettingRow(
+                        icon: Icons.sync_outlined,
                         iconColor: Colors.blue,
-                        title: '启用 WebDAV 同步',
-                        subtitle: '自动备份数据至私有网盘',
-                        value: _webdavEnabled,
-                        onChanged: (v) => setState(() => _webdavEnabled = v),
+                        title: '自动同步',
+                        description: '允许应用在后台按规则自动同步数据',
+                        trailing: Switch(
+                          value: _webdavEnabled,
+                          onChanged: (v) => setState(() => _webdavEnabled = v),
+                        ),
                       ),
-                      const Divider(indent: 64, endIndent: 16, height: 1),
-                      _buildSwitchTile(
+                      const Divider(height: 1, indent: 56, endIndent: 16),
+                      _buildSettingRow(
                         icon: Icons.bolt_outlined,
                         iconColor: Colors.orange,
                         title: '启动时自动同步',
-                        value: _syncOnLaunch,
-                        onChanged: (v) => setState(() => _syncOnLaunch = v),
+                        description: '每次打开或进入应用时自动执行一次同步',
+                        enabled: _webdavEnabled,
+                        trailing: Switch(
+                          value: _syncOnLaunch,
+                          onChanged: _webdavEnabled
+                              ? (v) => setState(() => _syncOnLaunch = v)
+                              : null,
+                        ),
                       ),
-                      const Divider(indent: 64, endIndent: 16, height: 1),
-                      _buildDropdownTile(
-                        icon: Icons.access_time,
-                        iconColor: Colors.blueAccent,
-                        title: '定期同步间隔',
-                        value: _syncInterval,
-                        options: _syncIntervalOptions,
-                        onChanged: (v) {
-                          if (v != null) setState(() => _syncInterval = v);
-                        },
+                      const Divider(height: 1, indent: 56, endIndent: 16),
+                      _buildSettingRow(
+                        icon: Icons.access_time_outlined,
+                        iconColor: Colors.indigoAccent,
+                        title: '自动同步间隔',
+                        description: '设定应用运行期间自动同步的时间间隔',
+                        enabled: _webdavEnabled,
+                        trailing: DropdownButtonHideUnderline(
+                          child: DropdownButton<int>(
+                            value: _syncIntervalOptions.any((e) => e.value == _syncInterval)
+                                ? _syncInterval
+                                : 0,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: _webdavEnabled ? colorScheme.onSurface : theme.disabledColor,
+                            ),
+                            isDense: true,
+                            items: _syncIntervalOptions
+                                .map((e) => DropdownMenuItem(
+                                      value: e.value,
+                                      child: Text(e.key, style: const TextStyle(fontSize: 13)),
+                                    ))
+                                .toList(),
+                            onChanged: _webdavEnabled
+                                ? (v) {
+                                    if (v != null) setState(() => _syncInterval = v);
+                                  }
+                                : null,
+                          ),
+                        ),
                       ),
-                      if (lastSyncTime != null) ...[
-                        const Divider(indent: 16, endIndent: 16, height: 1),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text('最后同步时间', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
-                              Text(
-                                '${lastSyncTime.year}/${lastSyncTime.month}/${lastSyncTime.day} ${lastSyncTime.hour}:${lastSyncTime.minute.toString().padLeft(2, '0')}:${lastSyncTime.second.toString().padLeft(2, '0')}',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.hintColor,
-                                  letterSpacing: 0.5,
+                      const Divider(height: 1, indent: 56, endIndent: 16),
+                      _buildSettingRow(
+                        icon: Icons.cloud_done_outlined,
+                        iconColor: Colors.teal,
+                        title: '上次同步时间',
+                        description: '最近一次与云端成功同步数据的时间',
+                        trailing: Text(
+                          lastSyncTime != null
+                              ? _formatCompactLastSyncTime(lastSyncTime)
+                              : '未同步',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.hintColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // Server Config Section Card
+                Container(
+                  decoration: BoxDecoration(
+                    color: theme.cardColor,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.02),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: colorScheme.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(Icons.dns_outlined, color: colorScheme.primary, size: 18),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            '服务器配置',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      _buildInputField(
+                        label: '服务器地址',
+                        controller: _serverUrlController,
+                        hint: 'https://dav.jianguoyun.com/dav/',
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 4, top: 8, bottom: 16),
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline, size: 14, color: Colors.orange.shade700),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: RichText(
+                                text: TextSpan(
+                                  style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor),
+                                  children: [
+                                    const TextSpan(text: '提示：'),
+                                    TextSpan(
+                                      text: '坚果云用户请务必在 URL 末尾包含 /dav/',
+                                      style: TextStyle(
+                                        color: Colors.orange.shade700,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
+                      _buildInputField(
+                        label: '账户',
+                        controller: _usernameController,
+                        hint: 'example@qq.com',
+                      ),
+                      const SizedBox(height: 16),
+                      _buildInputField(
+                        label: '应用密码',
+                        controller: _passwordController,
+                        hint: '••••••••••••••••',
+                        isPassword: true,
+                        obscure: _obscurePassword,
+                        onToggleObscure: () => setState(() => _obscurePassword = !_obscurePassword),
+                      ),
+                      const SizedBox(height: 16),
+                      _buildInputField(
+                        label: '备份子目录',
+                        controller: _remotePathController,
+                        hint: 'QNote',
+                      ),
                     ],
                   ),
                 ),
 
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
 
-                // Server Config Section
-                _buildSectionHeader('服务器配置'),
-                _buildInputField(
-                  label: '服务器地址',
-                  controller: _serverUrlController,
-                  hint: 'https://dav.jianguoyun.com/dav/',
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(left: 4, top: 8, bottom: 16),
-                  child: Row(
+                // Action Operations Card
+                Container(
+                  decoration: BoxDecoration(
+                    color: theme.cardColor,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.02),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.info_outline, size: 14, color: Colors.orange.shade700),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: RichText(
-                          text: TextSpan(
-                            style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor),
-                            children: [
-                              const TextSpan(text: '提示：'),
-                              TextSpan(
-                                text: '坚果云用户请务必在 URL 末尾包含 /dav/',
-                                style: TextStyle(color: Colors.orange.shade700, fontWeight: FontWeight.bold),
-                              ),
-                            ],
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: colorScheme.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(Icons.construction_outlined, color: colorScheme.primary, size: 18),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            '同步维护与操作',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildActionButton(
+                              icon: Icons.wifi_protected_setup_outlined,
+                              color: Colors.blue,
+                              title: '连接测试',
+                              desc: '检查配置正确性',
+                              onTap: _testing ? null : _testConnection,
+                              isLoading: _testing,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _buildActionButton(
+                              icon: Icons.sync,
+                              color: Colors.green,
+                              title: '手动同步',
+                              desc: '增量同步合并',
+                              onTap: syncStatus == SyncStatus.syncing ? null : _performSync,
+                              isLoading: syncStatus == SyncStatus.syncing,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildActionButton(
+                              icon: Icons.cloud_upload_outlined,
+                              color: Colors.purple,
+                              title: '全量同步',
+                              desc: '上传完整数据快照',
+                              onTap: syncStatus == SyncStatus.syncing ? null : _performFullSync,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _buildActionButton(
+                              icon: Icons.cleaning_services_outlined,
+                              color: Colors.amber.shade700,
+                              title: '清理旧备份',
+                              desc: '释放远程多余空间',
+                              onTap: syncStatus == SyncStatus.syncing ? null : _cleanupOldBackups,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Container(
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: Colors.red.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Colors.red.withValues(alpha: 0.2),
+                          ),
+                        ),
+                        child: InkWell(
+                          onTap: syncStatus == SyncStatus.syncing ? null : _restoreFromBackup,
+                          borderRadius: BorderRadius.circular(16),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.settings_backup_restore, size: 20, color: Colors.red.shade400),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '从远程恢复本地数据',
+                                  style: TextStyle(
+                                    color: Colors.red.shade400,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ],
-                  ),
-                ),
-
-                _buildInputField(
-                  label: '账户',
-                  controller: _usernameController,
-                  hint: 'example@qq.com',
-                ),
-                const SizedBox(height: 16),
-                _buildInputField(
-                  label: '应用密码',
-                  controller: _passwordController,
-                  hint: '••••••••••••••••',
-                  isPassword: true,
-                  obscure: _obscurePassword,
-                  onToggleObscure: () => setState(() => _obscurePassword = !_obscurePassword),
-                ),
-                const SizedBox(height: 16),
-                _buildInputField(
-                  label: '备份子目录',
-                  controller: _remotePathController,
-                  hint: 'QNote',
-                ),
-
-                const SizedBox(height: 32),
-
-                // Action Buttons
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _testing ? null : _testConnection,
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        icon: _testing
-                            ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.5))
-                            : const Icon(Icons.wifi, size: 16),
-                        label: Text(_testing ? '测试中...' : '连接测试', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: syncStatus == SyncStatus.syncing ? null : _performSync,
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          backgroundColor: theme.colorScheme.primaryContainer,
-                          foregroundColor: theme.colorScheme.onPrimaryContainer,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          elevation: 0,
-                        ),
-                        icon: syncStatus == SyncStatus.syncing
-                            ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.5))
-                            : const Icon(Icons.sync, size: 16),
-                        label: const Text('手动同步', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: TextButton.icon(
-                    onPressed: syncStatus == SyncStatus.syncing ? null : _restoreFromBackup,
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      foregroundColor: Colors.red.shade400,
-                    ),
-                    icon: const Icon(Icons.settings_backup_restore, size: 20),
-                    label: const Text('从远程恢复本地数据'),
                   ),
                 ),
 
@@ -624,17 +768,137 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
           ),
       ],
     );
-}
+  }
 
-  Widget _buildSectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 8),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).hintColor,
-              fontWeight: FontWeight.bold,
+  Widget _buildSettingRow({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String description,
+    required Widget trailing,
+    bool enabled = true,
+  }) {
+    final theme = Theme.of(context);
+    return Opacity(
+      opacity: enabled ? 1.0 : 0.5,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: iconColor, size: 20),
             ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    description,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.hintColor,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+            IgnorePointer(
+              ignoring: !enabled,
+              child: trailing,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionButton({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String desc,
+    required VoidCallback? onTap,
+    bool isLoading = false,
+  }) {
+    final theme = Theme.of(context);
+
+    return Card(
+      elevation: 0,
+      color: theme.colorScheme.surfaceContainerLow,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+        ),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: isLoading
+                    ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(color),
+                        ),
+                      )
+                    : Icon(icon, color: color, size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      desc,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.hintColor,
+                        fontSize: 10,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -685,126 +949,6 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
           style: const TextStyle(fontWeight: FontWeight.w600),
         ),
       ],
-    );
-  }
-
-  Widget _buildSwitchTile({
-    required IconData icon,
-    required Color iconColor,
-    required String title,
-    String? subtitle,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: iconColor, size: 18),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (subtitle != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: TextStyle(fontSize: 10, color: Theme.of(context).hintColor),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          SizedBox(
-            height: 28,
-            child: Transform.scale(
-              scale: 0.8,
-              child: Switch(
-                value: value,
-                onChanged: onChanged,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDropdownTile({
-    required IconData icon,
-    required Color iconColor,
-    required String title,
-    required int value,
-    required List<MapEntry<String, int>> options,
-    required ValueChanged<int?> onChanged,
-  }) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: iconColor, size: 18),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              title,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-                ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: SizedBox(
-                height: 28,
-                child: DropdownButton<int>(
-                  value: options.any((e) => e.value == value) ? value : 0,
-                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600, fontSize: 12),
-                  isDense: true,
-                  items: options
-                      .map((e) => DropdownMenuItem(
-                            value: e.value,
-                            child: Text(e.key),
-                          ))
-                      .toList(),
-                  onChanged: onChanged,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 

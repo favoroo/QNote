@@ -9,6 +9,8 @@ import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
+import 'package:qnote_flutter/models/tag_entry.dart';
+import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/shortcut_field.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
@@ -16,6 +18,7 @@ import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/widgets/diary/ai_extract_helper.dart';
 import 'package:qnote_flutter/widgets/time_picker.dart';
+import 'package:qnote_flutter/widgets/time_scroll_picker.dart';
 import 'package:qnote_flutter/widgets/tag_picker.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 
@@ -38,14 +41,114 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   late List<String> _photos;
   late List<String> _newlyUploadedPaths;
   late List<String> _removedPaths;
-  late Map<String, dynamic>? _bodyState;
+  late List<TagEntry> _tagEntries;
   bool _isExtracting = false;
+
+  final Map<String, TextEditingController> _formControllers = {};
+
+  TextEditingController _getFormController(
+    String fieldId,
+    String initialValue, {
+    String? tagId,
+  }) {
+    final key = tagId != null ? '${tagId}_$fieldId' : fieldId;
+    if (!_formControllers.containsKey(key)) {
+      _formControllers[key] = TextEditingController(text: initialValue);
+    } else {
+      final controller = _formControllers[key]!;
+      if (controller.text != initialValue) {
+        controller.value = controller.value.copyWith(
+          text: initialValue,
+          selection: TextSelection.collapsed(offset: initialValue.length),
+        );
+      }
+    }
+    return _formControllers[key]!;
+  }
+
+  void _updateFormValue(String tagId, String fieldKey, dynamic value) {
+    setState(() {
+      _tagEntries = _tagEntries.map((entry) {
+        if (entry.id == tagId) {
+          var newFields = Map<String, dynamic>.from(entry.fields);
+          if (value == null) {
+            newFields.remove(fieldKey);
+          } else {
+            newFields[fieldKey] = value;
+          }
+
+          if (tagId == 'sleep') {
+            if (fieldKey == 'fallAsleepTime' && value != null) {
+              final timeStr = value as String;
+              final parts = timeStr.split(':');
+              if (parts.length >= 2) {
+                final h = int.tryParse(parts[0]) ?? 0;
+                final m = int.tryParse(parts[1]) ?? 0;
+                final currentStart = _startTime ?? _time;
+                final newStart = DateTime(
+                  currentStart.year,
+                  currentStart.month,
+                  currentStart.day,
+                  h,
+                  m,
+                );
+                _startTime = newStart;
+
+                if (_endTime != null) {
+                  final diffMin = _endTime!.difference(newStart).inMinutes;
+                  newFields['duration'] = (diffMin / 60.0).toStringAsFixed(1);
+                }
+              }
+            }
+
+            if (fieldKey == 'duration' && value != null) {
+              final double? durationHours = double.tryParse(value.toString());
+              if (durationHours != null) {
+                final currentStart = _startTime ?? _time;
+                _endTime = currentStart.add(
+                  Duration(minutes: (durationHours * 60).toInt()),
+                );
+              }
+            }
+          }
+
+          return entry.copyWith(fields: newFields);
+        }
+        return entry;
+      }).toList();
+    });
+  }
+
+  String _parseUserRemarks(String content, List<TagEntry> tagEntries) {
+    if (content.contains('\n备注：')) {
+      final parts = content.split('\n备注：');
+      if (parts.length > 1) {
+        return parts.sublist(1).join('\n备注：');
+      }
+    }
+
+    final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
+    final hasPopupFields = tagEntries.any((entry) {
+      final sc = shortcuts
+          .where((s) => s.id == entry.id || s.name == entry.name)
+          .firstOrNull;
+      return sc != null && sc.hasPopup;
+    });
+
+    if (!hasPopupFields) {
+      return content;
+    }
+
+    if (content.contains('：') || content.contains(':')) {
+      return '';
+    }
+    return content;
+  }
 
   @override
   void initState() {
     super.initState();
     final r = widget.record;
-    _contentController = TextEditingController(text: r.content);
     _time = r.time;
     _startTime = r.startTime;
     _endTime = r.endTime;
@@ -54,13 +157,26 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     _photos = List.from(r.photos);
     _newlyUploadedPaths = [];
     _removedPaths = [];
-    _bodyState = r.bodyState != null ? Map.from(r.bodyState!) : null;
+    _tagEntries = List.from(r.tagEntries);
+    _contentController = TextEditingController(
+      text: _parseUserRemarks(r.content, _tagEntries),
+    );
   }
 
   @override
   void dispose() {
     _contentController.dispose();
+    for (final c in _formControllers.values) {
+      c.dispose();
+    }
     super.dispose();
+  }
+
+  int _getStartOffset() {
+    final start = _startTime ?? _time;
+    final baseDate = DateTime(_time.year, _time.month, _time.day);
+    final startDate = DateTime(start.year, start.month, start.day);
+    return startDate.difference(baseDate).inDays;
   }
 
   Future<void> _pickTime() async {
@@ -73,6 +189,20 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       setState(() {
         _time = result;
         _startTime = result;
+
+        _tagEntries = _tagEntries.map((entry) {
+          if (entry.id == 'sleep') {
+            final newFields = Map<String, dynamic>.from(entry.fields);
+            newFields['fallAsleepTime'] =
+                '${result.hour.toString().padLeft(2, '0')}:${result.minute.toString().padLeft(2, '0')}';
+            if (_endTime != null) {
+              final diffMin = _endTime!.difference(result).inMinutes;
+              newFields['duration'] = (diffMin / 60.0).toStringAsFixed(1);
+            }
+            return entry.copyWith(fields: newFields);
+          }
+          return entry;
+        }).toList();
       });
     }
   }
@@ -86,13 +216,25 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     if (result != null) {
       setState(() {
         _endTime = result;
+
+        _tagEntries = _tagEntries.map((entry) {
+          if (entry.id == 'sleep') {
+            final newFields = Map<String, dynamic>.from(entry.fields);
+            final start = _startTime ?? _time;
+            final diffMin = result.difference(start).inMinutes;
+            newFields['duration'] = (diffMin / 60.0).toStringAsFixed(1);
+            return entry.copyWith(fields: newFields);
+          }
+          return entry;
+        }).toList();
       });
     }
   }
 
   Future<void> _pickTags() async {
     final shortcuts = ref.read(shortcutListProvider);
-    final availableTags = shortcuts.valueOrNull?.map((s) => s.name).toList() ?? [];
+    final availableTags =
+        shortcuts.valueOrNull?.map((s) => s.name).toList() ?? [];
     final result = await showTagPickerDialog(
       context: context,
       availableTags: availableTags,
@@ -106,8 +248,70 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         } else {
           _displayTag = '记录';
         }
+
+        final currentEntriesMap = {for (final e in _tagEntries) e.name: e};
+        final newEntries = <TagEntry>[];
+        for (final name in result) {
+          if (currentEntriesMap.containsKey(name)) {
+            newEntries.add(currentEntriesMap[name]!);
+          } else {
+            final sc = shortcuts.valueOrNull
+                ?.where((s) => s.name == name)
+                .firstOrNull;
+            final entryId = sc?.id ?? name;
+            final initialFields = <String, dynamic>{};
+            if (sc?.id == 'sleep') {
+              final start = _startTime ?? _time;
+              initialFields['fallAsleepTime'] =
+                  '${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')}';
+              if (_endTime != null) {
+                final diffMin = _endTime!.difference(start).inMinutes;
+                initialFields['duration'] = (diffMin / 60.0).toStringAsFixed(1);
+              }
+            }
+            newEntries.add(
+              TagEntry(id: entryId, name: name, fields: initialFields),
+            );
+          }
+        }
+        _tagEntries = newEntries;
       });
     }
+  }
+
+  void _toggleShortcut(ShortcutConfig config) {
+    setState(() {
+      final name = config.name;
+      if (_tags.contains(name)) {
+        _tags.remove(name);
+        _tagEntries = _tagEntries
+            .where((e) => e.id != config.id && e.name != name)
+            .toList();
+      } else {
+        _tags.add(name);
+
+        final initialFields = <String, dynamic>{};
+        if (config.id == 'sleep') {
+          final start = _startTime ?? _time;
+          initialFields['fallAsleepTime'] =
+              '${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')}';
+          if (_endTime != null) {
+            final diffMin = _endTime!.difference(start).inMinutes;
+            initialFields['duration'] = (diffMin / 60.0).toStringAsFixed(1);
+          }
+        }
+
+        _tagEntries.add(
+          TagEntry(id: config.id, name: name, fields: initialFields),
+        );
+      }
+
+      if (_tags.isNotEmpty) {
+        _displayTag = _tags.first;
+      } else {
+        _displayTag = '记录';
+      }
+    });
   }
 
   Future<void> _addPhoto(ImageSource source) async {
@@ -126,7 +330,10 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     }
     if (xFile == null) return;
     final imageRepo = ImageRepository();
-    final savedPath = await imageRepo.saveImage(File(xFile.path), subfolder: 'diary');
+    final savedPath = await imageRepo.saveImage(
+      File(xFile.path),
+      subfolder: 'diary',
+    );
     setState(() {
       _photos.add(savedPath);
       _newlyUploadedPaths.add(savedPath);
@@ -156,15 +363,106 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     for (final path in _removedPaths) {
       await ImageRepository().deleteImage(path);
     }
+
+    final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
+
+    // Dynamically calculate bodyState based on the selected tag entries
+    Map<String, dynamic>? bodyState;
+    for (final entry in _tagEntries) {
+      try {
+        final config = shortcuts.firstWhere(
+          (s) => s.id == entry.id || s.name == entry.name,
+        );
+        if (config.hasPopup) {
+          if (config.id == 'body') {
+            bodyState = {
+              'name': entry.fields['symptom'] ?? '未知症状',
+              'severity': entry.fields['severity'] ?? '轻微',
+              'duration': '未知',
+              'notes': _contentController.text,
+            };
+          } else
+            bodyState ??= Map<String, dynamic>.from(entry.fields);
+        }
+      } catch (_) {}
+    }
+
+    if (_tagEntries.isNotEmpty && bodyState == null) {
+      bodyState = Map<String, dynamic>.from(_tagEntries.first.fields);
+    }
+
+    String content = '';
+    final popupEntries = <TagEntry>[];
+    final popupConfigs = <ShortcutConfig>[];
+
+    for (final entry in _tagEntries) {
+      try {
+        final config = shortcuts.firstWhere(
+          (s) => s.id == entry.id || s.name == entry.name,
+        );
+        if (config.hasPopup) {
+          popupEntries.add(entry);
+          popupConfigs.add(config);
+        }
+      } catch (_) {}
+    }
+
+    if (popupEntries.isNotEmpty) {
+      final detailParts = <String>[];
+
+      for (int pi = 0; pi < popupEntries.length; pi++) {
+        final entry = popupEntries[pi];
+        final config = popupConfigs[pi];
+
+        List<ShortcutField> fieldsToProcess = config.fields;
+        Map<String, dynamic> entryFields = Map<String, dynamic>.from(
+          entry.fields,
+        );
+        String categoryPrefix = '';
+
+        if (config.categories != null && config.categories!.isNotEmpty) {
+          final currentCategory = config.categories!.firstWhere(
+            (c) => c.id == entryFields['_category'],
+            orElse: () => config.categories!.first,
+          );
+          fieldsToProcess = currentCategory.fields;
+          categoryPrefix = '${currentCategory.name} - ';
+        }
+
+        final details = fieldsToProcess
+            .map((f) {
+              final val = entryFields[f.id];
+              if (val == null) return null;
+              if (val is List) return '${f.label}：${val.join('、')}';
+              return '${f.label}：$val';
+            })
+            .where((s) => s != null)
+            .join('，');
+
+        final fullDetails = categoryPrefix.isNotEmpty
+            ? '$categoryPrefix$details'
+            : details;
+        if (fullDetails.isNotEmpty) detailParts.add(fullDetails);
+      }
+
+      final allDetails = detailParts.join('；');
+      final remarksText = _contentController.text.trim();
+      content =
+          '$allDetails${remarksText.isNotEmpty ? '\n备注：$remarksText' : ''}';
+    } else {
+      content = _contentController.text;
+    }
+
     final updated = widget.record.copyWith(
       time: _time,
       startTime: _startTime,
       endTime: _endTime,
       tags: _tags,
       displayTag: _displayTag,
-      content: _contentController.text,
+      content: content,
       photos: _photos,
-      bodyState: _bodyState,
+      bodyState: bodyState,
+      tagEntries: _tagEntries,
       updatedAt: DateTime.now(),
     );
     await ref.read(diaryListProvider.notifier).updateDiary(updated);
@@ -184,7 +482,9 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
             child: const Text('删除'),
           ),
         ],
@@ -206,6 +506,18 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     Navigator.of(context).pop();
   }
 
+  String _mergeNotesWithContent(String notes, String originalContent) {
+    if (notes.isEmpty) return originalContent;
+    if (originalContent.isEmpty) return notes;
+    if (notes.startsWith('图：') || notes.startsWith('图:')) {
+      return '$originalContent\n$notes';
+    }
+    if (!originalContent.contains(notes)) {
+      return '$originalContent\n$notes';
+    }
+    return originalContent;
+  }
+
   Future<void> _handleAiExtract() async {
     if (_isExtracting) return;
     final contentText = _contentController.text.trim();
@@ -219,19 +531,42 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       content: contentText,
       photos: _photos,
       recordTime: _time,
-      onLoadingChanged: (loading) { if (mounted) setState(() => _isExtracting = loading); },
+      onLoadingChanged: (loading) {
+        if (mounted) setState(() => _isExtracting = loading);
+      },
     );
 
     if (result != null && mounted) {
       final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
       final foundShortcut = findShortcutById(result.shortcutId, shortcuts);
 
-      if (foundShortcut != null) {
+      _formControllers.clear();
+
+      if (result.tagEntries.isNotEmpty) {
+        final newContent = _mergeNotesWithContent(
+          result.notes,
+          _contentController.text,
+        );
+        setState(() {
+          _tagEntries = result.tagEntries;
+          _tags = result.tagEntries.map((e) => e.name).toList();
+          _displayTag = result.tagEntries.first.name;
+          _contentController.text = newContent;
+        });
+      } else if (foundShortcut != null) {
+        final newContent = _mergeNotesWithContent(
+          result.notes,
+          _contentController.text,
+        );
         setState(() {
           if (!_tags.contains(foundShortcut.name)) {
-            _tags = [foundShortcut.name, ..._tags.where((t) => t != _displayTag)];
+            _tags = [
+              foundShortcut.name,
+              ..._tags.where((t) => t != _displayTag),
+            ];
           }
           _displayTag = foundShortcut.name;
+          _contentController.text = newContent;
         });
       }
 
@@ -243,7 +578,9 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             final hour = int.tryParse(parts[0]) ?? _time.hour;
             final minute = int.tryParse(parts[1]) ?? _time.minute;
             final startOffset = result.time['startOffset'] as int? ?? 0;
-            final dt = baseDate.add(Duration(days: startOffset, hours: hour, minutes: minute));
+            final dt = baseDate.add(
+              Duration(days: startOffset, hours: hour, minutes: minute),
+            );
             setState(() {
               _time = dt;
               _startTime = dt;
@@ -257,53 +594,14 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             final minute = int.tryParse(parts[1]) ?? 0;
             final endOffset = result.time['endOffset'] as int? ?? 0;
             setState(() {
-              _endTime = baseDate.add(Duration(days: endOffset, hours: hour, minutes: minute));
+              _endTime = baseDate.add(
+                Duration(days: endOffset, hours: hour, minutes: minute),
+              );
             });
           }
         }
       }
 
-      if (foundShortcut != null && foundShortcut.hasPopup) {
-        List<ShortcutField> fieldsToProcess = foundShortcut.fields;
-        Map<String, dynamic> finalFormValues = Map.from(result.fields);
-        String categoryPrefix = '';
-
-        if (foundShortcut.categories != null && foundShortcut.categories!.isNotEmpty) {
-          final currentCategory = foundShortcut.categories!.firstWhere(
-            (c) => c.id == result.fields['_category'],
-            orElse: () => foundShortcut.categories!.first,
-          );
-          fieldsToProcess = currentCategory.fields;
-          categoryPrefix = '${currentCategory.name} - ';
-        }
-
-        final details = fieldsToProcess.map((f) {
-          final val = finalFormValues[f.id];
-          if (val == null) return null;
-          if (val is List) return '${f.label}：${val.join('、')}';
-          return '${f.label}：$val';
-        }).where((s) => s != null).join('，');
-
-        final fullDetails = categoryPrefix.isNotEmpty ? '$categoryPrefix$details' : details;
-        final notesText = result.notes.isNotEmpty ? result.notes : '';
-        final newContent = '$fullDetails${notesText.isNotEmpty ? '\n备注：$notesText' : ''}';
-
-        setState(() {
-          _contentController.text = newContent;
-        });
-      } else {
-        if (result.notes.isNotEmpty) {
-          setState(() {
-            _contentController.text = result.notes;
-          });
-        }
-      }
-
-      if (result.fields.isNotEmpty) {
-        setState(() {
-          _bodyState = Map<String, dynamic>.from(result.fields);
-        });
-      }
       Toast.success(context, '优化完成');
     }
 
@@ -327,13 +625,20 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
 
     final selectedConfig = await showDialog<AiConfig>(
       context: context,
-      builder: (context) => _ExtractModelDialog(configs: configs, selectedId: currentModelId),
+      builder: (context) =>
+          _ExtractModelDialog(configs: configs, selectedId: currentModelId),
     );
 
     if (selectedConfig != null && mounted) {
-      await AiRoleService.instance.saveRoles(roles.copyWith(timelineOptimization: selectedConfig.id));
+      await AiRoleService.instance.saveRoles(
+        roles.copyWith(timelineOptimization: selectedConfig.id),
+      );
       if (mounted) {
-        Toast.success(context, '已切换：${selectedConfig.name}', duration: const Duration(seconds: 1));
+        Toast.success(
+          context,
+          '已切换：${selectedConfig.name}',
+          duration: const Duration(seconds: 1),
+        );
       }
     }
   }
@@ -416,7 +721,9 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                 decoration: BoxDecoration(
                   color: colorScheme.primaryContainer.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: colorScheme.primary.withValues(alpha: 0.15)),
+                  border: Border.all(
+                    color: colorScheme.primary.withValues(alpha: 0.15),
+                  ),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -448,13 +755,19 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                   decoration: BoxDecoration(
                     color: colorScheme.primaryContainer.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(22),
-                    border: Border.all(color: colorScheme.primary.withValues(alpha: 0.15)),
+                    border: Border.all(
+                      color: colorScheme.primary.withValues(alpha: 0.15),
+                    ),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.access_time, size: 16, color: colorScheme.primary),
+                      Icon(
+                        Icons.access_time,
+                        size: 16,
+                        color: colorScheme.primary,
+                      ),
                       const SizedBox(width: 4),
                       Flexible(
                         child: Text(
@@ -477,7 +790,9 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                   height: 44,
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                    color: colorScheme.surfaceContainerHighest.withValues(
+                      alpha: 0.3,
+                    ),
                     borderRadius: BorderRadius.circular(22),
                     border: Border.all(
                       color: colorScheme.outlineVariant.withValues(alpha: 0.2),
@@ -488,7 +803,11 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.add, size: 16, color: colorScheme.onSurfaceVariant),
+                      Icon(
+                        Icons.add,
+                        size: 16,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         '结束时间',
@@ -508,6 +827,23 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   }
 
   Widget _buildTagSection(ThemeData theme, ColorScheme colorScheme) {
+    final tagIcons = <String, IconData>{
+      '睡眠': Icons.nightlight_round,
+      '饮食': Icons.restaurant,
+      '活动': Icons.directions_run,
+      '记账': Icons.account_balance_wallet,
+    };
+    final tagColors = <String, Color>{
+      '睡眠': const Color(0xFF6366F1),
+      '饮食': const Color(0xFFF59E0B),
+      '活动': const Color(0xFF10B981),
+      '记账': const Color(0xFFEF4444),
+    };
+
+    final shortcuts = ref.watch(shortcutListProvider).valueOrNull ?? [];
+    final shortcutNames = shortcuts.map((s) => s.name).toSet();
+    final customTags = _tags.where((t) => !shortcutNames.contains(t)).toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -524,29 +860,679 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            if (_displayTag.isNotEmpty && _displayTag != '记录')
-              Chip(
-                label: Text(_displayTag),
-                avatar: Icon(Icons.label, size: 16, color: colorScheme.onPrimary),
+            ...shortcuts.map((config) {
+              final isSelected = _tags.contains(config.name);
+              final color = tagColors[config.name] ?? colorScheme.primary;
+              final icon = tagIcons[config.name] ?? Icons.label;
+
+              return ChoiceChip(
+                label: Text(config.name),
+                avatar: Icon(
+                  icon,
+                  size: 14,
+                  color: isSelected
+                      ? Colors.white
+                      : colorScheme.onSurfaceVariant,
+                ),
+                selected: isSelected,
+                selectedColor: color,
+                backgroundColor: colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.3,
+                ),
+                labelStyle: TextStyle(
+                  color: isSelected ? Colors.white : colorScheme.onSurface,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+                checkmarkColor: Colors.white,
+                showCheckmark: false,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  side: BorderSide(
+                    color: isSelected
+                        ? Colors.transparent
+                        : colorScheme.outlineVariant.withValues(alpha: 0.5),
+                  ),
+                ),
+                onSelected: (_) => _toggleShortcut(config),
+              );
+            }),
+            ...customTags.map((tagName) {
+              return Chip(
+                label: Text(tagName),
+                avatar: Icon(
+                  Icons.label,
+                  size: 14,
+                  color: colorScheme.onPrimary,
+                ),
                 backgroundColor: colorScheme.primary,
-                labelStyle: TextStyle(color: colorScheme.onPrimary, fontWeight: FontWeight.bold),
-                deleteIcon: Icon(Icons.close, size: 16, color: colorScheme.onPrimary),
+                labelStyle: TextStyle(
+                  color: colorScheme.onPrimary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+                deleteIcon: Icon(
+                  Icons.close,
+                  size: 14,
+                  color: colorScheme.onPrimary,
+                ),
                 onDeleted: () {
                   setState(() {
-                    _tags = [];
-                    _displayTag = '记录';
+                    _tags.remove(tagName);
+                    _tagEntries = _tagEntries
+                        .where((e) => e.name != tagName)
+                        .toList();
+                    if (_tags.isNotEmpty) {
+                      _displayTag = _tags.first;
+                    } else {
+                      _displayTag = '记录';
+                    }
                   });
                 },
-              ),
+              );
+            }),
             ActionChip(
-              label: Text(_displayTag.isNotEmpty && _displayTag != '记录' ? '修改' : '添加标签'),
-              avatar: Icon(
-                _displayTag.isNotEmpty && _displayTag != '记录' ? Icons.edit : Icons.add,
-                size: 16,
-              ),
+              label: const Text('添加其他'),
+              avatar: const Icon(Icons.add, size: 14),
               onPressed: _pickTags,
+              labelStyle: const TextStyle(fontSize: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                ),
+              ),
             ),
           ],
+        ),
+        if (_tagEntries.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          ..._tagEntries.map((entry) {
+            final color = tagColors[entry.name] ?? colorScheme.primary;
+            final icon = tagIcons[entry.name] ?? Icons.label;
+
+            final sc = shortcuts
+                .where((s) => s.id == entry.id || s.name == entry.name)
+                .firstOrNull;
+            final hasFields = sc != null && sc.hasPopup;
+
+            List<ShortcutField> fieldsToProcess = sc?.fields ?? [];
+            if (sc != null &&
+                sc.categories != null &&
+                sc.categories!.isNotEmpty) {
+              final currentCategory = sc.categories!.firstWhere(
+                (c) => c.id == entry.fields['_category'],
+                orElse: () => sc.categories!.first,
+              );
+              fieldsToProcess = currentCategory.fields;
+            }
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(icon, size: 14, color: color),
+                              const SizedBox(width: 6),
+                              Text(
+                                entry.name,
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: color,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (entry.time != null && entry.time!.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          Icon(
+                            Icons.access_time,
+                            size: 12,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 2),
+                          Text(
+                            entry.time!,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                        const Spacer(),
+                        GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _tagEntries = _tagEntries
+                                  .where((e) => e.id != entry.id)
+                                  .toList();
+                              _tags = _tagEntries.map((e) => e.name).toList();
+                              _displayTag = _tagEntries.isNotEmpty
+                                  ? _tagEntries.first.name
+                                  : '记录';
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: colorScheme.error.withValues(alpha: 0.08),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.close,
+                              size: 14,
+                              color: colorScheme.error,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (hasFields) ...[
+                      if (sc.categories != null && sc.categories!.isNotEmpty)
+                        _buildCategorySelector(theme, sc, entry.id),
+                      ...fieldsToProcess.map(
+                        (field) => _buildFieldWidget(theme, field, entry.id),
+                      ),
+                    ] else if (entry.fields.isNotEmpty) ...[
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 4,
+                        children: entry.fields.entries
+                            .where((f) => !f.key.startsWith('_'))
+                            .map((f) {
+                              return Text(
+                                '${f.key}: ${f.value}',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                  fontSize: 12,
+                                ),
+                              );
+                            })
+                            .toList(),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          }),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCategorySelector(
+    ThemeData theme,
+    ShortcutConfig config,
+    String tagId,
+  ) {
+    final entry = _tagEntries.where((e) => e.id == tagId).firstOrNull;
+    final formValues = entry != null
+        ? Map<String, dynamic>.from(entry.fields)
+        : {};
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: config.categories!.map((category) {
+            final isSelected =
+                (formValues['_category'] ?? config.categories!.first.id) ==
+                category.id;
+            return Expanded(
+              child: GestureDetector(
+                onTap: () => _updateFormValue(tagId, '_category', category.id),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isSelected ? theme.colorScheme.surface : null,
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.05),
+                              blurRadius: 4,
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Text(
+                    category.name,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                      color: isSelected
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFieldWidget(ThemeData theme, ShortcutField field, String tagId) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 4),
+            child: Text(
+              field.label,
+              style: theme.textTheme.labelSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: theme.colorScheme.onSurfaceVariant,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
+          _buildFieldInput(theme, field, tagId),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFieldInput(ThemeData theme, ShortcutField field, String tagId) {
+    switch (field.type) {
+      case 'select':
+        return _buildSelectChips(theme, field, tagId);
+      case 'multi-select':
+        return _buildMultiSelectChips(theme, field, tagId);
+      case 'input':
+        return _buildTextField(theme, field, tagId);
+      case 'number':
+        return _buildNumberField(theme, field, tagId);
+      case 'time':
+        return _buildTimeField(theme, field, tagId);
+      case 'water-amount':
+        return _buildWaterAmountField(theme, field, tagId);
+      default:
+        return _buildTextField(theme, field, tagId);
+    }
+  }
+
+  Widget _buildSelectChips(ThemeData theme, ShortcutField field, String tagId) {
+    final entry = _tagEntries.where((e) => e.id == tagId).firstOrNull;
+    final formValues = entry != null
+        ? Map<String, dynamic>.from(entry.fields)
+        : {};
+    final currentValue = formValues[field.id];
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: field.options.map((opt) {
+        final isSelected = currentValue == opt;
+        return GestureDetector(
+          onTap: () =>
+              _updateFormValue(tagId, field.id, isSelected ? null : opt),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              opt,
+              style: theme.textTheme.labelSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: isSelected
+                    ? theme.colorScheme.onPrimary
+                    : theme.colorScheme.onSurface,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildMultiSelectChips(
+    ThemeData theme,
+    ShortcutField field,
+    String tagId,
+  ) {
+    final entry = _tagEntries.where((e) => e.id == tagId).firstOrNull;
+    final formValues = entry != null
+        ? Map<String, dynamic>.from(entry.fields)
+        : {};
+    final currentList = (formValues[field.id] as List?)?.cast<String>() ?? [];
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: field.options.map((opt) {
+        final isSelected = currentList.contains(opt);
+        return GestureDetector(
+          onTap: () {
+            final newList = List<String>.from(currentList);
+            if (isSelected) {
+              newList.remove(opt);
+            } else {
+              newList.add(opt);
+            }
+            _updateFormValue(tagId, field.id, newList.isEmpty ? null : newList);
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              opt,
+              style: theme.textTheme.labelSmall?.copyWith(
+                fontWeight: FontWeight.w500,
+                color: isSelected
+                    ? theme.colorScheme.onPrimary
+                    : theme.colorScheme.onSurface,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildTextField(ThemeData theme, ShortcutField field, String tagId) {
+    final entry = _tagEntries.where((e) => e.id == tagId).firstOrNull;
+    final formValues = entry != null
+        ? Map<String, dynamic>.from(entry.fields)
+        : {};
+    final currentValue = formValues[field.id]?.toString() ?? '';
+    final controller = _getFormController(field.id, currentValue, tagId: tagId);
+    return SizedBox(
+      height: 36,
+      child: TextField(
+        controller: controller,
+        style: theme.textTheme.bodySmall,
+        decoration: InputDecoration(
+          filled: true,
+          fillColor: theme.colorScheme.surfaceContainerHighest,
+          hintText: '请输入${field.label}...',
+          hintStyle: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+          isDense: true,
+        ),
+        onChanged: (val) =>
+            _updateFormValue(tagId, field.id, val.isEmpty ? null : val),
+      ),
+    );
+  }
+
+  Widget _buildNumberField(ThemeData theme, ShortcutField field, String tagId) {
+    final entry = _tagEntries.where((e) => e.id == tagId).firstOrNull;
+    final formValues = entry != null
+        ? Map<String, dynamic>.from(entry.fields)
+        : {};
+    final currentValue = formValues[field.id]?.toString() ?? '';
+    final controller = _getFormController(field.id, currentValue, tagId: tagId);
+    return SizedBox(
+      height: 36,
+      child: TextField(
+        controller: controller,
+        keyboardType: const TextInputType.numberWithOptions(),
+        style: theme.textTheme.bodySmall,
+        decoration: InputDecoration(
+          filled: true,
+          fillColor: theme.colorScheme.surfaceContainerHighest,
+          hintText: '请输入${field.label}...',
+          hintStyle: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+          isDense: true,
+        ),
+        onChanged: (val) =>
+            _updateFormValue(tagId, field.id, val.isEmpty ? null : val),
+      ),
+    );
+  }
+
+  Widget _buildTimeField(ThemeData theme, ShortcutField field, String tagId) {
+    final entry = _tagEntries.where((e) => e.id == tagId).firstOrNull;
+    final formValues = entry != null
+        ? Map<String, dynamic>.from(entry.fields)
+        : {};
+    final currentValue = formValues[field.id] as String?;
+    final isSleepTime = field.id == 'fallAsleepTime';
+
+    final timeButton = GestureDetector(
+      onTap: () async {
+        int hour = 0, minute = 0;
+        if (currentValue != null) {
+          final parts = currentValue.split(':');
+          if (parts.length >= 2) {
+            hour = int.tryParse(parts[0]) ?? 0;
+            minute = int.tryParse(parts[1]) ?? 0;
+          }
+        }
+        final result = await showTimeScrollPicker(
+          context: context,
+          initialHour: hour,
+          initialMinute: minute,
+        );
+        if (result != null) {
+          _updateFormValue(
+            tagId,
+            field.id,
+            '${result.hour.toString().padLeft(2, '0')}:${result.minute.toString().padLeft(2, '0')}',
+          );
+        }
+      },
+      child: Container(
+        height: 36,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.access_time, size: 14, color: theme.colorScheme.primary),
+            const SizedBox(width: 8),
+            Text(
+              currentValue ?? '选择${field.label}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: currentValue != null
+                    ? theme.colorScheme.onSurface
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (isSleepTime) {
+      final currentOffset = _getStartOffset();
+      return Row(
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildDayTab(theme, '昨天', -1, currentOffset == -1),
+              const SizedBox(width: 4),
+              _buildDayTab(theme, '今天', 0, currentOffset == 0),
+            ],
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: timeButton),
+        ],
+      );
+    }
+
+    return timeButton;
+  }
+
+  Widget _buildDayTab(
+    ThemeData theme,
+    String label,
+    int value,
+    bool isSelected,
+  ) {
+    return GestureDetector(
+      onTap: () {
+        final base = DateTime(_time.year, _time.month, _time.day);
+        final start = _startTime ?? _time;
+        final newStart = DateTime(
+          base.year,
+          base.month,
+          base.day,
+          start.hour,
+          start.minute,
+        ).add(Duration(days: value));
+        setState(() {
+          _startTime = newStart;
+          _tagEntries = _tagEntries.map((entry) {
+            if (entry.id == 'sleep') {
+              final newFields = Map<String, dynamic>.from(entry.fields);
+              if (_endTime != null) {
+                final diffMin = _endTime!.difference(newStart).inMinutes;
+                newFields['duration'] = (diffMin / 60.0).toStringAsFixed(1);
+              }
+              return entry.copyWith(fields: newFields);
+            }
+            return entry;
+          }).toList();
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? theme.colorScheme.primary.withValues(alpha: 0.15)
+              : theme.colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.5,
+                ),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected
+                ? theme.colorScheme.primary.withValues(alpha: 0.3)
+                : Colors.transparent,
+            width: 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+            color: isSelected
+                ? theme.colorScheme.primary
+                : theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWaterAmountField(
+    ThemeData theme,
+    ShortcutField field,
+    String tagId,
+  ) {
+    final entry = _tagEntries.where((e) => e.id == tagId).firstOrNull;
+    final formValues = entry != null
+        ? Map<String, dynamic>.from(entry.fields)
+        : {};
+    final currentValue = (formValues[field.id] as int?) ?? 0;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Text(
+              '${currentValue}ml',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: theme.colorScheme.primary,
+              ),
+            ),
+            const Spacer(),
+            IconButton(
+              onPressed: currentValue > 0
+                  ? () => _updateFormValue(tagId, field.id, currentValue - 100)
+                  : null,
+              icon: const Icon(Icons.remove_circle_outline, size: 20),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+            IconButton(
+              onPressed: currentValue < 2000
+                  ? () => _updateFormValue(tagId, field.id, currentValue + 100)
+                  : null,
+              icon: const Icon(Icons.add_circle_outline, size: 20),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+          ],
+        ),
+        Slider(
+          value: currentValue.toDouble(),
+          min: 0,
+          max: 2000,
+          divisions: 20,
+          onChanged: (val) => _updateFormValue(tagId, field.id, val.toInt()),
         ),
       ],
     );
@@ -635,7 +1621,9 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             height: 80,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.3)),
+              border: Border.all(
+                color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+              ),
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
@@ -652,14 +1640,17 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             right: 2,
             child: GestureDetector(
               onTap: () => _removePhoto(index),
+              behavior: HitTestBehavior.opaque,
               child: Container(
-                width: 24,
-                height: 24,
+                width: 28,
+                height: 28,
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.5),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.close, size: 14, color: Colors.white),
+                child: const Center(
+                  child: Icon(Icons.close, size: 14, color: Colors.white),
+                ),
               ),
             ),
           ),
@@ -720,20 +1711,43 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                 padding: const EdgeInsets.symmetric(horizontal: 18),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(26),
-                  border: Border.all(color: _isExtracting ? colorScheme.outlineVariant : colorScheme.primary.withValues(alpha: 0.5)),
-                  color: _isExtracting ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.3) : colorScheme.primary.withValues(alpha: 0.06),
+                  border: Border.all(
+                    color: _isExtracting
+                        ? colorScheme.outlineVariant
+                        : colorScheme.primary.withValues(alpha: 0.5),
+                  ),
+                  color: _isExtracting
+                      ? colorScheme.surfaceContainerHighest.withValues(
+                          alpha: 0.3,
+                        )
+                      : colorScheme.primary.withValues(alpha: 0.06),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (_isExtracting)
-                      SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: colorScheme.primary))
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: colorScheme.primary,
+                        ),
+                      )
                     else
-                      Icon(Icons.auto_awesome, size: 18, color: colorScheme.primary),
+                      Icon(
+                        Icons.auto_awesome,
+                        size: 18,
+                        color: colorScheme.primary,
+                      ),
                     const SizedBox(width: 6),
                     Text(
                       _isExtracting ? '优化中...' : '智能优化',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.primary,
+                      ),
                     ),
                   ],
                 ),
@@ -746,9 +1760,14 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                 child: FilledButton(
                   onPressed: _save,
                   style: FilledButton.styleFrom(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(26),
+                    ),
                   ),
-                  child: const Text('保存修改', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  child: const Text(
+                    '保存修改',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
                 ),
               ),
             ),
@@ -775,10 +1794,7 @@ class _FullScreenImageView extends StatelessWidget {
       ),
       body: Center(
         child: InteractiveViewer(
-          child: UnifiedImage(
-            imagePath: imagePath,
-            fit: BoxFit.contain,
-          ),
+          child: UnifiedImage(imagePath: imagePath, fit: BoxFit.contain),
         ),
       ),
     );
@@ -805,17 +1821,26 @@ class _ExtractModelDialog extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Text('选择模型', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+              child: Text(
+                '选择模型',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
             const SizedBox(height: 16),
             Flexible(
               child: SingleChildScrollView(
                 child: Column(
-                  children: configs.map((config) => _ExtractModelItem(
-                    config: config,
-                    isSelected: config.id == selectedId,
-                    onTap: () => Navigator.pop(context, config),
-                  )).toList(),
+                  children: configs
+                      .map(
+                        (config) => _ExtractModelItem(
+                          config: config,
+                          isSelected: config.id == selectedId,
+                          onTap: () => Navigator.pop(context, config),
+                        ),
+                      )
+                      .toList(),
                 ),
               ),
             ),
@@ -831,7 +1856,11 @@ class _ExtractModelItem extends StatelessWidget {
   final bool isSelected;
   final VoidCallback onTap;
 
-  const _ExtractModelItem({required this.config, required this.isSelected, required this.onTap});
+  const _ExtractModelItem({
+    required this.config,
+    required this.isSelected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -843,16 +1872,41 @@ class _ExtractModelItem extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         child: Row(
           children: [
-            Icon(Icons.smart_toy, size: 20, color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
+            Icon(
+              Icons.smart_toy,
+              size: 20,
+              color: isSelected
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurfaceVariant,
+            ),
             const SizedBox(width: 12),
-            Expanded(child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(config.name, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-                Text(config.modelName, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-              ],
-            )),
-            if (isSelected) Icon(Icons.check_circle, size: 20, color: theme.colorScheme.primary),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    config.name,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                    ),
+                  ),
+                  Text(
+                    config.modelName,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isSelected)
+              Icon(
+                Icons.check_circle,
+                size: 20,
+                color: theme.colorScheme.primary,
+              ),
           ],
         ),
       ),

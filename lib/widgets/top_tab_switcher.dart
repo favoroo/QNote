@@ -77,11 +77,6 @@ class TopTabSwitcher extends StatelessWidget {
                       icon: const Icon(Icons.close),
                       onPressed: () => Navigator.of(context).pop(),
                       iconSize: 20,
-                      constraints: const BoxConstraints(
-                        minWidth: 32,
-                        minHeight: 32,
-                      ),
-                      padding: EdgeInsets.zero,
                     ),
                   ],
                 ),

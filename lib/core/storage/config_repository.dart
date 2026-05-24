@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:qnote_flutter/core/storage/database_helper.dart';
+import 'package:qnote_flutter/core/storage/sync_log_repository.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
@@ -14,6 +15,7 @@ class ConfigRepository {
   static final ConfigRepository instance = ConfigRepository();
 
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
+  final SyncLogRepository _syncLog = SyncLogRepository.instance;
 
   Future<String?> getAppConfig(String key) async {
     final db = await _dbHelper.database;
@@ -32,11 +34,22 @@ class ConfigRepository {
       'key': key,
       'value': value,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await _syncLog.logChange(
+      tableName: 'app_configs',
+      recordId: key,
+      operation: 'upsert',
+      data: {'key': key, 'value': value},
+    );
   }
 
   Future<void> deleteAppConfig(String key) async {
     final db = await _dbHelper.database;
     await db.delete('app_configs', where: 'key = ?', whereArgs: [key]);
+    await _syncLog.logChange(
+      tableName: 'app_configs',
+      recordId: key,
+      operation: 'delete',
+    );
   }
 
   Future<List<AiConfig>> getAllAiConfigs() async {
@@ -59,6 +72,12 @@ class ConfigRepository {
   Future<AiConfig> insertAiConfig(AiConfig config) async {
     final db = await _dbHelper.database;
     await db.insert('ai_configs', config.toMap());
+    await _syncLog.logChange(
+      tableName: 'ai_configs',
+      recordId: config.id,
+      operation: 'insert',
+      data: config.toMap(),
+    );
     return config;
   }
 
@@ -71,12 +90,23 @@ class ConfigRepository {
       where: 'id = ?',
       whereArgs: [config.id],
     );
+    await _syncLog.logChange(
+      tableName: 'ai_configs',
+      recordId: config.id,
+      operation: 'update',
+      data: updated.toMap(),
+    );
     return updated;
   }
 
   Future<void> deleteAiConfig(String id) async {
     final db = await _dbHelper.database;
     await db.delete('ai_configs', where: 'id = ?', whereArgs: [id]);
+    await _syncLog.logChange(
+      tableName: 'ai_configs',
+      recordId: id,
+      operation: 'delete',
+    );
   }
 
   Future<List<ShortcutConfig>> getAllShortcutConfigs() async {
@@ -90,6 +120,12 @@ class ConfigRepository {
   Future<ShortcutConfig> insertShortcutConfig(ShortcutConfig config) async {
     final db = await _dbHelper.database;
     await db.insert('shortcut_configs', config.toMap());
+    await _syncLog.logChange(
+      tableName: 'shortcut_configs',
+      recordId: config.id,
+      operation: 'insert',
+      data: config.toMap(),
+    );
     return config;
   }
 
@@ -102,12 +138,23 @@ class ConfigRepository {
       where: 'id = ?',
       whereArgs: [config.id],
     );
+    await _syncLog.logChange(
+      tableName: 'shortcut_configs',
+      recordId: config.id,
+      operation: 'update',
+      data: updated.toMap(),
+    );
     return updated;
   }
 
   Future<void> deleteShortcutConfig(String id) async {
     final db = await _dbHelper.database;
     await db.delete('shortcut_configs', where: 'id = ?', whereArgs: [id]);
+    await _syncLog.logChange(
+      tableName: 'shortcut_configs',
+      recordId: id,
+      operation: 'delete',
+    );
   }
 
   Future<UserProfile?> getUserProfile() async {
@@ -124,6 +171,12 @@ class ConfigRepository {
       'user_profiles',
       updated.toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    await _syncLog.logChange(
+      tableName: 'user_profile',
+      recordId: updated.id,
+      operation: 'upsert',
+      data: updated.toMap(),
     );
     return updated;
   }
@@ -189,6 +242,12 @@ class ConfigRepository {
       updated.toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    await _syncLog.logChange(
+      tableName: 'body_states',
+      recordId: updated.id,
+      operation: 'upsert',
+      data: updated.toMap(),
+    );
     return updated;
   }
 
@@ -218,6 +277,12 @@ class ConfigRepository {
   Future<ChatSession> insertChatSession(ChatSession session) async {
     final db = await _dbHelper.database;
     await db.insert('chat_sessions', session.toMap());
+    await _syncLog.logChange(
+      tableName: 'chat_sessions',
+      recordId: session.id,
+      operation: 'insert',
+      data: session.toMap(),
+    );
     return session;
   }
 
@@ -230,6 +295,12 @@ class ConfigRepository {
       where: 'id = ?',
       whereArgs: [session.id],
     );
+    await _syncLog.logChange(
+      tableName: 'chat_sessions',
+      recordId: session.id,
+      operation: 'update',
+      data: updated.toMap(),
+    );
     return updated;
   }
 
@@ -241,6 +312,15 @@ class ConfigRepository {
       where: 'id = ?',
       whereArgs: [id],
     );
+    final existing = await getChatSession(id);
+    if (existing != null) {
+      await _syncLog.logChange(
+        tableName: 'chat_sessions',
+        recordId: id,
+        operation: 'update',
+        data: existing.toMap(),
+      );
+    }
   }
 
   Future<AiRoles?> getAiRoles() async {
@@ -282,6 +362,14 @@ class ConfigRepository {
   Future<void> ensureDefaultShortcuts() async {
     final existing = await getAllShortcutConfigs();
     if (existing.isNotEmpty) return;
+    for (final config in defaultShortcutConfigs) {
+      await insertShortcutConfig(config);
+    }
+  }
+
+  Future<void> restoreDefaultShortcutConfigs() async {
+    final db = await _dbHelper.database;
+    await db.delete('shortcut_configs');
     for (final config in defaultShortcutConfigs) {
       await insertShortcutConfig(config);
     }

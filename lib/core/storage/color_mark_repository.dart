@@ -1,9 +1,11 @@
 import 'package:sqflite/sqflite.dart';
+import 'package:qnote_flutter/core/storage/sync_log_repository.dart';
 import 'package:qnote_flutter/models/date_color_mark.dart';
 import 'database_helper.dart';
 
 class ColorMarkRepository {
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
+  final SyncLogRepository _syncLog = SyncLogRepository.instance;
 
   Future<Database> get _db async => await _dbHelper.database;
 
@@ -29,16 +31,39 @@ class ColorMarkRepository {
     final db = await _db;
     await db.insert('date_color_marks', mark.toMap(),
         conflictAlgorithm: ConflictAlgorithm.replace);
+    await _syncLog.logChange(
+      tableName: 'date_color_marks',
+      recordId: mark.id,
+      operation: 'insert',
+      data: mark.toMap(),
+    );
   }
 
   Future<void> delete(String id) async {
     final db = await _db;
     await db.delete('date_color_marks', where: 'id = ?', whereArgs: [id]);
+    await _syncLog.logChange(
+      tableName: 'date_color_marks',
+      recordId: id,
+      operation: 'delete',
+    );
   }
 
   Future<void> deleteByDate(DateTime date) async {
     final db = await _db;
     final dateStr = date.toIso8601String().split('T').first;
+    final existing = await db.query(
+      'date_color_marks',
+      where: 'date = ?',
+      whereArgs: [dateStr],
+    );
     await db.delete('date_color_marks', where: 'date = ?', whereArgs: [dateStr]);
+    for (final mark in existing) {
+      await _syncLog.logChange(
+        tableName: 'date_color_marks',
+        recordId: mark['id'] as String,
+        operation: 'delete',
+      );
+    }
   }
 }

@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -10,25 +9,25 @@ import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/shortcut_field.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
+import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/widgets/time_picker.dart';
 import 'package:qnote_flutter/widgets/time_scroll_picker.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
-import 'package:qnote_flutter/widgets/diary/ai_extract_helper.dart';
 import 'package:qnote_flutter/widgets/animated_gradient_border.dart';
 
 class _Draft {
   final String id;
   String inputText;
-  ShortcutConfig? selectedShortcut;
-  Map<String, dynamic> formValues;
+  List<TagEntry> tagEntries;
   List<String> selectedPhotos;
   TimeOfDay startTime;
   TimeOfDay? endTime;
@@ -38,8 +37,7 @@ class _Draft {
   _Draft({
     required this.id,
     this.inputText = '',
-    this.selectedShortcut,
-    this.formValues = const {},
+    this.tagEntries = const [],
     this.selectedPhotos = const [],
     TimeOfDay? startTime,
     this.endTime,
@@ -47,12 +45,15 @@ class _Draft {
     this.endOffset,
   }) : startTime = startTime ?? TimeOfDay.now();
 
+  Map<String, dynamic> getFormValuesFor(String tagId) {
+    final entry = tagEntries.where((e) => e.id == tagId).firstOrNull;
+    return entry != null ? Map<String, dynamic>.from(entry.fields) : {};
+  }
+
   _Draft copyWith({
     String? id,
     String? inputText,
-    ShortcutConfig? selectedShortcut,
-    bool clearShortcut = false,
-    Map<String, dynamic>? formValues,
+    List<TagEntry>? tagEntries,
     List<String>? selectedPhotos,
     TimeOfDay? startTime,
     bool clearEndTime = false,
@@ -65,14 +66,21 @@ class _Draft {
     return _Draft(
       id: id ?? this.id,
       inputText: inputText ?? this.inputText,
-      selectedShortcut: clearShortcut ? null : (selectedShortcut ?? this.selectedShortcut),
-      formValues: formValues ?? this.formValues,
+      tagEntries: tagEntries ?? this.tagEntries,
       selectedPhotos: selectedPhotos ?? this.selectedPhotos,
       startTime: startTime ?? this.startTime,
       endTime: clearEndTime ? null : (endTime ?? this.endTime),
       startOffset: clearStartOffset ? null : (startOffset ?? this.startOffset),
       endOffset: clearEndOffset ? null : (endOffset ?? this.endOffset),
     );
+  }
+
+  _Draft updateTagEntryFields(String tagId, Map<String, dynamic> fields) {
+    final newEntries = tagEntries.map((e) {
+      if (e.id == tagId) return e.copyWith(fields: fields);
+      return e;
+    }).toList();
+    return copyWith(tagEntries: newEntries);
   }
 }
 
@@ -91,11 +99,10 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
   bool _isExtracting = false;
   _ExtractPhase _extractPhase = _ExtractPhase.idle;
 
-  List<_Draft> _drafts = [];
-  int _activeDraftIndex = 0;
+  late _Draft _draft;
+  String? _activeFormTagId;
 
-  List<_Draft>? _preExtractDrafts;
-  int? _preExtractActiveIndex;
+  _Draft? _preExtractDraft;
   String? _preExtractText;
   late AnimationController _undoController;
   bool _canUndo = false;
@@ -108,11 +115,16 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
 
   final Map<String, TextEditingController> _formControllers = {};
 
-  TextEditingController _getFormController(String fieldId, String initialValue) {
-    if (!_formControllers.containsKey(fieldId)) {
-      _formControllers[fieldId] = TextEditingController(text: initialValue);
+  TextEditingController _getFormController(
+    String fieldId,
+    String initialValue, {
+    String? tagId,
+  }) {
+    final key = tagId != null ? '${tagId}_$fieldId' : fieldId;
+    if (!_formControllers.containsKey(key)) {
+      _formControllers[key] = TextEditingController(text: initialValue);
     } else {
-      final controller = _formControllers[fieldId]!;
+      final controller = _formControllers[key]!;
       if (controller.text != initialValue) {
         controller.value = controller.value.copyWith(
           text: initialValue,
@@ -120,7 +132,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         );
       }
     }
-    return _formControllers[fieldId]!;
+    return _formControllers[key]!;
   }
 
   OverlayEntry? _modelMenuOverlay;
@@ -128,7 +140,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
   @override
   void initState() {
     super.initState();
-    _drafts = [_Draft(id: const Uuid().v4())];
+    _draft = _Draft(id: const Uuid().v4());
     _textController.addListener(_onTextChanged);
     _undoController = AnimationController(
       vsync: this,
@@ -139,8 +151,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         setState(() {
           _canUndo = false;
         });
-        _preExtractDrafts = null;
-        _preExtractActiveIndex = null;
+        _preExtractDraft = null;
         _preExtractText = null;
       }
     });
@@ -164,13 +175,11 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     _updateActiveDraft(inputText: _textController.text);
   }
 
-  _Draft get _activeDraft => _drafts[_activeDraftIndex];
+  _Draft get _activeDraft => _draft;
 
   void _updateActiveDraft({
     String? inputText,
-    ShortcutConfig? selectedShortcut,
-    bool clearShortcut = false,
-    Map<String, dynamic>? formValues,
+    List<TagEntry>? tagEntries,
     List<String>? selectedPhotos,
     TimeOfDay? startTime,
     bool clearEndTime = false,
@@ -181,75 +190,107 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     bool clearEndOffset = false,
   }) {
     setState(() {
-      final active = _drafts[_activeDraftIndex];
-      final nextShortcut = clearShortcut ? null : (selectedShortcut ?? active.selectedShortcut);
-      var nextFormValues = formValues ?? Map<String, dynamic>.from(active.formValues);
+      final active = _draft;
+      var nextTagEntries = tagEntries ?? List<TagEntry>.from(active.tagEntries);
       var nextStartTime = startTime ?? active.startTime;
-      var nextStartOffset = clearStartOffset ? null : (startOffset ?? active.startOffset);
-      
-      TimeOfDay? nextEndTime = endTime ?? (clearEndTime ? null : active.endTime);
-      int? nextEndOffset = endOffset ?? (clearEndOffset ? null : active.endOffset);
+      var nextStartOffset = clearStartOffset
+          ? null
+          : (startOffset ?? active.startOffset);
+
+      TimeOfDay? nextEndTime =
+          endTime ?? (clearEndTime ? null : active.endTime);
+      int? nextEndOffset =
+          endOffset ?? (clearEndOffset ? null : active.endOffset);
       var nextClearEndTime = clearEndTime;
       var nextClearEndOffset = clearEndOffset;
 
-      if (nextShortcut?.id == 'sleep') {
-        // Enforce bidirectional synchronization!
-        // 1. If formValues passed in a new fallAsleepTime:
-        if (formValues != null && formValues.containsKey('fallAsleepTime') && formValues['fallAsleepTime'] != null) {
-          final timeStr = formValues['fallAsleepTime'] as String;
+      final sleepEntry = nextTagEntries
+          .where((e) => e.id == 'sleep')
+          .firstOrNull;
+      if (sleepEntry != null) {
+        var sleepFields = Map<String, dynamic>.from(sleepEntry.fields);
+
+        if (tagEntries != null &&
+            sleepFields.containsKey('fallAsleepTime') &&
+            sleepFields['fallAsleepTime'] != null) {
+          final timeStr = sleepFields['fallAsleepTime'] as String;
           final parts = timeStr.split(':');
           if (parts.length >= 2) {
             final h = int.tryParse(parts[0]) ?? 0;
             final m = int.tryParse(parts[1]) ?? 0;
-            nextStartTime = TimeOfDay(hour: h, minute: m);
+            if (startTime == null) {
+              nextStartTime = TimeOfDay(hour: h, minute: m);
+            }
           }
         }
 
-        // 2. Compute endTime and endOffset dynamically based on duration if duration was updated in formValues
-        final durationVal = nextFormValues['duration'];
-        if (formValues != null && formValues.containsKey('duration') && durationVal != null) {
-          final double? durationHours = double.tryParse(durationVal.toString());
-          if (durationHours != null) {
-            final startMinutes = nextStartTime.hour * 60 + nextStartTime.minute;
-            final durationMinutes = (durationHours * 60).toInt();
-            final totalMinutes = startMinutes + durationMinutes;
-            
-            final endHour = (totalMinutes ~/ 60) % 24;
-            final endMinute = totalMinutes % 60;
-            final daysOffset = totalMinutes ~/ 1440;
-            
-            nextEndTime = TimeOfDay(hour: endHour, minute: endMinute);
-            nextEndOffset = (nextStartOffset ?? 0) + daysOffset;
-            nextClearEndTime = false;
-            nextClearEndOffset = false;
-          } else {
-            nextEndTime = null;
-            nextEndOffset = null;
-            nextClearEndTime = true;
-            nextClearEndOffset = true;
+        if (tagEntries != null) {
+          final durationVal = sleepFields['duration'];
+          if (durationVal != null) {
+            final double? durationHours = double.tryParse(
+              durationVal.toString(),
+            );
+            if (durationHours != null) {
+              final startMinutes =
+                  nextStartTime.hour * 60 + nextStartTime.minute;
+              final durationMinutes = (durationHours * 60).toInt();
+              final totalMinutes = startMinutes + durationMinutes;
+
+              final endHour = (totalMinutes ~/ 60) % 24;
+              final endMinute = totalMinutes % 60;
+              final daysOffset = totalMinutes ~/ 1440;
+
+              nextEndTime = TimeOfDay(hour: endHour, minute: endMinute);
+              nextEndOffset = (nextStartOffset ?? 0) + daysOffset;
+              nextClearEndTime = false;
+              nextClearEndOffset = false;
+            } else {
+              nextEndTime = null;
+              nextEndOffset = null;
+              nextClearEndTime = true;
+              nextClearEndOffset = true;
+            }
+          } else if (nextEndTime != null) {
+            final startMin = nextStartTime.hour * 60 + nextStartTime.minute;
+            final endMin = nextEndTime.hour * 60 + nextEndTime.minute;
+            var diffMin = endMin - startMin;
+            if (diffMin < 0) {
+              diffMin += 1440;
+            }
+            sleepFields['duration'] = (diffMin / 60.0).toStringAsFixed(1);
           }
-        }
-        // 3. Otherwise, if endTime was updated (e.g. from bottom settings or timeline), dynamically compute duration
-        else if (nextEndTime != null) {
-          final startMin = nextStartTime.hour * 60 + nextStartTime.minute;
-          final endMin = nextEndTime.hour * 60 + nextEndTime.minute;
-          var diffMin = endMin - startMin;
-          if (diffMin < 0) {
-            diffMin += 1440;
+        } else {
+          if (nextEndTime != null) {
+            final startMin = nextStartTime.hour * 60 + nextStartTime.minute;
+            final endMin = nextEndTime.hour * 60 + nextEndTime.minute;
+            var diffMin = endMin - startMin;
+            if (diffMin < 0) {
+              diffMin += 1440;
+            }
+            final durationHours = diffMin / 60.0;
+            final existingDuration = sleepFields['duration'];
+            final existingHours = existingDuration != null
+                ? double.tryParse(existingDuration.toString())
+                : null;
+            if (existingHours == null ||
+                (existingHours - durationHours).abs() > 0.001) {
+              sleepFields['duration'] = durationHours.toStringAsFixed(1);
+            }
           }
-          final durationHours = diffMin / 60.0;
-          nextFormValues['duration'] = durationHours.toStringAsFixed(1);
         }
 
-        // 4. Always synchronize formValues['fallAsleepTime'] to match nextStartTime
-        nextFormValues['fallAsleepTime'] = '${nextStartTime.hour.toString().padLeft(2, '0')}:${nextStartTime.minute.toString().padLeft(2, '0')}';
+        sleepFields['fallAsleepTime'] =
+            '${nextStartTime.hour.toString().padLeft(2, '0')}:${nextStartTime.minute.toString().padLeft(2, '0')}';
+
+        nextTagEntries = nextTagEntries.map((e) {
+          if (e.id == 'sleep') return e.copyWith(fields: sleepFields);
+          return e;
+        }).toList();
       }
 
-      _drafts[_activeDraftIndex] = active.copyWith(
+      _draft = active.copyWith(
         inputText: inputText,
-        selectedShortcut: nextShortcut,
-        clearShortcut: clearShortcut,
-        formValues: nextFormValues,
+        tagEntries: nextTagEntries,
         selectedPhotos: selectedPhotos,
         startTime: nextStartTime,
         clearEndTime: nextClearEndTime,
@@ -259,23 +300,30 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         endOffset: nextEndOffset,
         clearEndOffset: nextClearEndOffset,
       );
+
+      if (_activeFormTagId != null &&
+          !_draft.tagEntries.any((e) => e.id == _activeFormTagId)) {
+        _activeFormTagId = _draft.tagEntries.isNotEmpty
+            ? _draft.tagEntries.first.id
+            : null;
+      }
     });
 
-    final activeDraft = _drafts[_activeDraftIndex];
+    final activeDraft = _draft;
     final newTime = activeDraft.startTime;
     final currentTime = ref.read(currentInputTimeProvider);
-    if (currentTime.hour != newTime.hour || currentTime.minute != newTime.minute) {
+    if (currentTime.hour != newTime.hour ||
+        currentTime.minute != newTime.minute) {
       ref.read(currentInputTimeProvider.notifier).state = newTime;
     }
 
-    // Bidirectional sync to the timeline selection provider!
     final selectedDate = ref.read(selectedDateProvider);
     final targetDate = _calculateStartDateTime(activeDraft, selectedDate);
-    final targetEndDate = activeDraft.endTime != null ? _calculateEndDateTime(activeDraft, selectedDate) : null;
+    final targetEndDate = activeDraft.endTime != null
+        ? _calculateEndDateTime(activeDraft, selectedDate)
+        : null;
     final currentTimeline = ref.read(diaryInputTimeProvider);
 
-    // Only automatically sync back to diaryInputTimeProvider if it is NOT null.
-    // If it is null, we do not want to force-select a node on the timeline.
     if (currentTimeline != null) {
       final bool timeMatches =
           currentTimeline.time.hour == activeDraft.startTime.hour &&
@@ -284,7 +332,8 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
               (currentTimeline.endTime != null &&
                   activeDraft.endTime != null &&
                   currentTimeline.endTime!.hour == activeDraft.endTime!.hour &&
-                  currentTimeline.endTime!.minute == activeDraft.endTime!.minute));
+                  currentTimeline.endTime!.minute ==
+                      activeDraft.endTime!.minute));
 
       final bool dateMatches =
           currentTimeline.date.year == targetDate.year &&
@@ -299,7 +348,9 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
 
       if (!timeMatches || !dateMatches) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+          ref
+              .read(diaryInputTimeProvider.notifier)
+              .state = TimelineTimeSelectEvent(
             activeDraft.startTime,
             endTime: activeDraft.endTime,
             date: targetDate,
@@ -310,246 +361,291 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     }
   }
 
-  void _switchDraft(int index) {
-    if (index == _activeDraftIndex) return;
-    _formControllers.clear();
-    setState(() {
-      _activeDraftIndex = index;
-      _textController.text = _activeDraft.inputText;
-    });
-    final newTime = _activeDraft.startTime;
-    final currentTime = ref.read(currentInputTimeProvider);
-    if (currentTime.hour != newTime.hour || currentTime.minute != newTime.minute) {
-      ref.read(currentInputTimeProvider.notifier).state = newTime;
-    }
-  }
-
-  void _addDraft() {
-    if (_drafts.length >= 5) return;
-    final currentTimeline = ref.read(diaryInputTimeProvider);
-    final selectedDate = ref.read(selectedDateProvider);
-    setState(() {
-      final newDraft = _Draft(
-        id: const Uuid().v4(),
-        startTime: currentTimeline?.time,
-        endTime: currentTimeline?.endTime,
-        startOffset: currentTimeline != null
-            ? currentTimeline.date.difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day)).inDays
-            : null,
-        endOffset: (currentTimeline != null && currentTimeline.endDate != null)
-            ? currentTimeline.endDate!.difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day)).inDays
-            : null,
-      );
-      _drafts.add(newDraft);
-      _activeDraftIndex = _drafts.length - 1;
-      _textController.text = '';
-    });
-    _textFocusNode.requestFocus();
-  }
-
-  void _removeDraft(int index) {
-    if (_drafts.length <= 1) return;
-    setState(() {
-      _drafts.removeAt(index);
-      if (_activeDraftIndex >= _drafts.length) {
-        _activeDraftIndex = _drafts.length - 1;
-      } else if (_activeDraftIndex > index) {
-        _activeDraftIndex--;
-      }
-      _textController.text = _activeDraft.inputText;
-    });
-  }
-
   void _clearCurrentDraft() {
     _formControllers.clear();
     _undoController.stop();
-    final currentTimeline = ref.read(diaryInputTimeProvider);
-    final selectedDate = ref.read(selectedDateProvider);
+    ref.read(diaryInputTimeProvider.notifier).state = null;
     setState(() {
-      _drafts[_activeDraftIndex] = _Draft(
+      _draft = _Draft(
         id: const Uuid().v4(),
-        startTime: currentTimeline?.time,
-        endTime: currentTimeline?.endTime,
-        startOffset: currentTimeline != null
-            ? currentTimeline.date.difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day)).inDays
-            : null,
-        endOffset: (currentTimeline != null && currentTimeline.endDate != null)
-            ? currentTimeline.endDate!.difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day)).inDays
-            : null,
+        startTime: TimeOfDay.now(),
+        endTime: null,
+        startOffset: null,
+        endOffset: null,
       );
       _textController.text = '';
       _canUndo = false;
-      _preExtractDrafts = null;
-      _preExtractActiveIndex = null;
+      _preExtractDraft = null;
       _preExtractText = null;
+      _activeFormTagId = null;
     });
   }
 
   void _selectShortcut(ShortcutConfig? config) async {
     _formControllers.clear();
-    if (_activeDraft.selectedShortcut?.id == config?.id) {
-      _updateActiveDraft(clearShortcut: true, formValues: {});
-    } else {
-      if (config?.id == 'sleep') {
-        // 1. Check if the user already has a time selection on the timeline
-        final timelineSelect = ref.read(diaryInputTimeProvider);
-        if (timelineSelect != null) {
-          final startTimeStr = '${timelineSelect.time.hour.toString().padLeft(2, '0')}:${timelineSelect.time.minute.toString().padLeft(2, '0')}';
-          
-          double? durationHours;
-          if (timelineSelect.endTime != null) {
-            final startMin = timelineSelect.time.hour * 60 + timelineSelect.time.minute;
-            final endMin = timelineSelect.endTime!.hour * 60 + timelineSelect.endTime!.minute;
-            var diffMin = endMin - startMin;
-            if (diffMin < 0) {
-              diffMin += 1440; // Handles overnight sleep correctly
-            }
-            durationHours = diffMin / 60.0;
+    if (config == null) {
+      _activeFormTagId = null;
+      _updateActiveDraft(tagEntries: []);
+      return;
+    }
+
+    final currentEntries = List<TagEntry>.from(_activeDraft.tagEntries);
+    final existingIndex = currentEntries.indexWhere((e) => e.id == config.id);
+
+    if (existingIndex >= 0) {
+      currentEntries.removeAt(existingIndex);
+      if (_activeFormTagId == config.id) {
+        _activeFormTagId = currentEntries.isNotEmpty
+            ? currentEntries.first.id
+            : null;
+      }
+      _updateActiveDraft(tagEntries: currentEntries);
+      return;
+    }
+
+    currentEntries.add(TagEntry(id: config.id, name: config.name, fields: {}));
+    if (config.hasPopup) {
+      _activeFormTagId = config.id;
+    }
+
+    if (config.id == 'sleep') {
+      final timelineSelect = ref.read(diaryInputTimeProvider);
+      if (timelineSelect != null) {
+        final startTimeStr =
+            '${timelineSelect.time.hour.toString().padLeft(2, '0')}:${timelineSelect.time.minute.toString().padLeft(2, '0')}';
+
+        double? durationHours;
+        if (timelineSelect.endTime != null) {
+          final startMin =
+              timelineSelect.time.hour * 60 + timelineSelect.time.minute;
+          final endMin =
+              timelineSelect.endTime!.hour * 60 +
+              timelineSelect.endTime!.minute;
+          var diffMin = endMin - startMin;
+          if (diffMin < 0) {
+            diffMin += 1440;
           }
-
-          final selectedDate = ref.read(selectedDateProvider);
-          final startLocalDate = DateTime(timelineSelect.date.year, timelineSelect.date.month, timelineSelect.date.day);
-          final startOffset = startLocalDate.difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day)).inDays;
-
-          final initialFormValues = <String, dynamic>{
-            'fallAsleepTime': startTimeStr,
-          };
-          if (durationHours != null) {
-            initialFormValues['duration'] = durationHours.toStringAsFixed(1);
-          }
-
-          _updateActiveDraft(
-            selectedShortcut: config,
-            clearShortcut: false,
-            startTime: timelineSelect.time,
-            endTime: timelineSelect.endTime,
-            startOffset: startOffset,
-            formValues: initialFormValues,
-          );
-          return;
+          durationHours = diffMin / 60.0;
         }
 
-        // 2. If no timeline selection, fallback to history or defaults
-        try {
-          final repo = ref.read(diaryRepositoryProvider);
-          final sleepRecords = await repo.getByTag('睡眠');
-          if (sleepRecords.isNotEmpty) {
-            final lastSleep = sleepRecords.first;
-            if (lastSleep.startTime != null) {
-              final lastStartTime = TimeOfDay(
-                hour: lastSleep.startTime!.hour,
-                minute: lastSleep.startTime!.minute,
-              );
-              
-              final logicalDate = DateTime(lastSleep.time.year, lastSleep.time.month, lastSleep.time.day);
-              final startLocalDate = DateTime(lastSleep.startTime!.year, lastSleep.startTime!.month, lastSleep.startTime!.day);
-              final offset = startLocalDate.difference(logicalDate).inDays;
+        final selectedDate = ref.read(selectedDateProvider);
+        final startLocalDate = DateTime(
+          timelineSelect.date.year,
+          timelineSelect.date.month,
+          timelineSelect.date.day,
+        );
+        final startOffset = startLocalDate
+            .difference(
+              DateTime(selectedDate.year, selectedDate.month, selectedDate.day),
+            )
+            .inDays;
 
-              final lastFallAsleepTime = '${lastStartTime.hour.toString().padLeft(2, '0')}:${lastStartTime.minute.toString().padLeft(2, '0')}';
+        final initialFields = <String, dynamic>{'fallAsleepTime': startTimeStr};
+        if (durationHours != null) {
+          initialFields['duration'] = durationHours.toStringAsFixed(1);
+        }
 
-              _updateActiveDraft(
-                selectedShortcut: config,
-                clearShortcut: false,
-                startTime: lastStartTime,
-                startOffset: offset,
-                formValues: {
-                  'fallAsleepTime': lastFallAsleepTime,
-                },
-              );
+        currentEntries.last = currentEntries.last.copyWith(
+          fields: initialFields,
+        );
+        _updateActiveDraft(
+          tagEntries: currentEntries,
+          startTime: timelineSelect.time,
+          endTime: timelineSelect.endTime,
+          startOffset: startOffset,
+        );
+        return;
+      }
 
-              // Explicitly sync to timeline selection
-              final selectedDate = ref.read(selectedDateProvider);
-              final targetDate = DateTime(
-                selectedDate.year,
-                selectedDate.month,
-                selectedDate.day,
-              ).add(Duration(days: offset));
-              ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
-                lastStartTime,
-                date: targetDate,
-              );
-              return;
-            }
+      try {
+        final repo = ref.read(diaryRepositoryProvider);
+        final sleepRecords = await repo.getByTag('睡眠');
+        if (sleepRecords.isNotEmpty) {
+          final lastSleep = sleepRecords.first;
+          if (lastSleep.startTime != null) {
+            final lastStartTime = TimeOfDay(
+              hour: lastSleep.startTime!.hour,
+              minute: lastSleep.startTime!.minute,
+            );
+
+            final logicalDate = DateTime(
+              lastSleep.time.year,
+              lastSleep.time.month,
+              lastSleep.time.day,
+            );
+            final startLocalDate = DateTime(
+              lastSleep.startTime!.year,
+              lastSleep.startTime!.month,
+              lastSleep.startTime!.day,
+            );
+            final offset = startLocalDate.difference(logicalDate).inDays;
+
+            final lastFallAsleepTime =
+                '${lastStartTime.hour.toString().padLeft(2, '0')}:${lastStartTime.minute.toString().padLeft(2, '0')}';
+
+            currentEntries.last = currentEntries.last.copyWith(
+              fields: {'fallAsleepTime': lastFallAsleepTime},
+            );
+            _updateActiveDraft(
+              tagEntries: currentEntries,
+              startTime: lastStartTime,
+              startOffset: offset,
+            );
+
+            final selectedDate = ref.read(selectedDateProvider);
+            final targetDate = DateTime(
+              selectedDate.year,
+              selectedDate.month,
+              selectedDate.day,
+            ).add(Duration(days: offset));
+            ref.read(diaryInputTimeProvider.notifier).state =
+                TimelineTimeSelectEvent(lastStartTime, date: targetDate);
+            return;
           }
-          
-          // No history records found: Default to yesterday 22:00
-          _updateActiveDraft(
-            selectedShortcut: config,
-            clearShortcut: false,
-            startTime: const TimeOfDay(hour: 22, minute: 0),
-            startOffset: -1,
-            formValues: {
-              'fallAsleepTime': '22:00',
-            },
-          );
+        }
 
-          // Explicitly sync to timeline selection
-          final selectedDate = ref.read(selectedDateProvider);
-          final targetDate = DateTime(
-            selectedDate.year,
-            selectedDate.month,
-            selectedDate.day,
-          ).add(const Duration(days: -1));
-          ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
-            const TimeOfDay(hour: 22, minute: 0),
-            date: targetDate,
-          );
-          return;
-        } catch (e) {
-          LoggerService.instance.logAI('加载上次睡眠记录失败: $e');
-          // If query fails: Default to yesterday 22:00
-          _updateActiveDraft(
-            selectedShortcut: config,
-            clearShortcut: false,
-            startTime: const TimeOfDay(hour: 22, minute: 0),
-            startOffset: -1,
-            formValues: {
-              'fallAsleepTime': '22:00',
-            },
-          );
+        currentEntries.last = currentEntries.last.copyWith(
+          fields: {'fallAsleepTime': '22:00'},
+        );
+        _updateActiveDraft(
+          tagEntries: currentEntries,
+          startTime: const TimeOfDay(hour: 22, minute: 0),
+          startOffset: -1,
+        );
 
-          // Explicitly sync to timeline selection
-          final selectedDate = ref.read(selectedDateProvider);
-          final targetDate = DateTime(
-            selectedDate.year,
-            selectedDate.month,
-            selectedDate.day,
-          ).add(const Duration(days: -1));
-          ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
-            const TimeOfDay(hour: 22, minute: 0),
-            date: targetDate,
+        final selectedDate = ref.read(selectedDateProvider);
+        final targetDate = DateTime(
+          selectedDate.year,
+          selectedDate.month,
+          selectedDate.day,
+        ).add(const Duration(days: -1));
+        ref
+            .read(diaryInputTimeProvider.notifier)
+            .state = TimelineTimeSelectEvent(
+          const TimeOfDay(hour: 22, minute: 0),
+          date: targetDate,
+        );
+        return;
+      } catch (e) {
+        LoggerService.instance.logAI('加载上次睡眠记录失败: $e');
+        currentEntries.last = currentEntries.last.copyWith(
+          fields: {'fallAsleepTime': '22:00'},
+        );
+        _updateActiveDraft(
+          tagEntries: currentEntries,
+          startTime: const TimeOfDay(hour: 22, minute: 0),
+          startOffset: -1,
+        );
+
+        final selectedDate2 = ref.read(selectedDateProvider);
+        final targetDate2 = DateTime(
+          selectedDate2.year,
+          selectedDate2.month,
+          selectedDate2.day,
+        ).add(const Duration(days: -1));
+        ref
+            .read(diaryInputTimeProvider.notifier)
+            .state = TimelineTimeSelectEvent(
+          const TimeOfDay(hour: 22, minute: 0),
+          date: targetDate2,
+        );
+        return;
+      }
+    }
+
+    _updateActiveDraft(tagEntries: currentEntries);
+  }
+
+  void _updateFormValue(String key, dynamic value, {String? tagId}) {
+    final effectiveTagId = tagId ?? _activeFormTagId;
+    if (effectiveTagId == null) return;
+
+    final entry = _activeDraft.tagEntries
+        .where((e) => e.id == effectiveTagId)
+        .firstOrNull;
+    if (entry == null) return;
+
+    var newFields = Map<String, dynamic>.from(entry.fields);
+    if (value == null) {
+      newFields.remove(key);
+    } else {
+      newFields[key] = value;
+    }
+
+    var newTagEntries = _activeDraft.tagEntries.map((e) {
+      if (e.id == effectiveTagId) return e.copyWith(fields: newFields);
+      return e;
+    }).toList();
+
+    if (effectiveTagId == 'sleep') {
+      if (key == 'fallAsleepTime' && value != null) {
+        final timeStr = value as String;
+        final parts = timeStr.split(':');
+        if (parts.length >= 2) {
+          final h = int.tryParse(parts[0]) ?? 0;
+          final m = int.tryParse(parts[1]) ?? 0;
+          final newStartTime = TimeOfDay(hour: h, minute: m);
+
+          if (_activeDraft.endTime != null) {
+            final startMin = h * 60 + m;
+            final endMin =
+                _activeDraft.endTime!.hour * 60 + _activeDraft.endTime!.minute;
+            var diffMin = endMin - startMin;
+            if (diffMin < 0) diffMin += 1440;
+            newFields['duration'] = (diffMin / 60.0).toStringAsFixed(1);
+            newTagEntries = newTagEntries.map((e) {
+              if (e.id == 'sleep') return e.copyWith(fields: newFields);
+              return e;
+            }).toList();
+          }
+
+          _updateActiveDraft(
+            tagEntries: newTagEntries,
+            startTime: newStartTime,
           );
           return;
         }
       }
 
-      _updateActiveDraft(
-        selectedShortcut: config,
-        clearShortcut: config == null,
-        formValues: {},
-      );
-    }
-  }
+      if (key == 'duration' && value != null) {
+        final double? durationHours = double.tryParse(value.toString());
+        if (durationHours != null) {
+          final startTime = _activeDraft.startTime;
+          final startMinutes = startTime.hour * 60 + startTime.minute;
+          final durationMinutes = (durationHours * 60).toInt();
+          final totalMinutes = startMinutes + durationMinutes;
+          final endHour = (totalMinutes ~/ 60) % 24;
+          final endMinute = totalMinutes % 60;
+          final daysOffset = totalMinutes ~/ 1440;
 
-  void _updateFormValue(String key, dynamic value) {
-    final newValues = Map<String, dynamic>.from(_activeDraft.formValues);
-    if (value == null) {
-      newValues.remove(key);
-    } else {
-      newValues[key] = value;
+          _updateActiveDraft(
+            tagEntries: newTagEntries,
+            endTime: TimeOfDay(hour: endHour, minute: endMinute),
+            endOffset: (_activeDraft.startOffset ?? 0) + daysOffset,
+          );
+          return;
+        }
+      }
     }
-    _updateActiveDraft(formValues: newValues);
+
+    _updateActiveDraft(tagEntries: newTagEntries);
   }
 
   Future<void> _pickImageFromGallery() async {
     if (_activeDraft.selectedPhotos.length >= 3) return;
     try {
       final remaining = 3 - _activeDraft.selectedPhotos.length;
-      final images = await GalleryHelper.pickMultiImages(context, maxAssets: remaining);
+      final images = await GalleryHelper.pickMultiImages(
+        context,
+        maxAssets: remaining,
+      );
       if (images.isEmpty) return;
       final paths = <String>[];
       for (final xFile in images) {
-        final savedPath = await _imageRepo.saveImage(File(xFile.path), subfolder: 'diary');
+        final savedPath = await _imageRepo.saveImage(
+          File(xFile.path),
+          subfolder: 'diary',
+        );
         paths.add(savedPath);
       }
       _updateActiveDraft(
@@ -563,7 +659,10 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     try {
       final xFile = await _imagePicker.pickImage(source: ImageSource.camera);
       if (xFile == null) return;
-      final savedPath = await _imageRepo.saveImage(File(xFile.path), subfolder: 'diary');
+      final savedPath = await _imageRepo.saveImage(
+        File(xFile.path),
+        subfolder: 'diary',
+      );
       _updateActiveDraft(
         selectedPhotos: [..._activeDraft.selectedPhotos, savedPath],
       );
@@ -579,26 +678,29 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
   Future<void> _pickStartTime() async {
     final result = await showTimePickerDialog(
       context: context,
-      initialTime: _calculateStartDateTime(_activeDraft, ref.read(selectedDateProvider)),
+      initialTime: _calculateStartDateTime(
+        _activeDraft,
+        ref.read(selectedDateProvider),
+      ),
       title: '设定开始时间',
     );
     if (result != null) {
       final selectedDate = ref.read(selectedDateProvider);
       final offset = DateTime(result.year, result.month, result.day)
-          .difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day))
+          .difference(
+            DateTime(selectedDate.year, selectedDate.month, selectedDate.day),
+          )
           .inDays;
       final newTime = TimeOfDay(hour: result.hour, minute: result.minute);
-      _updateActiveDraft(
-        startTime: newTime,
-        startOffset: offset,
-      );
-      
-      // Explicitly update timeline selection when user manually picks a time
+      _updateActiveDraft(startTime: newTime, startOffset: offset);
+
       ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
         newTime,
         endTime: _activeDraft.endTime,
         date: DateTime(result.year, result.month, result.day),
-        endDate: _activeDraft.endTime != null ? _calculateEndDateTime(_activeDraft, selectedDate) : null,
+        endDate: _activeDraft.endTime != null
+            ? _calculateEndDateTime(_activeDraft, selectedDate)
+            : null,
       );
     }
   }
@@ -606,7 +708,10 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
   Future<void> _pickEndTime() async {
     final initialDate = _activeDraft.endTime != null
         ? _calculateEndDateTime(_activeDraft, ref.read(selectedDateProvider))!
-        : _calculateStartDateTime(_activeDraft, ref.read(selectedDateProvider)).add(const Duration(hours: 1));
+        : _calculateStartDateTime(
+            _activeDraft,
+            ref.read(selectedDateProvider),
+          ).add(const Duration(hours: 1));
 
     final result = await showTimePickerDialog(
       context: context,
@@ -616,15 +721,13 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     if (result != null) {
       final selectedDate = ref.read(selectedDateProvider);
       final offset = DateTime(result.year, result.month, result.day)
-          .difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day))
+          .difference(
+            DateTime(selectedDate.year, selectedDate.month, selectedDate.day),
+          )
           .inDays;
       final newEndTime = TimeOfDay(hour: result.hour, minute: result.minute);
-      _updateActiveDraft(
-        endTime: newEndTime,
-        endOffset: offset,
-      );
+      _updateActiveDraft(endTime: newEndTime, endOffset: offset);
 
-      // Explicitly update timeline selection when user manually picks end time
       ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
         _activeDraft.startTime,
         endTime: newEndTime,
@@ -635,16 +738,11 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
   }
 
   void _clearEndTime() {
-    _updateActiveDraft(clearEndTime: true, clearEndOffset: true);
-    
-    // Explicitly update timeline selection to clear end time
-    final selectedDate = ref.read(selectedDateProvider);
-    ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
-      _activeDraft.startTime,
-      endTime: null,
-      date: _calculateStartDateTime(_activeDraft, selectedDate),
-      endDate: null,
-    );
+    // Just set the provider to null - the ref.listen callback in build()
+    // will handle resetting draft times (startTime, endTime, offsets).
+    // Do NOT call _updateActiveDraft first, as it would schedule a
+    // postFrameCallback that restores the provider to non-null.
+    ref.read(diaryInputTimeProvider.notifier).state = null;
   }
 
   Future<void> _handleAiExtract() async {
@@ -652,8 +750,11 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     final draft = _activeDraft;
 
     final aiTempsAsync = ref.read(aiTemperaturesProvider);
-    final extractImages = aiTempsAsync.valueOrNull?.timelineOptimization.extractImages ?? false;
-    final isExtractButtonEnabled = draft.inputText.trim().isNotEmpty || (extractImages && draft.selectedPhotos.isNotEmpty);
+    final extractImages =
+        aiTempsAsync.valueOrNull?.timelineOptimization.extractImages ?? false;
+    final isExtractButtonEnabled =
+        draft.inputText.trim().isNotEmpty ||
+        (extractImages && draft.selectedPhotos.isNotEmpty);
     if (!isExtractButtonEnabled) return;
 
     setState(() {
@@ -663,33 +764,45 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
 
     try {
       final aiService = ref.read(aiServiceProvider);
-      final roleConfig = await AiRoleService.instance.getEffectiveConfigForRole('timelineOptimization');
+      final roleConfig = await AiRoleService.instance.getEffectiveConfigForRole(
+        'timelineOptimization',
+      );
       aiService.updateConfig(roleConfig);
 
       final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
       final schemaContext = shortcuts.map((s) {
         final root = <String, dynamic>{'id': s.id, 'name': s.name};
-        if (s.hasPopup) {
-          if (s.fields.isNotEmpty) {
-            root['fields'] = s.fields.map((f) => {
-              'id': f.id, 
-              'name': f.label, 
-              'type': f.type, 
-              if (f.options.isNotEmpty) 'options': f.options
-            }).toList();
-          }
-          if (s.categories != null && s.categories!.isNotEmpty) {
-            root['categories'] = s.categories!.map((c) => {
-              'id': c.id, 
-              'name': c.name, 
-              'fields': c.fields.map((f) => {
-                'id': f.id, 
-                'name': f.label, 
-                'type': f.type, 
-                if (f.options.isNotEmpty) 'options': f.options
-              }).toList()
-            }).toList();
-          }
+        if (s.fields.isNotEmpty) {
+          root['fields'] = s.fields
+              .map(
+                (f) => {
+                  'id': f.id,
+                  'name': f.label,
+                  'type': f.type,
+                  if (f.options.isNotEmpty) 'options': f.options,
+                },
+              )
+              .toList();
+        }
+        if (s.hasPopup && s.categories != null && s.categories!.isNotEmpty) {
+          root['categories'] = s.categories!
+              .map(
+                (c) => {
+                  'id': c.id,
+                  'name': c.name,
+                  'fields': c.fields
+                      .map(
+                        (f) => {
+                          'id': f.id,
+                          'name': f.label,
+                          'type': f.type,
+                          if (f.options.isNotEmpty) 'options': f.options,
+                        },
+                      )
+                      .toList(),
+                },
+              )
+              .toList();
         }
         return root;
       }).toList();
@@ -697,16 +810,21 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       final selectedDate = ref.read(selectedDateProvider);
       final draftTime = _calculateStartDateTime(draft, selectedDate);
       final weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+      final now = DateTime.now();
       final contextStr = {
-        'date': DateFormat('yyyy-MM-dd').format(draftTime),
-        'time': DateFormat('HH:mm').format(draftTime),
-        'weekday': weekdays[draftTime.weekday - 1],
+        'today': {
+          'date': DateFormat('yyyy-MM-dd').format(now),
+          'time': DateFormat('HH:mm').format(now),
+          'weekday': weekdays[now.weekday - 1],
+        },
+        'recordDate': DateFormat('yyyy-MM-dd').format(draftTime),
       };
 
       setState(() => _extractPhase = _ExtractPhase.waiting);
 
       List<Map<String, dynamic>> results;
-      final bool shouldSendImage = extractImages && draft.selectedPhotos.isNotEmpty;
+      final bool shouldSendImage =
+          extractImages && draft.selectedPhotos.isNotEmpty;
       String? base64;
       if (shouldSendImage) {
         base64 = await _imageRepo.getBase64Image(draft.selectedPhotos.first);
@@ -721,51 +839,65 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       );
 
       if (results.isNotEmpty) {
-        final savedDrafts = List<_Draft>.from(_drafts);
-        final savedActiveIndex = _activeDraftIndex;
+        final savedDraft = _draft;
         final savedText = _textController.text;
 
-        final newDrafts = <_Draft>[];
+        final newTagEntries = <TagEntry>[];
+        String combinedNotes = '';
+        TimeOfDay? parsedStartTime;
+        TimeOfDay? parsedEndTime;
+        int? parsedStartOffset;
+        int? parsedEndOffset;
+
         for (int i = 0; i < results.length; i++) {
           final result = results[i];
           ShortcutConfig? foundShortcut;
           if (result['shortcutId'] != null) {
             try {
-              foundShortcut = shortcuts.firstWhere((s) => s.id == result['shortcutId']);
+              foundShortcut = shortcuts.firstWhere(
+                (s) => s.id == result['shortcutId'],
+              );
             } catch (_) {}
           }
 
-          TimeOfDay parsedTime = TimeOfDay.now();
-          TimeOfDay? parsedEndTime;
-          int? parsedStartOffset;
-          int? parsedEndOffset;
+          TimeOfDay itemTime = TimeOfDay.now();
+          TimeOfDay? itemEndTime;
+          int? itemStartOffset;
+          int? itemEndOffset;
 
           if (result['time'] != null) {
             final timeMap = Map<String, dynamic>.from(result['time'] as Map);
             if (timeMap['start'] != null) {
               final parts = (timeMap['start'] as String).split(':');
               if (parts.length >= 2) {
-                parsedTime = TimeOfDay(hour: int.tryParse(parts[0]) ?? 0, minute: int.tryParse(parts[1]) ?? 0);
+                itemTime = TimeOfDay(
+                  hour: int.tryParse(parts[0]) ?? 0,
+                  minute: int.tryParse(parts[1]) ?? 0,
+                );
               }
             }
             if (timeMap['end'] != null) {
               final parts = (timeMap['end'] as String).split(':');
               if (parts.length >= 2) {
-                parsedEndTime = TimeOfDay(hour: int.tryParse(parts[0]) ?? 0, minute: int.tryParse(parts[1]) ?? 0);
+                itemEndTime = TimeOfDay(
+                  hour: int.tryParse(parts[0]) ?? 0,
+                  minute: int.tryParse(parts[1]) ?? 0,
+                );
               }
             }
             if (timeMap['startOffset'] != null) {
-              parsedStartOffset = timeMap['startOffset'] as int;
+              itemStartOffset = timeMap['startOffset'] as int;
             }
             if (timeMap['endOffset'] != null) {
-              parsedEndOffset = timeMap['endOffset'] as int;
+              itemEndOffset = timeMap['endOffset'] as int;
             }
           }
 
-          final fields = Map<String, dynamic>.from(result['fields'] as Map? ?? {});
+          final fields = Map<String, dynamic>.from(
+            result['fields'] as Map? ?? {},
+          );
 
           if (foundShortcut?.id == 'sleep') {
-            // Get duration hours
             double durationHours = 8.0;
             final rawDuration = fields['duration'];
             if (rawDuration != null) {
@@ -776,25 +908,20 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
             }
 
             if (result['time'] == null) {
-              // Case 1: AI didn't return any time block at all.
-              // Default to starting sleep at 22:30 yesterday.
-              parsedTime = const TimeOfDay(hour: 22, minute: 30);
-              parsedStartOffset = -1;
-              
+              itemTime = const TimeOfDay(hour: 22, minute: 30);
+              itemStartOffset = -1;
               final startMinutes = 22 * 60 + 30;
               final durationMinutes = (durationHours * 60).toInt();
               final totalMinutes = startMinutes + durationMinutes;
               final endHour = (totalMinutes ~/ 60) % 24;
               final endMinute = totalMinutes % 60;
               final daysOffset = totalMinutes ~/ 1440;
-              
-              parsedEndTime = TimeOfDay(hour: endHour, minute: endMinute);
-              parsedEndOffset = -1 + daysOffset;
+              itemEndTime = TimeOfDay(hour: endHour, minute: endMinute);
+              itemEndOffset = -1 + daysOffset;
             } else {
-              // Case 2: AI returned a time block. Let's make sure start/end and offsets are filled.
-              // If start is missing but end is present:
-              if (result['time']['start'] == null && result['time']['end'] != null) {
-                final endMin = parsedEndTime!.hour * 60 + parsedEndTime.minute;
+              if (result['time']['start'] == null &&
+                  result['time']['end'] != null) {
+                final endMin = itemEndTime!.hour * 60 + itemEndTime.minute;
                 final durationMinutes = (durationHours * 60).toInt();
                 var startMin = endMin - durationMinutes;
                 var daysOffset = 0;
@@ -802,105 +929,169 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                   startMin += 1440;
                   daysOffset -= 1;
                 }
-                parsedTime = TimeOfDay(hour: startMin ~/ 60, minute: startMin % 60);
-                parsedStartOffset = (parsedEndOffset ?? 0) + daysOffset;
-              }
-              // If end is missing but start is present:
-              else if (result['time']['start'] != null && result['time']['end'] == null) {
-                final startMin = parsedTime.hour * 60 + parsedTime.minute;
+                itemTime = TimeOfDay(
+                  hour: startMin ~/ 60,
+                  minute: startMin % 60,
+                );
+                itemStartOffset = (itemEndOffset ?? 0) + daysOffset;
+              } else if (result['time']['start'] != null &&
+                  result['time']['end'] == null) {
+                final startMin = itemTime.hour * 60 + itemTime.minute;
                 final durationMinutes = (durationHours * 60).toInt();
                 final totalMinutes = startMin + durationMinutes;
-                
                 final endHour = (totalMinutes ~/ 60) % 24;
                 final endMinute = totalMinutes % 60;
                 final daysOffset = totalMinutes ~/ 1440;
-                
-                parsedEndTime = TimeOfDay(hour: endHour, minute: endMinute);
-                parsedEndOffset = (parsedStartOffset ?? 0) + daysOffset;
-              }
-              // If both are missing:
-              else if (result['time']['start'] == null && result['time']['end'] == null) {
-                parsedTime = const TimeOfDay(hour: 22, minute: 30);
-                parsedStartOffset = -1;
-                
+                itemEndTime = TimeOfDay(hour: endHour, minute: endMinute);
+                itemEndOffset = (itemStartOffset ?? 0) + daysOffset;
+              } else if (result['time']['start'] == null &&
+                  result['time']['end'] == null) {
+                itemTime = const TimeOfDay(hour: 22, minute: 30);
+                itemStartOffset = -1;
                 final startMinutes = 22 * 60 + 30;
                 final durationMinutes = (durationHours * 60).toInt();
                 final totalMinutes = startMinutes + durationMinutes;
                 final endHour = (totalMinutes ~/ 60) % 24;
                 final endMinute = totalMinutes % 60;
                 final daysOffset = totalMinutes ~/ 1440;
-                
-                parsedEndTime = TimeOfDay(hour: endHour, minute: endMinute);
-                parsedEndOffset = -1 + daysOffset;
+                itemEndTime = TimeOfDay(hour: endHour, minute: endMinute);
+                itemEndOffset = -1 + daysOffset;
               }
-              
-              // If offsets are missing but times are present:
-              if (parsedStartOffset == null || parsedEndOffset == null) {
-                if (parsedEndTime != null) {
-                  final startMin = parsedTime.hour * 60 + parsedTime.minute;
-                  final endMin = parsedEndTime.hour * 60 + parsedEndTime.minute;
+              if (itemStartOffset == null || itemEndOffset == null) {
+                if (itemEndTime != null) {
+                  final startMin = itemTime.hour * 60 + itemTime.minute;
+                  final endMin = itemEndTime.hour * 60 + itemEndTime.minute;
                   if (endMin < startMin) {
-                    parsedStartOffset ??= -1;
-                    parsedEndOffset ??= 0;
+                    itemStartOffset ??= -1;
+                    itemEndOffset ??= 0;
                   } else {
-                    parsedStartOffset ??= 0;
-                    parsedEndOffset ??= 0;
+                    itemStartOffset ??= 0;
+                    itemEndOffset ??= 0;
                   }
                 } else {
-                  parsedStartOffset ??= 0;
+                  itemStartOffset ??= 0;
                 }
               }
             }
 
-            // Always update fields['duration'] to hours, so it renders correctly in the number input
             fields['duration'] = durationHours;
-            fields['fallAsleepTime'] = '${parsedTime.hour.toString().padLeft(2, '0')}:${parsedTime.minute.toString().padLeft(2, '0')}';
+            fields['fallAsleepTime'] =
+                '${itemTime.hour.toString().padLeft(2, '0')}:${itemTime.minute.toString().padLeft(2, '0')}';
           }
 
-          final rawNotes = result['notes'] as String? ?? '';
-          final cleanNotes = cleanExtractedNotes(rawNotes, fields, foundShortcut);
+          String? timeStr;
+          if (result['time'] != null) {
+            final timeMap = Map<String, dynamic>.from(result['time'] as Map);
+            final parts = <String>[];
+            if (timeMap['start'] != null) {
+              final prefix =
+                  timeMap['startOffset'] != null &&
+                      (timeMap['startOffset'] as int) < 0
+                  ? '-'
+                  : '';
+              parts.add('$prefix${timeMap['start']}');
+            }
+            if (timeMap['end'] != null) {
+              final prefix =
+                  timeMap['endOffset'] != null &&
+                      (timeMap['endOffset'] as int) < 0
+                  ? '-'
+                  : '';
+              parts.add('$prefix${timeMap['end']}');
+            }
+            timeStr = parts.isNotEmpty ? parts.join('~') : null;
+          }
 
-          newDrafts.add(_Draft(
-            id: const Uuid().v4(),
-            inputText: cleanNotes,
-            selectedShortcut: foundShortcut,
-            formValues: fields,
-            selectedPhotos: i == 0 ? draft.selectedPhotos : [],
-            startTime: parsedTime,
-            endTime: parsedEndTime,
-            startOffset: parsedStartOffset,
-            endOffset: parsedEndOffset,
-          ));
+          final singleTagEntry = TagEntry(
+            id: foundShortcut?.id ?? result['shortcutId'] ?? 'other',
+            name: foundShortcut?.name ?? '其他',
+            fields: fields,
+            time: timeStr,
+          );
+          newTagEntries.add(singleTagEntry);
+
+          if (i == 0) {
+            parsedStartTime = itemTime;
+            parsedEndTime = itemEndTime;
+            parsedStartOffset = itemStartOffset;
+            parsedEndOffset = itemEndOffset;
+          }
+
+          final extractedNotes = result['notes']?.toString();
+          if (extractedNotes != null && extractedNotes.isNotEmpty) {
+            if (combinedNotes.isEmpty) {
+              combinedNotes = extractedNotes;
+            } else if (!combinedNotes.contains(extractedNotes)) {
+              combinedNotes += '\n$extractedNotes';
+            }
+          }
         }
 
+        if (combinedNotes.isNotEmpty && draft.inputText.isNotEmpty) {
+          if (combinedNotes.startsWith('图：') ||
+              combinedNotes.startsWith('图:')) {
+            combinedNotes = '${draft.inputText}\n$combinedNotes';
+          } else if (!draft.inputText.contains(combinedNotes)) {
+            combinedNotes = '${draft.inputText}\n$combinedNotes';
+          } else {
+            combinedNotes = draft.inputText;
+          }
+        } else if (combinedNotes.isEmpty) {
+          combinedNotes = draft.inputText;
+        }
+
+        final mergedDraft = _Draft(
+          id: const Uuid().v4(),
+          inputText: combinedNotes,
+          selectedPhotos: draft.selectedPhotos,
+          startTime: parsedStartTime ?? draft.startTime,
+          endTime: parsedEndTime ?? draft.endTime,
+          startOffset: parsedStartOffset ?? draft.startOffset,
+          endOffset: parsedEndOffset ?? draft.endOffset,
+          tagEntries: newTagEntries,
+        );
+
         setState(() {
-          _drafts = newDrafts;
-          _activeDraftIndex = 0;
-          _textController.text = _drafts[0].inputText;
+          _draft = mergedDraft;
+          _textController.text = mergedDraft.inputText;
           _extractPhase = _ExtractPhase.idle;
           _canUndo = true;
-          _preExtractDrafts = savedDrafts;
-          _preExtractActiveIndex = savedActiveIndex;
+          _preExtractDraft = savedDraft;
           _preExtractText = savedText;
+          _activeFormTagId = mergedDraft.tagEntries.isNotEmpty
+              ? mergedDraft.tagEntries.first.id
+              : null;
         });
 
         _undoController.forward(from: 0);
 
-        // Explicitly sync the AI-extracted time of the first draft to the timeline selection
-        final firstDraft = newDrafts[0];
         final selectedDate = ref.read(selectedDateProvider);
-        final targetDate = _calculateStartDateTime(firstDraft, selectedDate);
-        final targetEndDate = firstDraft.endTime != null ? _calculateEndDateTime(firstDraft, selectedDate) : null;
-        ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
-          firstDraft.startTime,
-          endTime: firstDraft.endTime,
+        final targetDate = _calculateStartDateTime(mergedDraft, selectedDate);
+        final targetEndDate = mergedDraft.endTime != null
+            ? _calculateEndDateTime(mergedDraft, selectedDate)
+            : null;
+        ref
+            .read(diaryInputTimeProvider.notifier)
+            .state = TimelineTimeSelectEvent(
+          mergedDraft.startTime,
+          endTime: mergedDraft.endTime,
           date: targetDate,
           endDate: targetEndDate,
         );
       }
     } catch (e, stackTrace) {
+      if (e is NoUsefulInfoException) {
+        if (mounted) {
+          Toast.warning(context, '未提取到有用信息');
+        }
+        setState(() {
+          _extractPhase = _ExtractPhase.idle;
+        });
+        return;
+      }
+
       String errorMessage = '提取失败';
-      
+
       if (e is DioException) {
         if (e.type == DioExceptionType.connectionError) {
           errorMessage = '网络连接失败，请检查网络或API配置';
@@ -911,20 +1102,21 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         } else if (e.response?.statusCode == 403) {
           errorMessage = '访问被拒绝，可能是CORS限制或权限问题';
         }
-      } else if (e is ArgumentError && e.message.toString().contains('apiKey')) {
-        errorMessage = 'AI配置不完整，请在设置中完善API密钥和地址';
+      } else if (e is ArgumentError &&
+          e.message.toString().contains('apiKey')) {
+        errorMessage = 'AI配置不完整，请在设置中完善API密钥 and 地址';
       }
-      
+
       LoggerService.instance.logAI(
         '时间线提取失败: $e',
         level: LogLevel.error,
         details: stackTrace.toString(),
       );
-      
+
       if (mounted) {
         Toast.error(context, errorMessage);
       }
-      
+
       setState(() {
         _extractPhase = _ExtractPhase.error;
       });
@@ -941,26 +1133,29 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
   }
 
   void _undoExtract() {
-    if (!_canUndo || _preExtractDrafts == null) return;
+    if (!_canUndo || _preExtractDraft == null) return;
 
     _undoController.stop();
     _formControllers.clear();
 
     final selectedDate = ref.read(selectedDateProvider);
-    final restoredDraft = _preExtractDrafts![_preExtractActiveIndex ?? 0];
+    final restoredDraft = _preExtractDraft!;
 
     setState(() {
-      _drafts = _preExtractDrafts!;
-      _activeDraftIndex = _preExtractActiveIndex ?? 0;
+      _draft = restoredDraft;
       _textController.text = _preExtractText ?? '';
       _canUndo = false;
-      _preExtractDrafts = null;
-      _preExtractActiveIndex = null;
+      _preExtractDraft = null;
       _preExtractText = null;
+      _activeFormTagId = _draft.tagEntries.isNotEmpty
+          ? _draft.tagEntries.first.id
+          : null;
     });
 
     final targetDate = _calculateStartDateTime(restoredDraft, selectedDate);
-    final targetEndDate = restoredDraft.endTime != null ? _calculateEndDateTime(restoredDraft, selectedDate) : null;
+    final targetEndDate = restoredDraft.endTime != null
+        ? _calculateEndDateTime(restoredDraft, selectedDate)
+        : null;
     ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
       restoredDraft.startTime,
       endTime: restoredDraft.endTime,
@@ -970,7 +1165,6 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
   }
 
   void _showModelMenu() async {
-    // 收起软键盘并清除焦点，防止弹窗关闭后键盘再次自动弹出
     FocusScope.of(context).unfocus();
 
     List<AiConfig> configs = [];
@@ -994,17 +1188,19 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
 
     final selectedConfig = await showDialog<AiConfig>(
       context: context,
-      builder: (context) => _ModelSelectionDialog(
-        configs: configs,
-        selectedId: currentModelId,
-      ),
+      builder: (context) =>
+          _ModelSelectionDialog(configs: configs, selectedId: currentModelId),
     );
 
     if (selectedConfig != null && mounted) {
       await AiRoleService.instance.saveRoles(
         roles.copyWith(timelineOptimization: selectedConfig.id),
       );
-      Toast.success(context, '已切换：${selectedConfig.name}', duration: const Duration(seconds: 1));
+      Toast.success(
+        context,
+        '已切换：${selectedConfig.name}',
+        duration: const Duration(seconds: 1),
+      );
     }
   }
 
@@ -1014,12 +1210,12 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
   }
 
   bool _validateDraft(_Draft draft) {
-    if (draft.selectedShortcut != null && draft.selectedShortcut!.hasPopup) {
-      if (draft.selectedShortcut!.id == 'consumption' && draft.formValues['amount'] == null) {
+    for (final entry in draft.tagEntries) {
+      if (entry.id == 'consumption' && entry.fields['amount'] == null) {
         Toast.warning(context, '请输入金额');
         return false;
       }
-      if (draft.selectedShortcut!.id == 'sleep' && draft.formValues['duration'] == null) {
+      if (entry.id == 'sleep' && entry.fields['duration'] == null) {
         Toast.warning(context, '请输入睡眠时长');
         return false;
       }
@@ -1028,146 +1224,180 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
   }
 
   Future<void> _handleSend() async {
-    for (final draft in _drafts) {
-      if (!_validateDraft(draft)) return;
-    }
+    final draft = _draft;
+    if (!_validateDraft(draft)) return;
 
     final notifier = ref.read(diaryListProvider.notifier);
     final selectedDate = ref.read(selectedDateProvider);
-    DateTime? firstSentTime;
+    final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
 
-    for (final draft in _drafts) {
-      final isEmpty = draft.inputText.trim().isEmpty && draft.selectedShortcut == null && draft.selectedPhotos.isEmpty;
-      if (isEmpty) continue;
+    final isEmpty =
+        draft.inputText.trim().isEmpty &&
+        draft.tagEntries.isEmpty &&
+        draft.selectedPhotos.isEmpty;
+    if (isEmpty) return;
 
-      // If no timeline node is selected, use the current time (TimeOfDay.now()) at the exact moment of sending.
-      final selectEvent = ref.read(diaryInputTimeProvider);
-      final TimeOfDay eventTime = selectEvent == null ? TimeOfDay.now() : draft.startTime;
+    final selectEvent = ref.read(diaryInputTimeProvider);
+    final TimeOfDay eventTime = selectEvent == null
+        ? TimeOfDay.now()
+        : draft.startTime;
 
-      var startDateTime = DateTime(
-        selectedDate.year,
-        selectedDate.month,
-        selectedDate.day,
-        eventTime.hour,
-        eventTime.minute,
-      );
-      if (draft.startOffset != null) {
-        startDateTime = startDateTime.add(Duration(days: draft.startOffset!));
-      }
+    var startDateTime = DateTime(
+      selectedDate.year,
+      selectedDate.month,
+      selectedDate.day,
+      eventTime.hour,
+      eventTime.minute,
+    );
+    if (draft.startOffset != null) {
+      startDateTime = startDateTime.add(Duration(days: draft.startOffset!));
+    }
 
-      if (firstSentTime == null) {
-        firstSentTime = startDateTime;
-      }
-      var endDateTime = _calculateEndDateTime(draft, selectedDate);
+    final firstSentTime = startDateTime;
+    var endDateTime = _calculateEndDateTime(draft, selectedDate);
 
-      if (draft.selectedShortcut?.id == 'sleep') {
-        final durationVal = draft.formValues['duration'];
-        if (durationVal != null) {
-          final double? durationHours = double.tryParse(durationVal.toString());
-          if (durationHours != null) {
-            endDateTime = startDateTime.add(Duration(minutes: (durationHours * 60).toInt()));
-          }
+    final sleepEntry = draft.tagEntries
+        .where((e) => e.id == 'sleep')
+        .firstOrNull;
+    if (sleepEntry != null) {
+      final durationVal = sleepEntry.fields['duration'];
+      if (durationVal != null) {
+        final double? durationHours = double.tryParse(durationVal.toString());
+        if (durationHours != null) {
+          endDateTime = startDateTime.add(
+            Duration(minutes: (durationHours * 60).toInt()),
+          );
         }
       }
+    }
 
-      String content = '';
-      List<String> tags = [];
-      Map<String, dynamic>? bodyState;
+    String content = '';
+    List<String> tags = [];
+    Map<String, dynamic>? bodyState;
+    List<TagEntry> tagEntries = List.from(draft.tagEntries);
 
-      if (draft.selectedShortcut != null && draft.selectedShortcut!.hasPopup) {
-        List<ShortcutField> fieldsToProcess = draft.selectedShortcut!.fields;
-        Map<String, dynamic> finalFormValues = Map.from(draft.formValues);
+    final popupEntries = <TagEntry>[];
+    final popupConfigs = <ShortcutConfig>[];
+
+    for (final entry in tagEntries) {
+      try {
+        final config = shortcuts.firstWhere(
+          (s) => s.id == entry.id || s.name == entry.name,
+        );
+        if (config.hasPopup) {
+          popupEntries.add(entry);
+          popupConfigs.add(config);
+        }
+      } catch (_) {}
+    }
+
+    if (popupEntries.isNotEmpty) {
+      final detailParts = <String>[];
+
+      for (int pi = 0; pi < popupEntries.length; pi++) {
+        final entry = popupEntries[pi];
+        final config = popupConfigs[pi];
+
+        List<ShortcutField> fieldsToProcess = config.fields;
+        Map<String, dynamic> entryFields = Map<String, dynamic>.from(
+          entry.fields,
+        );
         String categoryPrefix = '';
 
-        if (draft.selectedShortcut!.categories != null && draft.selectedShortcut!.categories!.isNotEmpty) {
-          final currentCategory = draft.selectedShortcut!.categories!.firstWhere(
-            (c) => c.id == draft.formValues['_category'],
-            orElse: () => draft.selectedShortcut!.categories!.first,
+        if (config.categories != null && config.categories!.isNotEmpty) {
+          final currentCategory = config.categories!.firstWhere(
+            (c) => c.id == entryFields['_category'],
+            orElse: () => config.categories!.first,
           );
           fieldsToProcess = currentCategory.fields;
           categoryPrefix = '${currentCategory.name} - ';
         }
 
-        final details = fieldsToProcess.map((f) {
-          final val = finalFormValues[f.id];
-          if (val == null) return null;
-          if (val is List) return '${f.label}：${val.join('、')}';
-          return '${f.label}：$val';
-        }).where((s) => s != null).join('，');
+        final details = fieldsToProcess
+            .map((f) {
+              final val = entryFields[f.id];
+              if (val == null) return null;
+              if (val is List) return '${f.label}：${val.join('、')}';
+              return '${f.label}：$val';
+            })
+            .where((s) => s != null)
+            .join('，');
 
-        final fullDetails = categoryPrefix.isNotEmpty ? '$categoryPrefix$details' : details;
-        content = '$fullDetails${draft.inputText.isNotEmpty ? '\n备注：${draft.inputText}' : ''}';
-        tags = [draft.selectedShortcut!.name];
+        final fullDetails = categoryPrefix.isNotEmpty
+            ? '$categoryPrefix$details'
+            : details;
+        if (fullDetails.isNotEmpty) detailParts.add(fullDetails);
 
-        if (draft.selectedShortcut!.id == 'body') {
+        if (config.id == 'body') {
           bodyState = {
-            'name': finalFormValues['symptom'] ?? '未知症状',
-            'severity': finalFormValues['severity'] ?? '轻微',
+            'name': entryFields['symptom'] ?? '未知症状',
+            'severity': entryFields['severity'] ?? '轻微',
             'duration': '未知',
             'notes': draft.inputText,
           };
-        } else {
-          bodyState = finalFormValues;
-        }
-      } else {
-        content = draft.inputText;
-        tags = draft.selectedShortcut != null ? [draft.selectedShortcut!.name] : [];
+        } else
+          bodyState ??= entryFields;
       }
 
-      final now = DateTime.now();
-      final record = DiaryRecord(
-        id: const Uuid().v4(),
-        title: tags.isNotEmpty ? tags.first : '记录',
-        time: startDateTime,
-        startTime: startDateTime,
-        endTime: endDateTime,
-        tags: tags,
-        displayTag: tags.isNotEmpty ? tags.first : '记录',
-        content: content,
-        bodyState: bodyState,
-        photos: draft.selectedPhotos.isNotEmpty ? draft.selectedPhotos : [],
-        createdAt: now,
-        updatedAt: now,
-      );
-
-      await notifier.addDiary(
-        title: record.title,
-        content: record.content,
-        tags: record.tags,
-        time: record.time,
-        startTime: record.startTime,
-        endTime: record.endTime,
-        displayTag: record.displayTag,
-        bodyState: record.bodyState,
-        photos: record.photos,
-      );
+      final allDetails = detailParts.join('；');
+      content =
+          '$allDetails${draft.inputText.isNotEmpty ? '\n备注：${draft.inputText}' : ''}';
+    } else {
+      content = draft.inputText;
     }
+
+    if (tagEntries.isNotEmpty) {
+      tags = tagEntries.map((e) => e.name).toList();
+      bodyState ??= Map<String, dynamic>.from(tagEntries.first.fields);
+    }
+
+    final now = DateTime.now();
+    final record = DiaryRecord(
+      id: const Uuid().v4(),
+      title: tags.isNotEmpty ? tags.first : '记录',
+      time: startDateTime,
+      startTime: startDateTime,
+      endTime: endDateTime,
+      tags: tags,
+      displayTag: tags.isNotEmpty ? tags.first : '记录',
+      content: content,
+      bodyState: bodyState,
+      tagEntries: tagEntries,
+      photos: draft.selectedPhotos.isNotEmpty ? draft.selectedPhotos : [],
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    await notifier.addDiary(
+      title: record.title,
+      content: record.content,
+      tags: record.tags,
+      time: record.time,
+      startTime: record.startTime,
+      endTime: record.endTime,
+      displayTag: record.displayTag,
+      bodyState: record.bodyState,
+      tagEntries: record.tagEntries,
+      photos: record.photos,
+    );
 
     ref.read(diaryInputTimeProvider.notifier).state = null;
     ref.read(currentInputTimeProvider.notifier).state = TimeOfDay.now();
     _undoController.stop();
     setState(() {
-      _drafts = [
-        _Draft(
-          id: const Uuid().v4(),
-          startTime: TimeOfDay.now(),
-        )
-      ];
-      _activeDraftIndex = 0;
+      _draft = _Draft(id: const Uuid().v4(), startTime: TimeOfDay.now());
       _textController.text = '';
       _canUndo = false;
-      _preExtractDrafts = null;
-      _preExtractActiveIndex = null;
+      _preExtractDraft = null;
       _preExtractText = null;
+      _activeFormTagId = null;
     });
 
     if (mounted) {
       FocusScope.of(context).unfocus();
     }
 
-    if (firstSentTime != null) {
-      ref.read(diaryScrollToTimeProvider.notifier).state = firstSentTime;
-    }
+    ref.read(diaryScrollToTimeProvider.notifier).state = firstSentTime;
   }
 
   DateTime _calculateStartDateTime(_Draft draft, DateTime selectedDate) {
@@ -1200,25 +1430,43 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
   }
 
   String _formatTime(DateTime selectedDate, TimeOfDay time, {int? offset}) {
-    final date = offset != null ? selectedDate.add(Duration(days: offset)) : selectedDate;
+    final date = offset != null
+        ? selectedDate.add(Duration(days: offset))
+        : selectedDate;
     final dateStr = DateFormat('MM-dd').format(date);
-    final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    final timeStr =
+        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
     return '$dateStr $timeStr';
   }
 
   @override
   Widget build(BuildContext context) {
     final selectedDate = ref.watch(selectedDateProvider);
-    ref.listen<TimelineTimeSelectEvent?>(diaryInputTimeProvider, (previous, next) {
+    ref.listen<TimelineTimeSelectEvent?>(diaryInputTimeProvider, (
+      previous,
+      next,
+    ) {
       if (next != null) {
         final selectedDate = ref.read(selectedDateProvider);
-        final startDay = DateTime(next.date.year, next.date.month, next.date.day);
-        final baseDay = DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
+        final startDay = DateTime(
+          next.date.year,
+          next.date.month,
+          next.date.day,
+        );
+        final baseDay = DateTime(
+          selectedDate.year,
+          selectedDate.month,
+          selectedDate.day,
+        );
         final startOffset = startDay.difference(baseDay).inDays;
 
         int? endOffset;
         if (next.endDate != null) {
-          final endDay = DateTime(next.endDate!.year, next.endDate!.month, next.endDate!.day);
+          final endDay = DateTime(
+            next.endDate!.year,
+            next.endDate!.month,
+            next.endDate!.day,
+          );
           endOffset = endDay.difference(baseDay).inDays;
         }
 
@@ -1235,8 +1483,6 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           setState(() => _isExpanded = true);
         }
       } else {
-        // If next is null, timeline selection was cleared/deselected.
-        // Reset the draft time back to TimeOfDay.now() and clear offsets & end times.
         _updateActiveDraft(
           startTime: TimeOfDay.now(),
           clearEndTime: true,
@@ -1267,7 +1513,9 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         alignment: Alignment.bottomCenter,
         firstChild: _buildCollapsedContent(theme),
         secondChild: _buildExpandedContent(theme, shortcuts, selectedDate),
-        crossFadeState: _isExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+        crossFadeState: _isExpanded
+            ? CrossFadeState.showSecond
+            : CrossFadeState.showFirst,
         duration: const Duration(milliseconds: 300),
         sizeCurve: Curves.easeInOut,
       ),
@@ -1305,7 +1553,9 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                   ),
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                    color: theme.colorScheme.outlineVariant.withValues(
+                      alpha: 0.3,
+                    ),
                   ),
                 ),
                 child: Icon(
@@ -1321,7 +1571,11 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     );
   }
 
-  Widget _buildExpandedContent(ThemeData theme, AsyncValue<List<ShortcutConfig>> shortcuts, DateTime selectedDate) {
+  Widget _buildExpandedContent(
+    ThemeData theme,
+    AsyncValue<List<ShortcutConfig>> shortcuts,
+    DateTime selectedDate,
+  ) {
     return SafeArea(
       top: false,
       bottom: false,
@@ -1329,10 +1583,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         mainAxisSize: MainAxisSize.min,
         children: [
           const SizedBox(height: 6),
-          Flexible(
-            child: _buildFormFieldsArea(theme),
-          ),
-          _buildDraftTabs(theme),
+          Flexible(child: _buildFormFieldsArea(theme)),
           _buildShortcutRow(theme, shortcuts),
           _buildTimeAndImageRow(theme, selectedDate),
           if (_activeDraft.selectedPhotos.isNotEmpty) _buildPhotoPreview(theme),
@@ -1343,71 +1594,115 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
   }
 
   Widget _buildFormFieldsArea(ThemeData theme) {
-    final shortcut = _activeDraft.selectedShortcut;
-    final showFields = shortcut != null && shortcut.hasPopup;
+    final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
+    final popupEntries = <MapEntry<TagEntry, ShortcutConfig>>[];
 
-    List<ShortcutField> fieldsToProcess = [];
-    if (showFields) {
-      fieldsToProcess = shortcut.fields;
-      if (shortcut.categories != null && shortcut.categories!.isNotEmpty) {
-        final currentCategory = shortcut.categories!.firstWhere(
-          (c) => c.id == _activeDraft.formValues['_category'],
-          orElse: () => shortcut.categories!.first,
+    for (final entry in _activeDraft.tagEntries) {
+      try {
+        final config = shortcuts.firstWhere(
+          (s) => s.id == entry.id || s.name == entry.name,
         );
-        fieldsToProcess = currentCategory.fields;
-      }
+        if (config.hasPopup) {
+          popupEntries.add(MapEntry(entry, config));
+        }
+      } catch (_) {}
     }
+
+    if (popupEntries.isEmpty) return const SizedBox.shrink();
 
     return AnimatedSize(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
-      child: showFields
-          ? Container(
-              constraints: const BoxConstraints(maxHeight: 360),
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(
-                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-                  ),
-                ),
-              ),
-              child: Stack(
-                children: [
-                  SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (shortcut.categories != null && shortcut.categories!.isNotEmpty)
-                          _buildCategorySelector(theme, shortcut),
-                        ...fieldsToProcess.map((field) => _buildFieldWidget(theme, field)),
-                      ],
-                    ),
-                  ),
-                  Positioned(
-                    top: 4,
-                    right: 12,
-                    child: GestureDetector(
-                      onTap: () => _selectShortcut(null),
-                      child: Padding(
-                        padding: const EdgeInsets.all(4),
-                        child: Icon(
-                          Icons.keyboard_arrow_down,
-                          size: 16,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            )
-          : const SizedBox.shrink(),
+      child: Container(
+        constraints: const BoxConstraints(maxHeight: 360),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+            ),
+          ),
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: popupEntries.map((pair) {
+              return _buildTagFormSection(theme, pair.value, pair.key);
+            }).toList(),
+          ),
+        ),
+      ),
     );
   }
 
-  Widget _buildCategorySelector(ThemeData theme, ShortcutConfig shortcut) {
+  Widget _buildTagFormSection(
+    ThemeData theme,
+    ShortcutConfig config,
+    TagEntry entry,
+  ) {
+    List<ShortcutField> fieldsToProcess = config.fields;
+    if (config.categories != null && config.categories!.isNotEmpty) {
+      final currentCategory = config.categories!.firstWhere(
+        (c) => c.id == entry.fields['_category'],
+        orElse: () => config.categories!.first,
+      );
+      fieldsToProcess = currentCategory.fields;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  config.name,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => _selectShortcut(config),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Icon(
+                    Icons.close,
+                    size: 14,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          if (config.categories != null && config.categories!.isNotEmpty)
+            _buildCategorySelector(theme, config, entry.id),
+          ...fieldsToProcess.map(
+            (field) => _buildFieldWidget(theme, field, entry.id),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategorySelector(
+    ThemeData theme,
+    ShortcutConfig config,
+    String tagId,
+  ) {
+    final formValues = _activeDraft.getFormValuesFor(tagId);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Container(
@@ -1417,11 +1712,14 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
-          children: shortcut.categories!.map((category) {
-            final isSelected = (_activeDraft.formValues['_category'] ?? shortcut.categories!.first.id) == category.id;
+          children: config.categories!.map((category) {
+            final isSelected =
+                (formValues['_category'] ?? config.categories!.first.id) ==
+                category.id;
             return Expanded(
               child: GestureDetector(
-                onTap: () => _updateFormValue('_category', category.id),
+                onTap: () =>
+                    _updateFormValue('_category', category.id, tagId: tagId),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   padding: const EdgeInsets.symmetric(vertical: 6),
@@ -1429,15 +1727,24 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                     color: isSelected ? theme.colorScheme.surface : null,
                     borderRadius: BorderRadius.circular(8),
                     boxShadow: isSelected
-                        ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)]
+                        ? [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.05),
+                              blurRadius: 4,
+                            ),
+                          ]
                         : null,
                   ),
                   child: Text(
                     category.name,
                     textAlign: TextAlign.center,
                     style: theme.textTheme.labelSmall?.copyWith(
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                      color: isSelected
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
@@ -1449,7 +1756,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     );
   }
 
-  Widget _buildFieldWidget(ThemeData theme, ShortcutField field) {
+  Widget _buildFieldWidget(ThemeData theme, ShortcutField field, String tagId) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Column(
@@ -1467,52 +1774,58 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
               ),
             ),
           ),
-          _buildFieldInput(theme, field),
+          _buildFieldInput(theme, field, tagId),
         ],
       ),
     );
   }
 
-  Widget _buildFieldInput(ThemeData theme, ShortcutField field) {
+  Widget _buildFieldInput(ThemeData theme, ShortcutField field, String tagId) {
     switch (field.type) {
       case 'select':
-        return _buildSelectChips(theme, field);
+        return _buildSelectChips(theme, field, tagId);
       case 'multi-select':
-        return _buildMultiSelectChips(theme, field);
+        return _buildMultiSelectChips(theme, field, tagId);
       case 'input':
-        return _buildTextField(theme, field);
+        return _buildTextField(theme, field, tagId);
       case 'number':
-        return _buildNumberField(theme, field);
+        return _buildNumberField(theme, field, tagId);
       case 'time':
-        return _buildTimeField(theme, field);
+        return _buildTimeField(theme, field, tagId);
       case 'water-amount':
-        return _buildWaterAmountField(theme, field);
+        return _buildWaterAmountField(theme, field, tagId);
       default:
-        return _buildTextField(theme, field);
+        return _buildTextField(theme, field, tagId);
     }
   }
 
-  Widget _buildSelectChips(ThemeData theme, ShortcutField field) {
-    final currentValue = _activeDraft.formValues[field.id];
+  Widget _buildSelectChips(ThemeData theme, ShortcutField field, String tagId) {
+    final formValues = _activeDraft.getFormValuesFor(tagId);
+    final currentValue = formValues[field.id];
     return Wrap(
       spacing: 6,
       runSpacing: 6,
       children: field.options.map((opt) {
         final isSelected = currentValue == opt;
         return GestureDetector(
-          onTap: () => _updateFormValue(field.id, isSelected ? null : opt),
+          onTap: () =>
+              _updateFormValue(field.id, isSelected ? null : opt, tagId: tagId),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: isSelected ? theme.colorScheme.primary : theme.colorScheme.surfaceContainerHighest,
+              color: isSelected
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
               opt,
               style: theme.textTheme.labelSmall?.copyWith(
                 fontWeight: FontWeight.w600,
-                color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface,
+                color: isSelected
+                    ? theme.colorScheme.onPrimary
+                    : theme.colorScheme.onSurface,
               ),
             ),
           ),
@@ -1521,8 +1834,13 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     );
   }
 
-  Widget _buildMultiSelectChips(ThemeData theme, ShortcutField field) {
-    final currentList = (_activeDraft.formValues[field.id] as List?)?.cast<String>() ?? [];
+  Widget _buildMultiSelectChips(
+    ThemeData theme,
+    ShortcutField field,
+    String tagId,
+  ) {
+    final formValues = _activeDraft.getFormValuesFor(tagId);
+    final currentList = (formValues[field.id] as List?)?.cast<String>() ?? [];
     return Wrap(
       spacing: 6,
       runSpacing: 6,
@@ -1536,20 +1854,28 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
             } else {
               newList.add(opt);
             }
-            _updateFormValue(field.id, newList.isEmpty ? null : newList);
+            _updateFormValue(
+              field.id,
+              newList.isEmpty ? null : newList,
+              tagId: tagId,
+            );
           },
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: isSelected ? theme.colorScheme.primary : theme.colorScheme.surfaceContainerHighest,
+              color: isSelected
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
               opt,
               style: theme.textTheme.labelSmall?.copyWith(
                 fontWeight: FontWeight.w500,
-                color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface,
+                color: isSelected
+                    ? theme.colorScheme.onPrimary
+                    : theme.colorScheme.onSurface,
               ),
             ),
           ),
@@ -1558,9 +1884,10 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     );
   }
 
-  Widget _buildTextField(ThemeData theme, ShortcutField field) {
-    final currentValue = _activeDraft.formValues[field.id]?.toString() ?? '';
-    final controller = _getFormController(field.id, currentValue);
+  Widget _buildTextField(ThemeData theme, ShortcutField field, String tagId) {
+    final formValues = _activeDraft.getFormValuesFor(tagId);
+    final currentValue = formValues[field.id]?.toString() ?? '';
+    final controller = _getFormController(field.id, currentValue, tagId: tagId);
     return SizedBox(
       height: 36,
       child: TextField(
@@ -1570,7 +1897,9 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           filled: true,
           fillColor: theme.colorScheme.surfaceContainerHighest,
           hintText: '请输入${field.label}...',
-          hintStyle: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          hintStyle: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide.none,
@@ -1578,14 +1907,16 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           isDense: true,
         ),
-        onChanged: (val) => _updateFormValue(field.id, val.isEmpty ? null : val),
+        onChanged: (val) =>
+            _updateFormValue(field.id, val.isEmpty ? null : val, tagId: tagId),
       ),
     );
   }
 
-  Widget _buildNumberField(ThemeData theme, ShortcutField field) {
-    final currentValue = _activeDraft.formValues[field.id]?.toString() ?? '';
-    final controller = _getFormController(field.id, currentValue);
+  Widget _buildNumberField(ThemeData theme, ShortcutField field, String tagId) {
+    final formValues = _activeDraft.getFormValuesFor(tagId);
+    final currentValue = formValues[field.id]?.toString() ?? '';
+    final controller = _getFormController(field.id, currentValue, tagId: tagId);
     return SizedBox(
       height: 36,
       child: TextField(
@@ -1596,7 +1927,9 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           filled: true,
           fillColor: theme.colorScheme.surfaceContainerHighest,
           hintText: '请输入${field.label}...',
-          hintStyle: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          hintStyle: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide.none,
@@ -1604,13 +1937,15 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           isDense: true,
         ),
-        onChanged: (val) => _updateFormValue(field.id, val.isEmpty ? null : val),
+        onChanged: (val) =>
+            _updateFormValue(field.id, val.isEmpty ? null : val, tagId: tagId),
       ),
     );
   }
 
-  Widget _buildTimeField(ThemeData theme, ShortcutField field) {
-    final currentValue = _activeDraft.formValues[field.id] as String?;
+  Widget _buildTimeField(ThemeData theme, ShortcutField field, String tagId) {
+    final formValues = _activeDraft.getFormValuesFor(tagId);
+    final currentValue = formValues[field.id] as String?;
     final isSleepTime = field.id == 'fallAsleepTime';
 
     final timeButton = GestureDetector(
@@ -1629,7 +1964,11 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           initialMinute: minute,
         );
         if (result != null) {
-          _updateFormValue(field.id, '${result.hour.toString().padLeft(2, '0')}:${result.minute.toString().padLeft(2, '0')}');
+          _updateFormValue(
+            field.id,
+            '${result.hour.toString().padLeft(2, '0')}:${result.minute.toString().padLeft(2, '0')}',
+            tagId: tagId,
+          );
         }
       },
       child: Container(
@@ -1646,7 +1985,9 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
             Text(
               currentValue ?? '选择${field.label}',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: currentValue != null ? theme.colorScheme.onSurface : theme.colorScheme.onSurfaceVariant,
+                color: currentValue != null
+                    ? theme.colorScheme.onSurface
+                    : theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -1675,7 +2016,12 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     return timeButton;
   }
 
-  Widget _buildDayTab(ThemeData theme, String label, int value, bool isSelected) {
+  Widget _buildDayTab(
+    ThemeData theme,
+    String label,
+    int value,
+    bool isSelected,
+  ) {
     return GestureDetector(
       onTap: () {
         _updateActiveDraft(startOffset: value);
@@ -1686,7 +2032,9 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         decoration: BoxDecoration(
           color: isSelected
               ? theme.colorScheme.primary.withValues(alpha: 0.15)
-              : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+              : theme.colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.5,
+                ),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected
@@ -1699,15 +2047,22 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           label,
           style: theme.textTheme.labelSmall?.copyWith(
             fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-            color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+            color: isSelected
+                ? theme.colorScheme.primary
+                : theme.colorScheme.onSurfaceVariant,
           ),
         ),
       ),
     );
   }
 
-  Widget _buildWaterAmountField(ThemeData theme, ShortcutField field) {
-    final currentValue = (_activeDraft.formValues[field.id] as int?) ?? 0;
+  Widget _buildWaterAmountField(
+    ThemeData theme,
+    ShortcutField field,
+    String tagId,
+  ) {
+    final formValues = _activeDraft.getFormValuesFor(tagId);
+    final currentValue = (formValues[field.id] as int?) ?? 0;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1722,13 +2077,25 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
             ),
             const Spacer(),
             IconButton(
-              onPressed: currentValue > 0 ? () => _updateFormValue(field.id, currentValue - 100) : null,
+              onPressed: currentValue > 0
+                  ? () => _updateFormValue(
+                      field.id,
+                      currentValue - 100,
+                      tagId: tagId,
+                    )
+                  : null,
               icon: const Icon(Icons.remove_circle_outline, size: 20),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
             ),
             IconButton(
-              onPressed: currentValue < 2000 ? () => _updateFormValue(field.id, currentValue + 100) : null,
+              onPressed: currentValue < 2000
+                  ? () => _updateFormValue(
+                      field.id,
+                      currentValue + 100,
+                      tagId: tagId,
+                    )
+                  : null,
               icon: const Icon(Icons.add_circle_outline, size: 20),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
@@ -1740,134 +2107,17 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           min: 0,
           max: 2000,
           divisions: 20,
-          onChanged: (val) => _updateFormValue(field.id, val.toInt()),
+          onChanged: (val) =>
+              _updateFormValue(field.id, val.toInt(), tagId: tagId),
         ),
       ],
     );
   }
 
-  Widget _buildDraftTabs(ThemeData theme) {
-    final showTabs = _drafts.length > 1 || _activeDraft.selectedShortcut != null;
-    if (!showTabs) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
-      child: Row(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  ...List.generate(_drafts.length, (idx) {
-                    final draft = _drafts[idx];
-                    final isActive = idx == _activeDraftIndex;
-                    final shouldShow = _drafts.length > 1 || draft.selectedShortcut != null;
-                    if (!shouldShow) return const SizedBox.shrink();
-
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 4),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: isActive ? theme.colorScheme.primary : theme.colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            GestureDetector(
-                              onTap: () => _switchDraft(idx),
-                              child: Padding(
-                                padding: EdgeInsets.only(
-                                  left: 8,
-                                  top: 4,
-                                  bottom: 4,
-                                  right: isActive && _drafts.length > 1 ? 4 : 8,
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      '${idx + 1}',
-                                      style: theme.textTheme.labelSmall?.copyWith(
-                                        fontWeight: FontWeight.bold,
-                                        color: isActive ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface,
-                                      ),
-                                    ),
-                                    if (draft.selectedShortcut != null) ...[
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                                        child: Text(
-                                          '|',
-                                          style: theme.textTheme.labelSmall?.copyWith(
-                                            color: isActive ? theme.colorScheme.onPrimary.withValues(alpha: 0.4) : theme.colorScheme.onSurfaceVariant,
-                                          ),
-                                        ),
-                                      ),
-                                      Text(
-                                        draft.selectedShortcut!.name,
-                                        style: theme.textTheme.labelSmall?.copyWith(
-                                          color: isActive ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                            ),
-                            if (isActive && _drafts.length > 1)
-                              GestureDetector(
-                                onTap: () => _removeDraft(idx),
-                                child: Padding(
-                                  padding: const EdgeInsets.only(right: 8),
-                                  child: Icon(
-                                    Icons.close,
-                                    size: 12,
-                                    color: theme.colorScheme.onPrimary.withValues(alpha: 0.7),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }),
-                  if (_drafts.length < 5)
-                    GestureDetector(
-                      onTap: _addDraft,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.add, size: 12, color: theme.colorScheme.onSurfaceVariant),
-                            const SizedBox(width: 4),
-                            Text(
-                              '新增',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: theme.colorScheme.onSurface,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildShortcutRow(ThemeData theme, AsyncValue<List<ShortcutConfig>> shortcuts) {
+  Widget _buildShortcutRow(
+    ThemeData theme,
+    AsyncValue<List<ShortcutConfig>> shortcuts,
+  ) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 4, 2),
       child: Row(
@@ -1879,16 +2129,23 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
               child: Row(
                 children: shortcuts.when(
                   data: (list) => list.map<Widget>((config) {
-                    final isSelected = _activeDraft.selectedShortcut?.id == config.id;
+                    final isSelected = _activeDraft.tagEntries.any(
+                      (e) => e.id == config.id,
+                    );
                     return Padding(
                       padding: const EdgeInsets.only(right: 4),
                       child: GestureDetector(
                         onTap: () => _selectShortcut(config),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
-                            color: isSelected ? theme.colorScheme.primary : Colors.transparent,
+                            color: isSelected
+                                ? theme.colorScheme.primary
+                                : Colors.transparent,
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
                               color: isSelected
@@ -1902,14 +2159,18 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                               Icon(
                                 _getShortcutIcon(config.name),
                                 size: 14,
-                                color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface,
+                                color: isSelected
+                                    ? theme.colorScheme.onPrimary
+                                    : theme.colorScheme.onSurface,
                               ),
                               const SizedBox(width: 4),
                               Text(
                                 config.name,
                                 style: theme.textTheme.labelSmall?.copyWith(
                                   fontWeight: FontWeight.bold,
-                                  color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface,
+                                  color: isSelected
+                                      ? theme.colorScheme.onPrimary
+                                      : theme.colorScheme.onSurface,
                                 ),
                               ),
                             ],
@@ -1918,7 +2179,19 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                       ),
                     );
                   }).toList(),
-                  loading: () => <Widget>[const SizedBox(width: 60, height: 28, child: Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))))],
+                  loading: () => <Widget>[
+                    const SizedBox(
+                      width: 60,
+                      height: 28,
+                      child: Center(
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    ),
+                  ],
                   error: (_, _) => <Widget>[],
                 ),
               ),
@@ -1943,8 +2216,17 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                   ],
                 ),
                 shape: BoxShape.circle,
-                border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)],
+                border: Border.all(
+                  color: theme.colorScheme.outlineVariant.withValues(
+                    alpha: 0.3,
+                  ),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 4,
+                  ),
+                ],
               ),
               child: Icon(
                 Icons.keyboard_arrow_down,
@@ -1988,23 +2270,35 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                       height: 36,
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                        color: theme.colorScheme.primary.withValues(
+                          alpha: 0.08,
+                        ),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                          color: theme.colorScheme.primary.withValues(
+                            alpha: 0.15,
+                          ),
                           width: 1,
                         ),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.access_time_rounded, size: 14, color: theme.colorScheme.primary),
+                          Icon(
+                            Icons.access_time_rounded,
+                            size: 14,
+                            color: theme.colorScheme.primary,
+                          ),
                           const SizedBox(width: 4),
                           Flexible(
                             child: FittedBox(
                               fit: BoxFit.scaleDown,
                               child: Text(
-                                _formatTime(selectedDate, _activeDraft.startTime, offset: _activeDraft.startOffset),
+                                _formatTime(
+                                  selectedDate,
+                                  _activeDraft.startTime,
+                                  offset: _activeDraft.startOffset,
+                                ),
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   fontWeight: FontWeight.bold,
                                   color: theme.colorScheme.primary,
@@ -2038,10 +2332,14 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                           height: 36,
                           padding: const EdgeInsets.only(left: 8),
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                            color: theme.colorScheme.primary.withValues(
+                              alpha: 0.08,
+                            ),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                              color: theme.colorScheme.primary.withValues(
+                                alpha: 0.15,
+                              ),
                               width: 1,
                             ),
                           ),
@@ -2053,18 +2351,28 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                                   child: Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      Icon(Icons.access_time_rounded, size: 14, color: theme.colorScheme.primary),
+                                      Icon(
+                                        Icons.access_time_rounded,
+                                        size: 14,
+                                        color: theme.colorScheme.primary,
+                                      ),
                                       const SizedBox(width: 4),
                                       Flexible(
                                         child: FittedBox(
                                           fit: BoxFit.scaleDown,
                                           child: Text(
-                                            _formatTime(selectedDate, _activeDraft.endTime!, offset: _activeDraft.endOffset),
-                                            style: theme.textTheme.bodySmall?.copyWith(
-                                              fontWeight: FontWeight.bold,
-                                              color: theme.colorScheme.primary,
-                                              fontSize: 12,
+                                            _formatTime(
+                                              selectedDate,
+                                              _activeDraft.endTime!,
+                                              offset: _activeDraft.endOffset,
                                             ),
+                                            style: theme.textTheme.bodySmall
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.bold,
+                                                  color:
+                                                      theme.colorScheme.primary,
+                                                  fontSize: 12,
+                                                ),
                                             maxLines: 1,
                                           ),
                                         ),
@@ -2075,8 +2383,14 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                               ),
                               GestureDetector(
                                 onTap: _clearEndTime,
+                                behavior: HitTestBehavior.opaque,
                                 child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                                  padding: const EdgeInsets.fromLTRB(
+                                    6,
+                                    8,
+                                    10,
+                                    8,
+                                  ),
                                   child: Icon(
                                     Icons.close,
                                     size: 14,
@@ -2089,7 +2403,9 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                         )
                       : CustomPaint(
                           painter: DashedRectPainter(
-                            color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                            color: theme.colorScheme.primary.withValues(
+                              alpha: 0.3,
+                            ),
                             strokeWidth: 1.2,
                             borderRadius: 12,
                           ),
@@ -2101,7 +2417,11 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(Icons.add, size: 14, color: theme.colorScheme.primary),
+                                  Icon(
+                                    Icons.add,
+                                    size: 14,
+                                    color: theme.colorScheme.primary,
+                                  ),
                                   const SizedBox(width: 4),
                                   Text(
                                     '结束时间',
@@ -2122,18 +2442,26 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           ),
           const SizedBox(width: 8),
           GestureDetector(
-            onTap: _activeDraft.selectedPhotos.length < 3 ? _pickImageFromGallery : null,
+            onTap: _activeDraft.selectedPhotos.length < 3
+                ? _pickImageFromGallery
+                : null,
             child: Container(
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                color: theme.colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.5,
+                ),
                 shape: BoxShape.circle,
               ),
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  Icon(Icons.image_outlined, size: 20, color: theme.colorScheme.primary),
+                  Icon(
+                    Icons.image_outlined,
+                    size: 20,
+                    color: theme.colorScheme.primary,
+                  ),
                   if (_activeDraft.selectedPhotos.isNotEmpty)
                     Positioned(
                       top: 4,
@@ -2160,15 +2488,23 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           ),
           const SizedBox(width: 8),
           GestureDetector(
-            onTap: _activeDraft.selectedPhotos.length < 3 ? _pickImageFromCamera : null,
+            onTap: _activeDraft.selectedPhotos.length < 3
+                ? _pickImageFromCamera
+                : null,
             child: Container(
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                color: theme.colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.5,
+                ),
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.camera_alt_outlined, size: 20, color: theme.colorScheme.primary),
+              child: Icon(
+                Icons.camera_alt_outlined,
+                size: 20,
+                color: theme.colorScheme.primary,
+              ),
             ),
           ),
         ],
@@ -2178,7 +2514,8 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
 
   Widget _buildPhotoPreview(ThemeData theme) {
     final aiTempsAsync = ref.watch(aiTemperaturesProvider);
-    final extractImages = aiTempsAsync.valueOrNull?.timelineOptimization.extractImages ?? false;
+    final extractImages =
+        aiTempsAsync.valueOrNull?.timelineOptimization.extractImages ?? false;
     final isImageExtracting = _isExtracting && extractImages;
 
     return Padding(
@@ -2193,7 +2530,8 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
             return Stack(
               children: [
                 GestureDetector(
-                  onTap: () => _showFullImage(_activeDraft.selectedPhotos[index]),
+                  onTap: () =>
+                      _showFullImage(_activeDraft.selectedPhotos[index]),
                   child: AnimatedGradientBorder(
                     isAnimating: isImageExtracting,
                     borderRadius: 12,
@@ -2214,17 +2552,20 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                   right: 0,
                   child: GestureDetector(
                     onTap: () => _removePhoto(index),
+                    behavior: HitTestBehavior.opaque,
                     child: Container(
-                      width: 20,
-                      height: 20,
-                      decoration: BoxDecoration(
+                      width: 24,
+                      height: 24,
+                      decoration: const BoxDecoration(
                         color: Colors.black54,
-                        borderRadius: const BorderRadius.only(
+                        borderRadius: BorderRadius.only(
                           topRight: Radius.circular(12),
                           bottomLeft: Radius.circular(8),
                         ),
                       ),
-                      child: const Icon(Icons.close, size: 12, color: Colors.white),
+                      child: const Center(
+                        child: Icon(Icons.close, size: 14, color: Colors.white),
+                      ),
                     ),
                   ),
                 ),
@@ -2248,10 +2589,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
               onTap: () => Navigator.pop(ctx),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: UnifiedImage(
-                  imagePath: path,
-                  fit: BoxFit.contain,
-                ),
+                child: UnifiedImage(imagePath: path, fit: BoxFit.contain),
               ),
             ),
             Positioned(
@@ -2270,14 +2608,29 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
 
   Widget _buildInputAndActions(ThemeData theme) {
     final draft = _activeDraft;
-    final isValidationError = (draft.selectedShortcut?.id == 'consumption' && draft.formValues['amount'] == null) ||
-        (draft.selectedShortcut?.id == 'sleep' && draft.formValues['duration'] == null);
-    final isEmpty = draft.inputText.trim().isEmpty && draft.selectedShortcut == null && draft.selectedPhotos.isEmpty;
+    final timeSelect = ref.watch(diaryInputTimeProvider);
+    final consumptionEntry = draft.tagEntries
+        .where((e) => e.id == 'consumption')
+        .firstOrNull;
+    final sleepEntry = draft.tagEntries
+        .where((e) => e.id == 'sleep')
+        .firstOrNull;
+    final isValidationError =
+        (consumptionEntry != null &&
+            consumptionEntry.fields['amount'] == null) ||
+        (sleepEntry != null && sleepEntry.fields['duration'] == null);
+    final isEmpty =
+        draft.inputText.trim().isEmpty &&
+        draft.tagEntries.isEmpty &&
+        draft.selectedPhotos.isEmpty;
     final isDisabled = isValidationError || isEmpty;
 
     final aiTempsAsync = ref.watch(aiTemperaturesProvider);
-    final extractImages = aiTempsAsync.valueOrNull?.timelineOptimization.extractImages ?? false;
-    final isExtractButtonEnabled = draft.inputText.trim().isNotEmpty || (extractImages && draft.selectedPhotos.isNotEmpty);
+    final extractImages =
+        aiTempsAsync.valueOrNull?.timelineOptimization.extractImages ?? false;
+    final isExtractButtonEnabled =
+        draft.inputText.trim().isNotEmpty ||
+        (extractImages && draft.selectedPhotos.isNotEmpty);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
@@ -2292,88 +2645,105 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
               child: Container(
                 constraints: const BoxConstraints(maxHeight: 140),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.5,
+                  ),
                   borderRadius: BorderRadius.circular(24),
                 ),
                 child: Stack(
                   alignment: Alignment.bottomRight,
                   children: [
-                  TextField(
-                    controller: _textController,
-                    focusNode: _textFocusNode,
-                    minLines: 1,
-                    maxLines: 5,
-                    style: theme.textTheme.bodyMedium,
-                    decoration: InputDecoration(
-                      filled: false,
-                      hintText: draft.selectedShortcut != null ? '记录${draft.selectedShortcut!.name}...' : '记录当前...',
-                      hintStyle: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      errorBorder: InputBorder.none,
-                      disabledBorder: InputBorder.none,
-                      contentPadding: const EdgeInsets.only(
-                        left: 16,
-                        top: 12,
-                        bottom: 12,
-                        right: 42,
+                    TextField(
+                      controller: _textController,
+                      focusNode: _textFocusNode,
+                      minLines: 1,
+                      maxLines: 5,
+                      style: theme.textTheme.bodyMedium,
+                      decoration: InputDecoration(
+                        filled: false,
+                        hintText: draft.tagEntries.isNotEmpty
+                            ? '记录${draft.tagEntries.map((e) => e.name).join('、')}...'
+                            : '记录当前...',
+                        hintStyle: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant.withValues(
+                            alpha: 0.6,
+                          ),
+                        ),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        contentPadding: const EdgeInsets.only(
+                          left: 16,
+                          top: 12,
+                          bottom: 12,
+                          right: 42,
+                        ),
                       ),
+                      onSubmitted: (_) {
+                        if (!isDisabled) _handleSend();
+                      },
                     ),
-                    onSubmitted: (_) {
-                      if (!isDisabled) _handleSend();
-                    },
-                  ),
-                  Positioned(
-                    right: 6,
-                    bottom: 6,
-                    child: ValueListenableBuilder<TextEditingValue>(
-                      valueListenable: _textController,
-                      builder: (context, value, _) {
-                        final hasText = value.text.isNotEmpty;
-                        final hasShortcut = draft.selectedShortcut != null;
-                        final hasPhotos = draft.selectedPhotos.isNotEmpty;
-                        if (!hasText && !hasShortcut && !hasPhotos) return const SizedBox.shrink();
-                        return MouseRegion(
-                          cursor: SystemMouseCursors.click,
-                          child: GestureDetector(
-                            onTap: _clearCurrentDraft,
-                            behavior: HitTestBehavior.opaque,
-                            child: Padding(
-                              padding: const EdgeInsets.all(6),
-                              child: Container(
-                                width: 20,
-                                height: 20,
-                                decoration: BoxDecoration(
-                                  color: Colors.red.withValues(alpha: 0.85),
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.red.withValues(alpha: 0.25),
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 2),
+                    Positioned(
+                      right: 6,
+                      bottom: 6,
+                      child: ValueListenableBuilder<TextEditingValue>(
+                        valueListenable: _textController,
+                        builder: (context, value, _) {
+                          final hasText = value.text.isNotEmpty;
+                          final hasTags = draft.tagEntries.isNotEmpty;
+                          final hasPhotos = draft.selectedPhotos.isNotEmpty;
+                          final hasTimeline =
+                              timeSelect != null || draft.endTime != null;
+                          if (!hasText &&
+                              !hasTags &&
+                              !hasPhotos &&
+                              !hasTimeline) {
+                            return const SizedBox.shrink();
+                          }
+                          return MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            child: GestureDetector(
+                              onTap: _clearCurrentDraft,
+                              behavior: HitTestBehavior.opaque,
+                              child: Padding(
+                                padding: const EdgeInsets.all(10),
+                                child: Container(
+                                  width: 20,
+                                  height: 20,
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.withValues(alpha: 0.85),
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.red.withValues(
+                                          alpha: 0.25,
+                                        ),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Center(
+                                    child: Icon(
+                                      Icons.close,
+                                      size: 12,
+                                      color: Colors.white,
                                     ),
-                                  ],
-                                ),
-                                child: const Center(
-                                  child: Icon(
-                                    Icons.close,
-                                    size: 12,
-                                    color: Colors.white,
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                        );
-                      },
+                          );
+                        },
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
-        ),
           const SizedBox(width: 12),
           GestureDetector(
             onTap: _canUndo ? _undoExtract : _handleAiExtract,
@@ -2422,27 +2792,29 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                       ),
                     )
                   : _isExtracting
-                      ? Center(
-                          child: SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: _extractPhase == _ExtractPhase.sending
-                                  ? theme.colorScheme.primary
-                                  : theme.colorScheme.tertiary,
-                            ),
-                          ),
-                        )
-                      : Center(
-                          child: Icon(
-                            Icons.auto_awesome,
-                            size: 20,
-                            color: isExtractButtonEnabled
-                                ? theme.colorScheme.primary
-                                : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
-                          ),
+                  ? Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: _extractPhase == _ExtractPhase.sending
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.tertiary,
                         ),
+                      ),
+                    )
+                  : Center(
+                      child: Icon(
+                        Icons.auto_awesome,
+                        size: 20,
+                        color: isExtractButtonEnabled
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurfaceVariant.withValues(
+                                alpha: 0.4,
+                              ),
+                      ),
+                    ),
             ),
           ),
           const SizedBox(width: 12),
@@ -2453,7 +2825,9 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
               height: 44,
               decoration: BoxDecoration(
                 color: isDisabled
-                    ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
+                    ? theme.colorScheme.surfaceContainerHighest.withValues(
+                        alpha: 0.5,
+                      )
                     : theme.colorScheme.primary.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
@@ -2462,7 +2836,9 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                   Icons.send_rounded,
                   size: 20,
                   color: isDisabled
-                      ? theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3)
+                      ? theme.colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.3,
+                        )
                       : theme.colorScheme.primary,
                 ),
               ),
@@ -2480,10 +2856,7 @@ class _ModelSelectionDialog extends StatelessWidget {
   final List<AiConfig> configs;
   final String? selectedId;
 
-  const _ModelSelectionDialog({
-    required this.configs,
-    this.selectedId,
-  });
+  const _ModelSelectionDialog({required this.configs, this.selectedId});
 
   @override
   Widget build(BuildContext context) {
@@ -2548,7 +2921,9 @@ class _ModelItem extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     return Material(
-      color: isSelected ? colorScheme.primary.withValues(alpha: 0.05) : Colors.transparent,
+      color: isSelected
+          ? colorScheme.primary.withValues(alpha: 0.05)
+          : Colors.transparent,
       child: InkWell(
         onTap: onTap,
         child: Padding(
@@ -2561,7 +2936,9 @@ class _ModelItem extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: isSelected ? colorScheme.primary : colorScheme.outlineVariant,
+                    color: isSelected
+                        ? colorScheme.primary
+                        : colorScheme.outlineVariant,
                     width: 2,
                   ),
                 ),
@@ -2587,14 +2964,18 @@ class _ModelItem extends StatelessWidget {
                       config.name,
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
-                        color: isSelected ? colorScheme.primary : colorScheme.onSurface,
+                        color: isSelected
+                            ? colorScheme.primary
+                            : colorScheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       '${config.provider} / ${config.modelName}',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                        color: colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.6,
+                        ),
                       ),
                     ),
                   ],
@@ -2612,10 +2993,7 @@ class _UndoCountdownPainter extends CustomPainter {
   final double progress;
   final Color color;
 
-  _UndoCountdownPainter({
-    required this.progress,
-    required this.color,
-  });
+  _UndoCountdownPainter({required this.progress, required this.color});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -2677,10 +3055,17 @@ class DashedRectPainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     final path = Path()
-      ..addRRect(RRect.fromRectAndRadius(
-        Rect.fromLTWH(strokeWidth / 2, strokeWidth / 2, size.width - strokeWidth, size.height - strokeWidth),
-        Radius.circular(borderRadius),
-      ));
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(
+            strokeWidth / 2,
+            strokeWidth / 2,
+            size.width - strokeWidth,
+            size.height - strokeWidth,
+          ),
+          Radius.circular(borderRadius),
+        ),
+      );
 
     final dashedPath = Path();
     for (final metric in path.computeMetrics()) {

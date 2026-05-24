@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import 'package:qnote_flutter/models/diary_record.dart';
@@ -189,11 +190,6 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
     _confirmTimer?.cancel();
     _loadRecords();
   }
-
-  String _formatTime(DateTime dt) {
-    return DateFormat('MM-dd HH:mm').format(dt);
-  }
-
   String _formatTimeRange(DiaryRecord record) {
     final start = record.startTime ?? record.time;
     final dateStr = DateFormat('MM-dd HH:mm').format(start);
@@ -217,6 +213,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
           onToggleSelect: (id) {
             _toggleSelect(id);
           },
+          onRefresh: _applyFilters,
         );
       },
     );
@@ -711,12 +708,14 @@ class _RecordDetailSheet extends StatefulWidget {
   final int initialIndex;
   final Set<String> selectedIds;
   final void Function(String) onToggleSelect;
+  final VoidCallback? onRefresh;
 
   const _RecordDetailSheet({
     required this.records,
     required this.initialIndex,
     required this.selectedIds,
     required this.onToggleSelect,
+    this.onRefresh,
   });
 
   @override
@@ -727,6 +726,7 @@ class _RecordDetailSheetState extends State<_RecordDetailSheet> {
   late PageController _pageController;
   late int _currentIndex;
   late Set<String> _localSelectedIds;
+  late List<DiaryRecord> _localRecords;
 
   @override
   void initState() {
@@ -734,6 +734,7 @@ class _RecordDetailSheetState extends State<_RecordDetailSheet> {
     _currentIndex = widget.initialIndex;
     _pageController = PageController(initialPage: widget.initialIndex);
     _localSelectedIds = Set.from(widget.selectedIds);
+    _localRecords = List.from(widget.records);
   }
 
   @override
@@ -753,6 +754,41 @@ class _RecordDetailSheetState extends State<_RecordDetailSheet> {
     widget.onToggleSelect(id);
   }
 
+  Future<void> _editRecord(DiaryRecord record) async {
+    // Navigate to editor screen
+    await GoRouter.of(context).push('/diary/editor', extra: record);
+    
+    // Fetch updated record from database
+    final repo = DiaryRepository();
+    final updatedRecord = await repo.getById(record.id);
+    
+    if (mounted) {
+      if (updatedRecord == null || updatedRecord.isDeleted) {
+        // Record was deleted
+        setState(() {
+          _localRecords.removeWhere((r) => r.id == record.id);
+          if (_localRecords.isEmpty) {
+            Navigator.of(context).pop();
+          } else {
+            if (_currentIndex >= _localRecords.length) {
+              _currentIndex = _localRecords.length - 1;
+            }
+          }
+        });
+        widget.onRefresh?.call();
+      } else {
+        // Record was updated
+        setState(() {
+          final idx = _localRecords.indexWhere((r) => r.id == record.id);
+          if (idx != -1) {
+            _localRecords[idx] = updatedRecord;
+          }
+        });
+        widget.onRefresh?.call();
+      }
+    }
+  }
+
   String _formatTimeRange(DiaryRecord record) {
     final start = record.startTime ?? record.time;
     final dateStr = DateFormat('yyyy-MM-dd HH:mm').format(start);
@@ -767,6 +803,10 @@ class _RecordDetailSheetState extends State<_RecordDetailSheet> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+
+    if (_localRecords.isEmpty) {
+      return const SizedBox.shrink();
+    }
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.85,
@@ -798,24 +838,34 @@ class _RecordDetailSheetState extends State<_RecordDetailSheet> {
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                   Text(
-                    '记录详情 (${_currentIndex + 1} / ${widget.records.length})',
+                    '记录详情 (${_currentIndex + 1} / ${_localRecords.length})',
                     style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                   ),
-                  // Checkbox to select/deselect current record
+                  // Actions Row: Edit and Select
                   Builder(
                     builder: (context) {
-                      final currentRecord = widget.records[_currentIndex];
+                      final currentRecord = _localRecords[_currentIndex];
                       final isSelected = _localSelectedIds.contains(currentRecord.id);
-                      return FilterChip(
-                        selected: isSelected,
-                        label: Text(isSelected ? '已选择' : '选择此项'),
-                        onSelected: (_) => _toggleLocalSelect(currentRecord.id),
-                        selectedColor: colorScheme.primary.withValues(alpha: 0.15),
-                        checkmarkColor: colorScheme.primary,
-                        labelStyle: TextStyle(
-                          color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: Icon(Icons.edit_outlined, color: colorScheme.primary),
+                            onPressed: () => _editRecord(currentRecord),
+                          ),
+                          const SizedBox(width: 4),
+                          FilterChip(
+                            selected: isSelected,
+                            label: Text(isSelected ? '已选择' : '选择此项'),
+                            onSelected: (_) => _toggleLocalSelect(currentRecord.id),
+                            selectedColor: colorScheme.primary.withValues(alpha: 0.15),
+                            checkmarkColor: colorScheme.primary,
+                            labelStyle: TextStyle(
+                              color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       );
                     },
                   ),
@@ -827,14 +877,14 @@ class _RecordDetailSheetState extends State<_RecordDetailSheet> {
             Expanded(
               child: PageView.builder(
                 controller: _pageController,
-                itemCount: widget.records.length,
+                itemCount: _localRecords.length,
                 onPageChanged: (index) {
                   setState(() {
                     _currentIndex = index;
                   });
                 },
                 itemBuilder: (context, index) {
-                  final record = widget.records[index];
+                  final record = _localRecords[index];
                   return _buildRecordDetail(context, record, theme, colorScheme);
                 },
               ),

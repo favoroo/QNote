@@ -23,6 +23,16 @@ class NotesPage extends ConsumerStatefulWidget {
 }
 
 class _NotesPageState extends ConsumerState<NotesPage> {
+  int _dragSession = 0;
+
+  void _onDragEnd() {
+    if (mounted) {
+      setState(() {
+        _dragSession++;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final noteListAsync = ref.watch(noteListProvider);
@@ -40,9 +50,9 @@ class _NotesPageState extends ConsumerState<NotesPage> {
             icon: const Icon(Icons.search),
             tooltip: '搜索',
             onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SearchView()),
-              );
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const SearchView()));
             },
           ),
         ],
@@ -110,9 +120,9 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           FilledButton(
             onPressed: () {
               if (controller.text.isNotEmpty) {
-                  ref
-                      .read(folderListProvider.notifier)
-                      .addFolder(controller.text, parentId);
+                ref
+                    .read(folderListProvider.notifier)
+                    .addFolder(controller.text, parentId);
               }
               Navigator.pop(ctx);
             },
@@ -124,20 +134,21 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   }
 
   void _createNote([String? folderId]) async {
-    final note = await ref.read(noteListProvider.notifier).addNote(
-          title: '新笔记',
-          folderId: folderId,
-        );
+    final note = await ref
+        .read(noteListProvider.notifier)
+        .addNote(title: '新笔记', folderId: folderId);
     if (mounted) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => NoteEditorView(note: note),
-        ),
-      );
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => NoteEditorView(note: note)));
     }
   }
 
-  Widget _buildTree(BuildContext context, List<Folder> folders, List<Note> notes) {
+  Widget _buildTree(
+    BuildContext context,
+    List<Folder> folders,
+    List<Note> notes,
+  ) {
     if (folders.isEmpty && notes.isEmpty) {
       return Center(
         child: Column(
@@ -152,8 +163,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
             Text(
               '暂无笔记',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 24),
             Row(
@@ -190,9 +201,13 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       onAcceptWithDetails: (details) {
         final d = details.data;
         if (d.type == 'note') {
-          ref.read(noteListProvider.notifier).moveNoteToFolder((d.item as Note).id, null);
+          ref
+              .read(noteListProvider.notifier)
+              .moveNoteToFolder((d.item as Note).id, null);
         } else if (d.type == 'folder') {
-          ref.read(folderListProvider.notifier).moveFolderToParent((d.item as Folder).id, null);
+          ref
+              .read(folderListProvider.notifier)
+              .moveFolderToParent((d.item as Folder).id, null);
         }
       },
       builder: (context, candidateData, rejectedData) {
@@ -200,7 +215,9 @@ class _NotesPageState extends ConsumerState<NotesPage> {
         final theme = Theme.of(context);
         return AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          color: isHovering ? theme.colorScheme.primary.withValues(alpha: 0.05) : Colors.transparent,
+          color: isHovering
+              ? theme.colorScheme.primary.withValues(alpha: 0.05)
+              : Colors.transparent,
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.only(bottom: 120),
@@ -209,11 +226,17 @@ class _NotesPageState extends ConsumerState<NotesPage> {
               notes: notes,
               parentId: null,
               depth: 0,
+              dragSession: _dragSession,
+              onDragEnd: _onDragEnd,
               onMoveNoteToFolder: (noteId, folderId) {
-                ref.read(noteListProvider.notifier).moveNoteToFolder(noteId, folderId);
+                ref
+                    .read(noteListProvider.notifier)
+                    .moveNoteToFolder(noteId, folderId);
               },
               onMoveFolderToParent: (folderId, newParentId) {
-                ref.read(folderListProvider.notifier).moveFolderToParent(folderId, newParentId);
+                ref
+                    .read(folderListProvider.notifier)
+                    .moveFolderToParent(folderId, newParentId);
               },
               onEditNote: (note) => _editNote(note),
               onShowNoteMenu: (note, key) => _showNoteMenu(note, key),
@@ -229,17 +252,15 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   }
 
   void _editNote(Note note) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => NoteEditorView(note: note),
-      ),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => NoteEditorView(note: note)));
   }
 
   void _toggleFolder(Folder folder) {
-      ref
-          .read(folderListProvider.notifier)
-          .toggleExpanded(folder.id, !folder.isExpanded);
+    ref
+        .read(folderListProvider.notifier)
+        .toggleExpanded(folder.id, !folder.isExpanded);
   }
 
   void _showNoteMenu(Note note, GlobalKey key) {
@@ -252,11 +273,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           label: '编辑笔记',
           onTap: () => _editNote(note),
         ),
-        ActionMenuItem(
-          icon: Icons.share_outlined,
-          label: '分享笔记',
-          onTap: () {},
-        ),
+        ActionMenuItem(icon: Icons.share_outlined, label: '分享笔记', onTap: () {}),
         ActionMenuItem(
           icon: Icons.delete_outline,
           label: '删除笔记',
@@ -317,9 +334,9 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           TextButton(
             onPressed: () {
               if (controller.text.isNotEmpty) {
-                ref.read(folderListProvider.notifier).updateFolder(
-                      folder.copyWith(name: controller.text),
-                    );
+                ref
+                    .read(folderListProvider.notifier)
+                    .updateFolder(folder.copyWith(name: controller.text));
               }
               Navigator.pop(ctx);
             },
@@ -337,7 +354,8 @@ class _SortableLevel extends StatefulWidget {
   final String? parentId;
   final int depth;
   final void Function(String noteId, String? folderId) onMoveNoteToFolder;
-  final void Function(String folderId, String? newParentId) onMoveFolderToParent;
+  final void Function(String folderId, String? newParentId)
+  onMoveFolderToParent;
   final void Function(Note) onEditNote;
   final void Function(Note, GlobalKey) onShowNoteMenu;
   final void Function(Folder) onToggleFolder;
@@ -345,6 +363,8 @@ class _SortableLevel extends StatefulWidget {
   final void Function(String?) onCreateNote;
   final void Function(String?) onCreateFolder;
   final ValueChanged<bool>? onHoverChanged;
+  final int dragSession;
+  final VoidCallback onDragEnd;
 
   const _SortableLevel({
     required this.folders,
@@ -359,6 +379,8 @@ class _SortableLevel extends StatefulWidget {
     required this.onShowFolderMenu,
     required this.onCreateNote,
     required this.onCreateFolder,
+    required this.dragSession,
+    required this.onDragEnd,
     this.onHoverChanged,
   });
 
@@ -369,6 +391,17 @@ class _SortableLevel extends StatefulWidget {
 class _SortableLevelState extends State<_SortableLevel> {
   int? _dragOverIndex;
   bool _isHovering = false;
+
+  @override
+  void didUpdateWidget(_SortableLevel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.dragSession != oldWidget.dragSession) {
+      setState(() {
+        _isHovering = false;
+        _dragOverIndex = null;
+      });
+    }
+  }
 
   void _updateDragIndex(Offset globalPosition, int totalItems) {
     if (!mounted) return;
@@ -385,25 +418,35 @@ class _SortableLevelState extends State<_SortableLevel> {
 
   @override
   Widget build(BuildContext context) {
-    final childFolders = widget.folders.where((f) => f.parentId == widget.parentId).toList();
-    final childNotes = widget.notes.where((n) => n.folderId == widget.parentId).toList();
+    final childFolders = widget.folders
+        .where((f) => f.parentId == widget.parentId)
+        .toList();
+    final childNotes = widget.notes
+        .where((n) => n.folderId == widget.parentId)
+        .toList();
 
     final List<dynamic> combined = [...childNotes, ...childFolders];
 
-    if (combined.isEmpty && widget.parentId == null) return const SizedBox.shrink();
+    if (combined.isEmpty && widget.parentId == null)
+      return const SizedBox.shrink();
 
     return DragTarget<_DragData>(
       onWillAcceptWithDetails: (details) {
         final d = details.data;
-        if (d.type == 'note' && (d.item as Note).folderId == widget.parentId) {
-           // Allow for visual reordering
+        if (d.type == 'note') {
+          final note = d.item as Note;
+          if (note.folderId == widget.parentId) {
+            // Same level reordering
+          }
         } else if (d.type == 'folder') {
           final source = d.item as Folder;
           if (source.id == widget.parentId) return false;
           var currentId = widget.parentId;
           while (currentId != null) {
             if (currentId == source.id) return false;
-            final parent = widget.folders.where((f) => f.id == currentId).firstOrNull;
+            final parent = widget.folders
+                .where((f) => f.id == currentId)
+                .firstOrNull;
             currentId = parent?.parentId;
           }
         }
@@ -440,10 +483,15 @@ class _SortableLevelState extends State<_SortableLevel> {
         return AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           decoration: BoxDecoration(
-            color: (_isHovering && widget.parentId == null) ? theme.colorScheme.primary.withValues(alpha: 0.1) : Colors.transparent,
+            color: (_isHovering && widget.parentId == null)
+                ? theme.colorScheme.primary.withValues(alpha: 0.1)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
-            border: (_isHovering && widget.parentId == null) 
-                ? Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.3), width: 2)
+            border: (_isHovering && widget.parentId == null)
+                ? Border.all(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                    width: 2,
+                  )
                 : Border.all(color: Colors.transparent, width: 2),
           ),
           margin: EdgeInsets.symmetric(
@@ -457,8 +505,15 @@ class _SortableLevelState extends State<_SortableLevel> {
             children: [
               if (combined.isEmpty && widget.parentId != null)
                 Padding(
-                  padding: EdgeInsets.only(left: 16.0 + widget.depth * 8.0, top: 8, bottom: 8),
-                  child: Text('  空文件夹', style: TextStyle(color: theme.colorScheme.outlineVariant)),
+                  padding: EdgeInsets.only(
+                    left: 16.0 + widget.depth * 8.0,
+                    top: 8,
+                    bottom: 8,
+                  ),
+                  child: Text(
+                    '  空文件夹',
+                    style: TextStyle(color: theme.colorScheme.outlineVariant),
+                  ),
                 ),
               ...combined.asMap().entries.map((entry) {
                 final index = entry.key;
@@ -478,9 +533,12 @@ class _SortableLevelState extends State<_SortableLevel> {
                         onEdit: () => widget.onEditNote(item),
                         onMenu: (key) => widget.onShowNoteMenu(item, key),
                         onDragUpdate: (_) {},
-                        onDragEnd: () {},
+                        onDragEnd: widget.onDragEnd,
                       ),
-                      if (index == combined.length - 1 && _isHovering && _dragOverIndex != null && _dragOverIndex! > index)
+                      if (index == combined.length - 1 &&
+                          _isHovering &&
+                          _dragOverIndex != null &&
+                          _dragOverIndex! > index)
                         _DropGapPlaceholder(),
                     ],
                   );
@@ -498,31 +556,42 @@ class _SortableLevelState extends State<_SortableLevel> {
                         folders: widget.folders,
                         notes: widget.notes,
                         isOver: false,
+                        dragSession: widget.dragSession,
                         onToggle: () => widget.onToggleFolder(folder),
                         onMenu: (key) => widget.onShowFolderMenu(folder, key),
-                        onMoveNoteToFolder: (note) => widget.onMoveNoteToFolder(note.id, folder.id),
-                        onMoveFolderToParent: (sourceId) => widget.onMoveFolderToParent(sourceId, folder.id),
-                        onBuildChildLevel: ({required int depth, onHoverChanged}) => _SortableLevel(
-                          folders: widget.folders,
-                          notes: widget.notes,
-                          parentId: folder.id,
-                          depth: depth,
-                          onMoveNoteToFolder: widget.onMoveNoteToFolder,
-                          onMoveFolderToParent: widget.onMoveFolderToParent,
-                          onEditNote: widget.onEditNote,
-                          onShowNoteMenu: widget.onShowNoteMenu,
-                          onToggleFolder: widget.onToggleFolder,
-                          onShowFolderMenu: widget.onShowFolderMenu,
-                          onCreateNote: widget.onCreateNote,
-                          onCreateFolder: widget.onCreateFolder,
-                          onHoverChanged: onHoverChanged,
-                        ),
+                        onMoveNoteToFolder: (note) =>
+                            widget.onMoveNoteToFolder(note.id, folder.id),
+                        onMoveFolderToParent: (sourceId) =>
+                            widget.onMoveFolderToParent(sourceId, folder.id),
+                        onBuildChildLevel:
+                            ({required int depth, onHoverChanged}) =>
+                                _SortableLevel(
+                                  folders: widget.folders,
+                                  notes: widget.notes,
+                                  parentId: folder.id,
+                                  depth: depth,
+                                  dragSession: widget.dragSession,
+                                  onDragEnd: widget.onDragEnd,
+                                  onMoveNoteToFolder: widget.onMoveNoteToFolder,
+                                  onMoveFolderToParent:
+                                      widget.onMoveFolderToParent,
+                                  onEditNote: widget.onEditNote,
+                                  onShowNoteMenu: widget.onShowNoteMenu,
+                                  onToggleFolder: widget.onToggleFolder,
+                                  onShowFolderMenu: widget.onShowFolderMenu,
+                                  onCreateNote: widget.onCreateNote,
+                                  onCreateFolder: widget.onCreateFolder,
+                                  onHoverChanged: onHoverChanged,
+                                ),
                         onDragUpdate: (_) {},
-                        onDragEnd: () {},
+                        onDragEnd: widget.onDragEnd,
                         onCreateNote: () => widget.onCreateNote(folder.id),
                         onCreateFolder: () => widget.onCreateFolder(folder.id),
                       ),
-                      if (index == combined.length - 1 && _isHovering && _dragOverIndex != null && _dragOverIndex! > index)
+                      if (index == combined.length - 1 &&
+                          _isHovering &&
+                          _dragOverIndex != null &&
+                          _dragOverIndex! > index)
                         _DropGapPlaceholder(),
                     ],
                   );
@@ -546,7 +615,10 @@ class _DropGapPlaceholder extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3), width: 1),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
+          width: 1,
+        ),
       ),
     );
   }
@@ -596,20 +668,33 @@ class _NoteTile extends StatelessWidget {
                 elevation: 4,
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 7,
+                  ),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surface,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                    border: Border.all(
+                      color: theme.colorScheme.outlineVariant.withValues(
+                        alpha: 0.5,
+                      ),
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.description, size: 15, color: theme.colorScheme.primary),
+                      Icon(
+                        Icons.description,
+                        size: 15,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: 6),
                       Text(
                         note.title,
-                        style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w500),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w500,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -624,7 +709,9 @@ class _NoteTile extends StatelessWidget {
                 child: Icon(
                   Icons.drag_indicator,
                   size: 18,
-                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
+                  color: theme.colorScheme.onSurfaceVariant.withValues(
+                    alpha: 0.35,
+                  ),
                 ),
               ),
             ),
@@ -649,7 +736,11 @@ class _NoteTile extends StatelessWidget {
                     ),
                     const SizedBox(width: 12),
                     if (note.isPinned) ...[
-                      Icon(Icons.push_pin, size: 14, color: theme.colorScheme.primary),
+                      Icon(
+                        Icons.push_pin,
+                        size: 14,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: 4),
                     ],
                     Expanded(
@@ -675,7 +766,12 @@ class _NoteTile extends StatelessWidget {
               child: IconButton(
                 padding: EdgeInsets.zero,
                 iconSize: 20,
-                icon: Icon(Icons.more_vert, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+                icon: Icon(
+                  Icons.more_vert,
+                  color: theme.colorScheme.onSurfaceVariant.withValues(
+                    alpha: 0.5,
+                  ),
+                ),
                 onPressed: () => onMenu(menuKey),
               ),
             ),
@@ -696,11 +792,16 @@ class _FolderTile extends StatefulWidget {
   final void Function(GlobalKey key) onMenu;
   final void Function(Note) onMoveNoteToFolder;
   final void Function(String) onMoveFolderToParent;
-  final Widget Function({required int depth, ValueChanged<bool>? onHoverChanged}) onBuildChildLevel;
+  final Widget Function({
+    required int depth,
+    ValueChanged<bool>? onHoverChanged,
+  })
+  onBuildChildLevel;
   final void Function(int index) onDragUpdate;
   final VoidCallback onDragEnd;
   final VoidCallback onCreateNote;
   final VoidCallback onCreateFolder;
+  final int dragSession;
 
   const _FolderTile({
     super.key,
@@ -718,6 +819,7 @@ class _FolderTile extends StatefulWidget {
     required this.onDragEnd,
     required this.onCreateNote,
     required this.onCreateFolder,
+    required this.dragSession,
   });
 
   @override
@@ -729,22 +831,39 @@ class _FolderTileState extends State<_FolderTile> {
   bool _childIsHovering = false;
 
   @override
+  void didUpdateWidget(_FolderTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.dragSession != oldWidget.dragSession) {
+      setState(() {
+        _isHovering = false;
+        _childIsHovering = false;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final menuKey = GlobalKey();
-    
+
     final bool isHeaderHovered = widget.isOver || _isHovering;
     final bool isAnyHovered = isHeaderHovered || _childIsHovering;
-    final Color highlightColor = _childIsHovering ? theme.colorScheme.primary : Colors.orange;
+    final Color highlightColor = _childIsHovering
+        ? theme.colorScheme.primary
+        : Colors.orange;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeInOut,
       decoration: BoxDecoration(
-        color: isAnyHovered ? highlightColor.withValues(alpha: 0.04) : Colors.transparent,
+        color: isAnyHovered
+            ? highlightColor.withValues(alpha: 0.04)
+            : Colors.transparent,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isAnyHovered ? highlightColor.withValues(alpha: 0.25) : Colors.transparent,
+          color: isAnyHovered
+              ? highlightColor.withValues(alpha: 0.25)
+              : Colors.transparent,
           width: 1.5,
         ),
       ),
@@ -764,7 +883,9 @@ class _FolderTileState extends State<_FolderTile> {
                 var current = widget.folder;
                 while (current.parentId != null) {
                   if (current.parentId == source.id) return false;
-                  final parent = widget.folders.where((f) => f.id == current.parentId).firstOrNull;
+                  final parent = widget.folders
+                      .where((f) => f.id == current.parentId)
+                      .firstOrNull;
                   if (parent == null) break;
                   current = parent;
                 }
@@ -787,7 +908,9 @@ class _FolderTileState extends State<_FolderTile> {
                 duration: const Duration(milliseconds: 200),
                 curve: Curves.easeInOut,
                 decoration: BoxDecoration(
-                  color: isHeaderHovered ? Colors.orange.withValues(alpha: 0.06) : Colors.transparent,
+                  color: isHeaderHovered
+                      ? Colors.orange.withValues(alpha: 0.06)
+                      : Colors.transparent,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Opacity(
@@ -810,20 +933,33 @@ class _FolderTileState extends State<_FolderTile> {
                               elevation: 4,
                               borderRadius: BorderRadius.circular(8),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 7,
+                                ),
                                 decoration: BoxDecoration(
                                   color: theme.colorScheme.surface,
                                   borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                                  border: Border.all(
+                                    color: theme.colorScheme.outlineVariant
+                                        .withValues(alpha: 0.5),
+                                  ),
                                 ),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.folder, size: 15, color: Colors.orange),
+                                    Icon(
+                                      Icons.folder,
+                                      size: 15,
+                                      color: Colors.orange,
+                                    ),
                                     const SizedBox(width: 6),
                                     Text(
                                       widget.folder.name,
-                                      style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold),
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -838,7 +974,8 @@ class _FolderTileState extends State<_FolderTile> {
                               child: Icon(
                                 Icons.drag_indicator,
                                 size: 16,
-                                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
+                                color: theme.colorScheme.onSurfaceVariant
+                                    .withValues(alpha: 0.35),
                               ),
                             ),
                           ),
@@ -849,7 +986,8 @@ class _FolderTileState extends State<_FolderTile> {
                                   ? Icons.keyboard_arrow_down
                                   : Icons.keyboard_arrow_right,
                               size: 16,
-                              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                              color: theme.colorScheme.onSurfaceVariant
+                                  .withValues(alpha: 0.5),
                             ),
                           ),
                           const SizedBox(width: 4),
@@ -861,7 +999,9 @@ class _FolderTileState extends State<_FolderTile> {
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Icon(
-                              widget.folder.isExpanded ? Icons.folder_open : Icons.folder,
+                              widget.folder.isExpanded
+                                  ? Icons.folder_open
+                                  : Icons.folder,
                               size: 18,
                               color: Colors.orange,
                             ),
@@ -886,7 +1026,11 @@ class _FolderTileState extends State<_FolderTile> {
                             child: IconButton(
                               padding: EdgeInsets.zero,
                               iconSize: 20,
-                              icon: Icon(Icons.more_vert, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+                              icon: Icon(
+                                Icons.more_vert,
+                                color: theme.colorScheme.onSurfaceVariant
+                                    .withValues(alpha: 0.5),
+                              ),
                               onPressed: () => widget.onMenu(menuKey),
                             ),
                           ),
@@ -957,7 +1101,7 @@ class _DragHandleState<T extends Object> extends State<_DragHandle<T>> {
           widget.onDragEnd();
         }
       },
-      onDraggableCanceled: (_, __) {
+      onDraggableCanceled: (_, _) {
         if (_isDragging) {
           setState(() => _isDragging = false);
           widget.onDragEnd();

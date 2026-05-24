@@ -138,23 +138,27 @@ class _AiPageState extends ConsumerState<AiPage> {
     final text = _inputController.text.trim();
     if (text.isEmpty || _isTyping) return;
 
-    if (ref.read(currentChatProvider) == null) {
-      final session = await ref
-          .read(chatSessionListProvider.notifier)
-          .createSession();
-      ref.read(currentChatProvider.notifier).setSession(session);
-    }
-
     _inputController.clear();
     setState(() => _isTyping = true);
     _syncContextFilter();
     _scrollToBottom();
 
-    await ref.read(currentChatProvider.notifier).sendMessage(text);
+    try {
+      if (ref.read(currentChatProvider) == null) {
+        final session = await ref
+            .read(chatSessionListProvider.notifier)
+            .createSession();
+        ref.read(currentChatProvider.notifier).setSession(session);
+      }
 
-    if (mounted) {
-      setState(() => _isTyping = false);
-      _scrollToBottom();
+      await ref.read(currentChatProvider.notifier).sendMessage(text);
+    } catch (e) {
+      debugPrint('发送消息失败: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isTyping = false);
+        _scrollToBottom();
+      }
     }
   }
 

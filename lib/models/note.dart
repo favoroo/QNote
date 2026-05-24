@@ -68,12 +68,13 @@ class Note {
     DateTime? createdAt,
     DateTime? updatedAt,
     bool? isDeleted,
+    bool clearFolderId = false,
   }) {
     return Note(
       id: id ?? this.id,
       title: title ?? this.title,
       content: content ?? this.content,
-      folderId: folderId ?? this.folderId,
+      folderId: clearFolderId ? null : (folderId ?? this.folderId),
       tags: tags ?? this.tags,
       isPinned: isPinned ?? this.isPinned,
       images: images ?? this.images,

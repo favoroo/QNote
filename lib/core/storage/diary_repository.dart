@@ -1,8 +1,10 @@
 import 'package:qnote_flutter/core/storage/database_helper.dart';
+import 'package:qnote_flutter/core/storage/sync_log_repository.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 
 class DiaryRepository {
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
+  final SyncLogRepository _syncLog = SyncLogRepository.instance;
 
   Future<List<DiaryRecord>> getAll({bool includeDeleted = false}) async {
     final db = await _dbHelper.database;
@@ -73,6 +75,12 @@ class DiaryRepository {
   Future<DiaryRecord> insert(DiaryRecord record) async {
     final db = await _dbHelper.database;
     await db.insert('diary_records', record.toMap());
+    await _syncLog.logChange(
+      tableName: 'diary_records',
+      recordId: record.id,
+      operation: 'insert',
+      data: record.toMap(),
+    );
     return record;
   }
 
@@ -85,6 +93,12 @@ class DiaryRepository {
       where: 'id = ?',
       whereArgs: [record.id],
     );
+    await _syncLog.logChange(
+      tableName: 'diary_records',
+      recordId: record.id,
+      operation: 'update',
+      data: updated.toMap(),
+    );
     return updated;
   }
 
@@ -96,11 +110,25 @@ class DiaryRepository {
       where: 'id = ?',
       whereArgs: [id],
     );
+    final existing = await getById(id);
+    if (existing != null) {
+      await _syncLog.logChange(
+        tableName: 'diary_records',
+        recordId: id,
+        operation: 'update',
+        data: existing.toMap(),
+      );
+    }
   }
 
   Future<void> hardDelete(String id) async {
     final db = await _dbHelper.database;
     await db.delete('diary_records', where: 'id = ?', whereArgs: [id]);
+    await _syncLog.logChange(
+      tableName: 'diary_records',
+      recordId: id,
+      operation: 'delete',
+    );
   }
 
   Future<List<DiaryRecord>> search(String query) async {

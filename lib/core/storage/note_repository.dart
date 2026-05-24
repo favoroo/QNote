@@ -1,8 +1,10 @@
 import 'package:qnote_flutter/core/storage/database_helper.dart';
+import 'package:qnote_flutter/core/storage/sync_log_repository.dart';
 import 'package:qnote_flutter/models/note.dart';
 
 class NoteRepository {
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
+  final SyncLogRepository _syncLog = SyncLogRepository.instance;
 
   Future<List<Note>> getAll({bool includeDeleted = false}) async {
     final db = await _dbHelper.database;
@@ -35,6 +37,12 @@ class NoteRepository {
   Future<Note> insert(Note note) async {
     final db = await _dbHelper.database;
     await db.insert('notes', note.toMap());
+    await _syncLog.logChange(
+      tableName: 'notes',
+      recordId: note.id,
+      operation: 'insert',
+      data: note.toMap(),
+    );
     return note;
   }
 
@@ -47,6 +55,12 @@ class NoteRepository {
       where: 'id = ?',
       whereArgs: [note.id],
     );
+    await _syncLog.logChange(
+      tableName: 'notes',
+      recordId: note.id,
+      operation: 'update',
+      data: updated.toMap(),
+    );
     return updated;
   }
 
@@ -58,11 +72,25 @@ class NoteRepository {
       where: 'id = ?',
       whereArgs: [id],
     );
+    final existing = await getById(id);
+    if (existing != null) {
+      await _syncLog.logChange(
+        tableName: 'notes',
+        recordId: id,
+        operation: 'update',
+        data: existing.toMap(),
+      );
+    }
   }
 
   Future<void> hardDelete(String id) async {
     final db = await _dbHelper.database;
     await db.delete('notes', where: 'id = ?', whereArgs: [id]);
+    await _syncLog.logChange(
+      tableName: 'notes',
+      recordId: id,
+      operation: 'delete',
+    );
   }
 
   Future<void> togglePin(String id, bool isPinned) async {
@@ -73,6 +101,15 @@ class NoteRepository {
       where: 'id = ?',
       whereArgs: [id],
     );
+    final existing = await getById(id);
+    if (existing != null) {
+      await _syncLog.logChange(
+        tableName: 'notes',
+        recordId: id,
+        operation: 'update',
+        data: existing.toMap(),
+      );
+    }
   }
 
   Future<List<Note>> search(String keyword) async {

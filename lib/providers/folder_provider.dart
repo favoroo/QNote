@@ -65,7 +65,10 @@ class FolderListNotifier extends AsyncNotifier<List<Folder>> {
     final repo = ref.read(folderRepositoryProvider);
     final folder = await repo.getById(folderId);
     if (folder != null) {
-      await repo.update(folder.copyWith(parentId: parentId));
+      await repo.update(folder.copyWith(
+        parentId: parentId,
+        clearParentId: parentId == null,
+      ));
       await refresh();
     }
   }

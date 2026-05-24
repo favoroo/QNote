@@ -77,10 +77,7 @@ class _BirthdayPickerDialogState extends State<BirthdayPickerDialog> {
             const SizedBox(height: 12),
             const Divider(),
             const SizedBox(height: 8),
-            SizedBox(
-              height: 280,
-              child: _buildPickerContent(theme),
-            ),
+            SizedBox(height: 280, child: _buildPickerContent(theme)),
             const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -93,12 +90,19 @@ class _BirthdayPickerDialogState extends State<BirthdayPickerDialog> {
                 const Spacer(),
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: Text('取消', style: TextStyle(color: theme.disabledColor)),
+                  child: Text(
+                    '取消',
+                    style: TextStyle(color: theme.disabledColor),
+                  ),
                 ),
                 if (_step == 2)
                   FilledButton(
                     onPressed: () {
-                      final date = DateTime(_selectedYear!, _selectedMonth!, _selectedDay!);
+                      final date = DateTime(
+                        _selectedYear!,
+                        _selectedMonth!,
+                        _selectedDay!,
+                      );
                       Navigator.pop(context, date);
                     },
                     child: const Text('完成'),
@@ -124,7 +128,7 @@ class _BirthdayPickerDialogState extends State<BirthdayPickerDialog> {
         const SizedBox(width: 8),
         _buildSelectionChip(
           theme,
-          _selectedMonth != null ? '${_selectedMonth}月' : "月",
+          _selectedMonth != null ? '$_selectedMonth月' : "月",
           _step == 1,
           enabled: _selectedYear != null,
           onTap: () => setState(() => _step = 1),
@@ -132,7 +136,7 @@ class _BirthdayPickerDialogState extends State<BirthdayPickerDialog> {
         const SizedBox(width: 8),
         _buildSelectionChip(
           theme,
-          _selectedDay != null ? '${_selectedDay}日' : "日",
+          _selectedDay != null ? '$_selectedDay日' : "日",
           _step == 2,
           enabled: _selectedMonth != null,
           onTap: () => setState(() => _step = 2),
@@ -141,25 +145,37 @@ class _BirthdayPickerDialogState extends State<BirthdayPickerDialog> {
     );
   }
 
-  Widget _buildSelectionChip(ThemeData theme, String label, bool isSelected, {bool enabled = true, VoidCallback? onTap}) {
+  Widget _buildSelectionChip(
+    ThemeData theme,
+    String label,
+    bool isSelected, {
+    bool enabled = true,
+    VoidCallback? onTap,
+  }) {
     return GestureDetector(
       onTap: enabled ? onTap : null,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected 
-              ? theme.colorScheme.primaryContainer 
-              : theme.colorScheme.surfaceContainerHighest.withValues(alpha: enabled ? 0.3 : 0.1),
+          color: isSelected
+              ? theme.colorScheme.primaryContainer
+              : theme.colorScheme.surfaceContainerHighest.withValues(
+                  alpha: enabled ? 0.3 : 0.1,
+                ),
           borderRadius: BorderRadius.circular(8),
-          border: isSelected ? Border.all(color: theme.colorScheme.primary) : null,
+          border: isSelected
+              ? Border.all(color: theme.colorScheme.primary)
+              : null,
         ),
         child: Text(
           label,
           style: theme.textTheme.bodyMedium?.copyWith(
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            color: isSelected 
-                ? theme.colorScheme.primary 
-                : theme.colorScheme.onSurfaceVariant.withValues(alpha: enabled ? 1.0 : 0.3),
+            color: isSelected
+                ? theme.colorScheme.primary
+                : theme.colorScheme.onSurfaceVariant.withValues(
+                    alpha: enabled ? 1.0 : 0.3,
+                  ),
           ),
         ),
       ),
@@ -285,7 +301,9 @@ class _BirthdayPickerDialogState extends State<BirthdayPickerDialog> {
                   style: TextStyle(
                     fontSize: 13,
                     color: isSelected ? theme.colorScheme.onPrimary : null,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontWeight: isSelected
+                        ? FontWeight.bold
+                        : FontWeight.normal,
                   ),
                 ),
               ),

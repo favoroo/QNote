@@ -54,11 +54,12 @@ class Folder {
     bool? isExpanded,
     DateTime? createdAt,
     DateTime? updatedAt,
+    bool clearParentId = false,
   }) {
     return Folder(
       id: id ?? this.id,
       name: name ?? this.name,
-      parentId: parentId ?? this.parentId,
+      parentId: clearParentId ? null : (parentId ?? this.parentId),
       type: type ?? this.type,
       sortOrder: sortOrder ?? this.sortOrder,
       isExpanded: isExpanded ?? this.isExpanded,

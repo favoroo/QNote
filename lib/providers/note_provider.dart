@@ -76,7 +76,10 @@ class NoteListNotifier extends AsyncNotifier<List<Note>> {
     final repo = ref.read(noteRepositoryProvider);
     final note = await repo.getById(noteId);
     if (note != null) {
-      await repo.update(note.copyWith(folderId: folderId));
+      await repo.update(note.copyWith(
+        folderId: folderId,
+        clearFolderId: folderId == null,
+      ));
       await refresh();
     }
   }

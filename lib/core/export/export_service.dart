@@ -92,7 +92,7 @@ class ExportService {
     return buffer.toString();
   }
 
-  Future<String> exportAllToJson() async {
+  Future<String> exportAllToJson({bool includeImages = true}) async {
     final startTime = DateTime.now();
     LoggerService.instance.logExport('开始导出所有数据为JSON...');
 
@@ -105,18 +105,20 @@ class ExportService {
     final diaryMaps = <Map<String, dynamic>>[];
     for (final diary in diaries) {
       final map = diary.toMap();
-      final photoBase64 = <String, String>{};
-      for (int i = 0; i < diary.photos.length; i++) {
-        final photoPath = diary.photos[i];
-        if (photoPath.isNotEmpty) {
-          final b64 = await _imageRepo.getBase64Image(photoPath);
-          if (b64.isNotEmpty) {
-            photoBase64[photoPath] = b64;
+      if (includeImages) {
+        final photoBase64 = <String, String>{};
+        for (int i = 0; i < diary.photos.length; i++) {
+          final photoPath = diary.photos[i];
+          if (photoPath.isNotEmpty) {
+            final b64 = await _imageRepo.getBase64Image(photoPath);
+            if (b64.isNotEmpty) {
+              photoBase64[photoPath] = b64;
+            }
           }
         }
-      }
-      if (photoBase64.isNotEmpty) {
-        map['photos_base64'] = photoBase64;
+        if (photoBase64.isNotEmpty) {
+          map['photos_base64'] = photoBase64;
+        }
       }
       diaryMaps.add(map);
     }
@@ -128,18 +130,20 @@ class ExportService {
     final noteMaps = <Map<String, dynamic>>[];
     for (final note in notes) {
       final map = note.toMap();
-      final imageBase64 = <String, String>{};
-      for (int i = 0; i < note.images.length; i++) {
-        final imagePath = note.images[i];
-        if (imagePath.isNotEmpty) {
-          final b64 = await _imageRepo.getBase64Image(imagePath);
-          if (b64.isNotEmpty) {
-            imageBase64[imagePath] = b64;
+      if (includeImages) {
+        final imageBase64 = <String, String>{};
+        for (int i = 0; i < note.images.length; i++) {
+          final imagePath = note.images[i];
+          if (imagePath.isNotEmpty) {
+            final b64 = await _imageRepo.getBase64Image(imagePath);
+            if (b64.isNotEmpty) {
+              imageBase64[imagePath] = b64;
+            }
           }
         }
-      }
-      if (imageBase64.isNotEmpty) {
-        map['images_base64'] = imageBase64;
+        if (imageBase64.isNotEmpty) {
+          map['images_base64'] = imageBase64;
+        }
       }
       noteMaps.add(map);
     }
@@ -853,5 +857,250 @@ class ExportService {
     final fileName =
         'qnote_backup_${DateTime.now().millisecondsSinceEpoch}.json';
     await shareFile(content, fileName, subject: 'QNote 数据备份');
+  }
+
+  Future<void> applyDeltaFromJson(String jsonString) async {
+    final startTime = DateTime.now();
+    LoggerService.instance.logImport('开始应用增量变更...');
+
+    final delta = jsonDecode(jsonString) as Map<String, dynamic>;
+    final changes = delta['changes'] as Map<String, dynamic>? ?? {};
+
+    if (changes.containsKey('diary_records')) {
+      final tableChanges = Map<String, dynamic>.from(changes['diary_records'] as Map);
+      final upserts = (tableChanges['upserts'] as List?) ?? [];
+      final deletes = (tableChanges['deletes'] as List?) ?? [];
+      for (final item in upserts) {
+        final map = Map<String, dynamic>.from(item as Map);
+        final photosBase64 = map.remove('photos_base64');
+        if (photosBase64 is Map) {
+          final photoMap = Map<String, dynamic>.from(photosBase64);
+          final photos = <String>[];
+          for (final entry in photoMap.entries) {
+            final savedPath = await _imageRepo.saveBase64Image(
+              entry.value as String,
+              subfolder: 'diary',
+            );
+            photos.add(savedPath);
+          }
+          if (photos.isNotEmpty) {
+            map['photos'] = jsonEncode(photos);
+          }
+        }
+        try {
+          await _diaryRepo.insert(DiaryRecord.fromMap(map));
+        } catch (_) {
+          final db = await DatabaseHelper.instance.database;
+          await db.update('diary_records', map, where: 'id = ?', whereArgs: [map['id']]);
+        }
+      }
+      for (final id in deletes) {
+        try {
+          await _diaryRepo.hardDelete(id as String);
+        } catch (_) {}
+      }
+    }
+
+    if (changes.containsKey('notes')) {
+      final tableChanges = Map<String, dynamic>.from(changes['notes'] as Map);
+      final upserts = (tableChanges['upserts'] as List?) ?? [];
+      final deletes = (tableChanges['deletes'] as List?) ?? [];
+      for (final item in upserts) {
+        final map = Map<String, dynamic>.from(item as Map);
+        final imagesBase64 = map.remove('images_base64');
+        if (imagesBase64 is Map) {
+          final imageMap = Map<String, dynamic>.from(imagesBase64);
+          final images = <String>[];
+          for (final entry in imageMap.entries) {
+            final savedPath = await _imageRepo.saveBase64Image(
+              entry.value as String,
+              subfolder: 'notes',
+            );
+            images.add(savedPath);
+          }
+          if (images.isNotEmpty) {
+            map['images'] = jsonEncode(images);
+          }
+        }
+        try {
+          await _noteRepo.insert(Note.fromMap(map));
+        } catch (_) {
+          final db = await DatabaseHelper.instance.database;
+          await db.update('notes', map, where: 'id = ?', whereArgs: [map['id']]);
+        }
+      }
+      for (final id in deletes) {
+        try {
+          await _noteRepo.hardDelete(id as String);
+        } catch (_) {}
+      }
+    }
+
+    if (changes.containsKey('todos')) {
+      final tableChanges = Map<String, dynamic>.from(changes['todos'] as Map);
+      final upserts = (tableChanges['upserts'] as List?) ?? [];
+      final deletes = (tableChanges['deletes'] as List?) ?? [];
+      for (final item in upserts) {
+        final map = Map<String, dynamic>.from(item as Map);
+        try {
+          await _todoRepo.insert(Todo.fromMap(map));
+        } catch (_) {
+          final db = await DatabaseHelper.instance.database;
+          await db.update('todos', map, where: 'id = ?', whereArgs: [map['id']]);
+        }
+      }
+      for (final id in deletes) {
+        try {
+          await _todoRepo.hardDelete(id as String);
+        } catch (_) {}
+      }
+    }
+
+    if (changes.containsKey('folders')) {
+      final tableChanges = Map<String, dynamic>.from(changes['folders'] as Map);
+      final upserts = (tableChanges['upserts'] as List?) ?? [];
+      final deletes = (tableChanges['deletes'] as List?) ?? [];
+      for (final item in upserts) {
+        final map = Map<String, dynamic>.from(item as Map);
+        try {
+          await _folderRepo.insert(Folder.fromMap(map));
+        } catch (_) {
+          final db = await DatabaseHelper.instance.database;
+          await db.update('folders', map, where: 'id = ?', whereArgs: [map['id']]);
+        }
+      }
+      for (final id in deletes) {
+        try {
+          await _folderRepo.delete(id as String);
+        } catch (_) {}
+      }
+    }
+
+    if (changes.containsKey('ai_configs')) {
+      final tableChanges = Map<String, dynamic>.from(changes['ai_configs'] as Map);
+      final upserts = (tableChanges['upserts'] as List?) ?? [];
+      final deletes = (tableChanges['deletes'] as List?) ?? [];
+      for (final item in upserts) {
+        try {
+          await _configRepo.insertAiConfig(AiConfig.fromMap(Map<String, dynamic>.from(item as Map)));
+        } catch (_) {
+          try {
+            await _configRepo.updateAiConfig(AiConfig.fromMap(Map<String, dynamic>.from(item as Map)));
+          } catch (_) {}
+        }
+      }
+      for (final id in deletes) {
+        try {
+          await _configRepo.deleteAiConfig(id as String);
+        } catch (_) {}
+      }
+    }
+
+    if (changes.containsKey('shortcut_configs')) {
+      final tableChanges = Map<String, dynamic>.from(changes['shortcut_configs'] as Map);
+      final upserts = (tableChanges['upserts'] as List?) ?? [];
+      final deletes = (tableChanges['deletes'] as List?) ?? [];
+      for (final item in upserts) {
+        try {
+          await _configRepo.insertShortcutConfig(ShortcutConfig.fromMap(Map<String, dynamic>.from(item as Map)));
+        } catch (_) {
+          try {
+            await _configRepo.updateShortcutConfig(ShortcutConfig.fromMap(Map<String, dynamic>.from(item as Map)));
+          } catch (_) {}
+        }
+      }
+      for (final id in deletes) {
+        try {
+          await _configRepo.deleteShortcutConfig(id as String);
+        } catch (_) {}
+      }
+    }
+
+    if (changes.containsKey('chat_sessions')) {
+      final tableChanges = Map<String, dynamic>.from(changes['chat_sessions'] as Map);
+      final upserts = (tableChanges['upserts'] as List?) ?? [];
+      final deletes = (tableChanges['deletes'] as List?) ?? [];
+      for (final item in upserts) {
+        try {
+          await _configRepo.insertChatSession(ChatSession.fromMap(Map<String, dynamic>.from(item as Map)));
+        } catch (_) {
+          try {
+            await _configRepo.updateChatSession(ChatSession.fromMap(Map<String, dynamic>.from(item as Map)));
+          } catch (_) {}
+        }
+      }
+      for (final id in deletes) {
+        try {
+          await _configRepo.softDeleteChatSession(id as String);
+        } catch (_) {}
+      }
+    }
+
+    if (changes.containsKey('user_profile')) {
+      final tableChanges = Map<String, dynamic>.from(changes['user_profile'] as Map);
+      final upserts = (tableChanges['upserts'] as List?) ?? [];
+      for (final item in upserts) {
+        try {
+          await _configRepo.upsertUserProfile(UserProfile.fromMap(Map<String, dynamic>.from(item as Map)));
+        } catch (_) {}
+      }
+    }
+
+    if (changes.containsKey('date_color_marks')) {
+      final tableChanges = Map<String, dynamic>.from(changes['date_color_marks'] as Map);
+      final upserts = (tableChanges['upserts'] as List?) ?? [];
+      final deletes = (tableChanges['deletes'] as List?) ?? [];
+      for (final item in upserts) {
+        try {
+          await _colorMarkRepo.insert(DateColorMark.fromMap(Map<String, dynamic>.from(item as Map)));
+        } catch (_) {}
+      }
+      for (final id in deletes) {
+        try {
+          await _colorMarkRepo.delete(id as String);
+        } catch (_) {}
+      }
+    }
+
+    if (changes.containsKey('body_states')) {
+      final tableChanges = Map<String, dynamic>.from(changes['body_states'] as Map);
+      final upserts = (tableChanges['upserts'] as List?) ?? [];
+      final deletes = (tableChanges['deletes'] as List?) ?? [];
+      final db = await DatabaseHelper.instance.database;
+      for (final item in upserts) {
+        try {
+          await db.insert(
+            'body_states',
+            Map<String, dynamic>.from(item as Map),
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        } catch (_) {}
+      }
+      for (final id in deletes) {
+        try {
+          await db.delete('body_states', where: 'id = ?', whereArgs: [id]);
+        } catch (_) {}
+      }
+    }
+
+    if (changes.containsKey('app_configs')) {
+      final tableChanges = Map<String, dynamic>.from(changes['app_configs'] as Map);
+      final upserts = (tableChanges['upserts'] as List?) ?? [];
+      final deletes = (tableChanges['deletes'] as List?) ?? [];
+      for (final item in upserts) {
+        final map = Map<String, dynamic>.from(item as Map);
+        try {
+          await _configRepo.setAppConfig(map['key'] as String, map['value'] as String);
+        } catch (_) {}
+      }
+      for (final id in deletes) {
+        try {
+          await _configRepo.deleteAppConfig(id as String);
+        } catch (_) {}
+      }
+    }
+
+    final duration = DateTime.now().difference(startTime).inMilliseconds;
+    LoggerService.instance.logImport('增量变更应用完成', details: '耗时=${duration}ms');
   }
 }

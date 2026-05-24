@@ -16,7 +16,7 @@ class ActivityStatsWidget extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
 
     final pieData = stats.typeDistribution.entries.toList();
-    final typeCount = pieData.length;
+    final durationData = stats.durationByType.entries.toList();
 
     return Column(
       children: [
@@ -33,14 +33,37 @@ class ActivityStatsWidget extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: StatsCard(
-                title: '活动类型',
-                value: '$typeCount种',
-                icon: Icons.track_changes,
+                title: '总时长',
+                value: '${stats.totalDuration.toStringAsFixed(stats.totalDuration == stats.totalDuration.toInt() ? 0 : 1)}小时',
+                icon: Icons.schedule,
                 iconColor: Colors.blue,
               ),
             ),
           ],
         ),
+        if (stats.averageDuration > 0) ...[
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: StatsCard(
+                  title: '平均时长',
+                  value: '${stats.averageDuration.toStringAsFixed(stats.averageDuration == stats.averageDuration.toInt() ? 0 : 1)}小时',
+                  icon: Icons.timer,
+                  iconColor: Colors.orange,
+                ),
+              ),
+              Expanded(
+                child: StatsCard(
+                  title: '活动类型',
+                  value: '${pieData.length}种',
+                  icon: Icons.track_changes,
+                  iconColor: Colors.green,
+                ),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: 16),
         _ActivityCard(
           isDark: isDark,
@@ -57,29 +80,15 @@ class ActivityStatsWidget extends StatelessWidget {
         if (pieData.isNotEmpty)
           _ActivityCard(
             isDark: isDark,
-            title: '项目比例',
-            trailing: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0x338B5CF6) : const Color(0x1A8B5CF6),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                'TOP 5',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? const Color(0xFFC4B5FD) : Colors.purple,
-                ),
-              ),
-            ),
+            title: '活动类型分布',
+            trailing: const SizedBox.shrink(),
             child: Column(
               children: [
                 SizedBox(
                   height: 200,
                   child: PieChart(
                     PieChartData(
-                      sections: pieData.take(5).toList().asMap().entries.map((e) {
+                      sections: pieData.asMap().entries.map((e) {
                         final color = _activityColors[e.key % _activityColors.length];
                         return PieChartSectionData(
                           value: e.value.value.toDouble(),
@@ -99,7 +108,7 @@ class ActivityStatsWidget extends StatelessWidget {
                   spacing: 16,
                   runSpacing: 8,
                   alignment: WrapAlignment.center,
-                  children: pieData.take(5).toList().asMap().entries.map((e) {
+                  children: pieData.asMap().entries.map((e) {
                     final color = _activityColors[e.key % _activityColors.length];
                     return Row(
                       mainAxisSize: MainAxisSize.min,
@@ -107,7 +116,7 @@ class ActivityStatsWidget extends StatelessWidget {
                         Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
                         const SizedBox(width: 6),
                         Text(
-                          e.value.key,
+                          '${e.value.key} (${e.value.value})',
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.bold,
@@ -121,6 +130,32 @@ class ActivityStatsWidget extends StatelessWidget {
               ],
             ),
           ),
+        if (durationData.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          _ActivityCard(
+            isDark: isDark,
+            title: '各类别时长',
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0x338B5CF6) : const Color(0x1A8B5CF6),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '小时',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? const Color(0xFFC4B5FD) : Colors.purple,
+                ),
+              ),
+            ),
+            child: SizedBox(
+              height: 192,
+              child: _DurationBarChart(durationData: durationData, isDark: isDark),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -234,6 +269,76 @@ class _ActivityBarChart extends StatelessWidget {
                 color: Colors.purple,
                 width: dailyData.length > 14 ? 8 : 16,
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+              ),
+            ],
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+class _DurationBarChart extends StatelessWidget {
+  final List<MapEntry<String, double>> durationData;
+  final bool isDark;
+
+  const _DurationBarChart({required this.durationData, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return BarChart(
+      BarChartData(
+        alignment: BarChartAlignment.spaceAround,
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          getDrawingHorizontalLine: (value) => FlLine(
+            color: isDark ? const Color(0xFF2A2D36) : const Color(0xFFE4E4E7),
+            strokeWidth: 1,
+          ),
+        ),
+        titlesData: FlTitlesData(
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 24,
+              getTitlesWidget: (value, meta) {
+                final idx = value.toInt();
+                if (idx < 0 || idx >= durationData.length) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    durationData[idx].key,
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isDark ? const Color(0xFFC2C6D6) : const Color(0xFF424754)),
+                  ),
+                );
+              },
+            ),
+          ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 36,
+              getTitlesWidget: (value, meta) => Text(
+                '${value.toInt()}',
+                style: TextStyle(fontSize: 10, color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF94A3B8)),
+              ),
+            ),
+          ),
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        ),
+        borderData: FlBorderData(show: false),
+        barGroups: durationData.asMap().entries.map((e) {
+          final color = _activityColors[e.key % _activityColors.length];
+          return BarChartGroupData(
+            x: e.key,
+            barRods: [
+              BarChartRodData(
+                toY: e.value.value,
+                color: color,
+                width: 32,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
               ),
             ],
           );

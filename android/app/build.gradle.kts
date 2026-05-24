@@ -20,6 +20,10 @@ android {
         jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
+    tasks.withType<JavaCompile>().configureEach {
+        options.compilerArgs.addAll(listOf("-Xlint:deprecation", "-Xlint:unchecked"))
+    }
+
     defaultConfig {
         applicationId = "com.appone.qnote"
         minSdk = 24

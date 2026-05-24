@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
+import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
 
@@ -15,12 +17,14 @@ class AiExtractResult {
   final Map<String, dynamic> time;
   final Map<String, dynamic> fields;
   final String notes;
+  final List<TagEntry> tagEntries;
 
   const AiExtractResult({
     this.shortcutId,
     required this.time,
     required this.fields,
     required this.notes,
+    this.tagEntries = const [],
   });
 }
 
@@ -41,36 +45,38 @@ Future<AiExtractResult?> extractExistingRecord({
     final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
     final schemaContext = shortcuts.map((s) {
       final root = <String, dynamic>{'id': s.id, 'name': s.name};
-      if (s.hasPopup) {
-        if (s.fields.isNotEmpty) {
-          root['fields'] = s.fields.map((f) => {
+      if (s.fields.isNotEmpty) {
+        root['fields'] = s.fields.map((f) => {
+          'id': f.id,
+          'name': f.label,
+          'type': f.type,
+          if (f.options.isNotEmpty) 'options': f.options
+        }).toList();
+      }
+      if (s.hasPopup && s.categories != null && s.categories!.isNotEmpty) {
+        root['categories'] = s.categories!.map((c) => {
+          'id': c.id,
+          'name': c.name,
+          'fields': c.fields.map((f) => {
             'id': f.id,
             'name': f.label,
             'type': f.type,
             if (f.options.isNotEmpty) 'options': f.options
-          }).toList();
-        }
-        if (s.categories != null && s.categories!.isNotEmpty) {
-          root['categories'] = s.categories!.map((c) => {
-            'id': c.id,
-            'name': c.name,
-            'fields': c.fields.map((f) => {
-              'id': f.id,
-              'name': f.label,
-              'type': f.type,
-              if (f.options.isNotEmpty) 'options': f.options
-            }).toList()
-          }).toList();
-        }
+          }).toList()
+        }).toList();
       }
       return root;
     }).toList();
 
     final weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    final now = DateTime.now();
     final contextStr = {
-      'date': DateFormat('yyyy-MM-dd').format(recordTime),
-      'time': DateFormat('HH:mm').format(recordTime),
-      'weekday': weekdays[recordTime.weekday - 1],
+      'today': {
+        'date': DateFormat('yyyy-MM-dd').format(now),
+        'time': DateFormat('HH:mm').format(now),
+        'weekday': weekdays[now.weekday - 1],
+      },
+      'recordDate': DateFormat('yyyy-MM-dd').format(recordTime),
     };
 
     final aiTempsAsync = ref.read(aiTemperaturesProvider);
@@ -92,15 +98,44 @@ Future<AiExtractResult?> extractExistingRecord({
     );
 
     if (results.isNotEmpty) {
-      final result = results.first;
-      final fields = Map<String, dynamic>.from(result['fields'] as Map? ?? {});
-      final shortcutId = result['shortcutId'] as String?;
-      final foundShortcut = findShortcutById(shortcutId, shortcuts);
+      final tagEntriesList = <TagEntry>[];
+      for (final result in results) {
+        final shortcutId = result['shortcutId'] as String?;
+        final foundShortcut = findShortcutById(shortcutId, shortcuts);
+        final fields = Map<String, dynamic>.from(result['fields'] as Map? ?? {});
+        final timeRaw = result['time'];
+        String? timeStr;
+        if (timeRaw is Map && timeRaw.isNotEmpty) {
+          final parts = <String>[];
+          if (timeRaw['start'] != null) {
+            final prefix = timeRaw['startOffset'] != null && (timeRaw['startOffset'] as int) < 0 ? '-' : '';
+            parts.add('$prefix${timeRaw['start']}');
+          }
+          if (timeRaw['end'] != null) {
+            final prefix = timeRaw['endOffset'] != null && (timeRaw['endOffset'] as int) < 0 ? '-' : '';
+            parts.add('$prefix${timeRaw['end']}');
+          }
+          timeStr = parts.isNotEmpty ? parts.join('~') : null;
+        }
+        tagEntriesList.add(TagEntry(
+          id: shortcutId ?? foundShortcut?.id ?? 'other',
+          name: foundShortcut?.name ?? shortcutId ?? '其他',
+          fields: fields,
+          time: timeStr,
+        ));
+      }
+
+      final firstResult = results.first;
+      final firstFields = Map<String, dynamic>.from(firstResult['fields'] as Map? ?? {});
+      final firstShortcutId = firstResult['shortcutId'] as String?;
+      final firstShortcut = findShortcutById(firstShortcutId, shortcuts);
+
       return AiExtractResult(
-        shortcutId: shortcutId,
-        time: Map<String, dynamic>.from(result['time'] as Map? ?? {}),
-        fields: fields,
-        notes: cleanExtractedNotes(result['notes'] as String? ?? '', fields, foundShortcut),
+        shortcutId: firstShortcutId,
+        time: Map<String, dynamic>.from(firstResult['time'] as Map? ?? {}),
+        fields: firstFields,
+        notes: cleanExtractedNotes(firstResult['notes'] as String? ?? '', firstFields, firstShortcut),
+        tagEntries: tagEntriesList,
       );
     }
     return null;
@@ -117,6 +152,11 @@ Future<AiExtractResult?> extractExistingRecord({
     }
     if (context.mounted) {
       Toast.error(context, errorMessage);
+    }
+    return null;
+  } on NoUsefulInfoException {
+    if (context.mounted) {
+      Toast.warning(context, '未提取到有用信息');
     }
     return null;
   } catch (e, stackTrace) {
@@ -137,7 +177,7 @@ Future<AiExtractResult?> extractExistingRecord({
 ShortcutConfig? findShortcutById(String? shortcutId, List<ShortcutConfig> shortcuts) {
   if (shortcutId == null) return null;
   try {
-    return shortcuts.firstWhere((s) => s.id == shortcutId);
+    return shortcuts.firstWhere((s) => s.id == shortcutId || s.name == shortcutId);
   } catch (_) {
     return null;
   }

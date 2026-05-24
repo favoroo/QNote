@@ -8,7 +8,7 @@ import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/date_color_mark.dart';
-import 'package:qnote_flutter/models/shortcut_field.dart';
+import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
@@ -27,7 +27,8 @@ class DiaryPage extends ConsumerStatefulWidget {
   ConsumerState<DiaryPage> createState() => _DiaryPageState();
 }
 
-class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateMixin, WidgetsBindingObserver {
+class _DiaryPageState extends ConsumerState<DiaryPage>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   static const int _itemsPerDay = 49;
   static const double _dayHeight = 2384.0;
   static const double _dividerHeight = 80.0;
@@ -35,7 +36,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
 
   late DateTime _today;
   late DateTime _windowStartDate;
-  int _windowDays = 7;
+  final int _windowDays = 7;
   late ScrollController _scrollController;
   final GlobalKey _viewportKey = GlobalKey();
   // GlobalKey placed on the current-time node so we can read its actual RenderBox position
@@ -80,9 +81,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     _itemContexts.clear();
     _itemHeights.clear();
 
-    _scrollController = ScrollController(
-      keepScrollOffset: false,
-    );
+    _scrollController = ScrollController(keepScrollOffset: false);
     _scrollController.addListener(_onScroll);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -112,7 +111,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     DateTime targetTime,
     Map<String, List<DiaryRecord>> recordsByDate,
   ) {
-    final targetDate = DateTime(targetTime.year, targetTime.month, targetTime.day);
+    final targetDate = DateTime(
+      targetTime.year,
+      targetTime.month,
+      targetTime.day,
+    );
     final dayOffset = _dateToDayOffset(targetDate);
     final nodeIndex = targetTime.hour * 2 + (targetTime.minute >= 30 ? 1 : 0);
 
@@ -167,22 +170,31 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     if (bestCtx != null && bestCtx.mounted) {
       final renderBox = bestCtx.findRenderObject() as RenderBox?;
       if (renderBox != null && renderBox.hasSize) {
-        final viewportBox = _viewportKey.currentContext?.findRenderObject() as RenderBox?;
+        final viewportBox =
+            _viewportKey.currentContext?.findRenderObject() as RenderBox?;
         if (viewportBox != null && viewportBox.hasSize) {
           final viewportHeight = viewportBox.size.height;
           final nodeHeight = renderBox.size.height;
           final viewportTopOnScreen = viewportBox.localToGlobal(Offset.zero).dy;
           final nodeTopOnScreen = renderBox.localToGlobal(Offset.zero).dy;
           final scrollOffset = _scrollController.offset;
-          final nodeTopInScroll = scrollOffset + (nodeTopOnScreen - viewportTopOnScreen);
-          final preciseTarget = (nodeTopInScroll - (viewportHeight - nodeHeight) / 2)
-              .clamp(0.0, _scrollController.position.maxScrollExtent);
+          final nodeTopInScroll =
+              scrollOffset + (nodeTopOnScreen - viewportTopOnScreen);
+          final preciseTarget =
+              (nodeTopInScroll - (viewportHeight - nodeHeight) / 2).clamp(
+                0.0,
+                _scrollController.position.maxScrollExtent,
+              );
 
           _scrollController.jumpTo(preciseTarget);
         }
       }
 
-      ref.read(selectedDateProvider.notifier).state = DateTime(now.year, now.month, now.day);
+      ref.read(selectedDateProvider.notifier).state = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      );
 
       Future.delayed(const Duration(milliseconds: 800), () {
         if (mounted) {
@@ -195,7 +207,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     double estimatedOffset = _estimateOffsetForIndex(targetIndex);
     final viewportHeight = _scrollController.position.viewportDimension;
     final maxScroll = _scrollController.position.maxScrollExtent;
-    final targetOffset = (estimatedOffset - viewportHeight / 2).clamp(0.0, maxScroll);
+    final targetOffset = (estimatedOffset - viewportHeight / 2).clamp(
+      0.0,
+      maxScroll,
+    );
 
     _scrollController.jumpTo(targetOffset);
 
@@ -206,7 +221,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
         }
       });
     } else {
-      ref.read(selectedDateProvider.notifier).state = DateTime(now.year, now.month, now.day);
+      ref.read(selectedDateProvider.notifier).state = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      );
       Future.delayed(const Duration(milliseconds: 800), () {
         if (mounted) {
           _isProgrammaticScrolling = false;
@@ -248,13 +267,18 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
 
     double estimatedOffset;
     if (attempts == 0 && recordsByDate != null && targetTime != null) {
-      estimatedOffset = _estimateOffsetForTimeWithRecords(targetTime, recordsByDate);
+      estimatedOffset = _estimateOffsetForTimeWithRecords(
+        targetTime,
+        recordsByDate,
+      );
     } else {
       estimatedOffset = _estimateOffsetForIndex(targetIndex);
     }
     final viewportHeight = _scrollController.position.viewportDimension;
-    final targetOffset = (estimatedOffset - viewportHeight * alignment)
-        .clamp(0.0, _scrollController.position.maxScrollExtent);
+    final targetOffset = (estimatedOffset - viewportHeight * alignment).clamp(
+      0.0,
+      _scrollController.position.maxScrollExtent,
+    );
 
     _scrollController.jumpTo(targetOffset);
 
@@ -273,7 +297,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     });
   }
 
-  void _scrollToContext(BuildContext targetContext, {
+  void _scrollToContext(
+    BuildContext targetContext, {
     bool smooth = true,
     double alignment = 0.5,
   }) {
@@ -291,7 +316,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
       return;
     }
 
-    final viewportBox = _viewportKey.currentContext?.findRenderObject() as RenderBox?;
+    final viewportBox =
+        _viewportKey.currentContext?.findRenderObject() as RenderBox?;
     if (viewportBox == null || !viewportBox.hasSize) {
       Scrollable.ensureVisible(
         targetContext,
@@ -308,9 +334,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     final viewportTopOnScreen = viewportBox.localToGlobal(Offset.zero).dy;
     final nodeTopOnScreen = renderBox.localToGlobal(Offset.zero).dy;
     final scrollOffset = _scrollController.offset;
-    final nodeTopInScroll = scrollOffset + (nodeTopOnScreen - viewportTopOnScreen);
-    final preciseTarget = (nodeTopInScroll - (viewportHeight - nodeHeight) * alignment)
-        .clamp(0.0, _scrollController.position.maxScrollExtent);
+    final nodeTopInScroll =
+        scrollOffset + (nodeTopOnScreen - viewportTopOnScreen);
+    final preciseTarget =
+        (nodeTopInScroll - (viewportHeight - nodeHeight) * alignment).clamp(
+          0.0,
+          _scrollController.position.maxScrollExtent,
+        );
 
     if ((scrollOffset - preciseTarget).abs() < 5.0) {
       _finishProgrammaticScroll();
@@ -318,15 +348,17 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     }
 
     if (smooth) {
-      _scrollController.animateTo(
-        preciseTarget,
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeOutCubic,
-      ).then((_) {
-        if (mounted) {
-          _finishProgrammaticScroll();
-        }
-      });
+      _scrollController
+          .animateTo(
+            preciseTarget,
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeOutCubic,
+          )
+          .then((_) {
+            if (mounted) {
+              _finishProgrammaticScroll();
+            }
+          });
     } else {
       _scrollController.jumpTo(preciseTarget);
       _finishProgrammaticScroll();
@@ -336,19 +368,23 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   void _fallbackScroll(int targetIndex, bool smooth, double alignment) {
     final estimatedOffset = _estimateOffsetForIndex(targetIndex);
     final viewportHeight = _scrollController.position.viewportDimension;
-    final targetOffset = (estimatedOffset - viewportHeight * alignment)
-        .clamp(0.0, _scrollController.position.maxScrollExtent);
+    final targetOffset = (estimatedOffset - viewportHeight * alignment).clamp(
+      0.0,
+      _scrollController.position.maxScrollExtent,
+    );
 
     if (smooth) {
-      _scrollController.animateTo(
-        targetOffset,
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeOutCubic,
-      ).then((_) {
-        if (mounted) {
-          _finishProgrammaticScroll();
-        }
-      });
+      _scrollController
+          .animateTo(
+            targetOffset,
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeOutCubic,
+          )
+          .then((_) {
+            if (mounted) {
+              _finishProgrammaticScroll();
+            }
+          });
     } else {
       _scrollController.jumpTo(targetOffset);
       _finishProgrammaticScroll();
@@ -371,7 +407,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     if (dayOffset < 0 || dayOffset >= _windowDays) {
       _ensureDateInWindow(now);
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _scrollToCurrentTime(smooth: smooth, recordsByDate: recordsByDate);
+        if (mounted)
+          _scrollToCurrentTime(smooth: smooth, recordsByDate: recordsByDate);
       });
       return;
     }
@@ -388,7 +425,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
       targetTime: now,
     );
 
-    ref.read(selectedDateProvider.notifier).state = DateTime(now.year, now.month, now.day);
+    ref.read(selectedDateProvider.notifier).state = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    );
   }
 
   void _scrollToTime(DateTime targetTime, {bool smooth = true}) {
@@ -407,18 +448,18 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     final nodeIndex = targetTime.hour * 2 + (targetTime.minute >= 30 ? 1 : 0);
     final targetIndex = dayOffset * _itemsPerDay + (nodeIndex + 1);
 
-    _scrollToTarget(
-      targetIndex: targetIndex,
-      smooth: smooth,
-      alignment: 0.5,
-    );
+    _scrollToTarget(targetIndex: targetIndex, smooth: smooth, alignment: 0.5);
 
-    ref.read(selectedDateProvider.notifier).state = DateTime(targetTime.year, targetTime.month, targetTime.day);
+    ref.read(selectedDateProvider.notifier).state = DateTime(
+      targetTime.year,
+      targetTime.month,
+      targetTime.day,
+    );
   }
 
   void _handleNodeTap(DateTime date, TimeOfDay time) {
     final selectEvent = ref.read(diaryInputTimeProvider);
-    
+
     if (selectEvent == null || selectEvent.endTime == null) {
       if (selectEvent != null &&
           _isSameDay(selectEvent.date, date) &&
@@ -426,10 +467,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
           selectEvent.time.minute == time.minute) {
         ref.read(diaryInputTimeProvider.notifier).state = null;
       } else {
-        ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
-          time,
-          date: date,
-        );
+        ref.read(diaryInputTimeProvider.notifier).state =
+            TimelineTimeSelectEvent(time, date: date);
       }
       return;
     }
@@ -462,16 +501,26 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     if (clickedDateTime.isAtSameMomentAs(selectionStart)) {
       // 1. 点击开始时间节点：取消全部勾选
       ref.read(diaryInputTimeProvider.notifier).state = null;
-    } else if (clickedDateTime.isAfter(selectionStart) && !clickedDateTime.isAfter(selectionEnd)) {
+    } else if (clickedDateTime.isAfter(selectionStart) &&
+        !clickedDateTime.isAfter(selectionEnd)) {
       // 2. 点击范围内的某个节点（排除开始节点）：将该节点及之后的节点取消勾选，即新范围是 [开始, 点击节点 - 30分钟]
-      final newEndDateTime = clickedDateTime.subtract(const Duration(minutes: 30));
-      final newEndTime = TimeOfDay(hour: newEndDateTime.hour, minute: newEndDateTime.minute);
-      
+      final newEndDateTime = clickedDateTime.subtract(
+        const Duration(minutes: 30),
+      );
+      final newEndTime = TimeOfDay(
+        hour: newEndDateTime.hour,
+        minute: newEndDateTime.minute,
+      );
+
       ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
         selectEvent.time,
         endTime: newEndTime,
         date: selectEvent.date,
-        endDate: DateTime(newEndDateTime.year, newEndDateTime.month, newEndDateTime.day),
+        endDate: DateTime(
+          newEndDateTime.year,
+          newEndDateTime.month,
+          newEndDateTime.day,
+        ),
       );
     } else if (clickedDateTime.isAfter(selectionEnd)) {
       // 3. 点击结束节点之后的节点：将范围延长到该节点，即新范围是 [开始, 点击节点]
@@ -535,7 +584,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   }
 
   void _onScroll() {
-    if (_isShiftingWindow || _isProgrammaticScrolling || !_scrollController.hasClients) return;
+    if (_isShiftingWindow ||
+        _isProgrammaticScrolling ||
+        !_scrollController.hasClients)
+      return;
 
     final offset = _scrollController.offset;
     final maxScroll = _scrollController.position.maxScrollExtent;
@@ -550,10 +602,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     // Determine currently visible date based on the exact center of the viewport
     final viewportCtx = _viewportKey.currentContext;
     if (viewportCtx != null) {
-      final RenderBox? viewportBox = viewportCtx.findRenderObject() as RenderBox?;
+      final RenderBox? viewportBox =
+          viewportCtx.findRenderObject() as RenderBox?;
       if (viewportBox != null && viewportBox.hasSize) {
         // Find the Y coordinate for the center of the viewport on screen
-        final double centerYOnScreen = viewportBox.localToGlobal(Offset(0, viewportBox.size.height / 2)).dy;
+        final double centerYOnScreen = viewportBox
+            .localToGlobal(Offset(0, viewportBox.size.height / 2))
+            .dy;
 
         int? centerIndex;
         // Convert to list to avoid ConcurrentModificationError during iteration
@@ -646,7 +701,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     final month = date.month.toString().padLeft(2, '0');
     final day = date.day.toString().padLeft(2, '0');
     final weekday = weekDays[date.weekday - 1];
-    return '${year}年${month}月${day}日 $weekday';
+    return '$year年$month月$day日 $weekday';
   }
 
   String _formatDividerDate(DateTime date) {
@@ -681,11 +736,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
 
     final targetIndex = dayOffset * _itemsPerDay;
 
-    _scrollToTarget(
-      targetIndex: targetIndex,
-      smooth: true,
-      alignment: 0.0,
-    );
+    _scrollToTarget(targetIndex: targetIndex, smooth: true, alignment: 0.0);
   }
 
   void _ensureDateInWindow(DateTime date) {
@@ -825,7 +876,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   }
 
   void _navigateToSearch() {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SearchView()));
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const SearchView()));
   }
 
   void _navigateToBatchManage() {
@@ -879,53 +932,45 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
       DateTime? newStartTime = record.startTime;
       DateTime? newEndTime = record.endTime;
       DateTime newTime = record.time;
-      String newContent = result.notes.isNotEmpty ? result.notes : record.content;
-      Map<String, dynamic>? newBodyState = record.bodyState != null ? Map.from(record.bodyState!) : null;
+      String newContent = record.content;
+      Map<String, dynamic>? newBodyState = record.bodyState != null
+          ? Map.from(record.bodyState!)
+          : null;
+      List<TagEntry> newTagEntries = result.tagEntries.isNotEmpty
+          ? result.tagEntries
+          : record.tagEntries;
 
-      if (foundShortcut != null) {
+      if (result.tagEntries.isNotEmpty) {
+        newTags = result.tagEntries.map((e) => e.name).toList();
+        newDisplayTag = result.tagEntries.first.name;
+        newBodyState = Map<String, dynamic>.from(
+          result.tagEntries.first.fields,
+        );
+      } else if (foundShortcut != null) {
         if (!newTags.contains(foundShortcut.name)) {
-          newTags = [foundShortcut.name, ...newTags.where((t) => t != newDisplayTag)];
+          newTags = [
+            foundShortcut.name,
+            ...newTags.where((t) => t != newDisplayTag),
+          ];
         }
         newDisplayTag = foundShortcut.name;
-
-        if (result.fields.isNotEmpty) {
-          List<ShortcutField> fieldsToProcess = foundShortcut.fields;
-          Map<String, dynamic> finalFormValues = Map.from(result.fields);
-          String categoryPrefix = '';
-
-          if (foundShortcut.categories != null && foundShortcut.categories!.isNotEmpty) {
-            final currentCategory = foundShortcut.categories!.firstWhere(
-              (c) => c.id == result.fields['_category'],
-              orElse: () => foundShortcut.categories!.first,
-            );
-            fieldsToProcess = currentCategory.fields;
-            categoryPrefix = '${currentCategory.name} - ';
-          }
-
-          final details = fieldsToProcess.map((f) {
-            final val = finalFormValues[f.id];
-            if (val == null) return null;
-            if (val is List) return '${f.label}：${val.join('、')}';
-            return '${f.label}：$val';
-          }).where((s) => s != null).join('，');
-
-          if (details.isNotEmpty) {
-            final fullDetails = categoryPrefix.isNotEmpty ? '$categoryPrefix$details' : details;
-            final notesText = result.notes.isNotEmpty ? result.notes : '';
-            newContent = '$fullDetails${notesText.isNotEmpty ? '\n备注：$notesText' : ''}';
-          }
-        }
       }
 
       if (result.time.isNotEmpty) {
-        final baseDate = DateTime(record.time.year, record.time.month, record.time.day);
+        final baseDate = DateTime(
+          record.time.year,
+          record.time.month,
+          record.time.day,
+        );
         if (result.time['start'] != null) {
           final parts = (result.time['start'] as String).split(':');
           if (parts.length >= 2) {
             final hour = int.tryParse(parts[0]) ?? record.time.hour;
             final minute = int.tryParse(parts[1]) ?? record.time.minute;
             final startOffset = result.time['startOffset'] as int? ?? 0;
-            final dt = baseDate.add(Duration(days: startOffset, hours: hour, minutes: minute));
+            final dt = baseDate.add(
+              Duration(days: startOffset, hours: hour, minutes: minute),
+            );
             newTime = dt;
             newStartTime = dt;
           }
@@ -936,13 +981,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
             final hour = int.tryParse(parts[0]) ?? 0;
             final minute = int.tryParse(parts[1]) ?? 0;
             final endOffset = result.time['endOffset'] as int? ?? 0;
-            newEndTime = baseDate.add(Duration(days: endOffset, hours: hour, minutes: minute));
+            newEndTime = baseDate.add(
+              Duration(days: endOffset, hours: hour, minutes: minute),
+            );
           }
         }
-      }
-
-      if (result.fields.isNotEmpty) {
-        newBodyState = Map<String, dynamic>.from(result.fields);
       }
 
       final updated = record.copyWith(
@@ -953,6 +996,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
         displayTag: newDisplayTag,
         content: newContent,
         bodyState: newBodyState,
+        tagEntries: newTagEntries,
         updatedAt: DateTime.now(),
       );
 
@@ -1008,16 +1052,33 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   void _createUndoController(String recordId) {
     // Dispose existing if any
     _undoControllers[recordId]?.dispose();
-    
+
     final controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 5),
     );
     controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
+        final preRecord = _undoRecords[recordId];
+        final currentRecords = ref.read(diaryListProvider).valueOrNull;
+        DiaryRecord? currentRecord;
+        if (currentRecords != null) {
+          try {
+            currentRecord = currentRecords.firstWhere((r) => r.id == recordId);
+          } catch (_) {}
+        }
+
         _undoControllers.remove(recordId)?.dispose();
         _undoRecords.remove(recordId);
-        if (mounted) setState(() {});
+
+        if (mounted) {
+          setState(() {});
+          if (preRecord != null &&
+              currentRecord != null &&
+              currentRecord.time != preRecord.time) {
+            _scrollToTime(currentRecord.time, smooth: true);
+          }
+        }
       }
     });
     _undoControllers[recordId] = controller;
@@ -1085,14 +1146,17 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     });
 
     if (mounted) {
-      Toast.info(context, '开始提取 ${untaggedRecords.length} 条记录${allDates ? '（全部日期）' : ''}');
+      Toast.info(
+        context,
+        '开始提取 ${untaggedRecords.length} 条记录${allDates ? '（全部日期）' : ''}',
+      );
     }
 
     for (int i = 0; i < untaggedRecords.length; i++) {
       if (_batchExtractCancelled || !mounted) break;
 
       final record = untaggedRecords[i];
-      
+
       // Re-read the record from provider in case it was modified
       final currentRecords = ref.read(diaryListProvider).valueOrNull;
       DiaryRecord currentRecord = record;
@@ -1101,9 +1165,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
           currentRecord = currentRecords.firstWhere((r) => r.id == record.id);
         } catch (_) {}
       }
-      
+
       // Skip if already tagged (might have been manually tagged during batch)
-      if (currentRecord.displayTag.isNotEmpty && currentRecord.displayTag != '记录') {
+      if (currentRecord.displayTag.isNotEmpty &&
+          currentRecord.displayTag != '记录') {
         setState(() {
           _batchExtractCompleted = i + 1;
         });
@@ -1112,7 +1177,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
 
       // Scroll to the record being extracted
       _scrollToTime(currentRecord.time, smooth: true);
-      
+
       // Small delay to let scroll animation settle
       await Future.delayed(const Duration(milliseconds: 500));
       if (!mounted || _batchExtractCancelled) break;
@@ -1142,7 +1207,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
         }
       });
       if (cancelled) {
-        Toast.info(context, '已停止提取（完成 $_batchExtractCompleted/$_batchExtractTotal）');
+        Toast.info(
+          context,
+          '已停止提取（完成 $_batchExtractCompleted/$_batchExtractTotal）',
+        );
       } else {
         Toast.success(context, '批量提取完成（$_batchExtractTotal 条）');
       }
@@ -1152,7 +1220,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   /// Long press on smart extract button to select model
   Future<void> _handleSmartExtractLongPress() async {
     if (_isBatchExtracting) return;
-    
+
     List<AiConfig> configs = [];
     try {
       configs = await ref.read(aiConfigListProvider.future);
@@ -1169,13 +1237,20 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
 
     final selectedConfig = await showDialog<AiConfig>(
       context: context,
-      builder: (context) => _TimelineModelDialog(configs: configs, selectedId: currentModelId),
+      builder: (context) =>
+          _TimelineModelDialog(configs: configs, selectedId: currentModelId),
     );
 
     if (selectedConfig != null && mounted) {
-      await AiRoleService.instance.saveRoles(roles.copyWith(timelineOptimization: selectedConfig.id));
+      await AiRoleService.instance.saveRoles(
+        roles.copyWith(timelineOptimization: selectedConfig.id),
+      );
       if (mounted) {
-        Toast.success(context, '已切换：${selectedConfig.name}', duration: const Duration(seconds: 1));
+        Toast.success(
+          context,
+          '已切换：${selectedConfig.name}',
+          duration: const Duration(seconds: 1),
+        );
       }
     }
   }
@@ -1202,7 +1277,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                   end: Alignment.bottomRight,
                 )
               : null,
-          color: _isBatchExtracting ? null : theme.colorScheme.primary.withValues(alpha: 0.1),
+          color: _isBatchExtracting
+              ? null
+              : theme.colorScheme.primary.withValues(alpha: 0.1),
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
@@ -1266,13 +1343,20 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
 
     final selectedConfig = await showDialog<AiConfig>(
       context: context,
-      builder: (context) => _TimelineModelDialog(configs: configs, selectedId: currentModelId),
+      builder: (context) =>
+          _TimelineModelDialog(configs: configs, selectedId: currentModelId),
     );
 
     if (selectedConfig != null && mounted) {
-      await AiRoleService.instance.saveRoles(roles.copyWith(timelineOptimization: selectedConfig.id));
+      await AiRoleService.instance.saveRoles(
+        roles.copyWith(timelineOptimization: selectedConfig.id),
+      );
       if (mounted) {
-        Toast.success(context, '已切换：${selectedConfig.name}', duration: const Duration(seconds: 1));
+        Toast.success(
+          context,
+          '已切换：${selectedConfig.name}',
+          duration: const Duration(seconds: 1),
+        );
       }
     }
   }
@@ -1329,7 +1413,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
               ),
               child: const Text('确认保存'),
             ),
@@ -1342,7 +1429,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   @override
   Widget build(BuildContext context) {
     ref.listen<DateTime>(selectedDateProvider, (previous, next) {
-      if (next != null && !_isProgrammaticScrolling) {
+      if (!_isProgrammaticScrolling) {
         _goToDate(next);
       }
     });
@@ -1399,28 +1486,50 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                     const SizedBox(width: 4),
                     IconButton(
                       icon: const Icon(Icons.menu),
-                      onPressed: () => rootScaffoldKey.currentState?.openDrawer(),
+                      onPressed: () =>
+                          rootScaffoldKey.currentState?.openDrawer(),
                       padding: const EdgeInsets.symmetric(horizontal: 6),
                       constraints: const BoxConstraints(),
                     ),
                     const SizedBox(width: 2),
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.04),
-                        shape: BoxShape.circle,
-                      ),
-                      child: IconButton(
-                        icon: const Icon(
-                          Icons.palette_outlined,
-                          size: 18,
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withValues(
+                              alpha: 0.04,
+                            ),
+                            shape: BoxShape.circle,
+                          ),
+                          child: IconButton(
+                            icon: const Icon(Icons.palette_outlined, size: 18),
+                            color: theme.colorScheme.primary,
+                            onPressed: _showColorMarkDialog,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
                         ),
-                        color: theme.colorScheme.primary,
-                        onPressed: _showColorMarkDialog,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
+                        if (currentColorMark != null)
+                          Positioned(
+                            right: -1,
+                            top: -1,
+                            child: Container(
+                              width: 9,
+                              height: 9,
+                              decoration: BoxDecoration(
+                                color: _hexToColor(currentColorMark.color),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: theme.colorScheme.surface,
+                                  width: 1.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                     Expanded(
                       child: GestureDetector(
@@ -1429,29 +1538,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                           padding: const EdgeInsets.symmetric(horizontal: 8.0),
                           child: FittedBox(
                             fit: BoxFit.scaleDown,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                if (currentColorMark != null) ...[
-                                  Container(
-                                    width: 8,
-                                    height: 8,
-                                    decoration: BoxDecoration(
-                                      color: _hexToColor(currentColorMark.color),
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                ],
-                                Text(
-                                  _formatDateTitle(selectedDate),
-                                  textAlign: TextAlign.center,
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                              ],
+                            child: Text(
+                              _formatDateTitle(selectedDate),
+                              textAlign: TextAlign.center,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
                             ),
                           ),
                         ),
@@ -1461,7 +1554,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.04),
+                        color: theme.colorScheme.primary.withValues(
+                          alpha: 0.04,
+                        ),
                         shape: BoxShape.circle,
                       ),
                       child: IconButton(
@@ -1494,9 +1589,26 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                     final Map<String, List<DiaryRecord>> recordsByDate = {};
                     for (final r in allRecords) {
                       if (r.isDeleted) continue;
-                      final key = '${r.time.year}-${r.time.month}-${r.time.day}';
+                      // Use original time if in undoable state to keep position in list
+                      final preRecord = _undoRecords[r.id];
+                      final displayTime = preRecord != null
+                          ? preRecord.time
+                          : r.time;
+                      final key =
+                          '${displayTime.year}-${displayTime.month}-${displayTime.day}';
                       recordsByDate.putIfAbsent(key, () => []).add(r);
                     }
+
+                    // Sort each day's records by display time
+                    recordsByDate.forEach((key, list) {
+                      list.sort((a, b) {
+                        final preA = _undoRecords[a.id];
+                        final displayTimeA = preA != null ? preA.time : a.time;
+                        final preB = _undoRecords[b.id];
+                        final displayTimeB = preB != null ? preB.time : b.time;
+                        return displayTimeA.compareTo(displayTimeB);
+                      });
+                    });
 
                     return Stack(
                       children: [
@@ -1506,7 +1618,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                           bottom: 0,
                           child: Container(
                             width: 2,
-                            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+                            color: theme.colorScheme.outlineVariant.withValues(
+                              alpha: 0.4,
+                            ),
                           ),
                         ),
                         GestureDetector(
@@ -1515,214 +1629,368 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                           onLongPressMoveUpdate: _handleDragUpdate,
                           onLongPressEnd: _handleDragEnd,
                           child: ListView.builder(
-                        cacheExtent: 1500,
-                        controller: _scrollController,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        itemCount: _windowDays * _itemsPerDay,
-                        itemBuilder: (context, i) {
-                          final dayOffset = i ~/ _itemsPerDay;
-                          final subIndex = i % _itemsPerDay;
-                          final date = _indexToDate(dayOffset);
+                            cacheExtent: 1500,
+                            controller: _scrollController,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                            itemCount: _windowDays * _itemsPerDay,
+                            itemBuilder: (context, i) {
+                              final dayOffset = i ~/ _itemsPerDay;
+                              final subIndex = i % _itemsPerDay;
+                              final date = _indexToDate(dayOffset);
 
-                          Widget childWidget;
+                              Widget childWidget;
 
-                          if (subIndex == 0) {
-                            childWidget = Container(
-                              key: ValueKey('div_${dayOffset}_${date.millisecondsSinceEpoch}'),
-                              height: 80.0,
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              alignment: Alignment.center,
-                              child: Row(
-                                children: [
-                                  Expanded(child: Divider(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5))),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                                    child: Text(
-                                      _formatDividerDate(date),
-                                      style: theme.textTheme.titleSmall?.copyWith(
-                                        color: _isToday(date) ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
+                              if (subIndex == 0) {
+                                childWidget = Container(
+                                  key: ValueKey(
+                                    'div_${dayOffset}_${date.millisecondsSinceEpoch}',
                                   ),
-                                  Expanded(child: Divider(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5))),
-                                ],
-                              ),
-                            );
-                          } else {
-                            final nodeIndex = subIndex - 1;
-                            final time = TimeOfDay(hour: nodeIndex ~/ 2, minute: (nodeIndex % 2) * 30);
-                            final currentMinutes = time.hour * 60 + time.minute;
-                            final nextMinutes = currentMinutes + 30;
-                            final nodeStartDateTime = DateTime(date.year, date.month, date.day, time.hour, time.minute);
-
-                            final dateKey = '${date.year}-${date.month}-${date.day}';
-                            final dayRecords = recordsByDate[dateKey] ?? const [];
-                            final recordsInInterval = dayRecords.where((r) {
-                              final rMinutes = r.time.hour * 60 + r.time.minute;
-                              if (nodeIndex == 47) {
-                                return rMinutes >= currentMinutes;
-                              } else {
-                                return rMinutes >= currentMinutes && rMinutes < nextMinutes;
-                              }
-                            }).toList();
-
-                            final isUserSelected = selectEvent != null;
-
-                            bool isStandardNodeSelected = false;
-                            if (isUserSelected) {
-                              final selectionStart = DateTime(
-                                selectEvent.date.year,
-                                selectEvent.date.month,
-                                selectEvent.date.day,
-                                selectEvent.time.hour,
-                                selectEvent.time.minute,
-                              );
-
-                              if (selectEvent.endTime == null) {
-                                isStandardNodeSelected = nodeStartDateTime.isAtSameMomentAs(selectionStart);
-                              } else {
-                                final selEndDate = selectEvent.endDate ?? selectEvent.date;
-                                final selectionEnd = DateTime(
-                                  selEndDate.year,
-                                  selEndDate.month,
-                                  selEndDate.day,
-                                  selectEvent.endTime!.hour,
-                                  selectEvent.endTime!.minute,
+                                  height: 80.0,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Divider(
+                                          color: theme
+                                              .colorScheme
+                                              .outlineVariant
+                                              .withValues(alpha: 0.5),
+                                        ),
+                                      ),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                        ),
+                                        child: Text(
+                                          _formatDividerDate(date),
+                                          style: theme.textTheme.titleSmall
+                                              ?.copyWith(
+                                                color: _isToday(date)
+                                                    ? theme.colorScheme.primary
+                                                    : theme
+                                                          .colorScheme
+                                                          .onSurfaceVariant,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Divider(
+                                          color: theme
+                                              .colorScheme
+                                              .outlineVariant
+                                              .withValues(alpha: 0.5),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 );
-                                isStandardNodeSelected = !nodeStartDateTime.isBefore(selectionStart) &&
-                                    !nodeStartDateTime.isAfter(selectionEnd);
-                              }
-                            }
+                              } else {
+                                final nodeIndex = subIndex - 1;
+                                final time = TimeOfDay(
+                                  hour: nodeIndex ~/ 2,
+                                  minute: (nodeIndex % 2) * 30,
+                                );
+                                final currentMinutes =
+                                    time.hour * 60 + time.minute;
+                                final nextMinutes = currentMinutes + 30;
+                                final nodeStartDateTime = DateTime(
+                                  date.year,
+                                  date.month,
+                                  date.day,
+                                  time.hour,
+                                  time.minute,
+                                );
 
-                            bool isDraggedSelected = false;
-                            if (_dragStartIndex != null && _dragEndIndex != null) {
-                              final start = math.min(_dragStartIndex!, _dragEndIndex!);
-                              final end = math.max(_dragStartIndex!, _dragEndIndex!);
-                              isDraggedSelected = i >= start && i <= end;
-                            }
+                                final dateKey =
+                                    '${date.year}-${date.month}-${date.day}';
+                                final dayRecords =
+                                    recordsByDate[dateKey] ?? const [];
+                                final recordsInInterval = dayRecords.where((r) {
+                                  final preRecord = _undoRecords[r.id];
+                                  final displayTime = preRecord != null
+                                      ? preRecord.time
+                                      : r.time;
+                                  final rMinutes =
+                                      displayTime.hour * 60 +
+                                      displayTime.minute;
+                                  if (nodeIndex == 47) {
+                                    return rMinutes >= currentMinutes;
+                                  } else {
+                                    return rMinutes >= currentMinutes &&
+                                        rMinutes < nextMinutes;
+                                  }
+                                }).toList();
 
-                            final bool finalIsSelected = isDraggedSelected || isStandardNodeSelected;
-                            final bool isMultiSelect = isDraggedSelected || (isUserSelected && selectEvent.endTime != null);
+                                final isUserSelected = selectEvent != null;
 
-                            final inputMinutes = currentInputTime.hour * 60 + currentInputTime.minute;
-                            final now = TimeOfDay.now();
-                            final nowMinutes = now.hour * 60 + now.minute;
-
-                            final isSelectedTimeInThisInterval = nodeIndex == 47
-                                ? inputMinutes >= currentMinutes
-                                : (inputMinutes >= currentMinutes && inputMinutes < nextMinutes);
-
-                            final showDedicatedSelectedNode = isUserSelected &&
-                                _isSameDay(selectEvent.date, date) &&
-                                isSelectedTimeInThisInterval &&
-                                !(currentInputTime.minute == 0 || currentInputTime.minute == 30);
-
-                            final isNowInThisInterval = nodeIndex == 47
-                                ? nowMinutes >= currentMinutes
-                                : (nowMinutes >= currentMinutes && nowMinutes < nextMinutes);
-
-                            final selectionStartForCurrentTime = isUserSelected && selectEvent != null
-                                ? DateTime(
+                                bool isStandardNodeSelected = false;
+                                if (isUserSelected) {
+                                  final selectionStart = DateTime(
                                     selectEvent.date.year,
                                     selectEvent.date.month,
                                     selectEvent.date.day,
                                     selectEvent.time.hour,
                                     selectEvent.time.minute,
-                                  )
-                                : DateTime(0);
-                            final selectionEndForCurrentTime = isUserSelected && selectEvent != null && selectEvent.endTime != null
-                                ? DateTime(
-                                    (selectEvent.endDate ?? selectEvent.date).year,
-                                    (selectEvent.endDate ?? selectEvent.date).month,
-                                    (selectEvent.endDate ?? selectEvent.date).day,
-                                    selectEvent.endTime!.hour,
-                                    selectEvent.endTime!.minute,
-                                  )
-                                : DateTime(0);
+                                  );
 
-                            final showDedicatedCurrentTimeNode = isNowInThisInterval &&
-                                _isToday(date) &&
-                                !(now.minute == 0 || now.minute == 30) &&
-                                (!isUserSelected || !_isSameDay(selectEvent.date, date) || (now.hour != currentInputTime.hour || now.minute != currentInputTime.minute)) &&
-                                !(isUserSelected && selectEvent.endTime != null && _isSameDay(selectEvent.date, date) && _isSameDay(selectEvent.endDate ?? selectEvent.date, date) && !nodeStartDateTime.isBefore(selectionStartForCurrentTime) && !nodeStartDateTime.isAfter(selectionEndForCurrentTime));
+                                  if (selectEvent.endTime == null) {
+                                    isStandardNodeSelected = nodeStartDateTime
+                                        .isAtSameMomentAs(selectionStart);
+                                  } else {
+                                    final selEndDate =
+                                        selectEvent.endDate ?? selectEvent.date;
+                                    final selectionEnd = DateTime(
+                                      selEndDate.year,
+                                      selEndDate.month,
+                                      selEndDate.day,
+                                      selectEvent.endTime!.hour,
+                                      selectEvent.endTime!.minute,
+                                    );
+                                    isStandardNodeSelected =
+                                        !nodeStartDateTime.isBefore(
+                                          selectionStart,
+                                        ) &&
+                                        !nodeStartDateTime.isAfter(
+                                          selectionEnd,
+                                        );
+                                  }
+                                }
 
-                            final isStandardNodeCurrentTime = _isToday(date) && (now.hour == time.hour && now.minute == time.minute);
+                                bool isDraggedSelected = false;
+                                if (_dragStartIndex != null &&
+                                    _dragEndIndex != null) {
+                                  final start = math.min(
+                                    _dragStartIndex!,
+                                    _dragEndIndex!,
+                                  );
+                                  final end = math.max(
+                                    _dragStartIndex!,
+                                    _dragEndIndex!,
+                                  );
+                                  isDraggedSelected = i >= start && i <= end;
+                                }
 
-                            childWidget = Column(
-                              key: (isNowInThisInterval && _isToday(date)) ? _currentTimeNodeKey : null,
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                _EmptyTimeNode(
-                                  key: ValueKey('n_${dayOffset}_${nodeIndex}'),
-                                  time: time,
-                                  isSelected: finalIsSelected,
-                                  isMultiSelect: isMultiSelect,
-                                  isDraggedSelected: isDraggedSelected,
-                                  isCurrentTime: isStandardNodeCurrentTime,
-                                  onTap: () => _handleNodeTap(date, time),
-                                  onDoubleTap: () => _handleNodeDoubleTap(date, time),
-                                ),
-                                if (showDedicatedSelectedNode)
-                                  _SelectedTimeNode(
-                                    time: currentInputTime,
-                                    isCurrentTime: _isToday(date) && (now.hour == currentInputTime.hour && now.minute == currentInputTime.minute),
-                                    onTap: () => _handleNodeTap(date, currentInputTime),
-                                    onDoubleTap: () => _handleNodeDoubleTap(date, currentInputTime),
-                                  ),
-                                if (showDedicatedCurrentTimeNode)
-                                  _CurrentTimeNode(
-                                    time: now,
-                                    onTap: () => _handleNodeTap(date, now),
-                                    onDoubleTap: () => _handleNodeDoubleTap(date, now),
-                                  ),
-                                ...recordsInInterval.map((record) => DiaryItem(
-                                      record: record,
-                                      onTap: () => _handleEdit(record),
-                                      onEdit: _handleEdit,
-                                      onDelete: _handleDelete,
-                                      onAiExtract: () => _handleAiExtract(record),
-                                      onAiExtractLongPress: () => _handleAiExtractModelSelect(record),
-                                      isExtracting: _extractingRecordId == record.id,
-                                      onUndo: () => _undoExtract(record),
-                                      isUndoable: _undoRecords.containsKey(record.id),
-                                      undoAnimation: _undoControllers[record.id],
-                                    )),
-                              ],
-                            );
-                          }
+                                final bool finalIsSelected =
+                                    isDraggedSelected || isStandardNodeSelected;
+                                final bool isMultiSelect =
+                                    isDraggedSelected ||
+                                    (isUserSelected &&
+                                        selectEvent.endTime != null);
 
-                          return TimelineItemWrapper(
-                            index: i,
-                            onMount: (index, ctx) => _itemContexts[index] = ctx,
-                            onUnmount: (index) => _itemContexts.remove(index),
-                            onHeightChange: (index, height) => _itemHeights[index] = height,
-                            child: childWidget,
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('加载失败: $e')),
+                                final inputMinutes =
+                                    currentInputTime.hour * 60 +
+                                    currentInputTime.minute;
+                                final now = TimeOfDay.now();
+                                final nowMinutes = now.hour * 60 + now.minute;
+
+                                final isSelectedTimeInThisInterval =
+                                    nodeIndex == 47
+                                    ? inputMinutes >= currentMinutes
+                                    : (inputMinutes >= currentMinutes &&
+                                          inputMinutes < nextMinutes);
+
+                                final showDedicatedSelectedNode =
+                                    isUserSelected &&
+                                    _isSameDay(selectEvent.date, date) &&
+                                    isSelectedTimeInThisInterval &&
+                                    !(currentInputTime.minute == 0 ||
+                                        currentInputTime.minute == 30);
+
+                                final isNowInThisInterval = nodeIndex == 47
+                                    ? nowMinutes >= currentMinutes
+                                    : (nowMinutes >= currentMinutes &&
+                                          nowMinutes < nextMinutes);
+
+                                final selectionStartForCurrentTime =
+                                    isUserSelected
+                                    ? DateTime(
+                                        selectEvent.date.year,
+                                        selectEvent.date.month,
+                                        selectEvent.date.day,
+                                        selectEvent.time.hour,
+                                        selectEvent.time.minute,
+                                      )
+                                    : DateTime(0);
+                                final selectionEndForCurrentTime =
+                                    isUserSelected &&
+                                        selectEvent.endTime != null
+                                    ? DateTime(
+                                        (selectEvent.endDate ??
+                                                selectEvent.date)
+                                            .year,
+                                        (selectEvent.endDate ??
+                                                selectEvent.date)
+                                            .month,
+                                        (selectEvent.endDate ??
+                                                selectEvent.date)
+                                            .day,
+                                        selectEvent.endTime!.hour,
+                                        selectEvent.endTime!.minute,
+                                      )
+                                    : DateTime(0);
+
+                                final nowDateTime = DateTime(
+                                  date.year,
+                                  date.month,
+                                  date.day,
+                                  now.hour,
+                                  now.minute,
+                                );
+                                final isCurrentTimeSelected =
+                                    isUserSelected &&
+                                    _isToday(date) &&
+                                    (selectEvent.endTime != null
+                                        ? (!nowDateTime.isBefore(
+                                                selectionStartForCurrentTime,
+                                              ) &&
+                                              !nowDateTime.isAfter(
+                                                selectionEndForCurrentTime,
+                                              ))
+                                        : (_isSameDay(selectEvent.date, date) &&
+                                              now.hour ==
+                                                  currentInputTime.hour &&
+                                              now.minute ==
+                                                  currentInputTime.minute));
+
+                                final showDedicatedCurrentTimeNode =
+                                    isNowInThisInterval &&
+                                    _isToday(date) &&
+                                    !(now.minute == 0 || now.minute == 30) &&
+                                    !isCurrentTimeSelected;
+
+                                final showDedicatedSelectedCurrentTimeNode =
+                                    isNowInThisInterval &&
+                                    _isToday(date) &&
+                                    !(now.minute == 0 || now.minute == 30) &&
+                                    isCurrentTimeSelected &&
+                                    !(isUserSelected &&
+                                        _isSameDay(selectEvent.date, date) &&
+                                        now.hour == currentInputTime.hour &&
+                                        now.minute == currentInputTime.minute);
+
+                                final isStandardNodeCurrentTime =
+                                    _isToday(date) &&
+                                    (now.hour == time.hour &&
+                                        now.minute == time.minute);
+
+                                childWidget = Column(
+                                  key: (isNowInThisInterval && _isToday(date))
+                                      ? _currentTimeNodeKey
+                                      : null,
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    _EmptyTimeNode(
+                                      key: ValueKey(
+                                        'n_${dayOffset}_$nodeIndex',
+                                      ),
+                                      time: time,
+                                      isSelected: finalIsSelected,
+                                      isMultiSelect: isMultiSelect,
+                                      isDraggedSelected: isDraggedSelected,
+                                      isCurrentTime: isStandardNodeCurrentTime,
+                                      onTap: () => _handleNodeTap(date, time),
+                                      onDoubleTap: () =>
+                                          _handleNodeDoubleTap(date, time),
+                                    ),
+                                    if (showDedicatedSelectedNode)
+                                      _SelectedTimeNode(
+                                        time: currentInputTime,
+                                        isCurrentTime:
+                                            _isToday(date) &&
+                                            (now.hour ==
+                                                    currentInputTime.hour &&
+                                                now.minute ==
+                                                    currentInputTime.minute),
+                                        onTap: () => _handleNodeTap(
+                                          date,
+                                          currentInputTime,
+                                        ),
+                                        onDoubleTap: () => _handleNodeDoubleTap(
+                                          date,
+                                          currentInputTime,
+                                        ),
+                                      ),
+                                    if (showDedicatedSelectedCurrentTimeNode)
+                                      _SelectedTimeNode(
+                                        time: now,
+                                        isCurrentTime: true,
+                                        onTap: () => _handleNodeTap(date, now),
+                                        onDoubleTap: () =>
+                                            _handleNodeDoubleTap(date, now),
+                                      ),
+                                    if (showDedicatedCurrentTimeNode)
+                                      _CurrentTimeNode(
+                                        time: now,
+                                        onTap: () => _handleNodeTap(date, now),
+                                        onDoubleTap: () =>
+                                            _handleNodeDoubleTap(date, now),
+                                      ),
+                                    ...recordsInInterval.map(
+                                      (record) => DiaryItem(
+                                        record: record,
+                                        onTap: () => _handleEdit(record),
+                                        onEdit: _handleEdit,
+                                        onDelete: _handleDelete,
+                                        onAiExtract: () =>
+                                            _handleAiExtract(record),
+                                        onAiExtractLongPress: () =>
+                                            _handleAiExtractModelSelect(record),
+                                        isExtracting:
+                                            _extractingRecordId == record.id,
+                                        onUndo: () => _undoExtract(record),
+                                        isUndoable: _undoRecords.containsKey(
+                                          record.id,
+                                        ),
+                                        undoAnimation:
+                                            _undoControllers[record.id],
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }
+
+                              return TimelineItemWrapper(
+                                index: i,
+                                onMount: (index, ctx) =>
+                                    _itemContexts[index] = ctx,
+                                onUnmount: (index) =>
+                                    _itemContexts.remove(index),
+                                onHeightChange: (index, height) =>
+                                    _itemHeights[index] = height,
+                                child: childWidget,
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                  error: (e, _) => Center(child: Text('加载失败: $e')),
+                ),
+                // Smart Extract FAB
+                Positioned(
+                  right: 16,
+                  bottom: 12,
+                  child: _buildSmartExtractFAB(theme),
+                ),
+              ],
             ),
-            // Smart Extract FAB
-            Positioned(
-              right: 16,
-              bottom: 12,
-              child: _buildSmartExtractFAB(theme),
-            ),
-          ],
-        ),
+          ),
+          if (_showBatchConfirmButton) _buildBatchConfirmPanel(theme),
+          const DiaryInputBar(),
+        ],
       ),
-      if (_showBatchConfirmButton)
-        _buildBatchConfirmPanel(theme),
-      const DiaryInputBar(),
-    ],
-  ),
-);
+    );
   }
 
   Color _hexToColor(String hex) {
@@ -1788,13 +2056,19 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
       final startDayOffset = start ~/ _itemsPerDay;
       final startSubIndex = start % _itemsPerDay;
       final startNodeIndex = math.max(0, startSubIndex - 1);
-      final startTime = TimeOfDay(hour: startNodeIndex ~/ 2, minute: (startNodeIndex % 2) * 30);
+      final startTime = TimeOfDay(
+        hour: startNodeIndex ~/ 2,
+        minute: (startNodeIndex % 2) * 30,
+      );
       final startDate = _indexToDate(startDayOffset);
 
       final endDayOffset = end ~/ _itemsPerDay;
       final endSubIndex = end % _itemsPerDay;
       final endNodeIndex = math.max(0, endSubIndex - 1);
-      final endTime = TimeOfDay(hour: endNodeIndex ~/ 2, minute: (endNodeIndex % 2) * 30);
+      final endTime = TimeOfDay(
+        hour: endNodeIndex ~/ 2,
+        minute: (endNodeIndex % 2) * 30,
+      );
       final endDate = _indexToDate(endDayOffset);
 
       ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
@@ -1812,17 +2086,23 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
 
   void _startAutoScrollTimer() {
     _autoScrollTimer?.cancel();
-    _autoScrollTimer = Timer.periodic(const Duration(milliseconds: 20), (timer) {
-      if (_lastDragPosition == null || !mounted || !_scrollController.hasClients) return;
+    _autoScrollTimer = Timer.periodic(const Duration(milliseconds: 20), (
+      timer,
+    ) {
+      if (_lastDragPosition == null ||
+          !mounted ||
+          !_scrollController.hasClients)
+        return;
 
-      final renderBox = _viewportKey.currentContext?.findRenderObject() as RenderBox?;
+      final renderBox =
+          _viewportKey.currentContext?.findRenderObject() as RenderBox?;
       if (renderBox == null || !renderBox.hasSize) return;
 
       final localPos = renderBox.globalToLocal(_lastDragPosition!);
       final viewportHeight = renderBox.size.height;
 
       const double threshold = 60.0; // 触发自动滚动的边缘距离
-      const double maxSpeed = 12.0;    // 每次 Tick (20ms) 的最大滚动速度
+      const double maxSpeed = 12.0; // 每次 Tick (20ms) 的最大滚动速度
 
       double scrollDelta = 0.0;
 
@@ -1830,7 +2110,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
         // 向上滚动 (越靠近边缘，滚动速度越快)
         final ratio = (threshold - localPos.dy) / threshold;
         scrollDelta = -maxSpeed * ratio;
-      } else if (localPos.dy > viewportHeight - threshold && localPos.dy <= viewportHeight) {
+      } else if (localPos.dy > viewportHeight - threshold &&
+          localPos.dy <= viewportHeight) {
         // 向下滚动 (越靠近边缘，滚动速度越快)
         final ratio = (localPos.dy - (viewportHeight - threshold)) / threshold;
         scrollDelta = maxSpeed * ratio;
@@ -1887,13 +2168,16 @@ class _EmptyTimeNode extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    final timeStr =
+        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
     final distinctColor = theme.colorScheme.secondary;
     final bool isSingleSelected = isSelected && !isMultiSelect;
 
     final circleColor = isSelected
-        ? (isSingleSelected ? theme.colorScheme.primary.withValues(alpha: 0.6) : theme.colorScheme.primary)
-        : (isCurrentTime ? distinctColor.withValues(alpha: 0.6) : theme.colorScheme.outlineVariant);
+        ? theme.colorScheme.primary
+        : (isCurrentTime
+              ? distinctColor.withValues(alpha: 0.6)
+              : theme.colorScheme.outlineVariant);
 
     final double circleSize = isSelected
         ? (isSingleSelected ? 10 : 16)
@@ -1907,7 +2191,12 @@ class _EmptyTimeNode extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Container(
         height: 44.0,
-        margin: const EdgeInsets.only(left: 0.0, right: 4.0, top: 2.0, bottom: 2.0),
+        margin: const EdgeInsets.only(
+          left: 0.0,
+          right: 4.0,
+          top: 2.0,
+          bottom: 2.0,
+        ),
         child: Row(
           children: [
             SizedBox(
@@ -1924,10 +2213,12 @@ class _EmptyTimeNode extends StatelessWidget {
                     boxShadow: isSelected && !isSingleSelected
                         ? [
                             BoxShadow(
-                              color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                              color: theme.colorScheme.primary.withValues(
+                                alpha: 0.3,
+                              ),
                               blurRadius: 8,
                               spreadRadius: 2,
-                            )
+                            ),
                           ]
                         : null,
                   ),
@@ -1952,8 +2243,12 @@ class _EmptyTimeNode extends StatelessWidget {
               style: (theme.textTheme.bodySmall ?? const TextStyle()).copyWith(
                 color: isSelected
                     ? theme.colorScheme.primary
-                    : (isCurrentTime ? distinctColor : theme.colorScheme.onSurfaceVariant),
-                fontWeight: isSelected || isCurrentTime ? FontWeight.bold : FontWeight.w500,
+                    : (isCurrentTime
+                          ? distinctColor
+                          : theme.colorScheme.onSurfaceVariant),
+                fontWeight: isSelected || isCurrentTime
+                    ? FontWeight.bold
+                    : FontWeight.w500,
                 fontSize: isSelected ? 13 : 12,
               ),
               child: Text(timeStr),
@@ -1983,10 +2278,12 @@ class _EmptyTimeNode extends StatelessWidget {
                 curve: Curves.easeOut,
                 height: 1,
                 color: isSelected
-                    ? theme.colorScheme.primary.withValues(alpha: 0.3)
+                    ? theme.colorScheme.primary
                     : (isCurrentTime
-                        ? distinctColor.withValues(alpha: 0.2)
-                        : theme.colorScheme.outlineVariant.withValues(alpha: 0.15)),
+                          ? distinctColor.withValues(alpha: 0.2)
+                          : theme.colorScheme.outlineVariant.withValues(
+                              alpha: 0.15,
+                            )),
               ),
             ),
             const SizedBox(width: 16),
@@ -2013,9 +2310,12 @@ class _SelectedTimeNode extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    final timeStr =
+        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
     final distinctColor = theme.colorScheme.secondary;
-    final labelColor = isCurrentTime ? distinctColor : theme.colorScheme.primary;
+    final labelColor = isCurrentTime
+        ? distinctColor
+        : theme.colorScheme.primary;
 
     return GestureDetector(
       onTap: onTap,
@@ -2023,35 +2323,31 @@ class _SelectedTimeNode extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Container(
         height: 44.0,
-        margin: const EdgeInsets.only(left: 0.0, right: 4.0, top: 2.0, bottom: 2.0),
+        margin: const EdgeInsets.only(
+          left: 0.0,
+          right: 4.0,
+          top: 2.0,
+          bottom: 2.0,
+        ),
         child: Row(
           children: [
             SizedBox(
               width: 48,
               child: Center(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 10,
-                      height: 10,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.6),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    if (isCurrentTime) ...[
-                      const SizedBox(width: 4),
-                      Icon(
-                        Icons.access_time_rounded,
-                        size: 12,
-                        color: labelColor,
-                      ),
-                    ],
-                  ],
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary,
+                    shape: BoxShape.circle,
+                  ),
                 ),
               ),
             ),
+            if (isCurrentTime) ...[
+              Icon(Icons.access_time_rounded, size: 14, color: labelColor),
+              const SizedBox(width: 6),
+            ],
             Text(
               timeStr,
               style: theme.textTheme.bodySmall?.copyWith(
@@ -2080,10 +2376,7 @@ class _SelectedTimeNode extends StatelessWidget {
             ],
             const SizedBox(width: 12),
             Expanded(
-              child: Container(
-                height: 1,
-                color: theme.colorScheme.primary.withValues(alpha: 0.3),
-              ),
+              child: Container(height: 1, color: theme.colorScheme.primary),
             ),
             const SizedBox(width: 16),
           ],
@@ -2107,7 +2400,8 @@ class _CurrentTimeNode extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    final timeStr =
+        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
     final distinctColor = theme.colorScheme.secondary;
 
     return GestureDetector(
@@ -2116,7 +2410,12 @@ class _CurrentTimeNode extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Container(
         height: 44.0,
-        margin: const EdgeInsets.only(left: 0.0, right: 4.0, top: 2.0, bottom: 2.0),
+        margin: const EdgeInsets.only(
+          left: 0.0,
+          right: 4.0,
+          top: 2.0,
+          bottom: 2.0,
+        ),
         child: Row(
           children: [
             SizedBox(
@@ -2132,11 +2431,7 @@ class _CurrentTimeNode extends StatelessWidget {
                 ),
               ),
             ),
-            Icon(
-              Icons.access_time_filled,
-              size: 14,
-              color: distinctColor,
-            ),
+            Icon(Icons.access_time_filled, size: 14, color: distinctColor),
             const SizedBox(width: 6),
             Text(
               timeStr,
@@ -2266,17 +2561,26 @@ class _TimelineModelDialog extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Text('选择模型', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+              child: Text(
+                '选择模型',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
             const SizedBox(height: 16),
             Flexible(
               child: SingleChildScrollView(
                 child: Column(
-                  children: configs.map((config) => _TimelineModelItem(
-                    config: config,
-                    isSelected: config.id == selectedId,
-                    onTap: () => Navigator.pop(context, config),
-                  )).toList(),
+                  children: configs
+                      .map(
+                        (config) => _TimelineModelItem(
+                          config: config,
+                          isSelected: config.id == selectedId,
+                          onTap: () => Navigator.pop(context, config),
+                        ),
+                      )
+                      .toList(),
                 ),
               ),
             ),
@@ -2292,7 +2596,11 @@ class _TimelineModelItem extends StatelessWidget {
   final bool isSelected;
   final VoidCallback onTap;
 
-  const _TimelineModelItem({required this.config, required this.isSelected, required this.onTap});
+  const _TimelineModelItem({
+    required this.config,
+    required this.isSelected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -2304,16 +2612,41 @@ class _TimelineModelItem extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         child: Row(
           children: [
-            Icon(Icons.smart_toy, size: 20, color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
+            Icon(
+              Icons.smart_toy,
+              size: 20,
+              color: isSelected
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurfaceVariant,
+            ),
             const SizedBox(width: 12),
-            Expanded(child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(config.name, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-                Text(config.modelName, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-              ],
-            )),
-            if (isSelected) Icon(Icons.check_circle, size: 20, color: theme.colorScheme.primary),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    config.name,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                    ),
+                  ),
+                  Text(
+                    config.modelName,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isSelected)
+              Icon(
+                Icons.check_circle,
+                size: 20,
+                color: theme.colorScheme.primary,
+              ),
           ],
         ),
       ),

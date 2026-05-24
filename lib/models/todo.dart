@@ -10,6 +10,7 @@ class Todo {
   bool isLongTerm;
   String? reminderTime;
   DateTime? deadline;
+  final int sortOrder;
   DateTime createdAt;
   DateTime updatedAt;
   bool isDeleted;
@@ -26,6 +27,7 @@ class Todo {
     this.isLongTerm = false,
     this.reminderTime,
     this.deadline,
+    this.sortOrder = 0,
     required this.createdAt,
     required this.updatedAt,
     this.isDeleted = false,
@@ -44,6 +46,7 @@ class Todo {
       'is_long_term': isLongTerm ? 1 : 0,
       'reminder_time': reminderTime,
       'deadline': deadline?.toIso8601String(),
+      'sort_order': sortOrder,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
       'is_deleted': isDeleted ? 1 : 0,
@@ -67,6 +70,7 @@ class Todo {
       deadline: map['deadline'] != null
           ? DateTime.parse(map['deadline'] as String)
           : null,
+      sortOrder: map['sort_order'] as int? ?? 0,
       createdAt: DateTime.parse(map['created_at'] as String),
       updatedAt: DateTime.parse(map['updated_at'] as String),
       isDeleted: (map['is_deleted'] as int? ?? 0) == 1,
@@ -85,9 +89,12 @@ class Todo {
     bool? isLongTerm,
     String? reminderTime,
     DateTime? deadline,
+    int? sortOrder,
     DateTime? createdAt,
     DateTime? updatedAt,
     bool? isDeleted,
+    bool clearFolderId = false,
+    bool clearReminderTime = false,
   }) {
     return Todo(
       id: id ?? this.id,
@@ -97,10 +104,11 @@ class Todo {
       priority: priority ?? this.priority,
       dueDate: dueDate ?? this.dueDate,
       tags: tags ?? this.tags,
-      folderId: folderId ?? this.folderId,
+      folderId: clearFolderId ? null : (folderId ?? this.folderId),
       isLongTerm: isLongTerm ?? this.isLongTerm,
-      reminderTime: reminderTime ?? this.reminderTime,
+      reminderTime: clearReminderTime ? null : (reminderTime ?? this.reminderTime),
       deadline: deadline ?? this.deadline,
+      sortOrder: sortOrder ?? this.sortOrder,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       isDeleted: isDeleted ?? this.isDeleted,

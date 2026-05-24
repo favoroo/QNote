@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/core/network/webdav_service.dart';
+import 'package:qnote_flutter/core/network/sync_scheduler.dart' show SyncScheduler, SyncStatus;
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/models/webdav_config.dart';
 
@@ -41,8 +42,6 @@ class WebdavConfigNotifier extends AsyncNotifier<WebdavConfig?> {
   }
 }
 
-enum SyncStatus { idle, syncing, success, error }
-
 final syncStatusProvider = StateProvider<SyncStatus>((ref) => SyncStatus.idle);
 
 final syncProvider = AsyncNotifierProvider<SyncNotifier, void>(SyncNotifier.new);
@@ -54,10 +53,9 @@ class SyncNotifier extends AsyncNotifier<void> {
   Future<void> syncToRemote() async {
     ref.read(syncStatusProvider.notifier).state = SyncStatus.syncing;
     try {
-      final service = ref.read(webdavServiceProvider);
-      final success = await service.uploadDatabase();
-      ref.read(syncStatusProvider.notifier).state =
-          success ? SyncStatus.success : SyncStatus.error;
+      final scheduler = SyncScheduler.instance;
+      await scheduler.performSync();
+      ref.read(syncStatusProvider.notifier).state = scheduler.status;
     } catch (_) {
       ref.read(syncStatusProvider.notifier).state = SyncStatus.error;
     }
@@ -66,10 +64,20 @@ class SyncNotifier extends AsyncNotifier<void> {
   Future<void> syncFromRemote() async {
     ref.read(syncStatusProvider.notifier).state = SyncStatus.syncing;
     try {
-      final service = ref.read(webdavServiceProvider);
-      final success = await service.downloadDatabase();
-      ref.read(syncStatusProvider.notifier).state =
-          success ? SyncStatus.success : SyncStatus.error;
+      final scheduler = SyncScheduler.instance;
+      await scheduler.restoreFromBackup();
+      ref.read(syncStatusProvider.notifier).state = scheduler.status;
+    } catch (_) {
+      ref.read(syncStatusProvider.notifier).state = SyncStatus.error;
+    }
+  }
+
+  Future<void> fullSyncToRemote() async {
+    ref.read(syncStatusProvider.notifier).state = SyncStatus.syncing;
+    try {
+      final scheduler = SyncScheduler.instance;
+      await scheduler.fullSync();
+      ref.read(syncStatusProvider.notifier).state = scheduler.status;
     } catch (_) {
       ref.read(syncStatusProvider.notifier).state = SyncStatus.error;
     }

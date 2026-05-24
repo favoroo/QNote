@@ -9,11 +9,13 @@ final shortcutListProvider = FutureProvider<List<ShortcutConfig>>((ref) async {
 
 class ShortcutListNotifier extends StateNotifier<List<ShortcutConfig>> {
   final ConfigRepository _repo = ConfigRepository.instance;
+  final Ref _ref;
 
-  ShortcutListNotifier() : super([]);
+  ShortcutListNotifier(this._ref) : super([]);
 
   Future<void> load() async {
     state = await _repo.getShortcutConfigs();
+    _ref.invalidate(shortcutListProvider);
   }
 
   Future<void> add(ShortcutConfig config) async {
@@ -31,6 +33,11 @@ class ShortcutListNotifier extends StateNotifier<List<ShortcutConfig>> {
     await load();
   }
 
+  Future<void> restoreDefaults() async {
+    await _repo.restoreDefaultShortcutConfigs();
+    await load();
+  }
+
   Future<void> reorder(int oldIndex, int newIndex) async {
     final list = [...state];
     if (oldIndex < newIndex) newIndex -= 1;
@@ -42,10 +49,11 @@ class ShortcutListNotifier extends StateNotifier<List<ShortcutConfig>> {
       list[i] = updated;
     }
     state = list;
+    _ref.invalidate(shortcutListProvider);
   }
 }
 
 final shortcutListNotifierProvider =
     StateNotifierProvider<ShortcutListNotifier, List<ShortcutConfig>>((ref) {
-  return ShortcutListNotifier();
+  return ShortcutListNotifier(ref);
 });

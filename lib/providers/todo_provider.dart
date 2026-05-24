@@ -78,6 +78,7 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
       tags: tags,
       folderId: folderId,
       isLongTerm: isLongTerm,
+      sortOrder: now.millisecondsSinceEpoch,
       createdAt: now,
       updatedAt: now,
     );
@@ -124,7 +125,10 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     final repo = ref.read(todoRepositoryProvider);
     final todo = await repo.getById(id);
     if (todo == null) return;
-    final updated = todo.copyWith(reminderTime: null);
+    final updated = todo.copyWith(
+      reminderTime: null,
+      clearReminderTime: true,
+    );
     await repo.update(updated);
     await NotificationService.instance.cancelNotification(id.hashCode);
     await refresh();
@@ -181,7 +185,13 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
   Future<void> reorderTodos(List<Todo> reordered) async {
     final repo = ref.read(todoRepositoryProvider);
     final now = DateTime.now();
-    final updated = reordered.map((t) => t.copyWith(updatedAt: now)).toList();
+    final updated = <Todo>[];
+    for (int i = 0; i < reordered.length; i++) {
+      updated.add(reordered[i].copyWith(
+        sortOrder: i,
+        updatedAt: now,
+      ));
+    }
     await repo.batchUpdate(updated);
     await refresh();
   }

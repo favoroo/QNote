@@ -5,6 +5,7 @@ import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/shortcut_field.dart';
 import 'package:qnote_flutter/models/shortcut_category.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
+import 'package:qnote_flutter/core/utils/toast_utils.dart';
 
 class ShortcutsPage extends ConsumerStatefulWidget {
   const ShortcutsPage({super.key});
@@ -37,25 +38,94 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
           ),
         ],
       ),
-      body: shortcuts.isEmpty
-          ? Center(
-              child: Text(
-                '暂无快捷按钮，点击右上角 + 添加',
-                style: theme.textTheme.bodyMedium?.copyWith(color: theme.disabledColor),
+      body: Column(
+        children: [
+          Expanded(
+            child: shortcuts.isEmpty
+                ? Center(
+                    child: Text(
+                      '暂无快捷按钮，点击右上角 + 添加',
+                      style: theme.textTheme.bodyMedium?.copyWith(color: theme.disabledColor),
+                    ),
+                  )
+                : ReorderableListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: shortcuts.length,
+                    onReorder: (oldIndex, newIndex) {
+                      ref.read(shortcutListNotifierProvider.notifier).reorder(oldIndex, newIndex);
+                    },
+                    itemBuilder: (context, index) {
+                      final config = shortcuts[index];
+                      return _buildShortcutCard(context, config, key: ValueKey(config.id));
+                    },
+                  ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 16, right: 16, bottom: 24, top: 8),
+            child: Container(
+              width: double.infinity,
+              height: 54,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
               ),
-            )
-          : ReorderableListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: shortcuts.length,
-              onReorder: (oldIndex, newIndex) {
-                ref.read(shortcutListNotifierProvider.notifier).reorder(oldIndex, newIndex);
-              },
-              itemBuilder: (context, index) {
-                final config = shortcuts[index];
-                return _buildShortcutCard(context, config, key: ValueKey(config.id));
-              },
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () => _confirmAndRestoreDefaults(context),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.refresh, size: 20, color: theme.colorScheme.onSurfaceVariant),
+                      const SizedBox(width: 8),
+                      Text(
+                        '恢复默认设置',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
+          ),
+        ],
+      ),
     );
+  }
+
+  Future<void> _confirmAndRestoreDefaults(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('恢复默认设置'),
+        content: const Text('确定要恢复默认快捷按钮设置吗？此操作将覆盖您当前所有的自定义快捷按钮配置，且不可撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('恢复'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await ref.read(shortcutListNotifierProvider.notifier).restoreDefaults();
+      if (context.mounted) {
+        Toast.success(context, '已成功恢复默认快捷按钮设置');
+      }
+    }
   }
 
   Widget _buildShortcutCard(BuildContext context, ShortcutConfig config, {required Key key}) {
@@ -343,7 +413,6 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
       'water-amount': '喝水量',
     };
     final labelCtl = TextEditingController(text: field.label);
-    final optionsCtl = TextEditingController(text: field.options.join(', '));
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),

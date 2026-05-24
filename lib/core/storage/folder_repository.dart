@@ -1,8 +1,10 @@
 import 'package:qnote_flutter/core/storage/database_helper.dart';
+import 'package:qnote_flutter/core/storage/sync_log_repository.dart';
 import 'package:qnote_flutter/models/folder.dart';
 
 class FolderRepository {
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
+  final SyncLogRepository _syncLog = SyncLogRepository.instance;
 
   Future<List<Folder>> getAll() async {
     final db = await _dbHelper.database;
@@ -42,6 +44,12 @@ class FolderRepository {
   Future<Folder> insert(Folder folder) async {
     final db = await _dbHelper.database;
     await db.insert('folders', folder.toMap());
+    await _syncLog.logChange(
+      tableName: 'folders',
+      recordId: folder.id,
+      operation: 'insert',
+      data: folder.toMap(),
+    );
     return folder;
   }
 
@@ -54,12 +62,23 @@ class FolderRepository {
       where: 'id = ?',
       whereArgs: [folder.id],
     );
+    await _syncLog.logChange(
+      tableName: 'folders',
+      recordId: folder.id,
+      operation: 'update',
+      data: updated.toMap(),
+    );
     return updated;
   }
 
   Future<void> delete(String id) async {
     final db = await _dbHelper.database;
     await db.delete('folders', where: 'id = ?', whereArgs: [id]);
+    await _syncLog.logChange(
+      tableName: 'folders',
+      recordId: id,
+      operation: 'delete',
+    );
   }
 
   Future<void> updateSortOrder(String id, int sortOrder) async {
@@ -70,5 +89,14 @@ class FolderRepository {
       where: 'id = ?',
       whereArgs: [id],
     );
+    final existing = await getById(id);
+    if (existing != null) {
+      await _syncLog.logChange(
+        tableName: 'folders',
+        recordId: id,
+        operation: 'update',
+        data: existing.toMap(),
+      );
+    }
   }
 }

@@ -4,6 +4,7 @@ import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/core/storage/color_mark_repository.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/date_color_mark.dart';
+import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:flutter/material.dart';
 
 class TimelineTimeSelectEvent {
@@ -77,6 +78,7 @@ class DiaryListNotifier extends AsyncNotifier<List<DiaryRecord>> {
     DateTime? endTime,
     String displayTag = '',
     Map<String, dynamic>? bodyState,
+    List<TagEntry> tagEntries = const [],
     List<String> photos = const [],
   }) async {
     final repo = ref.read(diaryRepositoryProvider);
@@ -93,6 +95,7 @@ class DiaryListNotifier extends AsyncNotifier<List<DiaryRecord>> {
       tags: tags,
       displayTag: displayTag,
       bodyState: bodyState,
+      tagEntries: tagEntries,
       photos: photos,
       folderId: folderId,
       createdAt: now,

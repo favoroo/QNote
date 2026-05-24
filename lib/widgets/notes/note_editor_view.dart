@@ -594,6 +594,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
             right: 8,
             child: GestureDetector(
               onTap: () => _removeImage(index),
+              behavior: HitTestBehavior.opaque,
               child: Container(
                 width: 30,
                 height: 30,
@@ -601,7 +602,9 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
                   color: Colors.black.withValues(alpha: 0.55),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.close, size: 16, color: Colors.white),
+                child: const Center(
+                  child: Icon(Icons.close, size: 16, color: Colors.white),
+                ),
               ),
             ),
           ),
