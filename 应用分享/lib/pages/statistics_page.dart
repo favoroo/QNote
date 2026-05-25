@@ -65,11 +65,11 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
     switch (_timeRange) {
       case TimeRangeType.week:
-        return (todayStart.subtract(const Duration(days: 7)), todayEnd);
+        return (todayStart.subtract(const Duration(days: 8)), todayEnd);
       case TimeRangeType.month:
-        return (DateTime(now.year, now.month - 1, now.day), todayEnd);
+        return (DateTime(now.year, now.month - 1, now.day - 1), todayEnd);
       case TimeRangeType.year:
-        return (DateTime(now.year - 1, now.month, now.day), todayEnd);
+        return (DateTime(now.year - 1, now.month, now.day - 1), todayEnd);
     }
   }
 
@@ -133,7 +133,10 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     }
 
     final filtered = records.where((r) {
-      return !r.time.isBefore(startDate) && !r.time.isAfter(endDate);
+      final targetStart = DateTime(startDate.year, startDate.month, startDate.day);
+      final targetEnd = DateTime(endDate.year, endDate.month, endDate.day);
+      final effectiveDate = r.getEffectiveDate();
+      return !effectiveDate.isBefore(targetStart) && !effectiveDate.isAfter(targetEnd);
     }).toList();
 
     if (filtered.isEmpty) {

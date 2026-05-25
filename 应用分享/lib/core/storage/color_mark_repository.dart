@@ -4,6 +4,10 @@ import 'package:qnote_flutter/models/date_color_mark.dart';
 import 'database_helper.dart';
 
 class ColorMarkRepository {
+  static final ColorMarkRepository _instance = ColorMarkRepository._internal();
+  factory ColorMarkRepository() => _instance;
+  ColorMarkRepository._internal();
+
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
   final SyncLogRepository _syncLog = SyncLogRepository.instance;
 

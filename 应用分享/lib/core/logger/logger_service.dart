@@ -52,6 +52,9 @@ class LoggerService extends ChangeNotifier {
   final List<LogEntry> _entries = [];
   List<LogEntry> get entries => List.unmodifiable(_entries);
 
+  Timer? _debounceTimer;
+  int _pendingPersistCount = 0;
+
   final _entriesController = StreamController<List<LogEntry>>.broadcast();
   Stream<List<LogEntry>> get entriesStream => _entriesController.stream;
 
@@ -254,7 +257,23 @@ class LoggerService extends ChangeNotifier {
     }
     _entriesController.add(List.from(_entries));
     notifyListeners();
-    _persistLogs();
+    
+    _pendingPersistCount++;
+    if (_pendingPersistCount >= 10) {
+      _persistLogsImmediate();
+    } else {
+      _debounceTimer?.cancel();
+      _debounceTimer = Timer(const Duration(seconds: 5), () {
+        _persistLogsImmediate();
+      });
+    }
+  }
+
+  Future<void> _persistLogsImmediate() async {
+    _debounceTimer?.cancel();
+    _debounceTimer = null;
+    _pendingPersistCount = 0;
+    await _persistLogs();
   }
 
   Future<void> loadLogs() async {
@@ -286,6 +305,9 @@ class LoggerService extends ChangeNotifier {
   }
 
   Future<void> clearLogs() async {
+    _debounceTimer?.cancel();
+    _debounceTimer = null;
+    _pendingPersistCount = 0;
     _entries.clear();
     _entriesController.add(List.from(_entries));
     notifyListeners();
@@ -342,6 +364,7 @@ class LoggerService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     _entriesController.close();
     super.dispose();
   }

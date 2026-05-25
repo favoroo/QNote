@@ -3,6 +3,10 @@ import 'package:qnote_flutter/core/storage/sync_log_repository.dart';
 import 'package:qnote_flutter/models/note.dart';
 
 class NoteRepository {
+  static final NoteRepository _instance = NoteRepository._internal();
+  factory NoteRepository() => _instance;
+  NoteRepository._internal();
+
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
   final SyncLogRepository _syncLog = SyncLogRepository.instance;
 
@@ -66,21 +70,26 @@ class NoteRepository {
 
   Future<void> softDelete(String id) async {
     final db = await _dbHelper.database;
+    final existing = await getById(id);
+    if (existing == null) return;
+
+    final nowStr = DateTime.now().toIso8601String();
     await db.update(
       'notes',
-      {'is_deleted': 1, 'updated_at': DateTime.now().toIso8601String()},
+      {'is_deleted': 1, 'updated_at': nowStr},
       where: 'id = ?',
       whereArgs: [id],
     );
-    final existing = await getById(id);
-    if (existing != null) {
-      await _syncLog.logChange(
-        tableName: 'notes',
-        recordId: id,
-        operation: 'update',
-        data: existing.toMap(),
-      );
-    }
+    final updated = existing.copyWith(
+      isDeleted: true,
+      updatedAt: DateTime.parse(nowStr),
+    );
+    await _syncLog.logChange(
+      tableName: 'notes',
+      recordId: id,
+      operation: 'update',
+      data: updated.toMap(),
+    );
   }
 
   Future<void> hardDelete(String id) async {
@@ -95,21 +104,26 @@ class NoteRepository {
 
   Future<void> togglePin(String id, bool isPinned) async {
     final db = await _dbHelper.database;
+    final existing = await getById(id);
+    if (existing == null) return;
+
+    final nowStr = DateTime.now().toIso8601String();
     await db.update(
       'notes',
-      {'is_pinned': isPinned ? 1 : 0, 'updated_at': DateTime.now().toIso8601String()},
+      {'is_pinned': isPinned ? 1 : 0, 'updated_at': nowStr},
       where: 'id = ?',
       whereArgs: [id],
     );
-    final existing = await getById(id);
-    if (existing != null) {
-      await _syncLog.logChange(
-        tableName: 'notes',
-        recordId: id,
-        operation: 'update',
-        data: existing.toMap(),
-      );
-    }
+    final updated = existing.copyWith(
+      isPinned: isPinned,
+      updatedAt: DateTime.parse(nowStr),
+    );
+    await _syncLog.logChange(
+      tableName: 'notes',
+      recordId: id,
+      operation: 'update',
+      data: updated.toMap(),
+    );
   }
 
   Future<List<Note>> search(String keyword) async {

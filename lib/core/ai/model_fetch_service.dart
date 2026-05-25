@@ -34,7 +34,41 @@ class ModelFetchService {
     }
 
     // 3. 构建 URL、Headers 和 Query parameters
-    String requestUrl = '$cleanedBaseUrl$path';
+    final baseUri = Uri.parse(cleanedBaseUrl);
+    final relativeUri = Uri.parse('http://dummy$path');
+
+    final baseSegs = baseUri.pathSegments.where((s) => s.isNotEmpty).toList();
+    final pathSegs = relativeUri.pathSegments.where((s) => s.isNotEmpty).toList();
+
+    int overlapCount = 0;
+    for (int i = 1; i <= baseSegs.length && i <= pathSegs.length; i++) {
+      bool match = true;
+      for (int j = 0; j < i; j++) {
+        if (baseSegs[baseSegs.length - i + j] != pathSegs[j]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) {
+        overlapCount = i;
+      }
+    }
+
+    final mergedSegs = [...baseSegs, ...pathSegs.sublist(overlapCount)];
+    
+    final Map<String, dynamic> combinedQuery = {};
+    if (baseUri.hasQuery) {
+      combinedQuery.addAll(baseUri.queryParameters);
+    }
+    if (relativeUri.hasQuery) {
+      combinedQuery.addAll(relativeUri.queryParameters);
+    }
+
+    final requestUri = baseUri.replace(
+      pathSegments: mergedSegs,
+      queryParameters: combinedQuery.isNotEmpty ? combinedQuery : null,
+    );
+    String requestUrl = requestUri.toString();
     final Map<String, dynamic> headers = {
       'Accept': 'application/json',
     };

@@ -72,4 +72,16 @@ class FolderListNotifier extends AsyncNotifier<List<Folder>> {
       await refresh();
     }
   }
+
+  Future<void> reorderFolders(List<Folder> reordered) async {
+    final repo = ref.read(folderRepositoryProvider);
+    final currentList = state.valueOrNull ?? [];
+    final updatedList = currentList.map((folder) {
+      return reordered.firstWhere((f) => f.id == folder.id, orElse: () => folder);
+    }).toList();
+
+    state = AsyncData(updatedList);
+    await repo.batchUpdate(reordered);
+    await refresh();
+  }
 }

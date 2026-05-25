@@ -6,6 +6,10 @@ import 'package:uuid/uuid.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 
 class ImageRepository {
+  static final ImageRepository _instance = ImageRepository._internal();
+  factory ImageRepository() => _instance;
+  ImageRepository._internal();
+
   static const _uuid = Uuid();
 
   Future<String> saveImage(File imageFile, {String? subfolder}) async {
@@ -18,9 +22,10 @@ class ImageRepository {
     final fileName = '${_uuid.v4()}$ext';
     final newPath = p.join(imagesDir.path, fileName);
     
+    final sizeBytes = await imageFile.length();
     LoggerService.instance.logDatabase(
       '保存图片文件',
-      details: '源=${imageFile.path}, 目标=$newPath, 大小≈${(imageFile.lengthSync() / 1024).toStringAsFixed(1)}KB'
+      details: '源=${imageFile.path}, 目标=$newPath, 大小≈${(sizeBytes / 1024).toStringAsFixed(1)}KB'
     );
     
     await imageFile.copy(newPath);

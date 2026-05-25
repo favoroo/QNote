@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:qnote_flutter/core/network/webdav_service.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
+import 'package:qnote_flutter/core/storage/sync_log_repository.dart';
 
 enum SyncStatus { idle, syncing, success, error }
 
@@ -155,9 +156,7 @@ class SyncScheduler {
 
   Future<void> _refreshPendingChanges() async {
     try {
-      _pendingChanges = await _configRepo.getAppConfig('sync_delta_count') != null
-          ? 0
-          : 0;
+      _pendingChanges = await SyncLogRepository.instance.getChangeCount();
     } catch (_) {
       _pendingChanges = 0;
     }

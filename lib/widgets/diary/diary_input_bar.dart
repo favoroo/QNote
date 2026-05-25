@@ -23,6 +23,7 @@ import 'package:qnote_flutter/widgets/time_scroll_picker.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/widgets/animated_gradient_border.dart';
+import 'package:qnote_flutter/widgets/diary/edit_tag_time_sheet.dart';
 
 class _Draft {
   final String id;
@@ -1372,6 +1373,34 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     Map<String, dynamic>? bodyState;
     List<TagEntry> tagEntries = List.from(draft.tagEntries);
 
+    // Sync sleep tag time with draft time if present
+    final sleepIndex = tagEntries.indexWhere((e) => e.id == 'sleep' || e.name == '睡眠');
+    if (sleepIndex != -1) {
+      final sleepEntryItem = tagEntries[sleepIndex];
+      // Only sync if sleep tag has time or user explicitly selected a record time
+      if (sleepEntryItem.hasTime || ref.read(diaryInputTimeProvider) != null) {
+        int? endHour;
+        int? endMinute;
+        int? endOffset;
+        if (draft.endTime != null) {
+          endHour = draft.endTime!.hour;
+          endMinute = draft.endTime!.minute;
+          endOffset = draft.endOffset ?? 0;
+        }
+        
+        final updatedSleep = sleepEntryItem.copyWith(
+          startHour: draft.startTime.hour,
+          startMinute: draft.startTime.minute,
+          startOffset: draft.startOffset ?? 0,
+          endHour: endHour,
+          endMinute: endMinute,
+          endOffset: endOffset,
+          clearEndTime: draft.endTime == null,
+        );
+        tagEntries[sleepIndex] = updatedSleep.copyWith(time: updatedSleep.formattedTime);
+      }
+    }
+
     final popupEntries = <TagEntry>[];
     final popupConfigs = <ShortcutConfig>[];
 
@@ -1698,22 +1727,108 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     );
   }
 
+  Future<void> _editInputBarTagTime(TagEntry entry) async {
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => EditTagTimeSheet(entry: entry),
+    );
+
+    if (result != null) {
+      final currentEntries = List<TagEntry>.from(_activeDraft.tagEntries);
+      final newEntries = currentEntries.map((e) {
+        if (e.id == entry.id || e.name == entry.name) {
+          if (result['clear'] == true) {
+            final updatedFields = Map<String, dynamic>.from(e.fields);
+            if (e.id == 'sleep' || e.name == '睡眠') {
+              updatedFields.remove('fallAsleepTime');
+              updatedFields.remove('duration');
+              _updateActiveDraft(
+                clearEndTime: true,
+              );
+            }
+            return e.copyWith(
+              clearStartTime: true,
+              clearEndTime: true,
+              fields: updatedFields,
+            );
+          }
+
+          final startHour = result['startHour'] as int?;
+          final startMinute = result['startMinute'] as int?;
+          final startOffset = result['startOffset'] as int?;
+          final endHour = result['endHour'] as int?;
+          final endMinute = result['endMinute'] as int?;
+          final endOffset = result['endOffset'] as int?;
+
+          Map<String, dynamic> updatedFields = Map<String, dynamic>.from(e.fields);
+          if (e.id == 'sleep' || e.name == '睡眠') {
+            if (startHour != null && startMinute != null) {
+              updatedFields['fallAsleepTime'] =
+                  '${startHour.toString().padLeft(2, '0')}:${startMinute.toString().padLeft(2, '0')}';
+              
+              final startDt = TimeOfDay(hour: startHour, minute: startMinute);
+
+              if (endHour != null && endMinute != null) {
+                final endDt = TimeOfDay(hour: endHour, minute: endMinute);
+                final startMin = startHour * 60 + startMinute;
+                final endMin = endHour * 60 + endMinute;
+                var diffMin = endMin - startMin;
+                if (diffMin < 0 || endOffset == 1) {
+                  diffMin += 1440;
+                }
+                final newDuration = (diffMin / 60.0 * 10).round() / 10.0;
+                updatedFields['duration'] = newDuration.toStringAsFixed(1);
+                
+                _updateActiveDraft(
+                  startTime: startDt,
+                  endTime: endDt,
+                  startOffset: startOffset,
+                  endOffset: endOffset,
+                );
+              } else {
+                updatedFields.remove('duration');
+                _updateActiveDraft(
+                  startTime: startDt,
+                  clearEndTime: true,
+                  startOffset: startOffset,
+                  endOffset: 0,
+                );
+              }
+            }
+          }
+
+          return e.copyWith(
+            fields: updatedFields,
+            startHour: startHour,
+            startMinute: startMinute,
+            startOffset: startOffset,
+            endHour: endHour,
+            endMinute: endMinute,
+            endOffset: endOffset,
+            clearEndTime: endHour == null,
+          );
+        }
+        return e;
+      }).toList();
+
+      _updateActiveDraft(tagEntries: newEntries);
+    }
+  }
+
   Widget _buildFormFieldsArea(ThemeData theme) {
     final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
-    final popupEntries = <MapEntry<TagEntry, ShortcutConfig>>[];
+    final visibleEntries = <MapEntry<TagEntry, ShortcutConfig?>>[];
 
     for (final entry in _activeDraft.tagEntries) {
-      try {
-        final config = shortcuts.firstWhere(
-          (s) => s.id == entry.id || s.name == entry.name,
-        );
-        if (config.hasPopup) {
-          popupEntries.add(MapEntry(entry, config));
-        }
-      } catch (_) {}
+      final config = shortcuts.where(
+        (s) => s.id == entry.id || s.name == entry.name,
+      ).firstOrNull;
+      visibleEntries.add(MapEntry(entry, config));
     }
 
-    if (popupEntries.isEmpty) return const SizedBox.shrink();
+    if (visibleEntries.isEmpty) return const SizedBox.shrink();
 
     return AnimatedSize(
       duration: const Duration(milliseconds: 300),
@@ -1732,7 +1847,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: popupEntries.map((pair) {
+            children: visibleEntries.map((pair) {
               return _buildTagFormSection(theme, pair.value, pair.key);
             }).toList(),
           ),
@@ -1743,11 +1858,13 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
 
   Widget _buildTagFormSection(
     ThemeData theme,
-    ShortcutConfig config,
+    ShortcutConfig? config,
     TagEntry entry,
   ) {
-    List<ShortcutField> fieldsToProcess = config.fields;
-    if (config.categories != null && config.categories!.isNotEmpty) {
+    final colorScheme = theme.colorScheme;
+    final hasFields = config != null && config.hasPopup;
+    List<ShortcutField> fieldsToProcess = config?.fields ?? [];
+    if (config != null && config.categories != null && config.categories!.isNotEmpty) {
       final currentCategory = config.categories!.firstWhere(
         (c) => c.id == entry.fields['_category'],
         orElse: () => config.categories!.first,
@@ -1755,49 +1872,108 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       fieldsToProcess = currentCategory.fields;
     }
 
+    final tagName = config?.name ?? entry.name;
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  config.name,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.primary,
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    tagName,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.primary,
+                    ),
                   ),
                 ),
-              ),
-              const Spacer(),
-              GestureDetector(
-                onTap: () => _selectShortcut(config),
-                child: Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: Icon(
-                    Icons.close,
-                    size: 14,
-                    color: theme.colorScheme.onSurfaceVariant,
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => _editInputBarTagTime(entry),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.access_time,
+                          size: 11,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          entry.hasTime ? entry.formattedTime! : '添加时间',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                            fontSize: 10,
+                          ),
+                        ),
+                        if (entry.hasTime) ...[
+                          const SizedBox(width: 2),
+                          Icon(
+                            Icons.edit,
+                            size: 10,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () {
+                    if (config != null) {
+                      _selectShortcut(config);
+                    } else {
+                      final currentEntries = List<TagEntry>.from(_activeDraft.tagEntries);
+                      currentEntries.removeWhere((e) => e.name == entry.name);
+                      _updateActiveDraft(tagEntries: currentEntries);
+                    }
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(
+                      Icons.close,
+                      size: 14,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (hasFields) ...[
+              const SizedBox(height: 8),
+              if (config.categories != null && config.categories!.isNotEmpty)
+                _buildCategorySelector(theme, config, entry.id),
+              ...fieldsToProcess.map(
+                (field) => _buildFieldWidget(theme, field, entry.id),
               ),
             ],
-          ),
-          const SizedBox(height: 4),
-          if (config.categories != null && config.categories!.isNotEmpty)
-            _buildCategorySelector(theme, config, entry.id),
-          ...fieldsToProcess.map(
-            (field) => _buildFieldWidget(theme, field, entry.id),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

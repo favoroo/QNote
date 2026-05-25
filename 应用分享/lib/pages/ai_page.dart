@@ -81,14 +81,18 @@ class _AiPageState extends ConsumerState<AiPage> {
     super.dispose();
   }
 
-  void _scrollToBottom() {
+  void _scrollToBottom({bool immediate = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+        if (immediate) {
+          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+        } else {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
       }
     });
   }
@@ -257,6 +261,11 @@ class _AiPageState extends ConsumerState<AiPage> {
     final theme = Theme.of(context);
 
     ref.listen(currentChatProvider, (_, _) => _scrollToBottom());
+    ref.listen(aiStreamingMessageProvider, (prev, next) {
+      if (next != null) {
+        _scrollToBottom(immediate: true);
+      }
+    });
 
     return Scaffold(
       key: _scaffoldKey,
@@ -550,18 +559,31 @@ class _AiPageState extends ConsumerState<AiPage> {
           ]
         : messages;
 
+    final streamingMessageText = ref.watch(aiStreamingMessageProvider);
     final showTyping =
-        _isTyping && messages.isNotEmpty && messages.last.role == 'user';
+        _isTyping && streamingMessageText == null && messages.isNotEmpty && messages.last.role == 'user';
+    final showStreaming = streamingMessageText != null;
+
+    final totalCount = displayMessages.length + (showTyping ? 1 : 0) + (showStreaming ? 1 : 0);
 
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.all(16),
-      itemCount: displayMessages.length + (showTyping ? 1 : 0),
+      itemCount: totalCount,
       itemBuilder: (context, index) {
-        if (index == displayMessages.length) {
+        if (index < displayMessages.length) {
+          return _ChatBubble(message: displayMessages[index]);
+        }
+        if (showTyping && index == displayMessages.length) {
           return const _TypingBubble();
         }
-        return _ChatBubble(message: displayMessages[index]);
+        return _ChatBubble(
+          message: ChatMessage(
+            role: 'assistant',
+            content: streamingMessageText ?? '',
+            timestamp: DateTime.now(),
+          ),
+        );
       },
     );
   }

@@ -9,9 +9,7 @@ echo.
 set "PROJECT_ROOT=%~dp0"
 set "BUILD_DIR=%PROJECT_ROOT%build\app\outputs\flutter-apk"
 
-for /f %%i in ('powershell -Command "Get-Date -Format 'yyyyMMdd-HHmm'"') do set "TIMESTAMP=%%i"
-
-echo [1/3] Building APK (arm64-v8a only)...
+echo [1/3] Building APK (arm64-v8a)...
 call flutter build apk --release --target-platform android-arm64
 if errorlevel 1 (
     echo.
@@ -22,7 +20,7 @@ if errorlevel 1 (
 echo.
 echo [2/3] Copying APK to parent folder...
 set "SRC_APK=%BUILD_DIR%\app-arm64-v8a-release.apk"
-set "APK_NAME=qnote-arm64-v8a-%TIMESTAMP%.apk"
+set "APK_NAME=qnote.apk"
 
 if exist "%SRC_APK%" (
     copy "%SRC_APK%" "%PROJECT_ROOT%..\%APK_NAME%" >nul

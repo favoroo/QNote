@@ -52,6 +52,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   Offset? _lastDragPosition;
   bool _isScrollingFromList = false;
   bool _hasPerformedInitialScroll = false;
+  bool _isInitialScrollCompleted = false;
   bool _isProgrammaticScrolling = true;
   String? _extractingRecordId;
   CancelToken? _cancelToken;
@@ -72,6 +73,65 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   bool _showBatchConfirmButton = false;
   final Set<String> _batchExtractedRecordIds = {};
 
+  Map<String, List<DiaryRecord>> _buildRecordsByDate(List<DiaryRecord> allRecords) {
+    final Map<String, List<DiaryRecord>> recordsByDate = {};
+    for (final r in allRecords) {
+      if (r.isDeleted) continue;
+      final preRecord = _undoRecords[r.id];
+      final displayDate = preRecord != null ? preRecord.getEffectiveDate() : r.getEffectiveDate();
+      final key = '${displayDate.year}-${displayDate.month}-${displayDate.day}';
+      recordsByDate.putIfAbsent(key, () => []).add(r);
+    }
+    // Sort each day's records by display time
+    recordsByDate.forEach((key, list) {
+      list.sort((a, b) {
+        final preA = _undoRecords[a.id];
+        final displayTimeA = preA != null ? preA.getDisplayTime() : a.getDisplayTime();
+        final preB = _undoRecords[b.id];
+        final displayTimeB = preB != null ? preB.getDisplayTime() : b.getDisplayTime();
+        return displayTimeA.compareTo(displayTimeB);
+      });
+    });
+    return recordsByDate;
+  }
+
+  double _estimateInitialOffset() {
+    final now = DateTime.now();
+    final dayOffset = _dateToDayOffset(now);
+    final nodeIndex = now.hour * 2 + (now.minute >= 30 ? 1 : 0);
+    
+    // Check if we can get the records to estimate the offset more accurately
+    final allRecords = ref.read(diaryListProvider).valueOrNull;
+    double recordExtraHeight = 0.0;
+    if (allRecords != null) {
+      final recordsByDate = _buildRecordsByDate(allRecords);
+      
+      for (int d = 0; d <= dayOffset; d++) {
+        final date = _indexToDate(d);
+        final dateKey = '${date.year}-${date.month}-${date.day}';
+        final dayRecords = recordsByDate[dateKey] ?? [];
+        if (d < dayOffset) {
+          recordExtraHeight += dayRecords.length * _averageRecordExtraHeight;
+        } else {
+          for (final r in dayRecords) {
+            final displayTime = r.getDisplayTime();
+            final rNodeIndex = displayTime.hour * 2 + (displayTime.minute >= 30 ? 1 : 0);
+            if (rNodeIndex < nodeIndex) {
+              recordExtraHeight += _averageRecordExtraHeight;
+            }
+          }
+        }
+      }
+    }
+
+    double offset = dayOffset * (_dividerHeight + 48 * _nodeHeight)
+        + _dividerHeight
+        + nodeIndex * _nodeHeight
+        + recordExtraHeight
+        - 350.0; // Subtracting 350.0 as an estimated half viewport height for centering
+    return offset.clamp(0.0, double.infinity);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -80,10 +140,14 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     _today = DateTime(now.year, now.month, now.day);
     _windowStartDate = _today.subtract(const Duration(days: 3));
     _hasPerformedInitialScroll = false;
+    _isInitialScrollCompleted = false;
     _itemContexts.clear();
     _itemHeights.clear();
 
-    _scrollController = ScrollController(keepScrollOffset: false);
+    _scrollController = ScrollController(
+      keepScrollOffset: false,
+      initialScrollOffset: _estimateInitialOffset(),
+    );
     _scrollController.addListener(_onScroll);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -147,19 +211,23 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     return offset;
   }
 
-  void _performInitialScrollToCurrentTime({int retryCount = 0}) {
+  void _performInitialScrollToCurrentTime({
+    int retryCount = 0,
+    Map<String, List<DiaryRecord>>? recordsByDate,
+  }) {
     if (!mounted) return;
-
     if (!_scrollController.hasClients) {
-      if (retryCount < 20) {
-        Future.delayed(const Duration(milliseconds: 100), () {
-          _performInitialScrollToCurrentTime(retryCount: retryCount + 1);
+      if (retryCount < 10) {
+        Future.delayed(const Duration(milliseconds: 50), () {
+          _performInitialScrollToCurrentTime(
+            retryCount: retryCount + 1,
+            recordsByDate: recordsByDate,
+          );
         });
       }
       return;
     }
-
-    _scrollToCurrentTime(smooth: true);
+    _scrollToCurrentTime(smooth: false, recordsByDate: recordsByDate); // 初始定位不用动画
   }
 
   void _scrollToTarget({
@@ -384,6 +452,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
   void _finishProgrammaticScroll() {
     _isProgrammaticScrolling = false;
+    if (!_isInitialScrollCompleted) {
+      setState(() {
+        _isInitialScrollCompleted = true;
+      });
+    }
   }
 
   void _scrollToCurrentTime({
@@ -423,7 +496,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     );
   }
 
-  void _scrollToTime(DateTime targetTime, {bool smooth = true}) {
+  void _scrollToTime(
+    DateTime targetTime, {
+    bool smooth = true,
+    Map<String, List<DiaryRecord>>? recordsByDate,
+  }) {
     if (!_scrollController.hasClients) return;
 
     final dayOffset = _dateToDayOffset(targetTime);
@@ -431,7 +508,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     if (dayOffset < 0 || dayOffset >= _windowDays) {
       _ensureDateInWindow(targetTime);
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _scrollToTime(targetTime, smooth: smooth);
+        if (mounted) {
+          _scrollToTime(targetTime, smooth: smooth, recordsByDate: recordsByDate);
+        }
       });
       return;
     }
@@ -439,7 +518,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     final nodeIndex = targetTime.hour * 2 + (targetTime.minute >= 30 ? 1 : 0);
     final targetIndex = dayOffset * _itemsPerDay + (nodeIndex + 1);
 
-    _scrollToTarget(targetIndex: targetIndex, smooth: smooth, alignment: 0.5);
+    _scrollToTarget(
+      targetIndex: targetIndex,
+      smooth: smooth,
+      alignment: 0.5,
+      recordsByDate: recordsByDate,
+      targetTime: targetTime,
+    );
 
     ref.read(selectedDateProvider.notifier).state = DateTime(
       targetTime.year,
@@ -549,7 +634,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
           _today = todayNow;
           _windowStartDate = _today.subtract(const Duration(days: 3));
         });
-        _scrollToCurrentTime(smooth: true);
+        final allRecords = ref.read(diaryListProvider).valueOrNull;
+        final recordsByDate = allRecords != null ? _buildRecordsByDate(allRecords) : null;
+        _scrollToCurrentTime(smooth: true, recordsByDate: recordsByDate);
       }
     }
   }
@@ -727,7 +814,16 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
     final targetIndex = dayOffset * _itemsPerDay;
 
-    _scrollToTarget(targetIndex: targetIndex, smooth: true, alignment: 0.0);
+    final allRecords = ref.read(diaryListProvider).valueOrNull;
+    final recordsByDate = allRecords != null ? _buildRecordsByDate(allRecords) : null;
+
+    _scrollToTarget(
+      targetIndex: targetIndex,
+      smooth: true,
+      alignment: 0.0,
+      recordsByDate: recordsByDate,
+      targetTime: date,
+    );
   }
 
   void _ensureDateInWindow(DateTime date) {
@@ -1442,13 +1538,17 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
     ref.listen<int>(diaryScrollTriggerProvider, (previous, next) {
       if (next != 0) {
-        _scrollToCurrentTime(smooth: true);
+        final allRecords = ref.read(diaryListProvider).valueOrNull;
+        final recordsByDate = allRecords != null ? _buildRecordsByDate(allRecords) : null;
+        _scrollToCurrentTime(smooth: true, recordsByDate: recordsByDate);
       }
     });
 
     ref.listen<DateTime?>(diaryScrollToTimeProvider, (previous, next) {
       if (next != null) {
-        _scrollToTime(next);
+        final allRecords = ref.read(diaryListProvider).valueOrNull;
+        final recordsByDate = allRecords != null ? _buildRecordsByDate(allRecords) : null;
+        _scrollToTime(next, recordsByDate: recordsByDate);
         ref.read(diaryScrollToTimeProvider.notifier).state = null;
       }
     });
@@ -1462,12 +1562,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
     if (diaryListAsync is AsyncData && !_hasPerformedInitialScroll) {
       _hasPerformedInitialScroll = true;
+      final allRecords = diaryListAsync.value ?? const [];
+      final recordsByDate = _buildRecordsByDate(allRecords);
+
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (mounted) {
-            _performInitialScrollToCurrentTime();
-          }
-        });
+        if (mounted) {
+          _performInitialScrollToCurrentTime(recordsByDate: recordsByDate);
+        }
       });
     }
 
@@ -1592,43 +1693,27 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
               children: [
                 diaryListAsync.when(
                   data: (allRecords) {
-                    final Map<String, List<DiaryRecord>> recordsByDate = {};
-                    for (final r in allRecords) {
-                      if (r.isDeleted) continue;
-                      // Use original time if in undoable state to keep position in list
-                      final preRecord = _undoRecords[r.id];
-                      final displayTime = preRecord != null
-                          ? preRecord.time
-                          : r.time;
-                      final key =
-                          '${displayTime.year}-${displayTime.month}-${displayTime.day}';
-                      recordsByDate.putIfAbsent(key, () => []).add(r);
-                    }
-
-                    // Sort each day's records by display time
-                    recordsByDate.forEach((key, list) {
-                      list.sort((a, b) {
-                        final preA = _undoRecords[a.id];
-                        final displayTimeA = preA != null ? preA.time : a.time;
-                        final preB = _undoRecords[b.id];
-                        final displayTimeB = preB != null ? preB.time : b.time;
-                        return displayTimeA.compareTo(displayTimeB);
-                      });
-                    });
+                    final recordsByDate = _buildRecordsByDate(allRecords);
 
                     return Stack(
                       children: [
-                        Positioned(
-                          left: 39,
-                          top: 0,
-                          bottom: 0,
-                          child: Container(
-                            width: 2,
-                            color: theme.colorScheme.outlineVariant.withValues(
-                              alpha: 0.4,
-                            ),
-                          ),
-                        ),
+                        AnimatedOpacity(
+                          opacity: _isInitialScrollCompleted ? 1.0 : 0.0,
+                          duration: const Duration(milliseconds: 200),
+                          curve: Curves.easeInOut,
+                          child: Stack(
+                            children: [
+                              Positioned(
+                                left: 39,
+                                top: 0,
+                                bottom: 0,
+                                child: Container(
+                                  width: 2,
+                                  color: theme.colorScheme.outlineVariant.withValues(
+                                    alpha: 0.4,
+                                  ),
+                                ),
+                              ),
                         GestureDetector(
                           key: _viewportKey,
                           onLongPressStart: _handleDragStart,
@@ -1976,6 +2061,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                             },
                           ),
                         ),
+                            ],
+                          ),
+                        ),
+                        if (!_isInitialScrollCompleted)
+                          const Center(
+                            child: CircularProgressIndicator(),
+                          ),
                       ],
                     );
                   },

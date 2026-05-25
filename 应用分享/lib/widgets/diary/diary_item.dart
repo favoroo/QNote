@@ -918,14 +918,24 @@ class DiaryItem extends StatelessWidget {
 
   String _formatTimeRangeWithDate() {
     final start = record.startTime ?? record.time;
-    final dateStr = DateFormat('MM-dd').format(start);
+    final startDateStr = DateFormat('MM-dd').format(start);
     final startStr = DateFormat.Hm().format(start);
 
     if (record.endTime != null) {
-      final endStr = DateFormat.Hm().format(record.endTime!);
-      return '$dateStr $startStr → $endStr';
+      final end = record.endTime!;
+      final endStr = DateFormat.Hm().format(end);
+      
+      final isCrossDate = start.year != end.year || 
+                          start.month != end.month || 
+                          start.day != end.day;
+      
+      if (isCrossDate) {
+        final endDateStr = DateFormat('MM-dd').format(end);
+        return '$startDateStr $startStr → $endDateStr $endStr';
+      }
+      return '$startDateStr $startStr → $endStr';
     }
-    return '$dateStr $startStr';
+    return '$startDateStr $startStr';
   }
 }
 

@@ -265,3 +265,345 @@ decoration: BoxDecoration(
 ### 原因：
 - 多个 `flutter run` 进程占用大量系统资源
 - 热重载（按 `r`）是 Flutter 核心特性，速度更快（通常 < 1秒）
+
+---
+
+## 代码风格规范
+
+### 1. 命名
+
+| 类型 | 风格 | 示例 |
+|------|------|------|
+| 类名 | UpperCamelCase | `DiaryRecord`, `AiService` |
+| 文件名 | snake_case | `diary_record.dart`, `ai_service.dart` |
+| 变量/方法 | lowerCamelCase | `selectedDate`, `updateConfig()` |
+| 私有成员 | `_` 前缀 | `_config`, `_handleTap()` |
+| 常量 | lowerCamelCase | `defaultSystemPrompts` |
+| Provider | `xxxProvider` / `xxxNotifier` | `diaryListProvider`, `DiaryListNotifier` |
+
+### 2. 引号
+
+- 统一使用**单引号**
+- 字符串内含单引号时用双引号：`"it's a test"`
+- 对应 Lint 规则：`prefer_single_quotes: true`
+
+### 3. Import 排序
+
+分 4 组，组间空行分隔，组内按字母序：
+
+```dart
+// 1. Dart 核心库
+import 'dart:async';
+import 'dart:convert';
+
+// 2. Flutter 框架
+import 'package:flutter/material.dart';
+
+// 3. 第三方包
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+// 4. 项目内部包
+import 'package:qnote_flutter/core/ai/ai_service.dart';
+import 'package:qnote_flutter/models/diary_record.dart';
+```
+
+### 4. 格式
+
+- **行宽**：不超过 120 字符
+- **尾逗号**：多行参数列表统一加尾逗号（`require_trailing_commas`）
+- **花括号**：`if` / `for` / `while` 等控制流必须加花括号（即使单行）
+
+---
+
+## 状态管理规范
+
+项目使用 **Riverpod**，遵循以下模式：
+
+### 1. Provider 选型
+
+| 场景 | 使用 | 示例 |
+|------|------|------|
+| 异步数据（列表、详情） | `AsyncNotifierProvider` + `AsyncNotifier` | `diaryListProvider` |
+| 简单状态（选中日期、开关） | `StateProvider` | `selectedDateProvider` |
+| 一次性读取 | `FutureProvider.family` | `diaryDetailProvider` |
+| 服务实例 | `Provider` | `aiServiceProvider` |
+
+**禁止新增 `StateNotifierProvider`**。现有 `StateNotifierProvider` 可保留，但新代码必须使用 `AsyncNotifierProvider` 或 `NotifierProvider`。
+
+### 2. 刷新策略
+
+- 数据变更后调用 `ref.invalidate(provider)` 或 Notifier 内 `refresh()`
+- 禁止直接操作 UI 刷新（如 `setState` + 手动重新查询）
+
+### 3. Provider 粒度
+
+- 一个 Provider 对应一个关注点
+- 避免巨型 Provider（如将列表、选中项、筛选条件合并为一个）
+- 派生状态使用 `Provider` 组合：`final filteredList = Provider((ref) => ref.watch(listProvider).where(...))`
+
+---
+
+## 数据层规范
+
+### 1. Repository
+
+- 统一通过 Provider 注入（`xxxRepositoryProvider`），**禁止在 Provider 外直接使用单例构造函数**
+- 所有 Repository 保持单例模式（`factory` + `_internal`）
+- 统一方法签名：`getAll()` / `getById()` / `insert()` / `update()` / `softDelete()` / `hardDelete()` / `search()`
+
+### 2. 写操作同步日志
+
+所有 insert / update / delete 必须调用 `_syncLog.logChange()`，记录表名、记录 ID、操作类型、数据快照。
+
+### 3. 删除策略
+
+- 用户触发的删除使用 `softDelete()`（`is_deleted = 1`）
+- `hardDelete()` 仅在数据管理页提供
+- 查询默认过滤 `is_deleted = 0`（`includeDeleted: false`）
+
+### 4. 模型定义
+
+每个模型必须包含：
+
+```dart
+class DiaryRecord {
+  final String id;           // 不可变主键
+  String title;              // 可变业务字段
+  DateTime updatedAt;
+
+  DiaryRecord({required this.id, required this.title, ...});
+
+  Map<String, dynamic> toMap();           // 字段名转 snake_case 列名
+  factory DiaryRecord.fromMap(Map<String, dynamic> map);  // 带类型转换和默认值
+  DiaryRecord copyWith({...});            // 支持"清除"可选字段（clearXxx = false）
+}
+```
+
+**类型映射约定**：
+
+| Dart 类型 | SQLite 类型 | 转换方式 |
+|-----------|-------------|----------|
+| `bool` | `INTEGER` | `isXxx ? 1 : 0` / `(map['is_xxx'] as int? ?? 0) == 1` |
+| `DateTime` | `TEXT` | `.toIso8601String()` / `DateTime.parse()` |
+| `List<String>` | `TEXT` | `jsonEncode()` / `jsonDecode().cast<String>()` |
+| `Map<String, dynamic>` | `TEXT` | `jsonEncode()` / `jsonDecode()` |
+
+---
+
+## 错误处理规范
+
+### 1. 分层策略
+
+| 层级 | 策略 |
+|------|------|
+| 服务层（AI、网络） | 捕获异常 → 记录日志 → rethrow |
+| Repository 层 | 让数据库异常自然冒泡，仅对已知可恢复错误做处理 |
+| Provider 层 | `AsyncValue` 自动捕获，UI 层通过 `.when(error:)` 展示 |
+| UI 层 | `AsyncValue.when(error:)` + `Toast` 提示用户 |
+
+### 2. 禁止空 catch
+
+```dart
+// ❌ 禁止
+try { ... } catch (_) {}
+
+// ✅ 仅在非关键路径允许，必须加注释
+try {
+  _parseStreamLine(line);
+} catch (e) {
+  // 流式单行解析失败不影响整体，跳过该行
+  continue;
+}
+```
+
+### 3. 破坏性操作
+
+删除、覆盖等操作必须 `showDialog` 二次确认。
+
+### 4. 自定义异常
+
+业务异常继承 `Exception`，放在 `lib/core/exceptions/`：
+
+```dart
+class NoUsefulInfoException implements Exception {
+  final String message;
+  NoUsefulInfoException(this.message);
+  @override
+  String toString() => 'NoUsefulInfoException: $message';
+}
+```
+
+---
+
+## 组件与页面规范
+
+### 1. 文件大小
+
+- 单文件不超过 **800 行**
+- 超过时拆分：将私有 Widget 提取为同目录下的独立文件
+- 示例：`diary_page.dart` 中的 `_EmptyTimeNode` → `diary_empty_time_node.dart`
+
+### 2. 页面基类
+
+| 场景 | 基类 |
+|------|------|
+| 需要状态 + ref | `ConsumerStatefulWidget` |
+| 仅需 ref、无状态 | `ConsumerWidget` |
+| 不需要 ref | `StatelessWidget` / `StatefulWidget` |
+
+### 3. 组件参数
+
+- 命名参数 + `required`
+- 回调统一 `onXxx` 命名：`onTap`, `onEdit`, `onDelete`, `onChanged`
+- 可选参数提供合理默认值
+
+### 4. 私有 Widget
+
+- 页面内嵌私有类以 `_` 前缀（如 `_EmptyTimeNode`）
+- 可复用组件放 `lib/widgets/` 对应子目录，不加 `_` 前缀
+
+### 5. 生命周期
+
+- Controller 在 `initState` 创建，`dispose` 释放
+- **禁止**在 `build` 中创建 Controller 或订阅
+- `WidgetsBindingObserver` 等在 `initState` 注册，`dispose` 移除
+
+---
+
+## 注释规范
+
+### 1. 公共 API
+
+公共类和公共方法必须加 `///` 文档注释，说明用途而非实现细节：
+
+```dart
+/// 日记数据仓库，提供 CRUD 和软删除操作
+class DiaryRepository { ... }
+
+/// 按日期加载日记列表
+///
+/// [date] 目标日期，[includeDeleted] 是否包含已软删除记录
+Future<List<DiaryRecord>> loadByDate(DateTime date, {bool includeDeleted = false}) async { ... }
+```
+
+### 2. 行内注释
+
+- 用中文，解释**为什么**而非**做了什么**
+- 仅在逻辑不直观时添加
+
+```dart
+// ✅ 好：解释原因
+// 三击检测需要记录前两次点击时间
+if (_tapCount >= 2 && now.difference(_lastTapTime) < tripleTapThreshold) {
+
+// ❌ 坏：重复代码
+// 检查点击次数是否大于等于2
+if (_tapCount >= 2) {
+```
+
+### 3. 禁止
+
+- 无意义注释（如 `// init`, `// constructor`）
+- 注释掉的代码块（用 Git 管理历史，不要留注释代码）
+
+### 4. TODO
+
+格式：`// TODO(name): 描述`，关联 issue 编号（如有）：
+
+```dart
+// TODO(zhangsan): 替换为分页加载 #42
+```
+
+---
+
+## Lint 配置
+
+推荐在 `analysis_options.yaml` 中启用以下规则：
+
+```yaml
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    prefer_single_quotes: true
+    require_trailing_commas: true
+    avoid_print: true
+    avoid_empty_else: true
+    avoid_catches_without_on_clauses: true
+    prefer_final_fields: true
+    prefer_final_locals: true
+    prefer_const_constructors: true
+    sized_box_for_whitespace: true
+    use_key_in_widget_constructors: true
+```
+
+---
+
+## 测试规范
+
+### 1. 渐进式要求
+
+当前项目无测试覆盖，采用渐进策略：**新增代码必须测试，存量代码按需补充**。
+
+### 2. 测试要求
+
+| 层级 | 要求 | 测试目录 |
+|------|------|----------|
+| Model | `toMap()` / `fromMap()` / `copyWith()` 往返一致性 | `test/models/` |
+| Repository | 基本 CRUD 操作 | `test/core/storage/` |
+| Provider | 关键业务逻辑 | `test/providers/` |
+
+### 3. 测试文件位置
+
+`test/` 目录镜像 `lib/` 结构：
+
+```
+test/
+├── models/
+│   └── diary_record_test.dart
+├── core/
+│   └── storage/
+│       └── diary_repository_test.dart
+└── providers/
+    └── diary_provider_test.dart
+```
+
+### 4. 命名
+
+测试文件：`xxx_test.dart`；测试组：`group('Xxx', () { test('should ...', () {}); });`
+
+---
+
+## Git 提交规范
+
+### 格式
+
+```
+<type>(<scope>): <description>
+```
+
+### Type
+
+| Type | 说明 |
+|------|------|
+| feat | 新功能 |
+| fix | 修复 Bug |
+| refactor | 重构（不改变功能） |
+| style | UI/样式调整 |
+| docs | 文档变更 |
+| test | 测试相关 |
+| chore | 构建/配置/依赖 |
+
+### Scope
+
+`diary` / `note` / `todo` / `ai` / `stats` / `settings` / `sync` / `core` / `ui`
+
+### 示例
+
+```
+feat(diary): 添加批量删除功能
+fix(ai): 修复流式响应解析空行崩溃
+refactor(storage): 统一 Repository 通过 Provider 注入
+style(stats): 统计卡片圆角对齐设计令牌
+```

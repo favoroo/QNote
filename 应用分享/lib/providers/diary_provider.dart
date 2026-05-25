@@ -6,6 +6,8 @@ import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/date_color_mark.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:flutter/material.dart';
+import 'package:qnote_flutter/providers/selected_date_provider.dart';
+export 'package:qnote_flutter/providers/selected_date_provider.dart';
 
 class TimelineTimeSelectEvent {
   final TimeOfDay time;
@@ -23,8 +25,6 @@ final diaryRepositoryProvider = Provider<DiaryRepository>((ref) {
 final colorMarkRepositoryProvider = Provider<ColorMarkRepository>((ref) {
   return ColorMarkRepository();
 });
-
-final selectedDateProvider = StateProvider<DateTime>((ref) => DateTime.now());
 
 final colorMarkProvider = FutureProvider<DateColorMark?>((ref) async {
   final selectedDate = ref.watch(selectedDateProvider);
