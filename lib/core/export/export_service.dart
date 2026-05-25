@@ -24,6 +24,7 @@ import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/user_profile.dart';
 import 'package:qnote_flutter/models/webdav_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
+import 'package:qnote_flutter/models/daily_score.dart';
 
 class ExportService {
   final DiaryRepository _diaryRepo = DiaryRepository();
@@ -194,6 +195,9 @@ class ExportService {
     final bodyStateMaps = await db.query('body_states');
     data['body_states'] = bodyStateMaps;
 
+    final dailyScoreMaps = await db.query('daily_scores');
+    data['daily_scores'] = dailyScoreMaps;
+
     data['export_version'] = 2;
     data['export_time'] = DateTime.now().toIso8601String();
 
@@ -328,6 +332,12 @@ class ExportService {
       await _importBodyStates(states, overwrite);
     }
 
+    if (importData.containsKey('daily_scores')) {
+      final dailyScores = (importData['daily_scores'] as List)
+          .map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      await _importDailyScores(dailyScores, overwrite);
+    }
+
     final duration = DateTime.now().difference(startTime).inMilliseconds;
     final summary = StringBuffer('耗时=${duration}ms');
     if (importData.containsKey('diary_records')) summary.write(', 日记=${(importData['diary_records'] as List).length}');
@@ -353,6 +363,7 @@ class ExportService {
       'ai_roles',
       'ai_temperatures',
       'body_states',
+      'daily_scores',
       'export_version',
       'export_time',
       // 允许一些旧架构的冗余字段，避免验证失败
@@ -384,6 +395,7 @@ class ExportService {
     await db.delete('webdav_configs');
     await db.delete('date_color_marks');
     await db.delete('body_states');
+    await db.delete('daily_scores');
     await db.delete('app_configs');
   }
 
@@ -590,6 +602,30 @@ class ExportService {
       try {
         await db.insert(
           'body_states',
+          map,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _importDailyScores(
+    List<Map<String, dynamic>> dailyScores,
+    bool merge,
+  ) async {
+    final db = await DatabaseHelper.instance.database;
+    for (final map in dailyScores) {
+      if (merge) {
+        final existing = await db.query(
+          'daily_scores',
+          where: 'id = ?',
+          whereArgs: [map['id']],
+        );
+        if (existing.isNotEmpty) continue;
+      }
+      try {
+        await db.insert(
+          'daily_scores',
           map,
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
@@ -1079,6 +1115,27 @@ class ExportService {
       for (final id in deletes) {
         try {
           await db.delete('body_states', where: 'id = ?', whereArgs: [id]);
+        } catch (_) {}
+      }
+    }
+
+    if (changes.containsKey('daily_scores')) {
+      final tableChanges = Map<String, dynamic>.from(changes['daily_scores'] as Map);
+      final upserts = (tableChanges['upserts'] as List?) ?? [];
+      final deletes = (tableChanges['deletes'] as List?) ?? [];
+      final db = await DatabaseHelper.instance.database;
+      for (final item in upserts) {
+        try {
+          await db.insert(
+            'daily_scores',
+            Map<String, dynamic>.from(item as Map),
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        } catch (_) {}
+      }
+      for (final id in deletes) {
+        try {
+          await db.delete('daily_scores', where: 'id = ?', whereArgs: [id]);
         } catch (_) {}
       }
     }

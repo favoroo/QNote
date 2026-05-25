@@ -7,7 +7,7 @@ QNote 是一个 **Flutter 多平台应用**（Web / iOS / Android），核心功
 ### 项目结构
 
 ```
-qnote_flutter/
+项目根目录/
 ├── lib/
 │   ├── main.dart / app.dart              # 应用入口与配置
 │   ├── database_init.dart / _io.dart     # 数据库初始化
@@ -20,7 +20,7 @@ qnote_flutter/
 │   │   ├── notification/                 # 本地通知
 │   │   ├── router/                       # 路由
 │   │   ├── storage/                      # 数据存储层（各 repository）
-│   │   ├── theme/                        # 主题定义
+│   │   ├── theme/                        # 主题定义（app_theme.dart）
 │   │   ├── utils/                        # 工具函数
 │   │   └── back_handler.dart             # 返回键处理
 │   ├── models/                           # 数据模型
@@ -32,7 +32,6 @@ qnote_flutter/
 │       └── statistics/                   # 统计组件
 ├── assets/                               # 静态资源
 ├── web/                                  # Web 平台配置
-├── android/ / windows/                   # 原生平台配置
 └── AGENTS.md
 ```
 
@@ -140,32 +139,110 @@ qnote_flutter/
 
 ## UI 设计风格指南
 
-设计或修改 UI 时，严格遵循以下规范：
+设计或修改 UI 时遵循本规范。主题默认值以 `lib/core/theme/app_theme.dart` 为准；页面级强化样式以本节令牌表为准。
 
-### 1. 整体美学
-- **信息密度优先**：优先保证内容可读和信息展示完整，避免为"极简"牺牲信息密度
-- **背景颜色**：浅色/柔和色调，如 `colorScheme.surfaceContainerLowest.withValues(alpha: 0.5)`
-- **阴影与质感**：柔和弥散微阴影，避免强烈投影
+### 1. 设计原则
 
-### 2. 卡片化布局
-- 内容区块封装在卡片中
-- 圆角较大：`BorderRadius.circular(24)` 或 `16`
-- 边框极细半透明：`Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5))`
-- 阴影参考：`BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: Offset(0, 4))`
+- **信息密度优先**：内容完整可读，不为极简牺牲关键信息
+- **Material 3 + 主题令牌**：颜色/圆角/字重优先 `Theme.of(context).colorScheme` 与 `textTheme`，禁止随意写死 hex（图表等特殊色除外）
+- **扁平柔和**：`elevation: 0` 为主，用细边框 + 低透明度阴影区分层级
+- **深浅色一致**：同一组件在 light/dark 下语义相同（边框、填充、文字层级一一对应）
 
-### 3. 输入框与表单
-- 无边框底色，用带浅色填充的圆角框
-- `fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3)`，`BorderRadius.circular(16)`
-- Focused 时带主题色细边框
+### 2. 设计令牌速查
 
-### 4. 按钮与操作区
-- 大圆角：`BorderRadius.circular(16)` 或 `20`
-- 零浮现：`elevation: 0`
-- 图标包裹在轻微透明背景色 Container 中：`iconColor.withValues(alpha: 0.1)` + `BorderRadius.circular(10)`
+**圆角层级**
 
-### 5. 导航栏
-- 透明沉浸：`backgroundColor: Colors.transparent`，`elevation: 0`，`scrolledUnderElevation: 0`
-- 标题加粗：`fontWeight: FontWeight.bold`
+| 层级 | 圆角 | 典型场景 |
+|------|------|----------|
+| XL | 24 | 页面主卡片、BottomSheet/SnackBar、大面板 |
+| L | 16–20 | 内容块、设置项容器、对话框（主题默认 20） |
+| M | 12–16 | 列表内卡片、统计卡片（如 `stats_card`） |
+| S | 10 | 按钮、Chip、ListTile（与 AppTheme 默认一致） |
+| XS | 8–10 | 图标背景容器 |
+
+**颜色语义**（统一用 `colorScheme`，勿硬编码）
+
+| 用途 | 写法 |
+|------|------|
+| 卡片底 | `surface` |
+| 浅色衬底/分组 | `surfaceContainerLowest.withValues(alpha: 0.5)` |
+| 输入/次级块填充 | `surfaceContainerHighest.withValues(alpha: 0.3)` |
+| 分隔线 | `outlineVariant.withValues(alpha: 0.3)` |
+| 卡片边框 | `outlineVariant.withValues(alpha: 0.5)` |
+| 正文/次要文字 | `onSurface` / `onSurfaceVariant` |
+| 强调/选中 | `primary` / `primaryContainer` |
+
+**间距**：以 8 为网格——`8 / 12 / 16 / 24`；卡片内边距默认 `16`，区块间距 `12–16`
+
+**阴影**（统一使用，避免多层强阴影）：
+
+```dart
+BoxShadow(
+  color: Colors.black.withValues(alpha: 0.02),
+  blurRadius: 10,
+  offset: Offset(0, 4),
+)
+```
+
+### 3. 组件规范
+
+**卡片容器**——内容区块封装在卡片中：
+
+```dart
+decoration: BoxDecoration(
+  color: theme.colorScheme.surface,
+  borderRadius: BorderRadius.circular(16), // 整页级面板用 24
+  border: Border.all(
+    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+  ),
+  boxShadow: [/* 见上方阴影 */],
+)
+```
+
+**输入与表单**
+
+- 无边框线风格：filled + 圆角 16 + `surfaceContainerHighest.withValues(alpha: 0.3)` 填充
+- Focus：`primary` 1–1.5px 描边；hint/label 用 `onSurfaceVariant`
+- 优先 `InputDecorationTheme`；同一页面内不混用 10px 与 16px 圆角输入风格
+
+**按钮与图标操作**
+
+- `elevation: 0`；主按钮用 `ElevatedButton` 主题样式
+- 图标底：`Container(decoration: BoxDecoration(color: iconColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)))`
+- 最小点击区域 ≥ 44×44
+
+**导航**
+
+- 顶栏：`elevation: 0`、`scrolledUnderElevation: 0`；标题 `fontWeight: FontWeight.w600` 或 `bold`
+- 内容页沉浸：仅在有背景图/渐变时用 `backgroundColor: Colors.transparent`，否则跟 `AppBarTheme`
+- 底栏：顶部分割线 `outlineVariant.withValues(alpha: 0.3)`，背景 `surface`
+
+**列表与弹层**
+
+- 列表项圆角 10–12，分隔 `Divider(color: outlineVariant.withValues(alpha: 0.3))`
+- Dialog 20 / BottomSheet 顶圆角 16 / SnackBar 24（与 AppTheme 一致）
+
+### 4. 交互与反馈
+
+- **操作反馈**：成功/失败用 `lib/core/utils/toast_utils.dart`；耗时操作用 loading 或按钮 disabled，避免无响应
+- **状态可见**：选中态用 `primary` 背景或 `fontWeight: bold`；禁用态降低透明度，不单靠变灰
+- **动效**：状态切换用 `AnimatedContainer` / `AnimatedSwitcher`，时长 200–300ms，曲线 `Curves.easeInOut`
+- **手势**：破坏性操作二次确认；侧滑/长按与 diary、notes 现有行为保持一致
+
+### 5. 实施检查清单
+
+改 UI 前逐项确认：
+
+1. 能否复用 `lib/widgets/` 已有组件（`stats_card`、`select`、`date_picker_input` 等）？
+2. 颜色是否全部来自 `colorScheme`？
+3. 圆角是否落在令牌表某一档（同页不随意混用）？
+4. 深浅色下对比度是否可读？
+
+### 6. 禁止项
+
+- 禁止为「好看」新建随机圆角/阴影/配色
+- 禁止页面级 `elevation > 0`（FAB 除外）
+- 禁止复制粘贴大段 Decoration；重复样式应提取为 widget
 
 ---
 

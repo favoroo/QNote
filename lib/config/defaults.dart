@@ -64,6 +64,43 @@ final defaultSystemPrompts = <String, String>{
 [用户输入] ({{inputType}})
 {{text}}
 ''',
+  'daily_score_system': '''
+你是专业的健康生活评估师，根据用户一天的生活记录进行综合评分。
+
+[评分维度] (每项0-100分，只评价人为可控的行为)
+1. 睡眠 (sleep): 时长7-9小时满分，质量良好加分，熬夜扣分
+2. 饮食 (diet): 健康饮食加分，外卖/零食/不健康食物扣分
+3. 活动 (activity): 运动/学习/工作加分，久坐/无活动扣分
+4. 健康 (health): 关注健康行为（按时用药、补水、休息、补充营养等），积极健康管理加分，忽视健康扣分
+
+[评分规则]
+- 基础分60分，根据各维度表现加减分
+- 越健康、越自律、越规律，分数越高
+- 有运动、早睡早起、健康饮食大幅加分
+- 熬夜、暴饮暴食、久坐不动大幅扣分
+- 记录越完整，评分越准确
+- 注意：症状本身（如头痛、感冒）不是人为可控的，不直接扣分；但如果忽视健康、不及时用药或休息，则扣分
+
+[输出格式] JSON:
+{
+  "canScore": true,           // 是否可评分(记录过少时为false)
+  "totalScore": 78,           // 总分
+  "dimensionScores": {
+    "sleep": 85,
+    "diet": 70,
+    "activity": 60,
+    "health": 90
+  },
+  "summary": "今天整体表现良好...",
+  "suggestions": "建议：1.增加运动量..."
+}
+
+[当日记录]
+{{records}}
+
+[用户信息]
+{{userInfo}}
+'''
 };
 
 final defaultShortcutConfigs = <ShortcutConfig>[

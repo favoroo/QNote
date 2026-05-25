@@ -10,8 +10,9 @@ import 'package:qnote_flutter/widgets/statistics/diet_stats.dart';
 import 'package:qnote_flutter/widgets/statistics/finance_stats.dart';
 import 'package:qnote_flutter/widgets/statistics/mood_stats.dart';
 import 'package:qnote_flutter/widgets/statistics/activity_stats.dart';
+import 'package:qnote_flutter/widgets/statistics/daily_score_stats.dart';
 
-enum StatTab { sleep, diet, finance, mood, activity }
+enum StatTab { sleep, diet, finance, mood, activity, score }
 
 class _TabConfig {
   final StatTab tab;
@@ -34,6 +35,7 @@ const _tabs = [
   ),
   _TabConfig(tab: StatTab.mood, label: '状态', icon: Icons.favorite),
   _TabConfig(tab: StatTab.activity, label: '活动', icon: Icons.directions_run),
+  _TabConfig(tab: StatTab.score, label: '评分', icon: Icons.insights),
 ];
 
 class StatisticsPage extends ConsumerStatefulWidget {
@@ -95,13 +97,14 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
             onTabChanged: _onTabChanged,
             isDark: isDark,
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: TimeRangeSelector(
-              selectedRange: _timeRange,
-              onRangeChanged: _onTimeRangeChanged,
+          if (_activeTab != StatTab.score)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: TimeRangeSelector(
+                selectedRange: _timeRange,
+                onRangeChanged: _onTimeRangeChanged,
+              ),
             ),
-          ),
           Expanded(
             child: diaryListAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
@@ -122,6 +125,13 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     DateTime endDate,
     bool isDark,
   ) {
+    if (_activeTab == StatTab.score) {
+      return const SingleChildScrollView(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: DailyScoreStats(),
+      );
+    }
+
     final filtered = records.where((r) {
       return !r.time.isBefore(startDate) && !r.time.isAfter(endDate);
     }).toList();
@@ -168,6 +178,8 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
       case StatTab.activity:
         final stats = calculateActivityStats(records, startDate, endDate);
         content = ActivityStatsWidget(stats: stats);
+      case StatTab.score:
+        content = const DailyScoreStats();
     }
 
     return SingleChildScrollView(

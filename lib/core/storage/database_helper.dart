@@ -27,7 +27,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 9,
+      version: 10,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -223,6 +223,20 @@ class DatabaseHelper {
       )
     ''');
 
+    await db.execute('''
+      CREATE TABLE daily_scores (
+        id TEXT PRIMARY KEY,
+        date TEXT NOT NULL,
+        total_score INTEGER NOT NULL,
+        dimension_scores TEXT NOT NULL,
+        summary TEXT,
+        suggestions TEXT,
+        record_count INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+
     // Performance indexes
     await _createIndexes(db);
   }
@@ -240,6 +254,7 @@ class DatabaseHelper {
       'CREATE INDEX IF NOT EXISTS idx_color_marks_date ON date_color_marks(date)',
       'CREATE INDEX IF NOT EXISTS idx_sync_log_timestamp ON sync_log(timestamp)',
       'CREATE INDEX IF NOT EXISTS idx_sync_log_table ON sync_log(table_name, record_id)',
+      'CREATE INDEX IF NOT EXISTS idx_daily_scores_date ON daily_scores(date)',
     ];
     for (final sql in indexes) {
       try {
@@ -417,6 +432,24 @@ class DatabaseHelper {
     }
     if (oldVersion < 9) {
       await _migrateV9(db);
+    }
+    if (oldVersion < 10) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS daily_scores (
+          id TEXT PRIMARY KEY,
+          date TEXT NOT NULL,
+          total_score INTEGER NOT NULL,
+          dimension_scores TEXT NOT NULL,
+          summary TEXT,
+          suggestions TEXT,
+          record_count INTEGER DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      ''');
+      try {
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_daily_scores_date ON daily_scores(date)');
+      } catch (_) {}
     }
   }
 

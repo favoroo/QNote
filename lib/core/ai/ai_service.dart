@@ -6,6 +6,9 @@ import 'package:qnote_flutter/config/defaults.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
+import 'package:qnote_flutter/models/daily_score.dart';
+import 'package:qnote_flutter/models/diary_record.dart';
+import 'package:uuid/uuid.dart';
 
 class NoUsefulInfoException implements Exception {}
 
@@ -872,5 +875,138 @@ class AiService {
     } catch (_) {
       return data.toString();
     }
+  }
+
+  Future<DailyScore> analyzeDailyScore({
+    required List<DiaryRecord> records,
+    required DateTime date,
+    String? userInfo,
+  }) async {
+    if (_config == null) throw Exception('AI config not set');
+
+    if (records.length < 3) {
+      throw ArgumentError('当日记录过少，暂无法评分');
+    }
+
+    final recordsStr = StringBuffer();
+    for (int i = 0; i < records.length; i++) {
+      final r = records[i];
+      recordsStr.writeln('记录 ${i + 1}:');
+      recordsStr.writeln('- 时间: ${r.time.toIso8601String()}');
+      if (r.displayTag.isNotEmpty) {
+        recordsStr.writeln('- 分类: ${r.displayTag}');
+      }
+      if (r.tags.isNotEmpty) {
+        recordsStr.writeln('- 标签: ${r.tags.join(', ')}');
+      }
+      if (r.content.isNotEmpty) {
+        recordsStr.writeln('- 内容: ${r.content}');
+      }
+      if (r.bodyState != null && r.bodyState!.isNotEmpty) {
+        recordsStr.writeln('- 身体状态: ${jsonEncode(r.bodyState)}');
+      }
+      recordsStr.writeln();
+    }
+
+    final systemPrompt = defaultSystemPrompts['daily_score_system'] ?? '';
+    final userPrompt = '请根据上述规则和以下数据进行评分与分析。\n\n[当日记录]\n${recordsStr.toString()}\n\n[用户信息]\n${userInfo ?? "无"}';
+
+    dynamic requestBody;
+    String endpoint = _generateContentEndpoint;
+
+    if (_config!.provider == 'gemini') {
+      requestBody = {
+        'contents': [
+          {
+            'role': 'user',
+            'parts': [
+              {'text': userPrompt},
+            ],
+          },
+        ],
+        'systemInstruction': {
+          'parts': [
+            {'text': systemPrompt},
+          ],
+        },
+        'generationConfig': {
+          'temperature': _temperature,
+          'maxOutputTokens': _maxTokens,
+          'responseMimeType': 'application/json',
+        },
+      };
+    } else {
+      final isOmni = _config!.modelName.toLowerCase().contains('omni');
+      final formattedMessages = [
+        if (isOmni) ...[
+          {
+            'role': 'system',
+            'content': [
+              {'type': 'text', 'text': systemPrompt},
+            ],
+          },
+          {
+            'role': 'user',
+            'content': [
+              {'type': 'text', 'text': userPrompt},
+            ],
+          },
+        ] else ...[
+          {'role': 'system', 'content': systemPrompt},
+          {'role': 'user', 'content': userPrompt},
+        ],
+      ];
+
+      final bodyMap = <String, dynamic>{
+        'model': _config!.modelName,
+        'messages': formattedMessages,
+        'temperature': _temperature,
+        'max_tokens': _maxTokens,
+        'response_format': {'type': 'json_object'},
+      };
+
+      if (isOmni) {
+        bodyMap['sessionId'] = DateTime.now().millisecondsSinceEpoch.toString();
+        bodyMap['output_modalities'] = ['text'];
+      }
+
+      requestBody = bodyMap;
+    }
+
+    final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
+    LoggerService.instance.logAI(
+      'AI评分分析请求 [${_config!.provider}] [${_config!.modelName}] $endpoint:\n${_formatJsonForLogging(sanitizedBody)}',
+    );
+
+    final response = await _dio.post(endpoint, data: requestBody);
+    final responseContent = _extractTextFromResponse(response.data);
+    LoggerService.instance.logAI(
+      'AI评分分析响应:\n${_formatJsonForLogging(response.data)}',
+    );
+
+    final jsonResult = _parseJsonFromAiContent(responseContent) as Map<String, dynamic>;
+
+    final canScore = jsonResult['canScore'] ?? true;
+    if (!canScore) {
+      throw Exception('AI判定当日信息过少，暂无法评分');
+    }
+
+    final totalScore = (jsonResult['totalScore'] as num?)?.toInt() ?? 60;
+    final rawDimensionScores = jsonResult['dimensionScores'] as Map? ?? {};
+    final dimensionScores = rawDimensionScores.map(
+      (k, v) => MapEntry(k.toString(), (v as num?)?.toInt() ?? 60),
+    );
+
+    return DailyScore(
+      id: const Uuid().v4(),
+      date: date,
+      totalScore: totalScore,
+      dimensionScores: dimensionScores,
+      summary: jsonResult['summary']?.toString() ?? '',
+      suggestions: jsonResult['suggestions']?.toString() ?? '',
+      recordCount: records.length,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
   }
 }
