@@ -3,6 +3,10 @@ import 'package:qnote_flutter/core/storage/sync_log_repository.dart';
 import 'package:qnote_flutter/models/folder.dart';
 
 class FolderRepository {
+  static final FolderRepository _instance = FolderRepository._internal();
+  factory FolderRepository() => _instance;
+  FolderRepository._internal();
+
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
   final SyncLogRepository _syncLog = SyncLogRepository.instance;
 
@@ -83,20 +87,25 @@ class FolderRepository {
 
   Future<void> updateSortOrder(String id, int sortOrder) async {
     final db = await _dbHelper.database;
+    final existing = await getById(id);
+    if (existing == null) return;
+
+    final nowStr = DateTime.now().toIso8601String();
     await db.update(
       'folders',
-      {'sort_order': sortOrder, 'updated_at': DateTime.now().toIso8601String()},
+      {'sort_order': sortOrder, 'updated_at': nowStr},
       where: 'id = ?',
       whereArgs: [id],
     );
-    final existing = await getById(id);
-    if (existing != null) {
-      await _syncLog.logChange(
-        tableName: 'folders',
-        recordId: id,
-        operation: 'update',
-        data: existing.toMap(),
-      );
-    }
+    final updated = existing.copyWith(
+      sortOrder: sortOrder,
+      updatedAt: DateTime.parse(nowStr),
+    );
+    await _syncLog.logChange(
+      tableName: 'folders',
+      recordId: id,
+      operation: 'update',
+      data: updated.toMap(),
+    );
   }
 }

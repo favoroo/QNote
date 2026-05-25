@@ -7,14 +7,11 @@ import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/models/daily_score.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
+import 'package:qnote_flutter/providers/selected_date_provider.dart';
+export 'package:qnote_flutter/providers/selected_date_provider.dart';
 
 final dailyScoreRepositoryProvider = Provider<DailyScoreRepository>((ref) {
   return DailyScoreRepository();
-});
-
-final selectedDateProvider = StateProvider<DateTime>((ref) {
-  final now = DateTime.now();
-  return DateTime(now.year, now.month, now.day);
 });
 
 final dailyScoreProvider = AsyncNotifierProvider<DailyScoreNotifier, DailyScore?>(() {
@@ -38,7 +35,7 @@ class DailyScoreNotifier extends AsyncNotifier<DailyScore?> {
   }
 
   Future<DailyScore> performScore(DateTime date) async {
-    final records = await _diaryRepository.getByDate(date);
+    final records = await _diaryRepository.getByDateWithSleepByEndTime(date);
     if (records.length < 3) {
       throw Exception('当日信息过少，暂无法评分');
     }
@@ -102,5 +99,5 @@ final dailyScoreHistoryProvider = FutureProvider.family<List<DailyScore>, int>((
 final dailyRecordsProvider = FutureProvider<List<DiaryRecord>>((ref) async {
   final date = ref.watch(selectedDateProvider);
   final repo = DiaryRepository();
-  return repo.getByDate(date);
+  return repo.getByDateWithSleepByEndTime(date);
 });

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
   static const Color primaryDefault = Color(0xFF005BCB);
@@ -8,7 +7,7 @@ class AppTheme {
     final colorScheme = ColorScheme(
       primary: accentColor,
       onPrimary: Colors.white,
-      primaryContainer: accentColor.withOpacity(0.1),
+      primaryContainer: accentColor.withValues(alpha: 0.1),
       onPrimaryContainer: accentColor,
       secondary: const Color(0xFF5B5F6E),
       onSecondary: Colors.white,
@@ -40,7 +39,7 @@ class AppTheme {
       useMaterial3: true,
       colorScheme: colorScheme,
       brightness: Brightness.light,
-      textTheme: GoogleFonts.interTextTheme(ThemeData.light().textTheme),
+      fontFamily: 'Inter',
       scaffoldBackgroundColor: const Color(0xFFF9F9FF),
       appBarTheme: AppBarTheme(
         backgroundColor: colorScheme.surface,
@@ -85,7 +84,7 @@ class AppTheme {
       ),
       chipTheme: ChipThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        selectedColor: accentColor.withOpacity(0.15),
+        selectedColor: accentColor.withValues(alpha: 0.15),
         labelStyle: TextStyle(color: colorScheme.onSurface, fontSize: 13),
         side: BorderSide(color: colorScheme.outline),
         padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -97,7 +96,7 @@ class AppTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: colorScheme.surface,
-        indicatorColor: accentColor.withOpacity(0.12),
+        indicatorColor: accentColor.withValues(alpha: 0.12),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
             return IconThemeData(color: accentColor);
@@ -168,7 +167,7 @@ class AppTheme {
         }),
         trackColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return accentColor.withOpacity(0.4);
+            return accentColor.withValues(alpha: 0.4);
           }
           return const Color(0xFFECEDEF);
         }),
@@ -198,7 +197,7 @@ class AppTheme {
     final colorScheme = ColorScheme(
       primary: accentColor,
       onPrimary: Colors.white,
-      primaryContainer: accentColor.withOpacity(0.18),
+      primaryContainer: accentColor.withValues(alpha: 0.18),
       onPrimaryContainer: const Color(0xFFA5B4FC),
       secondary: const Color(0xFF8E94A3),
       onSecondary: const Color(0xFF111318),
@@ -230,7 +229,7 @@ class AppTheme {
       useMaterial3: true,
       colorScheme: colorScheme,
       brightness: Brightness.dark,
-      textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
+      fontFamily: 'Inter',
       scaffoldBackgroundColor: const Color(0xFF111318),
       appBarTheme: AppBarTheme(
         backgroundColor: colorScheme.surface,
@@ -275,7 +274,7 @@ class AppTheme {
       ),
       chipTheme: ChipThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        selectedColor: accentColor.withOpacity(0.2),
+        selectedColor: accentColor.withValues(alpha: 0.2),
         labelStyle: TextStyle(color: colorScheme.onSurface, fontSize: 13),
         side: BorderSide(color: colorScheme.outline),
         padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -287,7 +286,7 @@ class AppTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: colorScheme.surface,
-        indicatorColor: accentColor.withOpacity(0.15),
+        indicatorColor: accentColor.withValues(alpha: 0.15),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
             return IconThemeData(color: accentColor);
@@ -358,7 +357,7 @@ class AppTheme {
         }),
         trackColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return accentColor.withOpacity(0.35);
+            return accentColor.withValues(alpha: 0.35);
           }
           return const Color(0xFF383C47);
         }),

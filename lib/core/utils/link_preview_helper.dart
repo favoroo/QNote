@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:http/http.dart' as http;
+import 'package:dio/dio.dart';
 
 class LinkMetadata {
   final String url;
@@ -45,20 +45,26 @@ class LinkPreviewHelper {
         // Use a reliable public CORS proxy on Web to bypass browser restrictions
         targetUrl = 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
       }
-      final targetUri = Uri.parse(targetUrl);
-      final response = await http.get(targetUri).timeout(const Duration(seconds: 4));
+      final dio = Dio();
+      final response = await dio.get<List<int>>(
+        targetUrl,
+        options: Options(
+          responseType: ResponseType.bytes,
+          validateStatus: (status) => true,
+        ),
+      ).timeout(const Duration(seconds: 4));
       
       final domain = uri.host;
       
-      if (response.statusCode != 200) {
+      if (response.statusCode != 200 || response.data == null) {
         return fallback;
       }
 
       String html;
       try {
-        html = utf8.decode(response.bodyBytes);
+        html = utf8.decode(response.data!);
       } catch (_) {
-        html = latin1.decode(response.bodyBytes);
+        html = latin1.decode(response.data!);
       }
 
       // Parse og:title

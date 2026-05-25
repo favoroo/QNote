@@ -135,7 +135,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       } else {
         offset += nodeIndex * _nodeHeight;
         for (final r in dayRecords) {
-          final rNodeIndex = r.time.hour * 2 + (r.time.minute >= 30 ? 1 : 0);
+          final displayTime = r.getDisplayTime();
+          final rNodeIndex = displayTime.hour * 2 + (displayTime.minute >= 30 ? 1 : 0);
           if (rNodeIndex < nodeIndex) {
             offset += _averageRecordExtraHeight;
           }
@@ -1720,8 +1721,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                                 final recordsInInterval = dayRecords.where((r) {
                                   final preRecord = _undoRecords[r.id];
                                   final displayTime = preRecord != null
-                                      ? preRecord.time
-                                      : r.time;
+                                      ? preRecord.getDisplayTime()
+                                      : r.getDisplayTime();
                                   final rMinutes =
                                       displayTime.hour * 60 +
                                       displayTime.minute;

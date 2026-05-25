@@ -30,7 +30,13 @@ class WebdavService {
   static WebdavService get instance => _instance;
   WebdavService._();
 
-  final Dio _dio = Dio();
+  final Dio _dio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(seconds: 15),
+      sendTimeout: const Duration(seconds: 15),
+    ),
+  );
   WebdavConfig? _config;
 
   static const String _manifestFile = 'qnote_manifest.json';

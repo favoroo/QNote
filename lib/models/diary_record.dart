@@ -158,4 +158,85 @@ class DiaryRecord {
       isDeleted: isDeleted ?? this.isDeleted,
     );
   }
+
+  DateTime getEffectiveDate() {
+    if (startTime == null || endTime == null) {
+      return DateTime(time.year, time.month, time.day);
+    }
+
+    final start = startTime!;
+    final end = endTime!;
+
+    if (start.year == end.year && start.month == end.month && start.day == end.day) {
+      return DateTime(start.year, start.month, start.day);
+    }
+
+    final startDay = DateTime(start.year, start.month, start.day);
+    final endDay = DateTime(end.year, end.month, end.day);
+
+    final startDayEnd = startDay.add(const Duration(days: 1)).subtract(const Duration(milliseconds: 1));
+    final endDayStart = endDay;
+
+    final durationInStartDay = startDayEnd.difference(start).inMilliseconds;
+    final durationInEndDay = end.difference(endDayStart).inMilliseconds;
+
+    if (durationInEndDay >= durationInStartDay) {
+      return endDay;
+    } else {
+      return startDay;
+    }
+  }
+
+  bool belongsToDate(DateTime date) {
+    final targetDate = DateTime(date.year, date.month, date.day);
+    final effectiveDate = getEffectiveDate();
+    return effectiveDate.year == targetDate.year &&
+           effectiveDate.month == targetDate.month &&
+           effectiveDate.day == targetDate.day;
+  }
+
+  bool intersectsDateRange(DateTime startDate, DateTime endDate) {
+    if (startTime != null && endTime != null) {
+      final recordStart = DateTime(startTime!.year, startTime!.month, startTime!.day);
+      final recordEnd = DateTime(endTime!.year, endTime!.month, endTime!.day);
+      final rangeStart = DateTime(startDate.year, startDate.month, startDate.day);
+      final rangeEnd = DateTime(endDate.year, endDate.month, endDate.day);
+
+      return !recordEnd.isBefore(rangeStart) && !recordStart.isAfter(rangeEnd);
+    } else {
+      final recordDate = DateTime(time.year, time.month, time.day);
+      final rangeStart = DateTime(startDate.year, startDate.month, startDate.day);
+      final rangeEnd = DateTime(endDate.year, endDate.month, endDate.day);
+
+      return !recordDate.isBefore(rangeStart) && !recordDate.isAfter(rangeEnd);
+    }
+  }
+
+  DateTime getDisplayTime() {
+    if (startTime == null || endTime == null) {
+      return time;
+    }
+
+    final start = startTime!;
+    final end = endTime!;
+
+    if (start.year == end.year && start.month == end.month && start.day == end.day) {
+      return start;
+    }
+
+    final startDay = DateTime(start.year, start.month, start.day);
+    final endDay = DateTime(end.year, end.month, end.day);
+
+    final startDayEnd = startDay.add(const Duration(days: 1)).subtract(const Duration(milliseconds: 1));
+    final endDayStart = endDay;
+
+    final durationInStartDay = startDayEnd.difference(start).inMilliseconds;
+    final durationInEndDay = end.difference(endDayStart).inMilliseconds;
+
+    if (durationInEndDay >= durationInStartDay) {
+      return end;
+    } else {
+      return start;
+    }
+  }
 }
