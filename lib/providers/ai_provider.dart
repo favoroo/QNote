@@ -172,6 +172,8 @@ final currentChatProvider =
       return CurrentChatNotifier(ref);
     });
 
+final aiStreamingMessageProvider = StateProvider<String?>((ref) => null);
+
 class CurrentChatNotifier extends StateNotifier<ChatSession?> {
   final Ref _ref;
 
@@ -487,17 +489,20 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         ),
       );
 
+      _ref.read(aiStreamingMessageProvider.notifier).state = '';
       await for (final chunk in aiService.chatStream(messagesToSend)) {
         _streamingContent.write(chunk);
-        final assistantMessage = ChatMessage(
-          role: 'assistant',
-          content: _streamingContent.toString(),
-          timestamp: DateTime.now(),
-        );
-        state = state!.copyWith(
-          messages: [...updatedMessages, assistantMessage],
-        );
+        _ref.read(aiStreamingMessageProvider.notifier).state = _streamingContent.toString();
       }
+      
+      final assistantMessage = ChatMessage(
+        role: 'assistant',
+        content: _streamingContent.toString(),
+        timestamp: DateTime.now(),
+      );
+      state = state!.copyWith(
+        messages: [...updatedMessages, assistantMessage],
+      );
     } catch (e, stackTrace) {
       LoggerService.instance.logAI(
         'AI对话发送失败: $e',
@@ -512,6 +517,7 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       state = state!.copyWith(messages: [...updatedMessages, errorMessage]);
     } finally {
       _isStreaming = false;
+      _ref.read(aiStreamingMessageProvider.notifier).state = null;
       if (state != null) {
         await repo.updateChatSession(state!);
       }

@@ -7,12 +7,13 @@ import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/user_profile.dart';
 import 'package:qnote_flutter/models/weight_record.dart';
 import 'package:qnote_flutter/models/webdav_config.dart';
-import 'package:qnote_flutter/models/body_state.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/config/defaults.dart';
 
 class ConfigRepository {
-  static final ConfigRepository instance = ConfigRepository();
+  static final ConfigRepository instance = ConfigRepository._internal();
+  factory ConfigRepository() => instance;
+  ConfigRepository._internal();
 
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
   final SyncLogRepository _syncLog = SyncLogRepository.instance;
@@ -207,49 +208,7 @@ class ConfigRepository {
     await db.delete('webdav_configs', where: 'id = ?', whereArgs: [id]);
   }
 
-  Future<BodyState?> getBodyStateByDate(DateTime date) async {
-    final db = await _dbHelper.database;
-    final dateStr = date.toIso8601String().substring(0, 10);
-    final maps = await db.query(
-      'body_states',
-      where: "date LIKE ?",
-      whereArgs: ['$dateStr%'],
-      limit: 1,
-    );
-    if (maps.isEmpty) return null;
-    return BodyState.fromMap(maps.first);
-  }
 
-  Future<List<BodyState>> getBodyStatesByDateRange(
-    DateTime start,
-    DateTime end,
-  ) async {
-    final db = await _dbHelper.database;
-    final maps = await db.query(
-      'body_states',
-      where: 'date >= ? AND date <= ?',
-      whereArgs: [start.toIso8601String(), end.toIso8601String()],
-      orderBy: 'date ASC',
-    );
-    return maps.map((m) => BodyState.fromMap(m)).toList();
-  }
-
-  Future<BodyState> upsertBodyState(BodyState state) async {
-    final db = await _dbHelper.database;
-    final updated = state.copyWith(updatedAt: DateTime.now());
-    await db.insert(
-      'body_states',
-      updated.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-    await _syncLog.logChange(
-      tableName: 'body_states',
-      recordId: updated.id,
-      operation: 'upsert',
-      data: updated.toMap(),
-    );
-    return updated;
-  }
 
   Future<List<ChatSession>> getAllChatSessions({
     bool includeDeleted = false,
@@ -306,21 +265,26 @@ class ConfigRepository {
 
   Future<void> softDeleteChatSession(String id) async {
     final db = await _dbHelper.database;
+    final existing = await getChatSession(id);
+    if (existing == null) return;
+
+    final nowStr = DateTime.now().toIso8601String();
     await db.update(
       'chat_sessions',
-      {'is_deleted': 1, 'updated_at': DateTime.now().toIso8601String()},
+      {'is_deleted': 1, 'updated_at': nowStr},
       where: 'id = ?',
       whereArgs: [id],
     );
-    final existing = await getChatSession(id);
-    if (existing != null) {
-      await _syncLog.logChange(
-        tableName: 'chat_sessions',
-        recordId: id,
-        operation: 'update',
-        data: existing.toMap(),
-      );
-    }
+    final updated = existing.copyWith(
+      isDeleted: true,
+      updatedAt: DateTime.parse(nowStr),
+    );
+    await _syncLog.logChange(
+      tableName: 'chat_sessions',
+      recordId: id,
+      operation: 'update',
+      data: updated.toMap(),
+    );
   }
 
   Future<AiRoles?> getAiRoles() async {

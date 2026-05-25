@@ -24,7 +24,6 @@ import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/user_profile.dart';
 import 'package:qnote_flutter/models/webdav_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
-import 'package:qnote_flutter/models/daily_score.dart';
 
 class ExportService {
   final DiaryRepository _diaryRepo = DiaryRepository();

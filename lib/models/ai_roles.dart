@@ -117,12 +117,6 @@ class AiTemperatures {
     );
   }
 
-  static AiRoleSettings _legacyToSettings(dynamic value) {
-    if (value is num) {
-      return AiRoleSettings(temperature: value.toDouble());
-    }
-    return const AiRoleSettings();
-  }
 
   AiTemperatures copyWith({
     AiRoleSettings? imageExtraction,

@@ -1,0 +1,106 @@
+import 'dart:convert';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/storage/daily_score_repository.dart';
+import 'package:qnote_flutter/core/storage/diary_repository.dart';
+import 'package:qnote_flutter/core/storage/config_repository.dart';
+import 'package:qnote_flutter/models/daily_score.dart';
+import 'package:qnote_flutter/models/diary_record.dart';
+import 'package:qnote_flutter/providers/ai_provider.dart';
+
+final dailyScoreRepositoryProvider = Provider<DailyScoreRepository>((ref) {
+  return DailyScoreRepository();
+});
+
+final selectedDateProvider = StateProvider<DateTime>((ref) {
+  final now = DateTime.now();
+  return DateTime(now.year, now.month, now.day);
+});
+
+final dailyScoreProvider = AsyncNotifierProvider<DailyScoreNotifier, DailyScore?>(() {
+  return DailyScoreNotifier();
+});
+
+class DailyScoreNotifier extends AsyncNotifier<DailyScore?> {
+  DailyScoreRepository get _repository => ref.read(dailyScoreRepositoryProvider);
+  DiaryRepository get _diaryRepository => DiaryRepository();
+
+  @override
+  Future<DailyScore?> build() async {
+    final date = ref.watch(selectedDateProvider);
+    return _repository.getByDate(date);
+  }
+
+  Future<void> refresh() async {
+    final date = ref.read(selectedDateProvider);
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() => _repository.getByDate(date));
+  }
+
+  Future<DailyScore> performScore(DateTime date) async {
+    final records = await _diaryRepository.getByDate(date);
+    if (records.length < 3) {
+      throw Exception('当日信息过少，暂无法评分');
+    }
+
+    final repo = ConfigRepository.instance;
+    final userProfile = await repo.getUserProfile();
+    String? userInfo;
+    if (userProfile != null) {
+      final Map<String, dynamic> profileMap = {
+        'nickname': userProfile.nickname,
+        'birthday': userProfile.birthday,
+        'height': userProfile.height,
+        'gender': userProfile.gender,
+        'otherInfo': userProfile.otherInfo,
+      };
+      if (userProfile.weightHistory.isNotEmpty) {
+        final sorted = [...userProfile.weightHistory]..sort((a, b) => b.time.compareTo(a.time));
+        profileMap['latestWeight'] = sorted.first.weight;
+      }
+      userInfo = jsonEncode(profileMap);
+    }
+
+    final aiService = ref.read(aiServiceProvider);
+    final config = await AiRoleService.instance.getEffectiveConfigForRole('assistant');
+    final settings = await AiRoleService.instance.getSettingsForRole('assistant');
+    aiService.updateConfig(
+      config,
+      temperature: settings.temperature,
+      maxTokens: settings.maxTokens,
+    );
+
+    final score = await aiService.analyzeDailyScore(
+      records: records,
+      date: date,
+      userInfo: userInfo,
+    );
+
+    await _repository.insert(score);
+    await refresh();
+    ref.invalidate(dailyScoreHistoryProvider);
+    return score;
+  }
+
+  Future<DailyScore> rescore(DateTime date) async {
+    final existing = await _repository.getByDate(date);
+    if (existing != null) {
+      await _repository.delete(existing.id);
+    }
+    return performScore(date);
+  }
+}
+
+final dailyScoreHistoryProvider = FutureProvider.family<List<DailyScore>, int>((ref, days) async {
+  final repository = ref.watch(dailyScoreRepositoryProvider);
+  final end = DateTime.now();
+  final start = end.subtract(Duration(days: days));
+  final list = await repository.getByDateRange(start, end);
+  return list.reversed.toList(); // Return ascending by date for charts
+});
+
+final dailyRecordsProvider = FutureProvider<List<DiaryRecord>>((ref) async {
+  final date = ref.watch(selectedDateProvider);
+  final repo = DiaryRepository();
+  return repo.getByDate(date);
+});
