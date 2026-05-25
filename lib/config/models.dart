@@ -8,6 +8,11 @@ class AiProviderConfig {
   final List<String> models;
   final bool supportsSse;
 
+  // 新增字段
+  final String modelsEndpoint;       // 模型列表接口路径
+  final String authType;             // 'bearer' | 'query' | 'none'
+  final bool requiresApiKeyForFetch; // 获取模型列表是否需要 API Key
+
   const AiProviderConfig({
     required this.id,
     required this.name,
@@ -17,6 +22,9 @@ class AiProviderConfig {
     this.placeholder = '请输入模型名称或从下拉列表选择',
     required this.models,
     this.supportsSse = true,
+    this.modelsEndpoint = '',
+    this.authType = 'bearer',
+    this.requiresApiKeyForFetch = true,
   });
 }
 
@@ -33,6 +41,7 @@ final aiProviders = <AiProviderConfig>[
       'deepseek-chat',
       'deepseek-reasoner',
     ],
+    modelsEndpoint: '/v1/models',
   ),
   const AiProviderConfig(
     id: 'openai',
@@ -44,6 +53,7 @@ final aiProviders = <AiProviderConfig>[
       'gpt-5.4-mini',
       'gpt-5.4-thinking',
     ],
+    modelsEndpoint: '/v1/models',
   ),
   const AiProviderConfig(
     id: 'moonshot',
@@ -55,6 +65,7 @@ final aiProviders = <AiProviderConfig>[
       'kimi-k2.5',
       'kimi-k2',
     ],
+    modelsEndpoint: '/v1/models',
   ),
   const AiProviderConfig(
     id: 'mimo',
@@ -69,6 +80,7 @@ final aiProviders = <AiProviderConfig>[
       'mimo-v2-omni',
       'mimo-v2-flash',
     ],
+    modelsEndpoint: '/v1/models',
   ),
   const AiProviderConfig(
     id: 'longcat',
@@ -82,6 +94,7 @@ final aiProviders = <AiProviderConfig>[
       'LongCat-Flash-Omni-2603',
       'LongCat-Flash-Lite',
     ],
+    modelsEndpoint: '/v1/models',
   ),
   const AiProviderConfig(
     id: 'zhipu',
@@ -97,6 +110,7 @@ final aiProviders = <AiProviderConfig>[
       'glm-4-32b-0414',
       'cogvideox-3',
     ],
+    modelsEndpoint: '/api/paas/v4/models',
   ),
   const AiProviderConfig(
     id: 'gemini',
@@ -116,6 +130,8 @@ final aiProviders = <AiProviderConfig>[
       'gemma-4-31b-it',
       'gemma-4-26b-a4b-it',
     ],
+    modelsEndpoint: '/v1beta/models',
+    authType: 'query',
   ),
   const AiProviderConfig(
     id: 'openrouter',
@@ -136,6 +152,25 @@ final aiProviders = <AiProviderConfig>[
       'nvidia/nemotron-nano-12b-v2-vl:free',
       'nvidia/nemotron-nano-9b-v2:free',
     ],
+    modelsEndpoint: '/api/frontend/models/find?active=true&fmt=cards&q=free',
+    authType: 'none',
+    requiresApiKeyForFetch: false,
+  ),
+  const AiProviderConfig(
+    id: 'chatanywhere',
+    name: 'ChatAnywhere',
+    provider: 'openai',
+    defaultBaseUrl: 'https://api.chatanywhere.tech/v1',
+    urlRequired: true,
+    placeholder: '请输入模型名称，或点击“获取模型列表”',
+    models: [
+      'gpt-3.5-turbo',
+      'gpt-4o-mini',
+      'gpt-4o',
+      'deepseek-chat',
+      'deepseek-coder',
+    ],
+    modelsEndpoint: '/models',
   ),
   const AiProviderConfig(
     id: 'custom',
@@ -145,6 +180,7 @@ final aiProviders = <AiProviderConfig>[
     urlRequired: true,
     placeholder: '请手动输入自定义模型的标识符',
     models: [],
+    modelsEndpoint: '',
   ),
 ];
 

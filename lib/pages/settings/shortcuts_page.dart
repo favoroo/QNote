@@ -602,6 +602,18 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                   ],
                 ),
               ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Switch(
+                    value: field.allowCustom,
+                    onChanged: (v) => onChanged(field.copyWith(allowCustom: v)),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  const SizedBox(width: 4),
+                  Text('允许自定义输入', style: theme.textTheme.bodySmall),
+                ],
+              ),
             ],
           ],
         ),

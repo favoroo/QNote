@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/models/note.dart';
@@ -24,6 +25,11 @@ class NotesPage extends ConsumerStatefulWidget {
 
 class _NotesPageState extends ConsumerState<NotesPage> {
   int _dragSession = 0;
+  bool _isSelectionMode = false;
+  Set<String> _selectedNoteIds = {};
+  Set<String> _selectedFolderIds = {};
+  bool _isConfirming = false;
+  Timer? _confirmTimer;
 
   void _onDragEnd() {
     if (mounted) {
@@ -34,27 +40,141 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   }
 
   @override
+  void dispose() {
+    _confirmTimer?.cancel();
+    super.dispose();
+  }
+
+  void _exitSelectionMode() {
+    setState(() {
+      _selectedNoteIds.clear();
+      _selectedFolderIds.clear();
+      _isSelectionMode = false;
+      _isConfirming = false;
+    });
+    _confirmTimer?.cancel();
+  }
+
+  void _handleBatchDelete() async {
+    if (_selectedNoteIds.isEmpty && _selectedFolderIds.isEmpty) return;
+
+    if (!_isConfirming) {
+      setState(() {
+        _isConfirming = true;
+      });
+      _confirmTimer?.cancel();
+      _confirmTimer = Timer(const Duration(seconds: 3), () {
+        if (mounted) {
+          setState(() {
+            _isConfirming = false;
+          });
+        }
+      });
+      return;
+    }
+
+    final Set<String> deletedFolderIds = {};
+
+    Future<void> deleteFolderAndContents(String folderId) async {
+      if (deletedFolderIds.contains(folderId)) return;
+      deletedFolderIds.add(folderId);
+
+      final allNotes = ref.read(noteListProvider).value ?? [];
+      final allFolders = ref.read(folderListProvider).value ?? [];
+
+      final childFolders = allFolders.where((f) => f.parentId == folderId).toList();
+      for (final child in childFolders) {
+        await deleteFolderAndContents(child.id);
+      }
+
+      final notesInFolder = allNotes.where((n) => n.folderId == folderId).toList();
+      for (final note in notesInFolder) {
+        await ref.read(noteListProvider.notifier).deleteNote(note.id);
+      }
+
+      await ref.read(folderListProvider.notifier).deleteFolder(folderId);
+    }
+
+    // 1. Delete selected folders recursively
+    for (final folderId in _selectedFolderIds) {
+      await deleteFolderAndContents(folderId);
+    }
+
+    // 2. Delete selected notes (if not already deleted recursively)
+    for (final noteId in _selectedNoteIds) {
+      await ref.read(noteListProvider.notifier).deleteNote(noteId);
+    }
+
+    setState(() {
+      _selectedNoteIds.clear();
+      _selectedFolderIds.clear();
+      _isSelectionMode = false;
+      _isConfirming = false;
+    });
+    _confirmTimer?.cancel();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final noteListAsync = ref.watch(noteListProvider);
     final folderListAsync = ref.watch(folderListProvider);
 
+    final notes = noteListAsync.value ?? [];
+    final folders = folderListAsync.value ?? [];
+
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.menu),
-          onPressed: () => rootScaffoldKey.currentState?.openDrawer(),
+        leading: _isSelectionMode
+            ? IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: _exitSelectionMode,
+              )
+            : IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: () => rootScaffoldKey.currentState?.openDrawer(),
+              ),
+        title: Text(
+          _isSelectionMode
+              ? '已选择 ${_selectedNoteIds.length + _selectedFolderIds.length} 项'
+              : '笔记',
         ),
-        title: const Text('笔记'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.search),
-            tooltip: '搜索',
-            onPressed: () {
-              Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => const SearchView()));
-            },
-          ),
+          if (_isSelectionMode)
+            TextButton(
+              onPressed: () {
+                final isAllSelected = _selectedNoteIds.length == notes.length &&
+                    _selectedFolderIds.length == folders.length;
+                setState(() {
+                  if (isAllSelected) {
+                    _selectedNoteIds.clear();
+                    _selectedFolderIds.clear();
+                  } else {
+                    _selectedNoteIds = notes.map((n) => n.id).toSet();
+                    _selectedFolderIds = folders.map((f) => f.id).toSet();
+                  }
+                });
+              },
+              child: Text(
+                _selectedNoteIds.length == notes.length &&
+                        _selectedFolderIds.length == folders.length
+                    ? '取消全选'
+                    : '全选',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.search),
+              tooltip: '搜索',
+              onPressed: () {
+                Navigator.of(
+                  context,
+                ).push(MaterialPageRoute(builder: (_) => const SearchView()));
+              },
+            ),
         ],
       ),
       body: noteListAsync.when(
@@ -66,29 +186,99 @@ class _NotesPageState extends ConsumerState<NotesPage> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('加载失败: $e')),
       ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FloatingActionButton.small(
-            heroTag: 'add_folder_fab',
-            shape: const CircleBorder(),
-            onPressed: () => _showCreateFolderDialog(),
-            backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
-            foregroundColor: Theme.of(context).colorScheme.onSecondaryContainer,
-            child: const Icon(Icons.create_new_folder_outlined),
-          ),
-          const SizedBox(height: 12),
-          FloatingActionButton(
-            heroTag: 'add_note_fab',
-            shape: const CircleBorder(),
-            backgroundColor: Theme.of(context).colorScheme.primary,
-            foregroundColor: Theme.of(context).colorScheme.onPrimary,
-            elevation: 4,
-            onPressed: () => _createNote(),
-            child: const Icon(Icons.add, size: 28),
-          ),
-        ],
-      ),
+      floatingActionButton: _isSelectionMode
+          ? null
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FloatingActionButton.small(
+                  heroTag: 'add_folder_fab',
+                  shape: const CircleBorder(),
+                  onPressed: () => _showCreateFolderDialog(),
+                  backgroundColor:
+                      Theme.of(context).colorScheme.secondaryContainer,
+                  foregroundColor:
+                      Theme.of(context).colorScheme.onSecondaryContainer,
+                  child: const Icon(Icons.create_new_folder_outlined),
+                ),
+                const SizedBox(height: 12),
+                FloatingActionButton(
+                  heroTag: 'add_note_fab',
+                  shape: const CircleBorder(),
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                  elevation: 4,
+                  onPressed: () => _createNote(),
+                  child: const Icon(Icons.add, size: 28),
+                ),
+              ],
+            ),
+      bottomNavigationBar: _isSelectionMode
+          ? Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                border: Border(
+                  top: BorderSide(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .outlineVariant
+                        .withValues(alpha: 0.1),
+                  ),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    offset: const Offset(0, -4),
+                    blurRadius: 20,
+                  ),
+                ],
+              ),
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '已选 ${_selectedNoteIds.length + _selectedFolderIds.length} 项',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                      FilledButton(
+                        onPressed: (_selectedNoteIds.isEmpty &&
+                                _selectedFolderIds.isEmpty)
+                            ? null
+                            : _handleBatchDelete,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _isConfirming
+                              ? Colors.amber.shade700
+                              : Theme.of(context).colorScheme.error,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.delete_outline, size: 16),
+                            const SizedBox(width: 6),
+                            Text(
+                              _isConfirming ? '再次点击确认' : '删除',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          : null,
     );
   }
 
@@ -244,6 +434,43 @@ class _NotesPageState extends ConsumerState<NotesPage> {
               onShowFolderMenu: (folder, key) => _showFolderMenu(folder, key),
               onCreateNote: (folderId) => _createNote(folderId),
               onCreateFolder: (parentId) => _showCreateFolderDialog(parentId),
+              isSelectionMode: _isSelectionMode,
+              selectedNoteIds: _selectedNoteIds,
+              selectedFolderIds: _selectedFolderIds,
+              onToggleNoteSelection: (note) {
+                setState(() {
+                  if (_selectedNoteIds.contains(note.id)) {
+                    _selectedNoteIds.remove(note.id);
+                  } else {
+                    _selectedNoteIds.add(note.id);
+                  }
+                  if (_selectedNoteIds.isEmpty && _selectedFolderIds.isEmpty) {
+                    _isSelectionMode = false;
+                  }
+                });
+              },
+              onToggleFolderSelection: (folder) {
+                setState(() {
+                  if (_selectedFolderIds.contains(folder.id)) {
+                    _selectedFolderIds.remove(folder.id);
+                  } else {
+                    _selectedFolderIds.add(folder.id);
+                  }
+                  if (_selectedNoteIds.isEmpty && _selectedFolderIds.isEmpty) {
+                    _isSelectionMode = false;
+                  }
+                });
+              },
+              onEnterSelectionMode: (item, type) {
+                setState(() {
+                  _isSelectionMode = true;
+                  if (type == 'note') {
+                    _selectedNoteIds.add(item.id);
+                  } else if (type == 'folder') {
+                    _selectedFolderIds.add(item.id);
+                  }
+                });
+              },
             ),
           ),
         );
@@ -365,6 +592,12 @@ class _SortableLevel extends StatefulWidget {
   final ValueChanged<bool>? onHoverChanged;
   final int dragSession;
   final VoidCallback onDragEnd;
+  final bool isSelectionMode;
+  final Set<String> selectedNoteIds;
+  final Set<String> selectedFolderIds;
+  final void Function(Note) onToggleNoteSelection;
+  final void Function(Folder) onToggleFolderSelection;
+  final void Function(dynamic item, String type) onEnterSelectionMode;
 
   const _SortableLevel({
     required this.folders,
@@ -381,6 +614,12 @@ class _SortableLevel extends StatefulWidget {
     required this.onCreateFolder,
     required this.dragSession,
     required this.onDragEnd,
+    required this.isSelectionMode,
+    required this.selectedNoteIds,
+    required this.selectedFolderIds,
+    required this.onToggleNoteSelection,
+    required this.onToggleFolderSelection,
+    required this.onEnterSelectionMode,
     this.onHoverChanged,
   });
 
@@ -534,6 +773,10 @@ class _SortableLevelState extends State<_SortableLevel> {
                         onMenu: (key) => widget.onShowNoteMenu(item, key),
                         onDragUpdate: (_) {},
                         onDragEnd: widget.onDragEnd,
+                        isSelectionMode: widget.isSelectionMode,
+                        isSelected: widget.selectedNoteIds.contains(item.id),
+                        onToggleSelection: () => widget.onToggleNoteSelection(item),
+                        onEnterSelectionMode: () => widget.onEnterSelectionMode(item, 'note'),
                       ),
                       if (index == combined.length - 1 &&
                           _isHovering &&
@@ -582,11 +825,24 @@ class _SortableLevelState extends State<_SortableLevel> {
                                   onCreateNote: widget.onCreateNote,
                                   onCreateFolder: widget.onCreateFolder,
                                   onHoverChanged: onHoverChanged,
+                                  isSelectionMode: widget.isSelectionMode,
+                                  selectedNoteIds: widget.selectedNoteIds,
+                                  selectedFolderIds: widget.selectedFolderIds,
+                                  onToggleNoteSelection:
+                                      widget.onToggleNoteSelection,
+                                  onToggleFolderSelection:
+                                      widget.onToggleFolderSelection,
+                                  onEnterSelectionMode:
+                                      widget.onEnterSelectionMode,
                                 ),
                         onDragUpdate: (_) {},
                         onDragEnd: widget.onDragEnd,
                         onCreateNote: () => widget.onCreateNote(folder.id),
                         onCreateFolder: () => widget.onCreateFolder(folder.id),
+                        isSelectionMode: widget.isSelectionMode,
+                        isSelected: widget.selectedFolderIds.contains(folder.id),
+                        onToggleSelection: () => widget.onToggleFolderSelection(folder),
+                        onEnterSelectionMode: () => widget.onEnterSelectionMode(folder, 'folder'),
                       ),
                       if (index == combined.length - 1 &&
                           _isHovering &&
@@ -633,6 +889,10 @@ class _NoteTile extends StatelessWidget {
   final void Function(GlobalKey key) onMenu;
   final void Function(int index) onDragUpdate;
   final VoidCallback onDragEnd;
+  final bool isSelectionMode;
+  final bool isSelected;
+  final VoidCallback onToggleSelection;
+  final VoidCallback onEnterSelectionMode;
 
   const _NoteTile({
     super.key,
@@ -644,6 +904,10 @@ class _NoteTile extends StatelessWidget {
     required this.onMenu,
     required this.onDragUpdate,
     required this.onDragEnd,
+    required this.isSelectionMode,
+    required this.isSelected,
+    required this.onToggleSelection,
+    required this.onEnterSelectionMode,
   });
 
   @override
@@ -662,62 +926,77 @@ class _NoteTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            _DragHandle<_DragData>(
-              data: _DragData(note, 'note'),
-              feedbackBuilder: (context) => Material(
-                elevation: 4,
-                borderRadius: BorderRadius.circular(8),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 7,
+            if (isSelectionMode)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: Checkbox(
+                    value: isSelected,
+                    onChanged: (_) => onToggleSelection(),
+                    activeColor: theme.colorScheme.primary,
                   ),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surface,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: theme.colorScheme.outlineVariant.withValues(
-                        alpha: 0.5,
+                ),
+              )
+            else
+              _DragHandle<_DragData>(
+                data: _DragData(note, 'note'),
+                feedbackBuilder: (context) => Material(
+                  elevation: 4,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surface,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: theme.colorScheme.outlineVariant.withValues(
+                          alpha: 0.5,
+                        ),
                       ),
                     ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.description,
-                        size: 15,
-                        color: theme.colorScheme.primary,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        note.title,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w500,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.description,
+                          size: 15,
+                          color: theme.colorScheme.primary,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+                        const SizedBox(width: 6),
+                        Text(
+                          note.title,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                onDragStarted: onDragStarted,
+                onDragEnd: onDragEnd,
+                handleChild: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Icon(
+                    Icons.drag_indicator,
+                    size: 18,
+                    color: theme.colorScheme.onSurfaceVariant.withValues(
+                      alpha: 0.35,
+                    ),
                   ),
                 ),
               ),
-              onDragStarted: onDragStarted,
-              onDragEnd: onDragEnd,
-              handleChild: Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Icon(
-                  Icons.drag_indicator,
-                  size: 18,
-                  color: theme.colorScheme.onSurfaceVariant.withValues(
-                    alpha: 0.35,
-                  ),
-                ),
-              ),
-            ),
             Expanded(
               child: GestureDetector(
-                onTap: onEdit,
+                onTap: isSelectionMode ? onToggleSelection : onEdit,
+                onLongPress: isSelectionMode ? null : onEnterSelectionMode,
                 behavior: HitTestBehavior.opaque,
                 child: Row(
                   children: [
@@ -758,23 +1037,25 @@ class _NoteTile extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 4),
-            SizedBox(
-              key: menuKey,
-              width: 32,
-              height: 32,
-              child: IconButton(
-                padding: EdgeInsets.zero,
-                iconSize: 20,
-                icon: Icon(
-                  Icons.more_vert,
-                  color: theme.colorScheme.onSurfaceVariant.withValues(
-                    alpha: 0.5,
+            if (!isSelectionMode) ...[
+              const SizedBox(width: 4),
+              SizedBox(
+                key: menuKey,
+                width: 32,
+                height: 32,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  iconSize: 20,
+                  icon: Icon(
+                    Icons.more_vert,
+                    color: theme.colorScheme.onSurfaceVariant.withValues(
+                      alpha: 0.5,
+                    ),
                   ),
+                  onPressed: () => onMenu(menuKey),
                 ),
-                onPressed: () => onMenu(menuKey),
               ),
-            ),
+            ],
           ],
         ),
       ),
@@ -802,6 +1083,10 @@ class _FolderTile extends StatefulWidget {
   final VoidCallback onCreateNote;
   final VoidCallback onCreateFolder;
   final int dragSession;
+  final bool isSelectionMode;
+  final bool isSelected;
+  final VoidCallback onToggleSelection;
+  final VoidCallback onEnterSelectionMode;
 
   const _FolderTile({
     super.key,
@@ -820,6 +1105,10 @@ class _FolderTile extends StatefulWidget {
     required this.onCreateNote,
     required this.onCreateFolder,
     required this.dragSession,
+    required this.isSelectionMode,
+    required this.isSelected,
+    required this.onToggleSelection,
+    required this.onEnterSelectionMode,
   });
 
   @override
@@ -916,7 +1205,12 @@ class _FolderTileState extends State<_FolderTile> {
                 child: Opacity(
                   opacity: widget.isOver ? 0.35 : 1.0,
                   child: GestureDetector(
-                    onTap: widget.onToggle,
+                    onTap: widget.isSelectionMode
+                        ? widget.onToggleSelection
+                        : widget.onToggle,
+                    onLongPress: widget.isSelectionMode
+                        ? null
+                        : widget.onEnterSelectionMode,
                     behavior: HitTestBehavior.opaque,
                     child: Padding(
                       padding: EdgeInsets.only(
@@ -927,67 +1221,86 @@ class _FolderTileState extends State<_FolderTile> {
                       ),
                       child: Row(
                         children: [
-                          _DragHandle<_DragData>(
-                            data: _DragData(widget.folder, 'folder'),
-                            feedbackBuilder: (ctx) => Material(
-                              elevation: 4,
-                              borderRadius: BorderRadius.circular(8),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 7,
+                          if (widget.isSelectionMode)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: Checkbox(
+                                  value: widget.isSelected,
+                                  onChanged: (_) => widget.onToggleSelection(),
+                                  activeColor: Colors.orange,
                                 ),
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.surface,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: theme.colorScheme.outlineVariant
-                                        .withValues(alpha: 0.5),
+                              ),
+                            )
+                          else
+                            _DragHandle<_DragData>(
+                              data: _DragData(widget.folder, 'folder'),
+                              feedbackBuilder: (ctx) => Material(
+                                elevation: 4,
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 7,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.surface,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: theme.colorScheme.outlineVariant
+                                          .withValues(alpha: 0.5),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.folder,
+                                        size: 15,
+                                        color: Colors.orange,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        widget.folder.name,
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.folder,
-                                      size: 15,
-                                      color: Colors.orange,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      widget.folder.name,
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
+                              ),
+                              onDragStarted: () {},
+                              onDragEnd: widget.onDragEnd,
+                              handleChild: Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: Icon(
+                                  Icons.drag_indicator,
+                                  size: 16,
+                                  color: theme.colorScheme.onSurfaceVariant
+                                      .withValues(alpha: 0.35),
                                 ),
                               ),
                             ),
-                            onDragStarted: () {},
-                            onDragEnd: widget.onDragEnd,
-                            handleChild: Padding(
-                              padding: const EdgeInsets.only(right: 8),
+                          GestureDetector(
+                            onTap: widget.onToggle,
+                            behavior: HitTestBehavior.opaque,
+                            child: SizedBox(
+                              width: 32,
+                              height: 32,
                               child: Icon(
-                                Icons.drag_indicator,
+                                widget.folder.isExpanded
+                                    ? Icons.keyboard_arrow_down
+                                    : Icons.keyboard_arrow_right,
                                 size: 16,
                                 color: theme.colorScheme.onSurfaceVariant
-                                    .withValues(alpha: 0.35),
+                                    .withValues(alpha: 0.5),
                               ),
-                            ),
-                          ),
-                          SizedBox(
-                            width: 20,
-                            child: Icon(
-                              widget.folder.isExpanded
-                                  ? Icons.keyboard_arrow_down
-                                  : Icons.keyboard_arrow_right,
-                              size: 16,
-                              color: theme.colorScheme.onSurfaceVariant
-                                  .withValues(alpha: 0.5),
                             ),
                           ),
                           const SizedBox(width: 4),
@@ -1018,22 +1331,24 @@ class _FolderTileState extends State<_FolderTile> {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          const SizedBox(width: 4),
-                          SizedBox(
-                            key: menuKey,
-                            width: 32,
-                            height: 32,
-                            child: IconButton(
-                              padding: EdgeInsets.zero,
-                              iconSize: 20,
-                              icon: Icon(
-                                Icons.more_vert,
-                                color: theme.colorScheme.onSurfaceVariant
-                                    .withValues(alpha: 0.5),
+                          if (!widget.isSelectionMode) ...[
+                            const SizedBox(width: 4),
+                            SizedBox(
+                              key: menuKey,
+                              width: 32,
+                              height: 32,
+                              child: IconButton(
+                                padding: EdgeInsets.zero,
+                                iconSize: 20,
+                                icon: Icon(
+                                  Icons.more_vert,
+                                  color: theme.colorScheme.onSurfaceVariant
+                                      .withValues(alpha: 0.5),
+                                ),
+                                onPressed: () => widget.onMenu(menuKey),
                               ),
-                              onPressed: () => widget.onMenu(menuKey),
                             ),
-                          ),
+                          ],
                         ],
                       ),
                     ),

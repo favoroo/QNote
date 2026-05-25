@@ -547,6 +547,8 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       content: contentText,
       photos: _photos,
       recordTime: _time,
+      startTime: _startTime,
+      endTime: _endTime,
       onLoadingChanged: (loading) {
         if (mounted) setState(() => _isExtracting = loading);
       },
@@ -616,6 +618,10 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               );
             });
           }
+        } else {
+          setState(() {
+            _endTime = null;
+          });
         }
       }
 
@@ -1220,35 +1226,107 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         ? Map<String, dynamic>.from(entry.fields)
         : {};
     final currentValue = formValues[field.id];
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: field.options.map((opt) {
-        final isSelected = currentValue == opt;
-        return GestureDetector(
-          onTap: () =>
-              _updateFormValue(tagId, field.id, isSelected ? null : opt),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              opt,
-              style: theme.textTheme.labelSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: isSelected
-                    ? theme.colorScheme.onPrimary
-                    : theme.colorScheme.onSurface,
+    final isCustomValue = currentValue != null &&
+        currentValue is String &&
+        !field.options.contains(currentValue);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            ...field.options.map((opt) {
+              final isSelected = currentValue == opt;
+              return GestureDetector(
+                onTap: () =>
+                    _updateFormValue(tagId, field.id, isSelected ? null : opt),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    opt,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: isSelected
+                          ? theme.colorScheme.onPrimary
+                          : theme.colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+              );
+            }),
+            if (isCustomValue)
+              GestureDetector(
+                onTap: () =>
+                    _updateFormValue(tagId, field.id, null),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.tertiary,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        currentValue,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: theme.colorScheme.onTertiary,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.close,
+                        size: 14,
+                        color: theme.colorScheme.onTertiary,
+                      ),
+                    ],
+                  ),
+                ),
               ),
+          ],
+        ),
+        if (field.allowCustom) ...[
+          const SizedBox(height: 6),
+          SizedBox(
+            height: 32,
+            child: TextField(
+              style: theme.textTheme.bodySmall,
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: theme.colorScheme.surfaceContainerHighest
+                    .withValues(alpha: 0.3),
+                hintText: '自定义...',
+                hintStyle: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                isDense: true,
+              ),
+              onSubmitted: (val) {
+                if (val.trim().isNotEmpty) {
+                  _updateFormValue(tagId, field.id, val.trim());
+                }
+              },
             ),
           ),
-        );
-      }).toList(),
+        ],
+      ],
     );
   }
 
@@ -1262,42 +1340,127 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         ? Map<String, dynamic>.from(entry.fields)
         : {};
     final currentList = (formValues[field.id] as List?)?.cast<String>() ?? [];
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: field.options.map((opt) {
-        final isSelected = currentList.contains(opt);
-        return GestureDetector(
-          onTap: () {
-            final newList = List<String>.from(currentList);
-            if (isSelected) {
-              newList.remove(opt);
-            } else {
-              newList.add(opt);
-            }
-            _updateFormValue(tagId, field.id, newList.isEmpty ? null : newList);
-          },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              opt,
-              style: theme.textTheme.labelSmall?.copyWith(
-                fontWeight: FontWeight.w500,
-                color: isSelected
-                    ? theme.colorScheme.onPrimary
-                    : theme.colorScheme.onSurface,
+    final customValues =
+        currentList.where((v) => !field.options.contains(v)).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            ...field.options.map((opt) {
+              final isSelected = currentList.contains(opt);
+              return GestureDetector(
+                onTap: () {
+                  final newList = List<String>.from(currentList);
+                  if (isSelected) {
+                    newList.remove(opt);
+                  } else {
+                    newList.add(opt);
+                  }
+                  _updateFormValue(
+                      tagId, field.id, newList.isEmpty ? null : newList);
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    opt,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w500,
+                      color: isSelected
+                          ? theme.colorScheme.onPrimary
+                          : theme.colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+              );
+            }),
+            ...customValues.map((val) {
+              return GestureDetector(
+                onTap: () {
+                  final newList = List<String>.from(currentList);
+                  newList.remove(val);
+                  _updateFormValue(
+                      tagId, field.id, newList.isEmpty ? null : newList);
+                },
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.tertiary,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        val,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          fontWeight: FontWeight.w500,
+                          color: theme.colorScheme.onTertiary,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.close,
+                        size: 14,
+                        color: theme.colorScheme.onTertiary,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ],
+        ),
+        if (field.allowCustom) ...[
+          const SizedBox(height: 6),
+          SizedBox(
+            height: 32,
+            child: TextField(
+              style: theme.textTheme.bodySmall,
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: theme.colorScheme.surfaceContainerHighest
+                    .withValues(alpha: 0.3),
+                hintText: '自定义（回车添加）...',
+                hintStyle: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                isDense: true,
               ),
+              onSubmitted: (val) {
+                if (val.trim().isNotEmpty) {
+                  final newList = List<String>.from(currentList);
+                  for (final item in val.trim().split(RegExp(r'[,，、]'))) {
+                    final trimmed = item.trim();
+                    if (trimmed.isNotEmpty && !newList.contains(trimmed)) {
+                      newList.add(trimmed);
+                    }
+                  }
+                  _updateFormValue(
+                      tagId, field.id, newList.isEmpty ? null : newList);
+                }
+              },
             ),
           ),
-        );
-      }).toList(),
+        ],
+      ],
     );
   }
 

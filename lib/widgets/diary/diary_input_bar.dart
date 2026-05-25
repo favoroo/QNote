@@ -787,6 +787,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                   'name': f.label,
                   'type': f.type,
                   if (f.options.isNotEmpty) 'options': f.options,
+                  if (f.allowCustom) 'allowCustom': true,
                 },
               )
               .toList();
@@ -804,6 +805,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                           'name': f.label,
                           'type': f.type,
                           if (f.options.isNotEmpty) 'options': f.options,
+                          if (f.allowCustom) 'allowCustom': true,
                         },
                       )
                       .toList(),
@@ -816,9 +818,30 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
 
       final selectedDate = ref.read(selectedDateProvider);
       final draftTime = _calculateStartDateTime(draft, selectedDate);
+      final draftEndTime = _calculateEndDateTime(draft, selectedDate);
+
+      // Get user-selected time range
+      final selectEvent = ref.read(diaryInputTimeProvider);
+      String? userSelectedTimeStr;
+      if (selectEvent != null) {
+        final baseDate = DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
+        String formatSingle(DateTime dt) {
+          final dtDate = DateTime(dt.year, dt.month, dt.day);
+          final offset = dtDate.difference(baseDate).inDays;
+          final prefix = offset < 0 ? '-' : '';
+          final timeStr = DateFormat('HH:mm').format(dt);
+          return '$prefix$timeStr';
+        }
+
+        userSelectedTimeStr = formatSingle(draftTime);
+        if (draftEndTime != null) {
+          userSelectedTimeStr = '$userSelectedTimeStr~${formatSingle(draftEndTime)}';
+        }
+      }
+
       final weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
       final now = DateTime.now();
-      final contextStr = {
+      final contextMap = <String, dynamic>{
         'today': {
           'date': DateFormat('yyyy-MM-dd').format(now),
           'time': DateFormat('HH:mm').format(now),
@@ -826,6 +849,9 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         },
         'recordDate': DateFormat('yyyy-MM-dd').format(draftTime),
       };
+      if (userSelectedTimeStr != null) {
+        contextMap['userSelectedTime'] = userSelectedTimeStr;
+      }
 
       setState(() => _extractPhase = _ExtractPhase.waiting);
 
@@ -842,7 +868,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         imageBase64: base64,
         mimeType: 'image/jpeg',
         schema: schemaContext.toString(),
-        contextStr: contextStr.toString(),
+        contextStr: contextMap.toString(),
         cancelToken: _cancelToken,
       );
 
@@ -857,6 +883,39 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         int? parsedStartOffset;
         int? parsedEndOffset;
 
+        final firstResult = results.first;
+        final firstTime = firstResult['time'];
+        if (firstTime == null || (firstTime is Map && firstTime.isEmpty)) {
+          // No time extracted at all, preserve user selection!
+          parsedStartTime = draft.startTime;
+          parsedEndTime = draft.endTime;
+          parsedStartOffset = draft.startOffset;
+          parsedEndOffset = draft.endOffset;
+        } else {
+          // Time extracted, use the extracted values (could be null for end time)
+          final timeMap = Map<String, dynamic>.from(firstTime as Map);
+          if (timeMap['start'] != null) {
+            final parts = (timeMap['start'] as String).split(':');
+            if (parts.length >= 2) {
+              parsedStartTime = TimeOfDay(
+                hour: int.tryParse(parts[0]) ?? draft.startTime.hour,
+                minute: int.tryParse(parts[1]) ?? draft.startTime.minute,
+              );
+            }
+          }
+          if (timeMap['end'] != null) {
+            final parts = (timeMap['end'] as String).split(':');
+            if (parts.length >= 2) {
+              parsedEndTime = TimeOfDay(
+                hour: int.tryParse(parts[0]) ?? 0,
+                minute: int.tryParse(parts[1]) ?? 0,
+              );
+            }
+          }
+          parsedStartOffset = timeMap['startOffset'] as int?;
+          parsedEndOffset = timeMap['endOffset'] as int?;
+        }
+
         for (int i = 0; i < results.length; i++) {
           final result = results[i];
           ShortcutConfig? foundShortcut;
@@ -868,12 +927,12 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
             } catch (_) {}
           }
 
-          TimeOfDay itemTime = TimeOfDay.now();
+          TimeOfDay? itemTime;
           TimeOfDay? itemEndTime;
           int? itemStartOffset;
           int? itemEndOffset;
 
-          if (result['time'] != null) {
+          if (result['time'] != null && (result['time'] as Map).isNotEmpty) {
             final timeMap = Map<String, dynamic>.from(result['time'] as Map);
             if (timeMap['start'] != null) {
               final parts = (timeMap['start'] as String).split(':');
@@ -915,17 +974,25 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
               }
             }
 
-            if (result['time'] == null) {
-              itemTime = const TimeOfDay(hour: 22, minute: 30);
-              itemStartOffset = -1;
-              final startMinutes = 22 * 60 + 30;
-              final durationMinutes = (durationHours * 60).toInt();
-              final totalMinutes = startMinutes + durationMinutes;
-              final endHour = (totalMinutes ~/ 60) % 24;
-              final endMinute = totalMinutes % 60;
-              final daysOffset = totalMinutes ~/ 1440;
-              itemEndTime = TimeOfDay(hour: endHour, minute: endMinute);
-              itemEndOffset = -1 + daysOffset;
+            if (result['time'] == null || (result['time'] as Map).isEmpty) {
+              final selectEvent = ref.read(diaryInputTimeProvider);
+              if (selectEvent != null) {
+                itemTime = draft.startTime;
+                itemEndTime = draft.endTime;
+                itemStartOffset = draft.startOffset;
+                itemEndOffset = draft.endOffset;
+              } else {
+                itemTime = const TimeOfDay(hour: 22, minute: 30);
+                itemStartOffset = -1;
+                final startMinutes = 22 * 60 + 30;
+                final durationMinutes = (durationHours * 60).toInt();
+                final totalMinutes = startMinutes + durationMinutes;
+                final endHour = (totalMinutes ~/ 60) % 24;
+                final endMinute = totalMinutes % 60;
+                final daysOffset = totalMinutes ~/ 1440;
+                itemEndTime = TimeOfDay(hour: endHour, minute: endMinute);
+                itemEndOffset = -1 + daysOffset;
+              }
             } else {
               if (result['time']['start'] == null &&
                   result['time']['end'] != null) {
@@ -944,7 +1011,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                 itemStartOffset = (itemEndOffset ?? 0) + daysOffset;
               } else if (result['time']['start'] != null &&
                   result['time']['end'] == null) {
-                final startMin = itemTime.hour * 60 + itemTime.minute;
+                final startMin = itemTime!.hour * 60 + itemTime.minute;
                 final durationMinutes = (durationHours * 60).toInt();
                 final totalMinutes = startMin + durationMinutes;
                 final endHour = (totalMinutes ~/ 60) % 24;
@@ -954,19 +1021,27 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                 itemEndOffset = (itemStartOffset ?? 0) + daysOffset;
               } else if (result['time']['start'] == null &&
                   result['time']['end'] == null) {
-                itemTime = const TimeOfDay(hour: 22, minute: 30);
-                itemStartOffset = -1;
-                final startMinutes = 22 * 60 + 30;
-                final durationMinutes = (durationHours * 60).toInt();
-                final totalMinutes = startMinutes + durationMinutes;
-                final endHour = (totalMinutes ~/ 60) % 24;
-                final endMinute = totalMinutes % 60;
-                final daysOffset = totalMinutes ~/ 1440;
-                itemEndTime = TimeOfDay(hour: endHour, minute: endMinute);
-                itemEndOffset = -1 + daysOffset;
+                final selectEvent = ref.read(diaryInputTimeProvider);
+                if (selectEvent != null) {
+                  itemTime = draft.startTime;
+                  itemEndTime = draft.endTime;
+                  itemStartOffset = draft.startOffset;
+                  itemEndOffset = draft.endOffset;
+                } else {
+                  itemTime = const TimeOfDay(hour: 22, minute: 30);
+                  itemStartOffset = -1;
+                  final startMinutes = 22 * 60 + 30;
+                  final durationMinutes = (durationHours * 60).toInt();
+                  final totalMinutes = startMinutes + durationMinutes;
+                  final endHour = (totalMinutes ~/ 60) % 24;
+                  final endMinute = totalMinutes % 60;
+                  final daysOffset = totalMinutes ~/ 1440;
+                  itemEndTime = TimeOfDay(hour: endHour, minute: endMinute);
+                  itemEndOffset = -1 + daysOffset;
+                }
               }
               if (itemStartOffset == null || itemEndOffset == null) {
-                if (itemEndTime != null) {
+                if (itemEndTime != null && itemTime != null) {
                   final startMin = itemTime.hour * 60 + itemTime.minute;
                   final endMin = itemEndTime.hour * 60 + itemEndTime.minute;
                   if (endMin < startMin) {
@@ -983,8 +1058,10 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
             }
 
             fields['duration'] = durationHours;
-            fields['fallAsleepTime'] =
-                '${itemTime.hour.toString().padLeft(2, '0')}:${itemTime.minute.toString().padLeft(2, '0')}';
+            if (itemTime != null) {
+              fields['fallAsleepTime'] =
+                  '${itemTime.hour.toString().padLeft(2, '0')}:${itemTime.minute.toString().padLeft(2, '0')}';
+            }
           }
 
           String? timeStr;
@@ -1018,7 +1095,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           );
           newTagEntries.add(singleTagEntry);
 
-          if (i == 0) {
+          if (i == 0 && foundShortcut?.id == 'sleep') {
             parsedStartTime = itemTime;
             parsedEndTime = itemEndTime;
             parsedStartOffset = itemStartOffset;
@@ -1053,9 +1130,9 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           inputText: combinedNotes,
           selectedPhotos: draft.selectedPhotos,
           startTime: parsedStartTime ?? draft.startTime,
-          endTime: parsedEndTime ?? draft.endTime,
-          startOffset: parsedStartOffset ?? draft.startOffset,
-          endOffset: parsedEndOffset ?? draft.endOffset,
+          endTime: parsedEndTime,
+          startOffset: parsedStartOffset,
+          endOffset: parsedEndOffset,
           tagEntries: newTagEntries,
         );
 
@@ -1830,35 +1907,108 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
   Widget _buildSelectChips(ThemeData theme, ShortcutField field, String tagId) {
     final formValues = _activeDraft.getFormValuesFor(tagId);
     final currentValue = formValues[field.id];
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: field.options.map((opt) {
-        final isSelected = currentValue == opt;
-        return GestureDetector(
-          onTap: () =>
-              _updateFormValue(field.id, isSelected ? null : opt, tagId: tagId),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              opt,
-              style: theme.textTheme.labelSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: isSelected
-                    ? theme.colorScheme.onPrimary
-                    : theme.colorScheme.onSurface,
+    final isCustomValue = currentValue != null &&
+        currentValue is String &&
+        !field.options.contains(currentValue);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            ...field.options.map((opt) {
+              final isSelected = currentValue == opt;
+              return GestureDetector(
+                onTap: () => _updateFormValue(
+                    field.id, isSelected ? null : opt,
+                    tagId: tagId),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    opt,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: isSelected
+                          ? theme.colorScheme.onPrimary
+                          : theme.colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+              );
+            }),
+            if (isCustomValue)
+              GestureDetector(
+                onTap: () =>
+                    _updateFormValue(field.id, null, tagId: tagId),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.tertiary,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        currentValue,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: theme.colorScheme.onTertiary,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.close,
+                        size: 14,
+                        color: theme.colorScheme.onTertiary,
+                      ),
+                    ],
+                  ),
+                ),
               ),
+          ],
+        ),
+        if (field.allowCustom) ...[
+          const SizedBox(height: 6),
+          SizedBox(
+            height: 32,
+            child: TextField(
+              style: theme.textTheme.bodySmall,
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: theme.colorScheme.surfaceContainerHighest
+                    .withValues(alpha: 0.3),
+                hintText: '自定义...',
+                hintStyle: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                isDense: true,
+              ),
+              onSubmitted: (val) {
+                if (val.trim().isNotEmpty) {
+                  _updateFormValue(field.id, val.trim(), tagId: tagId);
+                }
+              },
             ),
           ),
-        );
-      }).toList(),
+        ],
+      ],
     );
   }
 
@@ -1869,46 +2019,136 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
   ) {
     final formValues = _activeDraft.getFormValuesFor(tagId);
     final currentList = (formValues[field.id] as List?)?.cast<String>() ?? [];
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: field.options.map((opt) {
-        final isSelected = currentList.contains(opt);
-        return GestureDetector(
-          onTap: () {
-            final newList = List<String>.from(currentList);
-            if (isSelected) {
-              newList.remove(opt);
-            } else {
-              newList.add(opt);
-            }
-            _updateFormValue(
-              field.id,
-              newList.isEmpty ? null : newList,
-              tagId: tagId,
-            );
-          },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              opt,
-              style: theme.textTheme.labelSmall?.copyWith(
-                fontWeight: FontWeight.w500,
-                color: isSelected
-                    ? theme.colorScheme.onPrimary
-                    : theme.colorScheme.onSurface,
+    final customValues =
+        currentList.where((v) => !field.options.contains(v)).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            ...field.options.map((opt) {
+              final isSelected = currentList.contains(opt);
+              return GestureDetector(
+                onTap: () {
+                  final newList = List<String>.from(currentList);
+                  if (isSelected) {
+                    newList.remove(opt);
+                  } else {
+                    newList.add(opt);
+                  }
+                  _updateFormValue(
+                    field.id,
+                    newList.isEmpty ? null : newList,
+                    tagId: tagId,
+                  );
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    opt,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w500,
+                      color: isSelected
+                          ? theme.colorScheme.onPrimary
+                          : theme.colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+              );
+            }),
+            ...customValues.map((val) {
+              return GestureDetector(
+                onTap: () {
+                  final newList = List<String>.from(currentList);
+                  newList.remove(val);
+                  _updateFormValue(
+                    field.id,
+                    newList.isEmpty ? null : newList,
+                    tagId: tagId,
+                  );
+                },
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.tertiary,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        val,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          fontWeight: FontWeight.w500,
+                          color: theme.colorScheme.onTertiary,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.close,
+                        size: 14,
+                        color: theme.colorScheme.onTertiary,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ],
+        ),
+        if (field.allowCustom) ...[
+          const SizedBox(height: 6),
+          SizedBox(
+            height: 32,
+            child: TextField(
+              style: theme.textTheme.bodySmall,
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: theme.colorScheme.surfaceContainerHighest
+                    .withValues(alpha: 0.3),
+                hintText: '自定义（回车添加）...',
+                hintStyle: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                isDense: true,
               ),
+              onSubmitted: (val) {
+                if (val.trim().isNotEmpty) {
+                  final newList = List<String>.from(currentList);
+                  for (final item in val.trim().split(RegExp(r'[,，、]'))) {
+                    final trimmed = item.trim();
+                    if (trimmed.isNotEmpty && !newList.contains(trimmed)) {
+                      newList.add(trimmed);
+                    }
+                  }
+                  _updateFormValue(
+                    field.id,
+                    newList.isEmpty ? null : newList,
+                    tagId: tagId,
+                  );
+                }
+              },
             ),
           ),
-        );
-      }).toList(),
+        ],
+      ],
     );
   }
 

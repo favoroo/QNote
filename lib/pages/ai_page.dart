@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
+import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/note.dart';
@@ -284,7 +285,7 @@ class _AiPageState extends ConsumerState<AiPage> {
   }
 
   Widget _buildContextFilterSection(
-    AsyncValue shortcutsAsync,
+    AsyncValue<List<ShortcutConfig>> shortcutsAsync,
     ThemeData theme,
   ) {
     final tags = shortcutsAsync.valueOrNull

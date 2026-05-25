@@ -34,6 +34,8 @@ Future<AiExtractResult?> extractExistingRecord({
   required String content,
   required List<String> photos,
   required DateTime recordTime,
+  DateTime? startTime,
+  DateTime? endTime,
   void Function(bool)? onLoadingChanged,
   CancelToken? cancelToken,
 }) async {
@@ -51,7 +53,8 @@ Future<AiExtractResult?> extractExistingRecord({
           'id': f.id,
           'name': f.label,
           'type': f.type,
-          if (f.options.isNotEmpty) 'options': f.options
+          if (f.options.isNotEmpty) 'options': f.options,
+          if (f.allowCustom) 'allowCustom': true
         }).toList();
       }
       if (s.hasPopup && s.categories != null && s.categories!.isNotEmpty) {
@@ -62,7 +65,8 @@ Future<AiExtractResult?> extractExistingRecord({
             'id': f.id,
             'name': f.label,
             'type': f.type,
-            if (f.options.isNotEmpty) 'options': f.options
+            if (f.options.isNotEmpty) 'options': f.options,
+            if (f.allowCustom) 'allowCustom': true
           }).toList()
         }).toList();
       }
@@ -71,7 +75,28 @@ Future<AiExtractResult?> extractExistingRecord({
 
     final weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
     final now = DateTime.now();
-    final contextStr = {
+
+    String? userSelectedTimeStr;
+    if (startTime != null || endTime != null) {
+      final baseDate = DateTime(recordTime.year, recordTime.month, recordTime.day);
+      String formatSingle(DateTime dt) {
+        final dtDate = DateTime(dt.year, dt.month, dt.day);
+        final offset = dtDate.difference(baseDate).inDays;
+        final prefix = offset < 0 ? '-' : '';
+        final timeStr = DateFormat('HH:mm').format(dt);
+        return '$prefix$timeStr';
+      }
+
+      if (startTime != null && endTime != null) {
+        userSelectedTimeStr = '${formatSingle(startTime)}~${formatSingle(endTime)}';
+      } else if (startTime != null) {
+        userSelectedTimeStr = formatSingle(startTime);
+      } else if (endTime != null) {
+        userSelectedTimeStr = formatSingle(endTime);
+      }
+    }
+
+    final contextMap = <String, dynamic>{
       'today': {
         'date': DateFormat('yyyy-MM-dd').format(now),
         'time': DateFormat('HH:mm').format(now),
@@ -79,6 +104,9 @@ Future<AiExtractResult?> extractExistingRecord({
       },
       'recordDate': DateFormat('yyyy-MM-dd').format(recordTime),
     };
+    if (userSelectedTimeStr != null) {
+      contextMap['userSelectedTime'] = userSelectedTimeStr;
+    }
 
     final aiTempsAsync = ref.read(aiTemperaturesProvider);
     final extractImages = aiTempsAsync.valueOrNull?.timelineOptimization.extractImages ?? false;
@@ -95,7 +123,7 @@ Future<AiExtractResult?> extractExistingRecord({
       imageBase64: imageBase64,
       mimeType: 'image/jpeg',
       schema: schemaContext.toString(),
-      contextStr: contextStr.toString(),
+      contextStr: contextMap.toString(),
       cancelToken: cancelToken,
     );
 

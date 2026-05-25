@@ -158,82 +158,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       return;
     }
 
-    _isProgrammaticScrolling = true;
-
-    final now = DateTime.now();
-    final dayOffset = _dateToDayOffset(now);
-    final nodeIndex = now.hour * 2 + (now.minute >= 30 ? 1 : 0);
-    final targetIndex = dayOffset * _itemsPerDay + (nodeIndex + 1);
-
-    final targetCtx = _itemContexts[targetIndex];
-    final keyCtx = _currentTimeNodeKey.currentContext;
-
-    BuildContext? bestCtx = targetCtx ?? keyCtx;
-    if (bestCtx != null && bestCtx.mounted) {
-      final renderBox = bestCtx.findRenderObject() as RenderBox?;
-      if (renderBox != null && renderBox.hasSize) {
-        final viewportBox =
-            _viewportKey.currentContext?.findRenderObject() as RenderBox?;
-        if (viewportBox != null && viewportBox.hasSize) {
-          final viewportHeight = viewportBox.size.height;
-          final nodeHeight = renderBox.size.height;
-          final viewportTopOnScreen = viewportBox.localToGlobal(Offset.zero).dy;
-          final nodeTopOnScreen = renderBox.localToGlobal(Offset.zero).dy;
-          final scrollOffset = _scrollController.offset;
-          final nodeTopInScroll =
-              scrollOffset + (nodeTopOnScreen - viewportTopOnScreen);
-          final preciseTarget =
-              (nodeTopInScroll - (viewportHeight - nodeHeight) / 2).clamp(
-                0.0,
-                _scrollController.position.maxScrollExtent,
-              );
-
-          _scrollController.jumpTo(preciseTarget);
-        }
-      }
-
-      ref.read(selectedDateProvider.notifier).state = DateTime(
-        now.year,
-        now.month,
-        now.day,
-      );
-
-      Future.delayed(const Duration(milliseconds: 800), () {
-        if (mounted) {
-          _isProgrammaticScrolling = false;
-        }
-      });
-      return;
-    }
-
-    double estimatedOffset = _estimateOffsetForIndex(targetIndex);
-    final viewportHeight = _scrollController.position.viewportDimension;
-    final maxScroll = _scrollController.position.maxScrollExtent;
-    final targetOffset = (estimatedOffset - viewportHeight / 2).clamp(
-      0.0,
-      maxScroll,
-    );
-
-    _scrollController.jumpTo(targetOffset);
-
-    if (retryCount < 10) {
-      Future.delayed(const Duration(milliseconds: 300), () {
-        if (mounted) {
-          _performInitialScrollToCurrentTime(retryCount: retryCount + 1);
-        }
-      });
-    } else {
-      ref.read(selectedDateProvider.notifier).state = DateTime(
-        now.year,
-        now.month,
-        now.day,
-      );
-      Future.delayed(const Duration(milliseconds: 800), () {
-        if (mounted) {
-          _isProgrammaticScrolling = false;
-        }
-      });
-    }
+    _scrollToCurrentTime(smooth: true);
   }
 
   void _scrollToTarget({
@@ -282,21 +207,79 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       _scrollController.position.maxScrollExtent,
     );
 
-    _scrollController.jumpTo(targetOffset);
+    if (smooth) {
+      final currentOffset = _scrollController.offset;
+      final distance = (targetOffset - currentOffset).abs();
+      final threshold = viewportHeight * 1.2;
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 80), () {
-        if (mounted) {
-          _scrollToTarget(
-            targetIndex: targetIndex,
-            targetKey: targetKey,
-            smooth: smooth,
-            alignment: alignment,
-            attempts: attempts + 1,
-          );
+      if (attempts == 0 && distance > threshold) {
+        // Jump close to the target first to avoid loading too many items and causing jank.
+        // We leave 0.7 viewports of distance so the user still sees a smooth sliding motion.
+        double jumpOffset;
+        if (targetOffset > currentOffset) {
+          jumpOffset = targetOffset - viewportHeight * 0.7;
+        } else {
+          jumpOffset = targetOffset + viewportHeight * 0.7;
         }
+        jumpOffset = jumpOffset.clamp(
+          0.0,
+          _scrollController.position.maxScrollExtent,
+        );
+
+        _scrollController.jumpTo(jumpOffset);
+
+        // Allow a frame for the layout to mount new items, then continue.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Future.delayed(const Duration(milliseconds: 50), () {
+            if (mounted) {
+              _scrollToTarget(
+                targetIndex: targetIndex,
+                targetKey: targetKey,
+                smooth: smooth,
+                alignment: alignment,
+                attempts: attempts + 1,
+                recordsByDate: recordsByDate,
+                targetTime: targetTime,
+              );
+            }
+          });
+        });
+      } else {
+        // Target is close or we already jumped, animate to estimated target.
+        _scrollController
+            .animateTo(
+              targetOffset,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOutCubic,
+            )
+            .then((_) {
+              if (mounted) {
+                _scrollToTarget(
+                  targetIndex: targetIndex,
+                  targetKey: targetKey,
+                  smooth: smooth,
+                  alignment: alignment,
+                  attempts: attempts + 1,
+                );
+              }
+            });
+      }
+    } else {
+      _scrollController.jumpTo(targetOffset);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Future.delayed(const Duration(milliseconds: 80), () {
+          if (mounted) {
+            _scrollToTarget(
+              targetIndex: targetIndex,
+              targetKey: targetKey,
+              smooth: smooth,
+              alignment: alignment,
+              attempts: attempts + 1,
+            );
+          }
+        });
       });
-    });
+    }
   }
 
   void _scrollToContext(
@@ -311,7 +294,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       Scrollable.ensureVisible(
         targetContext,
         alignment: alignment,
-        duration: smooth ? const Duration(milliseconds: 400) : Duration.zero,
+        duration: smooth ? const Duration(milliseconds: 350) : Duration.zero,
         curve: Curves.easeOutCubic,
       );
       _finishProgrammaticScroll();
@@ -324,7 +307,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       Scrollable.ensureVisible(
         targetContext,
         alignment: alignment,
-        duration: smooth ? const Duration(milliseconds: 400) : Duration.zero,
+        duration: smooth ? const Duration(milliseconds: 350) : Duration.zero,
         curve: Curves.easeOutCubic,
       );
       _finishProgrammaticScroll();
@@ -344,16 +327,21 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
           _scrollController.position.maxScrollExtent,
         );
 
-    if ((scrollOffset - preciseTarget).abs() < 5.0) {
+    if ((scrollOffset - preciseTarget).abs() < 2.0) {
       _finishProgrammaticScroll();
       return;
     }
 
     if (smooth) {
+      final distance = (scrollOffset - preciseTarget).abs();
+      final duration = distance < 50.0
+          ? const Duration(milliseconds: 150)
+          : const Duration(milliseconds: 350);
+
       _scrollController
           .animateTo(
             preciseTarget,
-            duration: const Duration(milliseconds: 400),
+            duration: duration,
             curve: Curves.easeOutCubic,
           )
           .then((_) {
@@ -379,7 +367,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       _scrollController
           .animateTo(
             targetOffset,
-            duration: const Duration(milliseconds: 400),
+            duration: const Duration(milliseconds: 350),
             curve: Curves.easeOutCubic,
           )
           .then((_) {
@@ -930,6 +918,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       content: contentText,
       photos: record.photos,
       recordTime: record.time,
+      startTime: record.startTime,
+      endTime: record.endTime,
       cancelToken: _cancelToken,
     );
 
@@ -995,6 +985,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
               Duration(days: endOffset, hours: hour, minutes: minute),
             );
           }
+        } else {
+          newEndTime = null;
         }
       }
 

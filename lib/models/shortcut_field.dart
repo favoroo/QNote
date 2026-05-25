@@ -5,12 +5,14 @@ class ShortcutField {
   String label;
   String type;
   List<String> options;
+  bool allowCustom;
 
   ShortcutField({
     required this.id,
     required this.label,
     required this.type,
     this.options = const [],
+    this.allowCustom = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -19,6 +21,7 @@ class ShortcutField {
       'label': label,
       'type': type,
       'options': options,
+      'allowCustom': allowCustom,
     };
   }
 
@@ -28,6 +31,7 @@ class ShortcutField {
       label: map['label'] as String,
       type: map['type'] as String,
       options: List<String>.from(map['options'] as List? ?? []),
+      allowCustom: map['allowCustom'] as bool? ?? false,
     );
   }
 
@@ -41,12 +45,14 @@ class ShortcutField {
     String? label,
     String? type,
     List<String>? options,
+    bool? allowCustom,
   }) {
     return ShortcutField(
       id: id ?? this.id,
       label: label ?? this.label,
       type: type ?? this.type,
       options: options ?? this.options,
+      allowCustom: allowCustom ?? this.allowCustom,
     );
   }
 }

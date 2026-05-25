@@ -9,6 +9,7 @@ import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/config/models.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/ai/model_fetch_service.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -29,8 +30,8 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   bool _batchTesting = false;
   bool _isBatchTestingModels = false;
   final ValueNotifier<Map<String, String>> _modelLatencyNotifier = ValueNotifier({});
-  List<String> _openRouterFreeModels = [];
-  bool _isFetchingFreeModels = false;
+  final Map<String, List<String>> _fetchedModelsMap = {};
+  bool _isFetchingModels = false;
   String? _fetchMessage;
   bool _fetchMessageIsError = false;
   SharedPreferences? _prefs;
@@ -45,7 +46,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     super.initState();
     _loadRoles();
     _loadLatencies();
-    _loadOpenRouterFreeModels();
+    _loadAllCachedModels();
   }
 
   @override
@@ -54,135 +55,110 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     super.dispose();
   }
 
-  Future<void> _loadOpenRouterFreeModels() async {
+  Future<void> _loadAllCachedModels() async {
     final prefs = await _getPrefs();
-    final cachedModels = prefs.getStringList('openrouter_free_models');
-    if (cachedModels != null && cachedModels.isNotEmpty) {
-      if (mounted) {
-        setState(() {
-          _openRouterFreeModels = cachedModels;
-        });
+    for (final provider in aiProviders) {
+      List<String>? cachedModels = prefs.getStringList('fetched_models_${provider.id}');
+      
+      // 兼容旧的缓存 Key
+      if (cachedModels == null || cachedModels.isEmpty) {
+        if (provider.id == 'openrouter') {
+          cachedModels = prefs.getStringList('openrouter_free_models');
+        } else if (provider.id == 'chatanywhere') {
+          cachedModels = prefs.getStringList('chatanywhere_models');
+        }
+      }
+      
+      if (cachedModels != null && cachedModels.isNotEmpty) {
+        if (mounted) {
+          setState(() {
+            _fetchedModelsMap[provider.id] = cachedModels!;
+          });
+        }
       }
     }
   }
 
-  Future<void> _fetchOpenRouterFreeModels(StateSetter setDialogState) async {
-    if (_isFetchingFreeModels) return;
+  Future<void> _fetchModelsForVendor({
+    required String vendorId,
+    required String baseUrl,
+    required String apiKey,
+    required StateSetter setDialogState,
+  }) async {
+    if (_isFetchingModels) return;
+
+    final providerConfig = getProviderById(vendorId);
+    if (providerConfig == null) return;
+
+    if (providerConfig.requiresApiKeyForFetch && apiKey.trim().isEmpty) {
+      setDialogState(() {
+        _fetchMessage = '获取失败: 请先填写 API Key 后尝试';
+        _fetchMessageIsError = true;
+      });
+      setState(() {
+        _fetchMessage = '获取失败: 请先填写 API Key 后尝试';
+        _fetchMessageIsError = true;
+      });
+      return;
+    }
+
     setDialogState(() {
-      _isFetchingFreeModels = true;
+      _isFetchingModels = true;
       _fetchMessage = null;
     });
     setState(() {
-      _isFetchingFreeModels = true;
+      _isFetchingModels = true;
       _fetchMessage = null;
     });
 
     try {
-      final dio = Dio(BaseOptions(
-        connectTimeout: const Duration(seconds: 15),
-        receiveTimeout: const Duration(seconds: 15),
-      ));
-      
-      final response = await dio.get(
-        'https://openrouter.ai/api/frontend/models/find?active=true&fmt=cards&q=free',
-        options: Options(
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json',
-            'Referer': 'https://openrouter.ai/',
-          },
-        ),
+      final service = ModelFetchService();
+      final List<String> fetchedModels = await service.fetchModels(
+        vendorId: vendorId,
+        baseUrl: baseUrl,
+        apiKey: apiKey,
+        authType: providerConfig.authType,
+        modelsEndpoint: providerConfig.modelsEndpoint,
       );
 
-      if (response.statusCode == 200) {
-        final data = response.data;
-        if (data is Map && data['data'] != null) {
-          final nestedData = data['data'];
-          final modelsList = nestedData['models'];
-          final Map<String, dynamic> analytics = nestedData['analytics'] is Map ? nestedData['analytics'] : {};
+      if (fetchedModels.isNotEmpty) {
+        final prefs = await _getPrefs();
+        await prefs.setStringList('fetched_models_$vendorId', fetchedModels);
 
-          if (modelsList is List) {
-            final List<Map<String, dynamic>> parsedModels = [];
-            for (final item in modelsList) {
-              if (item is Map) {
-                final endpoint = item['endpoint'];
-                if (endpoint is Map && endpoint['is_free'] == true) {
-                  final slug = endpoint['model_variant_slug'];
-                  final permaslug = endpoint['model_variant_permaslug'];
-                  if (slug is String && slug.isNotEmpty) {
-                    int usage = 0;
-                    
-                    int getUsage(String key) {
-                      final cleanKey = key.replaceAll(':free', '');
-                      if (analytics[cleanKey] != null) {
-                        final a = analytics[cleanKey];
-                        if (a is Map) {
-                          return ((a['total_prompt_tokens'] ?? 0) as num).toInt() + ((a['total_completion_tokens'] ?? 0) as num).toInt();
-                        }
-                      }
-                      if (analytics[key] != null) {
-                        final a = analytics[key];
-                        if (a is Map) {
-                          return ((a['total_prompt_tokens'] ?? 0) as num).toInt() + ((a['total_completion_tokens'] ?? 0) as num).toInt();
-                        }
-                      }
-                      return 0;
-                    }
-
-                    usage = getUsage(permaslug ?? slug);
-                    if (usage == 0) usage = getUsage(slug);
-
-                    parsedModels.add({
-                      'slug': slug,
-                      'usage': usage,
-                    });
-                  }
-                }
-              }
-            }
-
-            parsedModels.sort((a, b) => (b['usage'] as int).compareTo(a['usage'] as int));
-            final List<String> freeModelsList = parsedModels.map((m) => m['slug'] as String).toList();
-
-            if (freeModelsList.isNotEmpty) {
-              final prefs = await _getPrefs();
-              prefs.setStringList('openrouter_free_models', freeModelsList);
-
-              if (mounted) {
-                setDialogState(() {
-                  _openRouterFreeModels = freeModelsList;
-                  _fetchMessage = '成功获取并更新了 ${freeModelsList.length} 个免费模型！';
-                  _fetchMessageIsError = false;
-                });
-                setState(() {
-                  _openRouterFreeModels = freeModelsList;
-                  _fetchMessage = '成功获取并更新了 ${freeModelsList.length} 个免费模型！';
-                  _fetchMessageIsError = false;
-                });
-                }
-// Success dialog removed; using in-dialog banner
-            } else {
-              throw Exception('未找到任何免费模型');
-            }
-          } else {
-            throw Exception('模型数据列表格式无效');
-          }
-        } else {
-          throw Exception('返回数据结构无效');
+        if (mounted) {
+          setDialogState(() {
+            _fetchedModelsMap[vendorId] = fetchedModels;
+            _fetchMessage = '成功获取并更新了 ${fetchedModels.length} 个模型！';
+            _fetchMessageIsError = false;
+          });
+          setState(() {
+            _fetchedModelsMap[vendorId] = fetchedModels;
+            _fetchMessage = '成功获取并更新了 ${fetchedModels.length} 个模型！';
+            _fetchMessageIsError = false;
+          });
         }
       } else {
-        throw Exception('HTTP 错误: ${response.statusCode}');
+        throw Exception('未找到任何模型');
       }
     } catch (e) {
       if (mounted) {
         String errorMsg = e.toString();
         if (e is DioException) {
           if (kIsWeb && (errorMsg.contains('XMLHttpRequest') || errorMsg.contains('CORS'))) {
-            errorMsg = 'Web端存在CORS跨域限制，请在模拟器或真机中点击获取。';
+            errorMsg = 'Web端存在CORS限制，请在模拟器或真机中操作';
+          } else if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
+            errorMsg = '认证失败，请检查 API Key';
           } else {
-            errorMsg = '网络连接失败，请检查网络设置。';
+            errorMsg = '网络连接失败，请检查网络设置';
           }
+        } else if (errorMsg.contains('请先填写 API Key')) {
+          errorMsg = '请先填写 API Key 后尝试';
         }
+        
+        if (errorMsg.startsWith('Exception: ')) {
+          errorMsg = errorMsg.substring('Exception: '.length);
+        }
+
         setDialogState(() {
           _fetchMessage = '获取失败: $errorMsg';
           _fetchMessageIsError = true;
@@ -191,15 +167,14 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           _fetchMessage = '获取失败: $errorMsg';
           _fetchMessageIsError = true;
         });
-// Snackbar removed; using in-dialog banner for error feedback
       }
     } finally {
       if (mounted) {
         setDialogState(() {
-          _isFetchingFreeModels = false;
+          _isFetchingModels = false;
         });
         setState(() {
-          _isFetchingFreeModels = false;
+          _isFetchingModels = false;
         });
       }
     }
@@ -1017,42 +992,63 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                         children: [
                           Text('模型名称', style: Theme.of(context).textTheme.labelSmall),
                           const Spacer(),
-                          if (selectedVendorId == 'openrouter')
-                            TextButton.icon(
-                              onPressed: _isFetchingFreeModels
-                                  ? null
-                                  : () => _fetchOpenRouterFreeModels(setDialogState),
-                              icon: _isFetchingFreeModels
-                                  ? const SizedBox(
-                                      width: 12,
-                                      height: 12,
-                                      child: CircularProgressIndicator(strokeWidth: 2),
-                                    )
-                                  : const Icon(Icons.refresh, size: 14),
-                              label: Text(
-                                _isFetchingFreeModels ? '更新中...' : '一键获取免费模型',
-                                style: const TextStyle(fontSize: 11),
-                              ),
-                              style: TextButton.styleFrom(
-                                padding: EdgeInsets.zero,
-                                minimumSize: Size.zero,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                            ),
+                          Builder(
+                            builder: (context) {
+                              final providerConfig = getProviderById(selectedVendorId);
+                              if (providerConfig == null || providerConfig.modelsEndpoint.isEmpty) {
+                                return const SizedBox.shrink();
+                              }
+                              return TextButton.icon(
+                                onPressed: _isFetchingModels
+                                    ? null
+                                    : () => _fetchModelsForVendor(
+                                          vendorId: selectedVendorId,
+                                          baseUrl: baseUrlCtl.text,
+                                          apiKey: apiKeyCtl.text,
+                                          setDialogState: setDialogState,
+                                        ),
+                                icon: _isFetchingModels
+                                    ? const SizedBox(
+                                        width: 12,
+                                        height: 12,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      )
+                                    : const Icon(Icons.refresh, size: 14),
+                                label: Text(
+                                  _isFetchingModels 
+                                      ? '更新中...' 
+                                      : (selectedVendorId == 'openrouter' ? '一键获取免费模型' : '一键获取模型列表'),
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                                style: TextButton.styleFrom(
+                                  padding: EdgeInsets.zero,
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              );
+                            },
+                          ),
                           if (selectedVendorId != 'custom') ...[
-                            if (selectedVendorId == 'openrouter') const SizedBox(width: 8),
+                            Builder(
+                              builder: (context) {
+                                final providerConfig = getProviderById(selectedVendorId);
+                                if (providerConfig != null && providerConfig.modelsEndpoint.isNotEmpty) {
+                                  return const SizedBox(width: 8);
+                                }
+                                return const SizedBox.shrink();
+                              },
+                            ),
                             TextButton.icon(
                               onPressed: _isBatchTestingModels
                                   ? null
                                   : () {
                                       final providerConfig = getProviderById(selectedVendorId);
                                       List<String> modelsToTest = [];
-                                      if (selectedVendorId == 'openrouter') {
-                                        modelsToTest = _openRouterFreeModels.isNotEmpty 
-                                            ? _openRouterFreeModels 
-                                            : (providerConfig?.models ?? []);
-                                      } else {
-                                        modelsToTest = providerConfig?.models ?? [];
+                                      if (providerConfig != null) {
+                                        final cached = _fetchedModelsMap[selectedVendorId];
+                                        modelsToTest = (cached != null && cached.isNotEmpty)
+                                            ? cached
+                                            : providerConfig.models;
                                       }
                                       
                                       _batchTestModels(
@@ -1084,7 +1080,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                           ],
                         ],
                       ),
-                      if (selectedVendorId == 'openrouter' && _fetchMessage != null) ...[
+                      if (selectedVendorId != 'custom' && _fetchMessage != null) ...[
                         const SizedBox(height: 4),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -1159,7 +1155,63 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                       ),
                       const SizedBox(height: 12),
                       if (selectedProvider != 'gemini') ...[
-                        Text('Base URL', style: Theme.of(context).textTheme.labelSmall),
+                        Row(
+                          children: [
+                            Text('Base URL', style: Theme.of(context).textTheme.labelSmall),
+                            if (selectedVendorId == 'chatanywhere') ...[
+                              const Spacer(),
+                              Builder(
+                                builder: (context) {
+                                  Widget buildChip(String label, String url) {
+                                    final isSelected = baseUrlCtl.text == url;
+                                    return InkWell(
+                                      onTap: () {
+                                        setDialogState(() {
+                                          baseUrlCtl.text = url;
+                                        });
+                                      },
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: isSelected
+                                              ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.2)
+                                              : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(
+                                            color: isSelected
+                                                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.4)
+                                                : Colors.transparent,
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          label,
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                            color: isSelected
+                                                ? Theme.of(context).colorScheme.primary
+                                                : Theme.of(context).colorScheme.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                  return Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      buildChip('国内中转', 'https://api.chatanywhere.tech/v1'),
+                                      const SizedBox(width: 6),
+                                      buildChip('国外使用', 'https://api.chatanywhere.org/v1'),
+                                    ],
+                                  );
+                                },
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 6),
                         TextField(controller: baseUrlCtl, decoration: const InputDecoration(hintText: 'https://api.openai.com')),
                         const SizedBox(height: 12),
                       ],
@@ -1278,12 +1330,10 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   ) {
     final providerConfig = getProviderById(vendorId);
     
-    List<String> modelsList = [];
-    if (vendorId == 'openrouter') {
-      modelsList = _openRouterFreeModels.isNotEmpty ? _openRouterFreeModels : (providerConfig?.models ?? []);
-    } else {
-      modelsList = providerConfig?.models ?? [];
-    }
+    final cached = _fetchedModelsMap[vendorId];
+    final List<String> modelsList = (cached != null && cached.isNotEmpty)
+        ? cached
+        : (providerConfig?.models ?? []);
 
     final hasPredefinedModels = modelsList.isNotEmpty;
     final isModelInList = modelsList.contains(modelCtl.text);

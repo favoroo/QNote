@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -25,7 +27,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 8,
+      version: 9,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -413,5 +415,152 @@ class DatabaseHelper {
         );
       } catch (_) {}
     }
+    if (oldVersion < 9) {
+      await _migrateV9(db);
+    }
+  }
+
+  Future<void> _migrateV9(Database db) async {
+    final optionUpdates = <String, Map<String, dynamic>>{
+      'diet': {
+        'fieldId': 'type',
+        'oldOptions': ['正餐', '零食', '水果', '饮品'],
+        'newOptions': ['自制', '外卖', '堂食', '零食', '水果', '饮品', '补剂'],
+        'allowCustom': true,
+      },
+      'activity': {
+        'fieldId': 'type',
+        'oldOptions': ['工作', '学习', '娱乐', '运动'],
+        'newOptions': ['工作', '学习', '运动', '社交', '娱乐', '通勤', '家务', '休息'],
+        'allowCustom': true,
+      },
+      'health': {
+        'fieldId': 'symptom',
+        'oldOptions': ['脑雾', '疲劳', '头痛', '胃胀', '发热', '过敏', '失眠', '疼痛'],
+        'newOptions': ['头痛', '疲劳', '失眠', '胃胀', '发热', '咳嗽', '疼痛', '过敏'],
+        'allowCustom': true,
+      },
+    };
+
+    final categoryOptionUpdates = <String, Map<String, Map<String, dynamic>>>{
+      'consumption': {
+        'expense': {
+          'fieldId': 'type',
+          'oldOptions': ['饮食', '交通', '购物', '娱乐', '居家', '人情', '医疗', '房租', '数码', '其他'],
+          'newOptions': ['饮食', '交通', '购物', '娱乐', '居家', '人情', '医疗', '房租', '数码', '教育', '服饰', '美容', '宠物', '其他'],
+          'allowCustom': true,
+        },
+        'income': {
+          'fieldId': 'incomeType',
+          'oldOptions': ['工资', '奖金', '红包', '兼职', '理财', '其他'],
+          'newOptions': ['工资', '奖金', '红包', '兼职', '理财', '报销', '其他'],
+          'allowCustom': true,
+        },
+      },
+    };
+
+    final rows = await db.query('shortcut_configs');
+    for (final row in rows) {
+      final id = row['id'] as String;
+      bool updated = false;
+
+      if (optionUpdates.containsKey(id)) {
+        final fieldsJson = row['fields'] as String? ?? '[]';
+        final fields = jsonDecode(fieldsJson) as List;
+        final update = optionUpdates[id]!;
+        for (int i = 0; i < fields.length; i++) {
+          final field = fields[i] as Map<String, dynamic>;
+          if (field['id'] == update['fieldId']) {
+            final currentOptions = List<String>.from(field['options'] ?? []);
+            if (_listsOverlap(currentOptions, update['oldOptions'] as List<String>)) {
+              field['options'] = update['newOptions'];
+              field['allowCustom'] = update['allowCustom'];
+              updated = true;
+            }
+          }
+        }
+        if (updated) {
+          await db.update(
+            'shortcut_configs',
+            {'fields': jsonEncode(fields)},
+            where: 'id = ?',
+            whereArgs: [id],
+          );
+        }
+      }
+
+      if (categoryOptionUpdates.containsKey(id)) {
+        final categoriesJson = row['categories'] as String?;
+        if (categoriesJson != null) {
+          final categories = jsonDecode(categoriesJson) as List;
+          final catUpdates = categoryOptionUpdates[id]!;
+          bool catUpdated = false;
+          for (int i = 0; i < categories.length; i++) {
+            final cat = categories[i] as Map<String, dynamic>;
+            final catId = cat['id'] as String?;
+            if (catId != null && catUpdates.containsKey(catId)) {
+              final update = catUpdates[catId]!;
+              final catFields = cat['fields'] as List? ?? [];
+              for (int j = 0; j < catFields.length; j++) {
+                final field = catFields[j] as Map<String, dynamic>;
+                if (field['id'] == update['fieldId']) {
+                  final currentOptions = List<String>.from(field['options'] ?? []);
+                  if (_listsOverlap(currentOptions, update['oldOptions'] as List<String>)) {
+                    field['options'] = update['newOptions'];
+                    field['allowCustom'] = update['allowCustom'];
+                    catUpdated = true;
+                  }
+                }
+              }
+            }
+          }
+          if (catUpdated) {
+            await db.update(
+              'shortcut_configs',
+              {'categories': jsonEncode(categories)},
+              where: 'id = ?',
+              whereArgs: [id],
+            );
+          }
+        }
+      }
+    }
+
+    final diaryRows = await db.query('diary_records', columns: ['id', 'tag_entries']);
+    for (final row in diaryRows) {
+      final tagEntriesJson = row['tag_entries'] as String?;
+      if (tagEntriesJson == null || tagEntriesJson.isEmpty) continue;
+      try {
+        final tagEntries = jsonDecode(tagEntriesJson) as List;
+        bool diaryUpdated = false;
+        for (final entry in tagEntries) {
+          if (entry is Map<String, dynamic>) {
+            final entryId = entry['id'] as String?;
+            if (entryId == 'diet') {
+              final fields = entry['fields'];
+              if (fields is Map && fields['type'] == '正餐') {
+                fields['type'] = '自制';
+                diaryUpdated = true;
+              }
+            }
+          }
+        }
+        if (diaryUpdated) {
+          await db.update(
+            'diary_records',
+            {'tag_entries': jsonEncode(tagEntries)},
+            where: 'id = ?',
+            whereArgs: [row['id']],
+          );
+        }
+      } catch (_) {}
+    }
+  }
+
+  bool _listsOverlap(List<String> a, List<String> b) {
+    for (final item in b) {
+      if (a.contains(item)) return true;
+    }
+    return false;
   }
 }
