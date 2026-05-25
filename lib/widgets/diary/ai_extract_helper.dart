@@ -135,15 +135,36 @@ Future<AiExtractResult?> extractExistingRecord({
         final fields = Map<String, dynamic>.from(result['fields'] as Map? ?? {});
         final timeRaw = result['time'];
         String? timeStr;
+        int? startHour;
+        int? startMinute;
+        int? startOffset;
+        int? endHour;
+        int? endMinute;
+        int? endOffset;
+
         if (timeRaw is Map && timeRaw.isNotEmpty) {
           final parts = <String>[];
           if (timeRaw['start'] != null) {
             final prefix = timeRaw['startOffset'] != null && (timeRaw['startOffset'] as int) < 0 ? '-' : '';
             parts.add('$prefix${timeRaw['start']}');
+
+            final tParts = (timeRaw['start'] as String).split(':');
+            if (tParts.length == 2) {
+              startHour = int.tryParse(tParts[0]);
+              startMinute = int.tryParse(tParts[1]);
+            }
+            startOffset = timeRaw['startOffset'] as int?;
           }
           if (timeRaw['end'] != null) {
             final prefix = timeRaw['endOffset'] != null && (timeRaw['endOffset'] as int) < 0 ? '-' : '';
             parts.add('$prefix${timeRaw['end']}');
+
+            final tParts = (timeRaw['end'] as String).split(':');
+            if (tParts.length == 2) {
+              endHour = int.tryParse(tParts[0]);
+              endMinute = int.tryParse(tParts[1]);
+            }
+            endOffset = timeRaw['endOffset'] as int?;
           }
           timeStr = parts.isNotEmpty ? parts.join('~') : null;
         }
@@ -152,6 +173,12 @@ Future<AiExtractResult?> extractExistingRecord({
           name: foundShortcut?.name ?? shortcutId ?? '其他',
           fields: fields,
           time: timeStr,
+          startHour: startHour,
+          startMinute: startMinute,
+          startOffset: startOffset,
+          endHour: endHour,
+          endMinute: endMinute,
+          endOffset: endOffset,
         ));
       }
 

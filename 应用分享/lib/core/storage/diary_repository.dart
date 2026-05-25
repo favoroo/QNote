@@ -3,6 +3,10 @@ import 'package:qnote_flutter/core/storage/sync_log_repository.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 
 class DiaryRepository {
+  static final DiaryRepository _instance = DiaryRepository._internal();
+  factory DiaryRepository() => _instance;
+  DiaryRepository._internal();
+
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
   final SyncLogRepository _syncLog = SyncLogRepository.instance;
 
@@ -18,25 +22,46 @@ class DiaryRepository {
 
   Future<List<DiaryRecord>> getByDate(DateTime date) async {
     final db = await _dbHelper.database;
-    final dateStr = date.toIso8601String().split('T').first;
+    final prevDateStr = date.subtract(const Duration(days: 1)).toIso8601String().split('T').first;
+    final nextDateStr = date.add(const Duration(days: 2)).toIso8601String().split('T').first;
+
     final maps = await db.query(
       'diary_records',
-      where: "time LIKE ? AND is_deleted = 0",
-      whereArgs: ['$dateStr%'],
+      where: "time >= ? AND time < ? AND is_deleted = 0",
+      whereArgs: [prevDateStr, nextDateStr],
       orderBy: 'time DESC',
     );
-    return maps.map((m) => DiaryRecord.fromMap(m)).toList();
+
+    final targetDate = DateTime(date.year, date.month, date.day);
+    return maps
+        .map((m) => DiaryRecord.fromMap(m))
+        .where((r) => r.belongsToDate(targetDate))
+        .toList();
   }
 
   Future<List<DiaryRecord>> getByDateRange(DateTime start, DateTime end) async {
     final db = await _dbHelper.database;
+    final extendedStart = start.subtract(const Duration(days: 1));
+    final extendedStartStr = extendedStart.toIso8601String();
+    final endStr = end.toIso8601String();
+
     final maps = await db.query(
       'diary_records',
       where: 'time >= ? AND time <= ? AND is_deleted = 0',
-      whereArgs: [start.toIso8601String(), end.toIso8601String()],
+      whereArgs: [extendedStartStr, endStr],
       orderBy: 'time DESC',
     );
-    return maps.map((m) => DiaryRecord.fromMap(m)).toList();
+
+    final targetStart = DateTime(start.year, start.month, start.day);
+    final targetEnd = DateTime(end.year, end.month, end.day);
+
+    return maps
+        .map((m) => DiaryRecord.fromMap(m))
+        .where((r) {
+          final effectiveDate = r.getEffectiveDate();
+          return !effectiveDate.isBefore(targetStart) && !effectiveDate.isAfter(targetEnd);
+        })
+        .toList();
   }
 
   Future<List<DiaryRecord>> getByFolder(String folderId) async {
@@ -104,21 +129,26 @@ class DiaryRepository {
 
   Future<void> softDelete(String id) async {
     final db = await _dbHelper.database;
+    final existing = await getById(id);
+    if (existing == null) return;
+
+    final nowStr = DateTime.now().toIso8601String();
     await db.update(
       'diary_records',
-      {'is_deleted': 1, 'updated_at': DateTime.now().toIso8601String()},
+      {'is_deleted': 1, 'updated_at': nowStr},
       where: 'id = ?',
       whereArgs: [id],
     );
-    final existing = await getById(id);
-    if (existing != null) {
-      await _syncLog.logChange(
-        tableName: 'diary_records',
-        recordId: id,
-        operation: 'update',
-        data: existing.toMap(),
-      );
-    }
+    final updated = existing.copyWith(
+      isDeleted: true,
+      updatedAt: DateTime.parse(nowStr),
+    );
+    await _syncLog.logChange(
+      tableName: 'diary_records',
+      recordId: id,
+      operation: 'update',
+      data: updated.toMap(),
+    );
   }
 
   Future<void> hardDelete(String id) async {
@@ -140,5 +170,13 @@ class DiaryRepository {
       orderBy: 'time DESC',
     );
     return maps.map((m) => DiaryRecord.fromMap(m)).toList();
+  }
+
+  Future<List<DiaryRecord>> getByDateWithSleepByEndTime(DateTime date) async {
+    return getByDate(date);
+  }
+
+  Future<List<DiaryRecord>> getByDateRangeWithSleepByEndTime(DateTime start, DateTime end) async {
+    return getByDateRange(start, end);
   }
 }

@@ -25,9 +25,59 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 10,
+      version: 12,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
+      onOpen: (db) async {
+        await _checkAndAddMissingColumns(db);
+      },
     );
+  }
+
+  Future<void> _checkAndAddMissingColumns(Database db) async {
+    final columns = await db.rawQuery('PRAGMA table_info(diary_records)');
+    final columnNames = columns.map((c) => c['name'] as String).toSet();
+
+    if (!columnNames.contains('tag_entries')) {
+      try {
+        await db.execute('ALTER TABLE diary_records ADD COLUMN tag_entries TEXT');
+      } catch (_) {}
+    }
+    if (!columnNames.contains('color_mark')) {
+      try {
+        await db.execute('ALTER TABLE diary_records ADD COLUMN color_mark TEXT DEFAULT ""');
+      } catch (_) {}
+    }
+    if (!columnNames.contains('display_tag')) {
+      try {
+        await db.execute('ALTER TABLE diary_records ADD COLUMN display_tag TEXT DEFAULT ""');
+      } catch (_) {}
+    }
+    if (!columnNames.contains('body_state')) {
+      try {
+        await db.execute('ALTER TABLE diary_records ADD COLUMN body_state TEXT');
+      } catch (_) {}
+    }
+
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS daily_scores (
+          id TEXT PRIMARY KEY,
+          date TEXT NOT NULL,
+          total_score INTEGER NOT NULL,
+          dimension_scores TEXT NOT NULL,
+          summary TEXT,
+          suggestions TEXT,
+          record_count INTEGER DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      ''');
+    } catch (_) {}
+
+    try {
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_daily_scores_date ON daily_scores(date)');
+    } catch (_) {}
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -63,6 +113,7 @@ class DatabaseHelper {
         tags TEXT DEFAULT '',
         is_pinned INTEGER DEFAULT 0,
         images TEXT DEFAULT '[]',
+        sort_order INTEGER DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         is_deleted INTEGER DEFAULT 0
@@ -256,4 +307,49 @@ class DatabaseHelper {
     }
   }
 
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 11) {
+      try {
+        await db.execute('ALTER TABLE notes ADD COLUMN sort_order INTEGER DEFAULT 0');
+      } catch (e) {
+        if (kDebugMode) {
+          print('升级数据库添加 sort_order 失败: $e');
+        }
+      }
+    }
+    if (oldVersion < 12) {
+      try {
+        await db.execute('ALTER TABLE diary_records ADD COLUMN tag_entries TEXT');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE diary_records ADD COLUMN color_mark TEXT DEFAULT ""');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE diary_records ADD COLUMN display_tag TEXT DEFAULT ""');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE diary_records ADD COLUMN body_state TEXT');
+      } catch (_) {}
+
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS daily_scores (
+            id TEXT PRIMARY KEY,
+            date TEXT NOT NULL,
+            total_score INTEGER NOT NULL,
+            dimension_scores TEXT NOT NULL,
+            summary TEXT,
+            suggestions TEXT,
+            record_count INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          )
+        ''');
+      } catch (_) {}
+
+      try {
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_daily_scores_date ON daily_scores(date)');
+      } catch (_) {}
+    }
+  }
 }

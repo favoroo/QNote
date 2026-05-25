@@ -15,7 +15,7 @@ class NoteRepository {
     final maps = await db.query(
       'notes',
       where: includeDeleted ? null : 'is_deleted = 0',
-      orderBy: 'is_pinned DESC, updated_at DESC',
+      orderBy: 'is_pinned DESC, sort_order ASC, updated_at DESC',
     );
     return maps.map((m) => Note.fromMap(m)).toList();
   }
@@ -26,7 +26,7 @@ class NoteRepository {
       'notes',
       where: 'folder_id = ? AND is_deleted = 0',
       whereArgs: [folderId],
-      orderBy: 'is_pinned DESC, updated_at DESC',
+      orderBy: 'is_pinned DESC, sort_order ASC, updated_at DESC',
     );
     return maps.map((m) => Note.fromMap(m)).toList();
   }
@@ -126,13 +126,37 @@ class NoteRepository {
     );
   }
 
+  Future<void> batchUpdate(List<Note> notes) async {
+    if (notes.isEmpty) return;
+    final db = await _dbHelper.database;
+    final batch = db.batch();
+    for (final note in notes) {
+      batch.update(
+        'notes',
+        note.toMap(),
+        where: 'id = ?',
+        whereArgs: [note.id],
+      );
+    }
+    await batch.commit(noResult: true);
+
+    final syncLogEntries = notes.map((note) => SyncLogEntry(
+      tableName: 'notes',
+      recordId: note.id,
+      operation: 'update',
+      data: note.toMap(),
+      timestamp: DateTime.now(),
+    )).toList();
+    await _syncLog.logChanges(syncLogEntries);
+  }
+
   Future<List<Note>> search(String keyword) async {
     final db = await _dbHelper.database;
     final maps = await db.query(
       'notes',
       where: '(title LIKE ? OR content LIKE ? OR tags LIKE ?) AND is_deleted = 0',
       whereArgs: ['%$keyword%', '%$keyword%', '%$keyword%'],
-      orderBy: 'is_pinned DESC, updated_at DESC',
+      orderBy: 'is_pinned DESC, sort_order ASC, updated_at DESC',
     );
     return maps.map((m) => Note.fromMap(m)).toList();
   }

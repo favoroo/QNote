@@ -83,6 +83,18 @@ class NoteListNotifier extends AsyncNotifier<List<Note>> {
       await refresh();
     }
   }
+
+  Future<void> reorderNotes(List<Note> reordered) async {
+    final repo = ref.read(noteRepositoryProvider);
+    final currentList = state.valueOrNull ?? [];
+    final updatedList = currentList.map((note) {
+      return reordered.firstWhere((n) => n.id == note.id, orElse: () => note);
+    }).toList();
+
+    state = AsyncData(updatedList);
+    await repo.batchUpdate(reordered);
+    await refresh();
+  }
 }
 
 final noteDetailProvider = FutureProvider.family<Note?, String>((ref, id) async {

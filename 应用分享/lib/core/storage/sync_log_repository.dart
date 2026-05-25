@@ -64,6 +64,16 @@ class SyncLogRepository {
     });
   }
 
+  Future<void> logChanges(List<SyncLogEntry> entries) async {
+    if (entries.isEmpty) return;
+    final db = await _dbHelper.database;
+    final batch = db.batch();
+    for (final entry in entries) {
+      batch.insert('sync_log', entry.toMap());
+    }
+    await batch.commit(noResult: true);
+  }
+
   Future<List<SyncLogEntry>> getAllChanges() async {
     final db = await _dbHelper.database;
     final maps = await db.query(

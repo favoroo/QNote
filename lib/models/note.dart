@@ -8,6 +8,7 @@ class Note {
   String tags;
   bool isPinned;
   List<String> images;
+  int sortOrder;
   DateTime createdAt;
   DateTime updatedAt;
   bool isDeleted;
@@ -20,6 +21,7 @@ class Note {
     this.tags = '',
     this.isPinned = false,
     this.images = const [],
+    this.sortOrder = 0,
     required this.createdAt,
     required this.updatedAt,
     this.isDeleted = false,
@@ -34,6 +36,7 @@ class Note {
       'tags': tags,
       'is_pinned': isPinned ? 1 : 0,
       'images': jsonEncode(images),
+      'sort_order': sortOrder,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
       'is_deleted': isDeleted ? 1 : 0,
@@ -51,6 +54,7 @@ class Note {
       images: map['images'] != null
           ? List<String>.from(jsonDecode(map['images'] as String) as List)
           : [],
+      sortOrder: map['sort_order'] as int? ?? 0,
       createdAt: DateTime.parse(map['created_at'] as String),
       updatedAt: DateTime.parse(map['updated_at'] as String),
       isDeleted: (map['is_deleted'] as int? ?? 0) == 1,
@@ -65,6 +69,7 @@ class Note {
     String? tags,
     bool? isPinned,
     List<String>? images,
+    int? sortOrder,
     DateTime? createdAt,
     DateTime? updatedAt,
     bool? isDeleted,
@@ -78,6 +83,7 @@ class Note {
       tags: tags ?? this.tags,
       isPinned: isPinned ?? this.isPinned,
       images: images ?? this.images,
+      sortOrder: sortOrder ?? this.sortOrder,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       isDeleted: isDeleted ?? this.isDeleted,

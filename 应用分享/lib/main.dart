@@ -16,9 +16,11 @@ void main() async {
   await initDatabaseFactory();
   await DatabaseHelper.instance.database;
   final configRepo = ConfigRepository.instance;
-  await configRepo.ensureDefaultShortcuts();
-  await configRepo.ensureDefaultAiConfigs();
-  await NotificationService.instance.init();
+  await Future.wait([
+    configRepo.ensureDefaultShortcuts(),
+    configRepo.ensureDefaultAiConfigs(),
+    NotificationService.instance.init(),
+  ]);
   final webdavConfig = await configRepo.getWebdavConfig();
   if (webdavConfig != null && webdavConfig.autoSync) {
     SyncScheduler.instance.syncIfNeeded();

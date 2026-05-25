@@ -3,6 +3,10 @@ import 'package:qnote_flutter/core/storage/sync_log_repository.dart';
 import 'package:qnote_flutter/models/daily_score.dart';
 
 class DailyScoreRepository {
+  static final DailyScoreRepository _instance = DailyScoreRepository._internal();
+  factory DailyScoreRepository() => _instance;
+  DailyScoreRepository._internal();
+
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
   final SyncLogRepository _syncLog = SyncLogRepository.instance;
 

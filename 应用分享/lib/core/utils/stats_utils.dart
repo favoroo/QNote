@@ -221,12 +221,14 @@ SleepStatistics calculateSleepStats(
   DateTime startDate,
   DateTime endDate,
 ) {
-  final filtered = _filterByDateRange(records, startDate, endDate);
-  final sleepRecords = filtered
-      .where(
-        (r) => r.displayTag == '睡眠' && r.startTime != null && r.endTime != null,
-      )
-      .toList();
+  final targetStart = DateTime(startDate.year, startDate.month, startDate.day);
+  final targetEnd = DateTime(endDate.year, endDate.month, endDate.day);
+
+  final sleepRecords = records.where((r) {
+    if (r.displayTag != '睡眠' || r.startTime == null || r.endTime == null) return false;
+    final effectiveDate = r.getEffectiveDate();
+    return !effectiveDate.isBefore(targetStart) && !effectiveDate.isAfter(targetEnd);
+  }).toList();
 
   final rawDaily = <SleepDailyData>[];
   for (final r in sleepRecords) {
@@ -251,7 +253,7 @@ SleepStatistics calculateSleepStats(
 
     rawDaily.add(
       SleepDailyData(
-        date: _formatDate(r.time),
+        date: _formatDate(r.endTime!),
         duration: duration,
         quality: quality,
       ),

@@ -108,4 +108,28 @@ class FolderRepository {
       data: updated.toMap(),
     );
   }
+
+  Future<void> batchUpdate(List<Folder> folders) async {
+    if (folders.isEmpty) return;
+    final db = await _dbHelper.database;
+    final batch = db.batch();
+    for (final folder in folders) {
+      batch.update(
+        'folders',
+        folder.toMap(),
+        where: 'id = ?',
+        whereArgs: [folder.id],
+      );
+    }
+    await batch.commit(noResult: true);
+
+    final syncLogEntries = folders.map((folder) => SyncLogEntry(
+      tableName: 'folders',
+      recordId: folder.id,
+      operation: 'update',
+      data: folder.toMap(),
+      timestamp: DateTime.now(),
+    )).toList();
+    await _syncLog.logChanges(syncLogEntries);
+  }
 }

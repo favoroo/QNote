@@ -22,7 +22,7 @@ if errorlevel 1 (
 echo.
 echo [2/3] Copying APK to parent folder...
 set "SRC_APK=%BUILD_DIR%\app-arm64-v8a-release.apk"
-set "APK_NAME=qnote-arm64-v8a-%TIMESTAMP%.apk"
+set "APK_NAME=qnote.apk"
 set "OUTPUT_PATH=%PROJECT_ROOT%..\%APK_NAME%"
 
 if exist "%SRC_APK%" (
