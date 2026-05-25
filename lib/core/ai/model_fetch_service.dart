@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:qnote_flutter/core/logger/logger_service.dart';
 
 class ModelFetchService {
   final Dio _dio = Dio(BaseOptions(
@@ -52,26 +53,55 @@ class ModelFetchService {
       }
     }
 
-    // 4. 执行 HTTP GET 请求
-    final response = await _dio.get(
-      requestUrl,
-      options: Options(headers: headers),
-      queryParameters: queryParameters,
+    LoggerService.instance.logAI(
+      '开始获取厂商模型列表: vendorId=$vendorId',
+      details: 'URL=$requestUrl, authType=$authType',
     );
 
-    if (response.statusCode == 200) {
-      final data = response.data;
-      if (vendorId == 'openrouter') {
-        return _parseOpenRouterFreeModels(data);
-      } else if (vendorId == 'gemini') {
-        return _parseGeminiFormat(data);
-      } else if (vendorId == 'zhipu') {
-        return _parseGlmFormat(data);
+    try {
+      // 4. 执行 HTTP GET 请求
+      final response = await _dio.get(
+        requestUrl,
+        options: Options(headers: headers),
+        queryParameters: queryParameters,
+      );
+
+      if (response.statusCode == 200) {
+        final data = response.data;
+        List<String> fetchedModels;
+        if (vendorId == 'openrouter') {
+          fetchedModels = _parseOpenRouterFreeModels(data);
+        } else if (vendorId == 'gemini') {
+          fetchedModels = _parseGeminiFormat(data);
+        } else if (vendorId == 'zhipu') {
+          fetchedModels = _parseGlmFormat(data);
+        } else {
+          fetchedModels = _parseOpenAiFormat(data);
+        }
+
+        LoggerService.instance.logAI(
+          '获取厂商模型列表成功: vendorId=$vendorId',
+          details: '获取到 ${fetchedModels.length} 个模型: $fetchedModels',
+        );
+
+        return fetchedModels;
       } else {
-        return _parseOpenAiFormat(data);
+        throw Exception('HTTP 错误: ${response.statusCode}');
       }
-    } else {
-      throw Exception('HTTP 错误: ${response.statusCode}');
+    } catch (e, stackTrace) {
+      String details = stackTrace.toString();
+      if (e is DioException) {
+        final respData = e.response?.data;
+        if (respData != null) {
+          details = 'Response Body: $respData\n\n$details';
+        }
+      }
+      LoggerService.instance.logAI(
+        '获取厂商模型列表失败: vendorId=$vendorId, 错误=$e',
+        level: LogLevel.error,
+        details: details,
+      );
+      rethrow;
     }
   }
 

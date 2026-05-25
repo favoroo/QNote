@@ -22,13 +22,11 @@ final dailyScoreProvider = AsyncNotifierProvider<DailyScoreNotifier, DailyScore?
 });
 
 class DailyScoreNotifier extends AsyncNotifier<DailyScore?> {
-  late final DailyScoreRepository _repository;
-  late final DiaryRepository _diaryRepository;
+  DailyScoreRepository get _repository => ref.read(dailyScoreRepositoryProvider);
+  DiaryRepository get _diaryRepository => DiaryRepository();
 
   @override
   Future<DailyScore?> build() async {
-    _repository = ref.watch(dailyScoreRepositoryProvider);
-    _diaryRepository = DiaryRepository();
     final date = ref.watch(selectedDateProvider);
     return _repository.getByDate(date);
   }
