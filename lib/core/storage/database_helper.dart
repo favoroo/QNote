@@ -25,7 +25,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 12,
+      version: 13,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onOpen: (db) async {
@@ -77,6 +77,22 @@ class DatabaseHelper {
 
     try {
       await db.execute('CREATE INDEX IF NOT EXISTS idx_daily_scores_date ON daily_scores(date)');
+    } catch (_) {}
+
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS body_states (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          severity TEXT,
+          duration TEXT,
+          triggers TEXT,
+          notes TEXT,
+          timestamp TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      ''');
     } catch (_) {}
   }
 
@@ -270,6 +286,20 @@ class DatabaseHelper {
       )
     ''');
 
+    await db.execute('''
+      CREATE TABLE body_states (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        severity TEXT,
+        duration TEXT,
+        triggers TEXT,
+        notes TEXT,
+        timestamp TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+
     // Performance indexes
     await _createIndexes(db);
   }
@@ -295,6 +325,7 @@ class DatabaseHelper {
       'CREATE INDEX IF NOT EXISTS idx_sync_log_timestamp ON sync_log(timestamp)',
       'CREATE INDEX IF NOT EXISTS idx_sync_log_table ON sync_log(table_name, record_id)',
       'CREATE INDEX IF NOT EXISTS idx_daily_scores_date ON daily_scores(date)',
+      'CREATE INDEX IF NOT EXISTS idx_body_states_timestamp ON body_states(timestamp)',
     ];
     for (final sql in indexes) {
       try {
@@ -349,6 +380,28 @@ class DatabaseHelper {
 
       try {
         await db.execute('CREATE INDEX IF NOT EXISTS idx_daily_scores_date ON daily_scores(date)');
+      } catch (_) {}
+    }
+
+    if (oldVersion < 13) {
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS body_states (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            severity TEXT,
+            duration TEXT,
+            triggers TEXT,
+            notes TEXT,
+            timestamp TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          )
+        ''');
+      } catch (_) {}
+
+      try {
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_body_states_timestamp ON body_states(timestamp)');
       } catch (_) {}
     }
   }

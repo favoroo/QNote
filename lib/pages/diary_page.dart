@@ -329,6 +329,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                   smooth: smooth,
                   alignment: alignment,
                   attempts: attempts + 1,
+                  recordsByDate: recordsByDate,
+                  targetTime: targetTime,
                 );
               }
             });
@@ -344,6 +346,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
               smooth: smooth,
               alignment: alignment,
               attempts: attempts + 1,
+              recordsByDate: recordsByDate,
+              targetTime: targetTime,
             );
           }
         });
@@ -477,6 +481,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       return;
     }
 
+    _isProgrammaticScrolling = true;
+    ref.read(selectedDateProvider.notifier).state = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    );
+
     final nodeIndex = now.hour * 2 + (now.minute >= 30 ? 1 : 0);
     final targetIndex = dayOffset * _itemsPerDay + (nodeIndex + 1);
 
@@ -487,12 +498,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       alignment: 0.5,
       recordsByDate: recordsByDate,
       targetTime: now,
-    );
-
-    ref.read(selectedDateProvider.notifier).state = DateTime(
-      now.year,
-      now.month,
-      now.day,
     );
   }
 
@@ -515,6 +520,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       return;
     }
 
+    _isProgrammaticScrolling = true;
+    ref.read(selectedDateProvider.notifier).state = DateTime(
+      targetTime.year,
+      targetTime.month,
+      targetTime.day,
+    );
+
     final nodeIndex = targetTime.hour * 2 + (targetTime.minute >= 30 ? 1 : 0);
     final targetIndex = dayOffset * _itemsPerDay + (nodeIndex + 1);
 
@@ -524,12 +536,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       alignment: 0.5,
       recordsByDate: recordsByDate,
       targetTime: targetTime,
-    );
-
-    ref.read(selectedDateProvider.notifier).state = DateTime(
-      targetTime.year,
-      targetTime.month,
-      targetTime.day,
     );
   }
 

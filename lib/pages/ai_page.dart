@@ -260,6 +260,23 @@ class _AiPageState extends ConsumerState<AiPage> {
     final aiConfigsAsync = ref.watch(aiConfigListProvider);
     final theme = Theme.of(context);
 
+    // Listen to aiConfigsAsync to ensure _activeModelId is always valid
+    ref.listen<AsyncValue<List<AiConfig>>>(aiConfigListProvider, (prev, next) {
+      if (next is AsyncData<List<AiConfig>>) {
+        final configs = next.value;
+        if (configs.isNotEmpty) {
+          // If current active ID is not in the list, or null, pick the first or default
+          final currentValid = configs.any((c) => c.id == _activeModelId);
+          if (!currentValid) {
+            final defaultCfg = configs.where((c) => c.isDefault).firstOrNull ?? configs.first;
+            setState(() => _activeModelId = defaultCfg.id);
+          }
+        } else {
+          setState(() => _activeModelId = null);
+        }
+      }
+    });
+
     ref.listen(currentChatProvider, (_, _) => _scrollToBottom());
     ref.listen(aiStreamingMessageProvider, (prev, next) {
       if (next != null) {
