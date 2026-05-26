@@ -226,6 +226,10 @@ class WebdavService {
       LoggerService.instance.logNetwork('远程文件删除成功', details: remoteName);
       return true;
     } catch (e, stackTrace) {
+      if (e is DioException && e.response?.statusCode == 404) {
+        LoggerService.instance.logNetwork('远程文件不存在(404)', details: remoteName);
+        return true;
+      }
       LoggerService.instance.logNetwork(
         '删除远程文件失败: $e',
         level: LogLevel.error,
@@ -339,6 +343,10 @@ class WebdavService {
       if (response.data == null) return null;
       return jsonDecode(response.data!) as Map<String, dynamic>;
     } catch (e) {
+      if (e is DioException && e.response?.statusCode == 404) {
+        LoggerService.instance.logSync('JSON数据不存在(404)', details: filename);
+        return null;
+      }
       LoggerService.instance.logSync(
         '下载JSON数据失败: $filename, $e',
         level: LogLevel.warning,
@@ -512,11 +520,16 @@ class WebdavService {
     final now = DateTime.now();
     final remoteManifest = await downloadManifest();
     final baseSnapshotVersion = remoteManifest?['snapshot_version'] ?? 1;
+    final hasDelta = remoteManifest?['has_delta'] == true;
 
     delta['delta_time'] = now.toIso8601String();
     delta['base_snapshot_version'] = baseSnapshotVersion;
 
-    final existingDelta = await downloadDelta();
+    Map<String, dynamic>? existingDelta;
+    if (hasDelta) {
+      existingDelta = await downloadDelta();
+    }
+    
     if (existingDelta != null) {
       delta = _mergeDeltas(existingDelta, delta);
     }

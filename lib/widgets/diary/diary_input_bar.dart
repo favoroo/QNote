@@ -1350,7 +1350,6 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       startDateTime = startDateTime.add(Duration(days: draft.startOffset!));
     }
 
-    final firstSentTime = startDateTime;
     var endDateTime = _calculateEndDateTime(draft, selectedDate);
 
     final sleepEntry = draft.tagEntries
@@ -1531,7 +1530,8 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       FocusScope.of(context).unfocus();
     }
 
-    ref.read(diaryScrollToTimeProvider.notifier).state = firstSentTime;
+    // 使用新记录的显示时间（可能为 startTime 或 endTime），以保证精准滚动到新发送的事件位置
+    ref.read(diaryScrollToTimeProvider.notifier).state = record.getDisplayTime();
   }
 
   DateTime _calculateStartDateTime(_Draft draft, DateTime selectedDate) {

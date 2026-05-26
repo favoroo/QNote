@@ -916,6 +916,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           modelCtl.text = defaultProvider.models.first;
         }
         selectedProvider = defaultProvider.provider;
+        // Default to model name as per user preference
         nameCtl.text = getCleanModelName(modelCtl.text);
       }
     }
@@ -964,9 +965,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                               } else {
                                 modelCtl.text = '';
                               }
-                              if (!isNameManuallyEdited) {
-                                nameCtl.text = getCleanModelName(modelCtl.text);
-                              }
+                              // Always update name when vendor/model changes as per user request
+                              nameCtl.text = getCleanModelName(modelCtl.text);
+                              isNameManuallyEdited = false;
                             }
                           });
                         },
@@ -983,7 +984,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                           ],
                           onChanged: (value) {
                             if (value == null) return;
-                            setDialogState(() => selectedProvider = value);
+                            setDialogState(() {
+                              selectedProvider = value;
+                            });
                           },
                         ),
                         const SizedBox(height: 12),
@@ -1124,11 +1127,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                         modelCtl,
                         setDialogState,
                         (newModel) {
-                          setDialogState(() {
-                            if (!isNameManuallyEdited) {
-                              nameCtl.text = getCleanModelName(newModel);
-                            }
-                          });
+                          // Always sync name when model changes, even if previously edited
+                          nameCtl.text = getCleanModelName(newModel);
+                          isNameManuallyEdited = false;
                         },
                       ),
                       const SizedBox(height: 12),
@@ -1137,7 +1138,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                         controller: nameCtl,
                         decoration: const InputDecoration(hintText: '例如：我的模型'),
                         onChanged: (val) {
-                          isNameManuallyEdited = true;
+                          // Only mark as manually edited if there's actual user input
+                          // If user clears it, we allow auto-sync again
+                          isNameManuallyEdited = val.isNotEmpty;
                         },
                       ),
                       const SizedBox(height: 12),

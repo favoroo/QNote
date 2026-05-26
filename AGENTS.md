@@ -4,136 +4,79 @@
 
 QNote 是一个 **Flutter 多平台应用**（Web / iOS / Android），核心功能为日记/快捷记录、笔记、待办、AI 智能分析、数据统计。
 
+## 注意事项
+用中文写注释，用中文和用户解释沟通。
+
+## CodeGraph 代码索引
+
+项目已配置 CodeGraph MCP 服务器（`codegraph_*` 工具），提供基于 AST 的语义代码索引，可替代大量 grep/文件遍历操作。
+
+### 何时用 CodeGraph vs 原生搜索
+
+| 场景 | 用什么 |
+|------|--------|
+| 符号定义/查找 | `codegraph_search`（不要先 grep） |
+| 调用链追踪 | `codegraph_trace`（一次返回完整路径，含动态分发跳转） |
+| 谁调用了 X | `codegraph_callers` |
+| X 调用了谁 | `codegraph_callees` |
+| 修改影响范围 | `codegraph_impact` |
+| 符号签名/源码 | `codegraph_node` |
+| 任务/区域上下文 | `codegraph_context`（组合搜索+节点+调用关系，一次搞定） |
+| 批量查看多个符号源码 | `codegraph_explore`（不要循环 `codegraph_node`） |
+| 目录下有哪些文件 | `codegraph_files` |
+| 索引健康检查 | `codegraph_status` |
+
+### 使用原则
+
+- **结构性问题优先用 CodeGraph**（调用关系、定义位置、影响范围），**字面文本搜索用 grep**（字符串内容、注释、日志）
+- **信任 CodeGraph 结果**，它来自完整 AST 解析，不要用 grep 重复验证
+- **不要链式调用** `codegraph_search` + `codegraph_node`，用 `codegraph_context` 一步到位
+- **不要循环 `codegraph_node`**，用 `codegraph_explore` 一次获取多个符号源码
+- 索引延迟约 500ms，编辑文件后不要立即重新查询
+- 若 `.codegraph/` 不存在，提示用户运行 `codegraph init -i`
+
 ### 项目结构
 
 ```
-项目根目录/
-├── lib/
-│   ├── main.dart / app.dart              # 应用入口与配置
-│   ├── database_init.dart / _io.dart     # 数据库初始化
-│   ├── config/                           # 默认提示词、AI 服务商模型
-│   ├── core/
-│   │   ├── ai/                           # AI 服务与角色
-│   │   ├── export/                       # 数据导出
-│   │   ├── logger/                       # 日志
-│   │   ├── network/                      # WebDAV 同步
-│   │   ├── notification/                 # 本地通知
-│   │   ├── router/                       # 路由
-│   │   ├── storage/                      # 数据存储层（各 repository）
-│   │   ├── theme/                        # 主题定义（app_theme.dart）
-│   │   ├── utils/                        # 工具函数
-│   │   └── back_handler.dart             # 返回键处理
-│   ├── models/                           # 数据模型
-│   ├── pages/                            # 页面（含 settings/ 子目录）
-│   ├── providers/                        # 状态管理 (Provider)
-│   └── widgets/                          # UI 组件
-│       ├── diary/                        # 日记组件
-│       ├── notes/                        # 笔记组件
-│       └── statistics/                   # 统计组件
-├── assets/                               # 静态资源
-├── web/                                  # Web 平台配置
-└── AGENTS.md
+lib/
+├── main.dart / app.dart              # 应用入口与配置
+├── database_init.dart / _io.dart     # 数据库初始化
+├── config/                           # 默认提示词、AI 服务商模型
+├── core/                             # 核心逻辑（ai/ export/ logger/ network/ router/ storage/ theme/ utils/）
+├── models/                           # 数据模型
+├── pages/                            # 页面（含 settings/ 子目录）
+├── providers/                        # Riverpod 状态管理
+└── widgets/                          # UI 组件（diary/ notes/ statistics/ + 通用组件）
 ```
+
+> 详细文件列表和符号关系请用 CodeGraph 查询，不再在此逐一列举。
 
 ---
 
-## 功能模块与文件定位
+## 功能模块概览
+
+以下仅列出各模块的业务职责和关键入口，具体文件定位请用 CodeGraph 查询。
 
 ### 1. 日记/快捷记录 (Diary)
-
-通过自然语言或图片快速记录生活数据（睡眠、饮食、活动、记账等）
-
-| 模块 | 文件 |
-|------|------|
-| 页面 | `lib/pages/diary_page.dart` |
-| 编辑器 | `lib/widgets/diary/diary_editor_view.dart` |
-| 输入栏 | `lib/widgets/diary/diary_input_bar.dart` |
-| 列表项 | `lib/widgets/diary/diary_item.dart` |
-| 批量管理 | `lib/widgets/diary/diary_batch_manage_view.dart` |
-| AI 提取辅助 | `lib/widgets/diary/ai_extract_helper.dart` |
-| 日期选择器 | `lib/widgets/diary/custom_date_picker.dart` |
-| 状态管理 | `lib/providers/diary_provider.dart` |
-| 数据存储 | `lib/core/storage/diary_repository.dart` |
+通过自然语言或图片快速记录生活数据（睡眠、饮食、活动、记账等）。入口：`DiaryPage` → `DiaryProvider` → `DiaryRepository`
 
 ### 2. 笔记 (Notes)
-
-| 模块 | 文件 |
-|------|------|
-| 页面 | `lib/pages/notes_page.dart` |
-| 编辑器 | `lib/widgets/notes/note_editor_view.dart` |
-| 状态管理 | `lib/providers/note_provider.dart` |
-| 数据存储 | `lib/core/storage/note_repository.dart` |
+入口：`NotesPage` → `NoteProvider` → `NoteRepository`
 
 ### 3. 待办事项 (Todo)
-
-| 模块 | 文件 |
-|------|------|
-| 页面 | `lib/pages/todo_page.dart` |
-| 状态管理 | `lib/providers/todo_provider.dart` |
-| 数据存储 | `lib/core/storage/todo_repository.dart` |
+入口：`TodoPage` → `TodoProvider` → `TodoRepository`
 
 ### 4. AI 助手
-
-智能分析日记数据、自然语言解析、图片识别
-
-| 模块 | 文件 |
-|------|------|
-| 页面 | `lib/pages/ai_page.dart` |
-| AI 服务 | `lib/core/ai/ai_service.dart` |
-| 角色配置 | `lib/core/ai/ai_role_service.dart` |
-| 状态管理 | `lib/providers/ai_provider.dart` |
-| AI 配置模型 | `lib/models/ai_config.dart`, `lib/models/ai_roles.dart` |
-| AI 服务商模型 | `lib/config/models.dart` |
-| 默认提示词 | `lib/config/defaults.dart` |
+智能分析日记数据、自然语言解析、图片识别。入口：`AiPage` → `AiProvider` → `AiService` / `AiRoleService`。配置：`lib/config/defaults.dart`（默认提示词）、`lib/config/models.dart`（服务商模型）
 
 ### 5. 数据统计 (Statistics)
-
-睡眠、饮食、活动、财务、心情等数据可视化分析
-
-| 模块 | 文件 |
-|------|------|
-| 页面 | `lib/pages/statistics_page.dart` |
-| 睡眠统计 | `lib/widgets/statistics/sleep_stats.dart` |
-| 饮食统计 | `lib/widgets/statistics/diet_stats.dart` |
-| 活动统计 | `lib/widgets/statistics/activity_stats.dart` |
-| 财务统计 | `lib/widgets/statistics/finance_stats.dart` |
-| 心情统计 | `lib/widgets/statistics/mood_stats.dart` |
-| 工具函数 | `lib/core/utils/stats_utils.dart` |
+睡眠、饮食、活动、财务、心情等数据可视化分析。入口：`StatisticsPage`，组件在 `lib/widgets/statistics/`
 
 ### 6. 设置页面 (Settings)
+`lib/pages/settings/` 目录下，含 AI 配置、用户资料、快捷记录、同步、数据管理、个性化、关于等页面
 
-`lib/pages/settings/` 目录下：`ai_config_page` / `user_profile_page` / `shortcuts_page` / `sync_settings_page` / `data_management_page` / `personalization_page` / `about_page`
-
-### 7. 数据存储层 (Storage)
-
-`lib/core/storage/` 目录下，包含 `database_helper` 及各模块 repository：`diary` / `note` / `todo` / `folder` / `image` / `config` / `color_mark`
-
-### 8. 辅助模块
-
-| 模块 | 关键文件 | 说明 |
-|------|---------|------|
-| 同步 | `webdav_service.dart`, `sync_scheduler.dart`, `sync_provider.dart` | WebDAV 同步 |
-| 主题 | `app_theme.dart`, `theme_provider.dart` | 主题定义与切换 |
-| 快捷记录 | `shortcut_config.dart`, `shortcut_field.dart`, `shortcut_category.dart`, `shortcut_provider.dart` | 快捷记录类型与字段 |
-| 用户资料 | `user_profile.dart`, `user_profile_provider.dart` | 身高体重等 |
-| 文件夹 | `folder.dart`, `folder_provider.dart`, `folder_repository.dart` | 分类管理 |
-| 导航 | `navigation_provider.dart`, `bottom_nav_bar.dart`, `side_drawer.dart`, `top_tab_switcher.dart` | 导航状态与组件 |
-| 通知 | `notification_service.dart` | 本地通知 |
-| 导出 | `export_service.dart` | 数据导出 |
-| 路由 | `app_router.dart` | 页面导航 |
-| 日志 | `logger_service.dart` | 调试日志 |
-| 返回处理 | `back_handler.dart` | 物理返回键 |
-| 图片选择 | `gallery_helper.dart` | 相机/相册 |
-| Delta 转换 | `delta_markdown.dart` | Delta JSON 转 Markdown |
-| Toast | `toast_utils.dart` | 轻提示 |
-
-### 9. 通用 UI 组件 (Widgets)
-
-`lib/widgets/` 目录下，跨模块复用组件：`action_menu` / `animated_gradient_border` / `birthday_picker` / `date_picker_input` / `date_range_picker` / `debug_console` / `search_view` / `select` / `stats_card` / `tag_picker` / `time_picker` / `time_range_selector` / `time_scroll_picker` / `unified_image`
-
-### 10. 数据模型 (Models)
-
-`lib/models/` 目录下：`diary_record` / `note` / `todo` / `folder` / `ai_config` / `ai_roles` / `user_profile` / `webdav_config` / `weight_record` / `body_state` / `chat_session` / `date_color_mark` / `shortcut_config` / `shortcut_field` / `shortcut_category` / `tag_entry`
+### 7. 辅助模块
+同步（WebDAV）、主题、快捷记录、用户资料、文件夹、导航、通知、导出、路由、日志、返回处理、图片选择、Delta 转换、Toast — 详见各目录，用 CodeGraph 查符号即可定位
 
 ---
 
