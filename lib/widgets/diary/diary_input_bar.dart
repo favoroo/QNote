@@ -15,7 +15,6 @@ import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
-import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/widgets/time_picker.dart';
@@ -1164,6 +1163,13 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           date: targetDate,
           endDate: targetEndDate,
         );
+      } else {
+        if (mounted) {
+          Toast.warning(context, '未提取到有用信息');
+        }
+        setState(() {
+          _extractPhase = _ExtractPhase.idle;
+        });
       }
     } catch (e, stackTrace) {
       if (e is DioException && CancelToken.isCancel(e)) {
@@ -1173,16 +1179,6 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
             _extractPhase = _ExtractPhase.idle;
           });
         }
-        return;
-      }
-
-      if (e is NoUsefulInfoException) {
-        if (mounted) {
-          Toast.warning(context, '未提取到有用信息');
-        }
-        setState(() {
-          _extractPhase = _ExtractPhase.idle;
-        });
         return;
       }
 

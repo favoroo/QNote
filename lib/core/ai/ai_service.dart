@@ -10,7 +10,14 @@ import 'package:qnote_flutter/models/daily_score.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:uuid/uuid.dart';
 
-class NoUsefulInfoException implements Exception {}
+class NoUsefulInfoException implements Exception {
+  final String? message;
+  NoUsefulInfoException([this.message]);
+
+  @override
+  String toString() =>
+      message != null ? 'NoUsefulInfoException: $message' : 'NoUsefulInfoException';
+}
 
 class AiService {
   final Dio _dio = Dio(
@@ -639,7 +646,11 @@ class AiService {
         results = jsonResult.cast<Map<String, dynamic>>();
       } else if (jsonResult is Map<String, dynamic>) {
         if (jsonResult['message'] == 'NO_USEFUL_INFO') {
-          throw NoUsefulInfoException();
+          LoggerService.instance.logAI(
+            '统一提取完成',
+            details: 'AI返回NO_USEFUL_INFO，未提取到有用信息',
+          );
+          return [];
         }
         List<Map<String, dynamic>>? foundList;
         if (jsonResult['tags'] is List &&
@@ -665,6 +676,14 @@ class AiService {
         }
       } else {
         results = [];
+      }
+
+      if (results.isEmpty) {
+        LoggerService.instance.logAI(
+          '统一提取完成',
+          details: '结果为空，未提取到有用信息',
+        );
+        return [];
       }
 
       return results.map(_convertSimplifiedExtractResult).toList();

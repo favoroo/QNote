@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
-import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
@@ -195,6 +194,9 @@ Future<AiExtractResult?> extractExistingRecord({
         tagEntries: tagEntriesList,
       );
     }
+    if (context.mounted) {
+      Toast.warning(context, '未提取到有用信息');
+    }
     return null;
   } on DioException catch (e) {
     if (CancelToken.isCancel(e)) {
@@ -215,11 +217,6 @@ Future<AiExtractResult?> extractExistingRecord({
     }
     if (context.mounted) {
       Toast.error(context, errorMessage);
-    }
-    return null;
-  } on NoUsefulInfoException {
-    if (context.mounted) {
-      Toast.warning(context, '未提取到有用信息');
     }
     return null;
   } catch (e, stackTrace) {
