@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/models/todo.dart';
 import 'package:qnote_flutter/core/notification/notification_service.dart';
+import 'package:qnote_flutter/core/utils/widget_utils.dart';
 
 final todoRepositoryProvider = Provider<TodoRepository>((ref) {
   return TodoRepository();
@@ -84,6 +85,7 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     );
     await repo.insert(todo);
     await refresh();
+    WidgetUtils.updateHomeWidgets();
     return todo;
   }
 
@@ -92,6 +94,7 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     await repo.update(todo);
     await NotificationService.instance.scheduleTodoReminder(todo);
     await refresh();
+    WidgetUtils.updateHomeWidgets();
   }
 
   Future<void> deleteTodo(String id) async {
@@ -99,6 +102,7 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     await repo.softDelete(id);
     await NotificationService.instance.cancelNotification(id.hashCode);
     await refresh();
+    WidgetUtils.updateHomeWidgets();
   }
 
   Future<void> toggleComplete(String id, bool isCompleted) async {
@@ -109,6 +113,7 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
       await NotificationService.instance.scheduleTodoReminder(todo);
     }
     await refresh();
+    WidgetUtils.updateHomeWidgets();
   }
 
   Future<void> setReminder(String id, String reminderTime) async {
@@ -119,6 +124,7 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     await repo.update(updated);
     await NotificationService.instance.scheduleTodoReminder(updated);
     await refresh();
+    WidgetUtils.updateHomeWidgets();
   }
 
   Future<void> clearReminder(String id) async {
@@ -132,18 +138,21 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     await repo.update(updated);
     await NotificationService.instance.cancelNotification(id.hashCode);
     await refresh();
+    WidgetUtils.updateHomeWidgets();
   }
 
   Future<void> moveToLongTerm(String id) async {
     final repo = ref.read(todoRepositoryProvider);
     await repo.moveToLongTerm(id);
     await refresh();
+    WidgetUtils.updateHomeWidgets();
   }
 
   Future<void> moveToToday(String id) async {
     final repo = ref.read(todoRepositoryProvider);
     await repo.moveToToday(id);
     await refresh();
+    WidgetUtils.updateHomeWidgets();
   }
 
   Future<void> togglePriority(String id) async {
@@ -154,6 +163,7 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     final updated = todo.copyWith(priority: newPriority);
     await repo.update(updated);
     await refresh();
+    WidgetUtils.updateHomeWidgets();
   }
 
   Future<void> restoreTodo(String id) async {
@@ -164,6 +174,7 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     await repo.update(updated);
     await NotificationService.instance.scheduleTodoReminder(updated);
     await refresh();
+    WidgetUtils.updateHomeWidgets();
   }
 
   Future<void> permanentDelete(String id) async {
@@ -171,6 +182,7 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     await repo.hardDelete(id);
     await NotificationService.instance.cancelNotification(id.hashCode);
     await refresh();
+    WidgetUtils.updateHomeWidgets();
   }
 
   Future<void> searchTodos(String keyword) async {
@@ -201,6 +213,7 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     // Invalidate other related providers
     ref.invalidate(completedTodoListProvider);
     ref.invalidate(upcomingRemindersProvider);
+    WidgetUtils.updateHomeWidgets();
   }
 }
 

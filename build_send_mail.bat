@@ -11,6 +11,11 @@ set "BUILD_DIR=%PROJECT_ROOT%build\app\outputs\flutter-apk"
 
 for /f %%i in ('powershell -Command "Get-Date -Format 'yyyyMMdd-HHmm'"') do set "TIMESTAMP=%%i"
 
+if "%1"=="clean" (
+    echo [0/3] Cleaning build cache...
+    call flutter clean
+)
+
 echo [1/3] Building APK (arm64-v8a)...
 call flutter build apk --release --target-platform android-arm64
 if errorlevel 1 (

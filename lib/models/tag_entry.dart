@@ -94,6 +94,46 @@ class TagEntry {
     return buffer.toString();
   }
 
+  String? get displayTime {
+    if (startHour == null || startMinute == null) {
+      return time;
+    }
+    final buffer = StringBuffer();
+    if (startOffset != null && startOffset != 0) {
+      if (startOffset == -1) {
+        buffer.write('昨天 ');
+      } else if (startOffset == -2) {
+        buffer.write('前天 ');
+      } else if (startOffset == 1) {
+        buffer.write('明天 ');
+      } else if (startOffset == 2) {
+        buffer.write('后天 ');
+      } else {
+        buffer.write('${startOffset! > 0 ? "+" : ""}${startOffset}天 ');
+      }
+    }
+    buffer.write('${startHour!.toString().padLeft(2, '0')}:${startMinute!.toString().padLeft(2, '0')}');
+
+    if (endHour != null && endMinute != null) {
+      buffer.write('~');
+      if (endOffset != null && endOffset != 0) {
+        if (endOffset == -1) {
+          buffer.write('昨天 ');
+        } else if (endOffset == -2) {
+          buffer.write('前天 ');
+        } else if (endOffset == 1) {
+          buffer.write('次日 ');
+        } else if (endOffset == 2) {
+          buffer.write('后天 ');
+        } else {
+          buffer.write('${endOffset! > 0 ? "+" : ""}${endOffset}天 ');
+        }
+      }
+      buffer.write('${endHour!.toString().padLeft(2, '0')}:${endMinute!.toString().padLeft(2, '0')}');
+    }
+    return buffer.toString();
+  }
+
   static Map<String, dynamic> _parseTimeString(String timeStr) {
     final parts = timeStr.split('~');
     if (parts.isEmpty) return {};

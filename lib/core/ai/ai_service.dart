@@ -544,10 +544,8 @@ class AiService {
 
     var systemPrompt = defaultSystemPrompts['unified_extraction'] ?? '';
     systemPrompt = systemPrompt
-        .replaceAll('{{inputType}}', inputType)
         .replaceAll('{{contextStr}}', contextStr ?? '')
-        .replaceAll('{{schema}}', schema)
-        .replaceAll('{{text}}', text ?? '');
+        .replaceAll('{{schema}}', schema);
 
     dynamic requestBody;
 
@@ -556,15 +554,18 @@ class AiService {
         systemPrompt: systemPrompt,
         imageBase64: imageBase64,
         mimeType: mimeType ?? 'image/jpeg',
+        text: text,
+        inputType: inputType,
       );
     } else {
+      final userMessageText = '[用户输入] ($inputType)\n${text ?? ''}';
       if (_config!.provider == 'gemini') {
         requestBody = {
           'contents': [
             {
               'role': 'user',
               'parts': [
-                {'text': text ?? ''},
+                {'text': userMessageText},
               ],
             },
           ],
@@ -592,12 +593,12 @@ class AiService {
             {
               'role': 'user',
               'content': [
-                {'type': 'text', 'text': text ?? ''},
+                {'type': 'text', 'text': userMessageText},
               ],
             },
           ] else ...[
             {'role': 'system', 'content': systemPrompt},
-            {'role': 'user', 'content': text ?? ''},
+            {'role': 'user', 'content': userMessageText},
           ],
         ];
 
@@ -701,20 +702,28 @@ class AiService {
     required String systemPrompt,
     required String imageBase64,
     required String mimeType,
+    String? text,
+    required String inputType,
   }) {
+    final userMessageText = '[用户输入] ($inputType)\n${text ?? ''}';
     if (_config!.provider == 'gemini') {
       return {
         'contents': [
           {
             'role': 'user',
             'parts': [
-              {'text': systemPrompt},
+              {'text': userMessageText},
               {
                 'inline_data': {'mime_type': mimeType, 'data': imageBase64},
               },
             ],
           },
         ],
+        'systemInstruction': {
+          'parts': [
+            {'text': systemPrompt},
+          ],
+        },
         'generationConfig': {
           'temperature': _temperature,
           'maxOutputTokens': _maxTokens,
@@ -737,6 +746,7 @@ class AiService {
           {
             'role': 'user',
             'content': [
+              {'type': 'text', 'text': userMessageText},
               {
                 'type': 'input_image',
                 'input_image': {
@@ -761,6 +771,7 @@ class AiService {
         {
           'role': 'user',
           'content': [
+            {'type': 'text', 'text': userMessageText},
             {
               'type': 'image_url',
               'image_url': {'url': 'data:$mimeType;base64,$imageBase64'},
@@ -1027,5 +1038,83 @@ class AiService {
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
+  }
+
+  Future<bool> checkImageRecognition(AiConfig config, String imageBase64) async {
+    updateConfig(config, temperature: 0.1, maxTokens: 50);
+
+    dynamic requestBody;
+    String endpoint = _generateContentEndpoint;
+
+    if (config.provider == 'gemini') {
+      requestBody = {
+        'contents': [
+          {
+            'role': 'user',
+            'parts': [
+              {'text': '请问这张图片里写了什么数字？直接回答数字即可，不要有其他解释。'},
+              {
+                'inline_data': {'mime_type': 'image/png', 'data': imageBase64},
+              },
+            ],
+          },
+        ],
+        'generationConfig': {
+          'temperature': 0.1,
+          'maxOutputTokens': 50,
+        },
+      };
+      endpoint = 'v1beta/models/${config.modelName}:generateContent';
+    } else {
+      final isOmni = config.modelName.toLowerCase().contains('omni');
+      List<dynamic> contentList;
+      if (isOmni) {
+        contentList = [
+          {'type': 'text', 'text': '请问这张图片里写了数字多少？直接回答数字即可，不要有其他解释。'},
+          {
+            'type': 'input_image',
+            'input_image': {
+              'type': 'base64',
+              'data': [imageBase64],
+            },
+          },
+        ];
+      } else {
+        contentList = [
+          {'type': 'text', 'text': '请问这张图片里写了数字多少？直接回答数字即可，不要有其他解释。'},
+          {
+            'type': 'image_url',
+            'image_url': {'url': 'data:image/png;base64,$imageBase64'},
+          },
+        ];
+      }
+
+      requestBody = {
+        'model': config.modelName,
+        'messages': [
+          {
+            'role': 'user',
+            'content': contentList,
+          },
+        ],
+        'temperature': 0.1,
+        'max_tokens': 50,
+      };
+    }
+
+    final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
+    LoggerService.instance.logAI(
+      '图片识别测试请求 [${config.provider}] [${config.modelName}] $endpoint:\n${_formatJsonForLogging(sanitizedBody)}',
+    );
+
+    final response = await _dio.post(endpoint, data: requestBody);
+    final data = response.data;
+    LoggerService.instance.logAI('图片识别测试响应:\n${_formatJsonForLogging(data)}');
+
+    String result = _extractTextFromResponse(data);
+    LoggerService.instance.logAI('大模型图片识别测试结果: $result');
+
+    final cleanResult = result.trim().replaceAll(' ', '');
+    return cleanResult.contains('11') || cleanResult.contains('十一');
   }
 }

@@ -369,7 +369,7 @@ class DiaryItem extends StatelessWidget {
                           ),
                         ),
                         Positioned(
-                          top: -6,
+                          top: 0,
                           right: -14,
                           child: IconButton(
                             key: actionMenuKey,
@@ -539,6 +539,20 @@ class DiaryItem extends StatelessWidget {
           ),
         ));
 
+        final showTime = entry.displayTime ?? entry.time;
+        if (showTime != null && showTime.isNotEmpty) {
+          rowItems.add(Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: Text(
+              showTime,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ));
+        }
+
         // Add the additional fields (outlined)
         final additionalTags = _buildAdditionalTags(entry);
         for (final tagText in additionalTags) {
@@ -697,7 +711,7 @@ class DiaryItem extends StatelessWidget {
           theme,
           entry,
           showIcon: true,
-          showTime: entry.time,
+          showTime: entry.displayTime ?? entry.time,
         ),
       );
     }

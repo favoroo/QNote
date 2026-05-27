@@ -240,18 +240,15 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                       color: theme.colorScheme.surface,
                       child: Padding(
                         padding: const EdgeInsets.all(24),
-                        child: Stack(
+                        child: Column(
                           children: [
-                            Positioned(
-                              right: 0,
-                              top: 0,
-                              child: TextButton.icon(
-                                icon: const Icon(Icons.refresh, size: 16),
-                                label: const Text('重新评分', style: TextStyle(fontSize: 12)),
-                                onPressed: () => _confirmAndRescore(context, selectedDate),
-                              ),
-                            ),
                             _ScoreCircle(score: score.totalScore),
+                            const SizedBox(height: 12),
+                            TextButton.icon(
+                              icon: const Icon(Icons.refresh, size: 16),
+                              label: const Text('重新评分', style: TextStyle(fontSize: 12)),
+                              onPressed: () => _confirmAndRescore(context, selectedDate),
+                            ),
                           ],
                         ),
                       ),

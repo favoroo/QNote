@@ -97,6 +97,16 @@ class _AiPageState extends ConsumerState<AiPage> {
     });
   }
 
+  void _scrollToBottomIfNeeded() {
+    if (_scrollController.hasClients) {
+      final pos = _scrollController.position;
+      final isNearBottom = pos.maxScrollExtent - pos.pixels < 150;
+      if (isNearBottom || pos.pixels == 0) {
+        _scrollToBottom(immediate: true);
+      }
+    }
+  }
+
   void _syncContextFilter() {
     ref.read(contextFilterProvider.notifier).state = AiContextFilter(
       scope: _scopeToProvider(_activeScope),
@@ -144,6 +154,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     if (text.isEmpty || _isTyping) return;
 
     _inputController.clear();
+    FocusScope.of(context).unfocus();
     setState(() => _isTyping = true);
     _syncContextFilter();
     _scrollToBottom();
@@ -260,10 +271,27 @@ class _AiPageState extends ConsumerState<AiPage> {
     final aiConfigsAsync = ref.watch(aiConfigListProvider);
     final theme = Theme.of(context);
 
+    // Listen to aiConfigsAsync to ensure _activeModelId is always valid
+    ref.listen<AsyncValue<List<AiConfig>>>(aiConfigListProvider, (prev, next) {
+      if (next is AsyncData<List<AiConfig>>) {
+        final configs = next.value;
+        if (configs.isNotEmpty) {
+          // If current active ID is not in the list, or null, pick the first or default
+          final currentValid = configs.any((c) => c.id == _activeModelId);
+          if (!currentValid) {
+            final defaultCfg = configs.where((c) => c.isDefault).firstOrNull ?? configs.first;
+            setState(() => _activeModelId = defaultCfg.id);
+          }
+        } else {
+          setState(() => _activeModelId = null);
+        }
+      }
+    });
+
     ref.listen(currentChatProvider, (_, _) => _scrollToBottom());
     ref.listen(aiStreamingMessageProvider, (prev, next) {
       if (next != null) {
-        _scrollToBottom(immediate: true);
+        _scrollToBottomIfNeeded();
       }
     });
 
@@ -559,10 +587,10 @@ class _AiPageState extends ConsumerState<AiPage> {
           ]
         : messages;
 
-    final streamingMessageText = ref.watch(aiStreamingMessageProvider);
+    final hasStreaming = ref.watch(aiStreamingMessageProvider.select((value) => value != null));
     final showTyping =
-        _isTyping && streamingMessageText == null && messages.isNotEmpty && messages.last.role == 'user';
-    final showStreaming = streamingMessageText != null;
+        _isTyping && !hasStreaming && messages.isNotEmpty && messages.last.role == 'user';
+    final showStreaming = hasStreaming;
 
     final totalCount = displayMessages.length + (showTyping ? 1 : 0) + (showStreaming ? 1 : 0);
 
@@ -577,13 +605,7 @@ class _AiPageState extends ConsumerState<AiPage> {
         if (showTyping && index == displayMessages.length) {
           return const _TypingBubble();
         }
-        return _ChatBubble(
-          message: ChatMessage(
-            role: 'assistant',
-            content: streamingMessageText ?? '',
-            timestamp: DateTime.now(),
-          ),
-        );
+        return const _StreamingBubble();
       },
     );
   }
@@ -1187,6 +1209,22 @@ class _AiPageState extends ConsumerState<AiPage> {
             Navigator.pop(context);
           }
         },
+      ),
+    );
+  }
+}
+
+class _StreamingBubble extends ConsumerWidget {
+  const _StreamingBubble();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final streamingMessageText = ref.watch(aiStreamingMessageProvider);
+    return _ChatBubble(
+      message: ChatMessage(
+        role: 'assistant',
+        content: streamingMessageText ?? '',
+        timestamp: DateTime.now(),
       ),
     );
   }

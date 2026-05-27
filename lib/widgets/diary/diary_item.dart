@@ -369,7 +369,7 @@ class DiaryItem extends StatelessWidget {
                           ),
                         ),
                         Positioned(
-                          top: -6,
+                          top: 0,
                           right: -14,
                           child: IconButton(
                             key: actionMenuKey,
@@ -539,7 +539,7 @@ class DiaryItem extends StatelessWidget {
           ),
         ));
 
-        final showTime = entry.formattedTime ?? entry.time;
+        final showTime = entry.displayTime ?? entry.time;
         if (showTime != null && showTime.isNotEmpty) {
           rowItems.add(Padding(
             padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -711,7 +711,7 @@ class DiaryItem extends StatelessWidget {
           theme,
           entry,
           showIcon: true,
-          showTime: entry.formattedTime ?? entry.time,
+          showTime: entry.displayTime ?? entry.time,
         ),
       );
     }

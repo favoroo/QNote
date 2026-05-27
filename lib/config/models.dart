@@ -178,14 +178,16 @@ final aiProviders = <AiProviderConfig>[
     provider: 'openai',
     defaultBaseUrl: 'https://api.ant-ling.com/v1',
     urlRequired: true,
-    placeholder: '请输入模型名称，或点击“获取模型列表”',
+    placeholder: '请输入模型名称，或从下拉列表选择',
     models: [
+      'Ling-2.6-flash',
       'Ling-2.5-1T',
       'Ring-2.6-1T',
       'Ring-2.5-1T',
       'Ming-Flash-Omni-2.0',
+      'Ming-lite-omni',
     ],
-    modelsEndpoint: '/v1/models',
+    modelsEndpoint: '',
   ),
   const AiProviderConfig(
     id: 'custom',

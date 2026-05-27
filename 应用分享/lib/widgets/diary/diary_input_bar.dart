@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
+import 'package:qnote_flutter/core/utils/schema_formatter.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/shortcut_field.dart';
@@ -15,7 +16,6 @@ import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
-import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/widgets/time_picker.dart';
@@ -23,6 +23,7 @@ import 'package:qnote_flutter/widgets/time_scroll_picker.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/widgets/animated_gradient_border.dart';
+import 'package:qnote_flutter/widgets/diary/edit_tag_time_sheet.dart';
 
 class _Draft {
   final String id;
@@ -774,47 +775,17 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       final roleConfig = await AiRoleService.instance.getEffectiveConfigForRole(
         'timelineOptimization',
       );
-      aiService.updateConfig(roleConfig);
+      final roleSettings = await AiRoleService.instance.getSettingsForRole(
+        'timelineOptimization',
+      );
+      aiService.updateConfig(
+        roleConfig,
+        temperature: roleSettings.temperature,
+        maxTokens: roleSettings.maxTokens,
+      );
 
       final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
-      final schemaContext = shortcuts.map((s) {
-        final root = <String, dynamic>{'id': s.id, 'name': s.name};
-        if (s.fields.isNotEmpty) {
-          root['fields'] = s.fields
-              .map(
-                (f) => {
-                  'id': f.id,
-                  'name': f.label,
-                  'type': f.type,
-                  if (f.options.isNotEmpty) 'options': f.options,
-                  if (f.allowCustom) 'allowCustom': true,
-                },
-              )
-              .toList();
-        }
-        if (s.hasPopup && s.categories != null && s.categories!.isNotEmpty) {
-          root['categories'] = s.categories!
-              .map(
-                (c) => {
-                  'id': c.id,
-                  'name': c.name,
-                  'fields': c.fields
-                      .map(
-                        (f) => {
-                          'id': f.id,
-                          'name': f.label,
-                          'type': f.type,
-                          if (f.options.isNotEmpty) 'options': f.options,
-                          if (f.allowCustom) 'allowCustom': true,
-                        },
-                      )
-                      .toList(),
-                },
-              )
-              .toList();
-        }
-        return root;
-      }).toList();
+      final schemaStr = formatCompressedSchema(shortcuts);
 
       final selectedDate = ref.read(selectedDateProvider);
       final draftTime = _calculateStartDateTime(draft, selectedDate);
@@ -866,8 +837,8 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       results = await aiService.extractUnified(
         text: draft.inputText.isNotEmpty ? draft.inputText : null,
         imageBase64: base64,
-        mimeType: 'image/jpeg',
-        schema: schemaContext.toString(),
+        mimeType: shouldSendImage ? ImageRepository.getMimeType(draft.selectedPhotos.first) : null,
+        schema: schemaStr,
         contextStr: contextMap.toString(),
         cancelToken: _cancelToken,
       );
@@ -960,8 +931,9 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
             }
           }
 
-          final fields = Map<String, dynamic>.from(
-            result['fields'] as Map? ?? {},
+          final fields = normalizeExtractedFields(
+            Map<String, dynamic>.from(result['fields'] as Map? ?? {}),
+            foundShortcut,
           );
 
           if (foundShortcut?.id == 'sleep') {
@@ -1163,6 +1135,13 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           date: targetDate,
           endDate: targetEndDate,
         );
+      } else {
+        if (mounted) {
+          Toast.warning(context, '未提取到有用信息');
+        }
+        setState(() {
+          _extractPhase = _ExtractPhase.idle;
+        });
       }
     } catch (e, stackTrace) {
       if (e is DioException && CancelToken.isCancel(e)) {
@@ -1172,16 +1151,6 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
             _extractPhase = _ExtractPhase.idle;
           });
         }
-        return;
-      }
-
-      if (e is NoUsefulInfoException) {
-        if (mounted) {
-          Toast.warning(context, '未提取到有用信息');
-        }
-        setState(() {
-          _extractPhase = _ExtractPhase.idle;
-        });
         return;
       }
 
@@ -1349,7 +1318,6 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       startDateTime = startDateTime.add(Duration(days: draft.startOffset!));
     }
 
-    final firstSentTime = startDateTime;
     var endDateTime = _calculateEndDateTime(draft, selectedDate);
 
     final sleepEntry = draft.tagEntries
@@ -1371,6 +1339,34 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     List<String> tags = [];
     Map<String, dynamic>? bodyState;
     List<TagEntry> tagEntries = List.from(draft.tagEntries);
+
+    // Sync sleep tag time with draft time if present
+    final sleepIndex = tagEntries.indexWhere((e) => e.id == 'sleep' || e.name == '睡眠');
+    if (sleepIndex != -1) {
+      final sleepEntryItem = tagEntries[sleepIndex];
+      // Only sync if sleep tag has time or user explicitly selected a record time
+      if (sleepEntryItem.hasTime || ref.read(diaryInputTimeProvider) != null) {
+        int? endHour;
+        int? endMinute;
+        int? endOffset;
+        if (draft.endTime != null) {
+          endHour = draft.endTime!.hour;
+          endMinute = draft.endTime!.minute;
+          endOffset = draft.endOffset ?? 0;
+        }
+        
+        final updatedSleep = sleepEntryItem.copyWith(
+          startHour: draft.startTime.hour,
+          startMinute: draft.startTime.minute,
+          startOffset: draft.startOffset ?? 0,
+          endHour: endHour,
+          endMinute: endMinute,
+          endOffset: endOffset,
+          clearEndTime: draft.endTime == null,
+        );
+        tagEntries[sleepIndex] = updatedSleep.copyWith(time: updatedSleep.formattedTime);
+      }
+    }
 
     final popupEntries = <TagEntry>[];
     final popupConfigs = <ShortcutConfig>[];
@@ -1502,7 +1498,8 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       FocusScope.of(context).unfocus();
     }
 
-    ref.read(diaryScrollToTimeProvider.notifier).state = firstSentTime;
+    // 使用新记录的显示时间（可能为 startTime 或 endTime），以保证精准滚动到新发送的事件位置
+    ref.read(diaryScrollToTimeProvider.notifier).state = record.getDisplayTime();
   }
 
   DateTime _calculateStartDateTime(_Draft draft, DateTime selectedDate) {
@@ -1698,22 +1695,108 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     );
   }
 
+  Future<void> _editInputBarTagTime(TagEntry entry) async {
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => EditTagTimeSheet(entry: entry),
+    );
+
+    if (result != null) {
+      final currentEntries = List<TagEntry>.from(_activeDraft.tagEntries);
+      final newEntries = currentEntries.map((e) {
+        if (e.id == entry.id || e.name == entry.name) {
+          if (result['clear'] == true) {
+            final updatedFields = Map<String, dynamic>.from(e.fields);
+            if (e.id == 'sleep' || e.name == '睡眠') {
+              updatedFields.remove('fallAsleepTime');
+              updatedFields.remove('duration');
+              _updateActiveDraft(
+                clearEndTime: true,
+              );
+            }
+            return e.copyWith(
+              clearStartTime: true,
+              clearEndTime: true,
+              fields: updatedFields,
+            );
+          }
+
+          final startHour = result['startHour'] as int?;
+          final startMinute = result['startMinute'] as int?;
+          final startOffset = result['startOffset'] as int?;
+          final endHour = result['endHour'] as int?;
+          final endMinute = result['endMinute'] as int?;
+          final endOffset = result['endOffset'] as int?;
+
+          Map<String, dynamic> updatedFields = Map<String, dynamic>.from(e.fields);
+          if (e.id == 'sleep' || e.name == '睡眠') {
+            if (startHour != null && startMinute != null) {
+              updatedFields['fallAsleepTime'] =
+                  '${startHour.toString().padLeft(2, '0')}:${startMinute.toString().padLeft(2, '0')}';
+              
+              final startDt = TimeOfDay(hour: startHour, minute: startMinute);
+
+              if (endHour != null && endMinute != null) {
+                final endDt = TimeOfDay(hour: endHour, minute: endMinute);
+                final startMin = startHour * 60 + startMinute;
+                final endMin = endHour * 60 + endMinute;
+                var diffMin = endMin - startMin;
+                if (diffMin < 0 || endOffset == 1) {
+                  diffMin += 1440;
+                }
+                final newDuration = (diffMin / 60.0 * 10).round() / 10.0;
+                updatedFields['duration'] = newDuration.toStringAsFixed(1);
+                
+                _updateActiveDraft(
+                  startTime: startDt,
+                  endTime: endDt,
+                  startOffset: startOffset,
+                  endOffset: endOffset,
+                );
+              } else {
+                updatedFields.remove('duration');
+                _updateActiveDraft(
+                  startTime: startDt,
+                  clearEndTime: true,
+                  startOffset: startOffset,
+                  endOffset: 0,
+                );
+              }
+            }
+          }
+
+          return e.copyWith(
+            fields: updatedFields,
+            startHour: startHour,
+            startMinute: startMinute,
+            startOffset: startOffset,
+            endHour: endHour,
+            endMinute: endMinute,
+            endOffset: endOffset,
+            clearEndTime: endHour == null,
+          );
+        }
+        return e;
+      }).toList();
+
+      _updateActiveDraft(tagEntries: newEntries);
+    }
+  }
+
   Widget _buildFormFieldsArea(ThemeData theme) {
     final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
-    final popupEntries = <MapEntry<TagEntry, ShortcutConfig>>[];
+    final visibleEntries = <MapEntry<TagEntry, ShortcutConfig?>>[];
 
     for (final entry in _activeDraft.tagEntries) {
-      try {
-        final config = shortcuts.firstWhere(
-          (s) => s.id == entry.id || s.name == entry.name,
-        );
-        if (config.hasPopup) {
-          popupEntries.add(MapEntry(entry, config));
-        }
-      } catch (_) {}
+      final config = shortcuts.where(
+        (s) => s.id == entry.id || s.name == entry.name,
+      ).firstOrNull;
+      visibleEntries.add(MapEntry(entry, config));
     }
 
-    if (popupEntries.isEmpty) return const SizedBox.shrink();
+    if (visibleEntries.isEmpty) return const SizedBox.shrink();
 
     return AnimatedSize(
       duration: const Duration(milliseconds: 300),
@@ -1732,7 +1815,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: popupEntries.map((pair) {
+            children: visibleEntries.map((pair) {
               return _buildTagFormSection(theme, pair.value, pair.key);
             }).toList(),
           ),
@@ -1743,11 +1826,13 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
 
   Widget _buildTagFormSection(
     ThemeData theme,
-    ShortcutConfig config,
+    ShortcutConfig? config,
     TagEntry entry,
   ) {
-    List<ShortcutField> fieldsToProcess = config.fields;
-    if (config.categories != null && config.categories!.isNotEmpty) {
+    final colorScheme = theme.colorScheme;
+    final hasFields = config != null && config.hasPopup;
+    List<ShortcutField> fieldsToProcess = config?.fields ?? [];
+    if (config != null && config.categories != null && config.categories!.isNotEmpty) {
       final currentCategory = config.categories!.firstWhere(
         (c) => c.id == entry.fields['_category'],
         orElse: () => config.categories!.first,
@@ -1755,49 +1840,108 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       fieldsToProcess = currentCategory.fields;
     }
 
+    final tagName = config?.name ?? entry.name;
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  config.name,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.primary,
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    tagName,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.primary,
+                    ),
                   ),
                 ),
-              ),
-              const Spacer(),
-              GestureDetector(
-                onTap: () => _selectShortcut(config),
-                child: Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: Icon(
-                    Icons.close,
-                    size: 14,
-                    color: theme.colorScheme.onSurfaceVariant,
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => _editInputBarTagTime(entry),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.access_time,
+                          size: 11,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          entry.hasTime ? entry.displayTime! : '添加时间',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                            fontSize: 10,
+                          ),
+                        ),
+                        if (entry.hasTime) ...[
+                          const SizedBox(width: 2),
+                          Icon(
+                            Icons.edit,
+                            size: 10,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () {
+                    if (config != null) {
+                      _selectShortcut(config);
+                    } else {
+                      final currentEntries = List<TagEntry>.from(_activeDraft.tagEntries);
+                      currentEntries.removeWhere((e) => e.name == entry.name);
+                      _updateActiveDraft(tagEntries: currentEntries);
+                    }
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(
+                      Icons.close,
+                      size: 14,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (hasFields) ...[
+              const SizedBox(height: 8),
+              if (config.categories != null && config.categories!.isNotEmpty)
+                _buildCategorySelector(theme, config, entry.id),
+              ...fieldsToProcess.map(
+                (field) => _buildFieldWidget(theme, field, entry.id),
               ),
             ],
-          ),
-          const SizedBox(height: 4),
-          if (config.categories != null && config.categories!.isNotEmpty)
-            _buildCategorySelector(theme, config, entry.id),
-          ...fieldsToProcess.map(
-            (field) => _buildFieldWidget(theme, field, entry.id),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

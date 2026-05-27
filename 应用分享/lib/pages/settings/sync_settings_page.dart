@@ -1,18 +1,22 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:qnote_flutter/providers/sync_provider.dart';
-import 'package:qnote_flutter/providers/diary_provider.dart';
-import 'package:qnote_flutter/providers/note_provider.dart';
-import 'package:qnote_flutter/providers/todo_provider.dart';
-import 'package:qnote_flutter/providers/folder_provider.dart';
-import 'package:qnote_flutter/providers/ai_provider.dart';
-import 'package:qnote_flutter/providers/shortcut_provider.dart';
-import 'package:qnote_flutter/providers/user_profile_provider.dart';
-import 'package:qnote_flutter/core/network/webdav_service.dart';
+
 import 'package:qnote_flutter/core/network/sync_scheduler.dart';
-import 'package:qnote_flutter/models/webdav_config.dart';
+import 'package:qnote_flutter/core/network/webdav_service.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
+import 'package:qnote_flutter/core/utils/toast_utils.dart';
+import 'package:qnote_flutter/models/webdav_config.dart';
+import 'package:qnote_flutter/providers/ai_provider.dart';
+import 'package:qnote_flutter/providers/diary_provider.dart';
+import 'package:qnote_flutter/providers/folder_provider.dart';
+import 'package:qnote_flutter/providers/note_provider.dart';
+import 'package:qnote_flutter/providers/shortcut_provider.dart';
+import 'package:qnote_flutter/providers/sync_provider.dart';
+import 'package:qnote_flutter/providers/todo_provider.dart';
+import 'package:qnote_flutter/providers/user_profile_provider.dart';
 
 class SyncSettingsPage extends ConsumerStatefulWidget {
   const SyncSettingsPage({super.key});
@@ -30,14 +34,12 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
   bool _obscurePassword = true;
   bool _webdavEnabled = false;
   bool _syncOnLaunch = false;
+  bool _syncImages = false;
   int _syncInterval = 0;
   bool _testing = false;
   StreamSubscription<SyncStatus>? _statusSubscription;
 
-  String? _toastMessage;
-  bool _toastIsError = false;
-  bool _toastIsSuccess = false;
-  Timer? _toastTimer;
+
 
   static const _syncIntervalOptions = <MapEntry<String, int>>[
     MapEntry('关闭', 0),
@@ -64,7 +66,6 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
     _usernameController.dispose();
     _passwordController.dispose();
     _remotePathController.dispose();
-    _toastTimer?.cancel();
     super.dispose();
   }
 
@@ -73,6 +74,8 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
       final config = await ref.read(webdavConfigProvider.future);
       final syncOnLaunchStr = await ConfigRepository.instance.getAppConfig('webdav_sync_on_launch');
       final syncOnLaunch = syncOnLaunchStr == 'true';
+      final syncImagesStr = await ConfigRepository.instance.getAppConfig('webdav_sync_images');
+      final syncImages = syncImagesStr == 'true';
 
       if (config != null) {
         _serverUrlController.text = config.serverUrl;
@@ -82,6 +85,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
         setState(() {
           _webdavEnabled = config.autoSync;
           _syncOnLaunch = syncOnLaunch;
+          _syncImages = syncImages;
           _syncInterval = config.syncInterval;
         });
       } else {
@@ -89,6 +93,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
         setState(() {
           _webdavEnabled = false;
           _syncOnLaunch = syncOnLaunch;
+          _syncImages = syncImages;
           _syncInterval = 0;
         });
       }
@@ -99,19 +104,13 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
 
   void _showNotification(String message, {bool isError = false, bool isSuccess = false}) {
     if (!mounted) return;
-    _toastTimer?.cancel();
-    setState(() {
-      _toastMessage = message;
-      _toastIsError = isError;
-      _toastIsSuccess = isSuccess;
-    });
-    _toastTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted) {
-        setState(() {
-          _toastMessage = null;
-        });
-      }
-    });
+    if (isError) {
+      Toast.error(context, message);
+    } else if (isSuccess) {
+      Toast.success(context, message);
+    } else {
+      Toast.info(context, message);
+    }
   }
 
   Future<void> _saveConfig() async {
@@ -134,9 +133,34 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
 
     await ref.read(webdavConfigProvider.notifier).saveConfig(config);
     await ConfigRepository.instance.setAppConfig('webdav_sync_on_launch', _syncOnLaunch ? 'true' : 'false');
+    await ConfigRepository.instance.setAppConfig('webdav_sync_images', _syncImages ? 'true' : 'false');
 
     if (mounted) {
       _showNotification('配置已保存', isSuccess: true);
+    }
+  }
+
+  Future<void> _performSyncImages() async {
+    final config = await ref.read(webdavConfigProvider.future).catchError((_) => null);
+    if (!mounted) return;
+    if (config == null) {
+      _showNotification('请先配置 WebDAV', isError: true);
+      return;
+    }
+    WebdavService.instance.updateConfig(config);
+    
+    await SyncScheduler.instance.manuallySyncImages(
+      onProgress: (status) {
+        if (mounted) setState(() {});
+      }
+    );
+    
+    if (!mounted) return;
+    final scheduler = SyncScheduler.instance;
+    if (scheduler.status == SyncStatus.success) {
+      _showNotification('图片同步成功！', isSuccess: true);
+    } else if (scheduler.status == SyncStatus.error) {
+      _showNotification('图片同步失败: ${scheduler.lastError ?? "请查看运行日志获取详情"}', isError: true);
     }
   }
 
@@ -335,6 +359,8 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
   }
 
   String _statusText(SyncStatus status) {
+    final progress = SyncScheduler.instance.currentProgressStatus;
+    if (progress != null) return progress;
     return switch (status) {
       SyncStatus.idle => '空闲',
       SyncStatus.syncing => '同步中...',
@@ -369,10 +395,8 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
     final lastSyncTime = SyncScheduler.instance.lastSyncTime;
     final lastError = SyncScheduler.instance.lastError;
 
-    return Stack(
-      children: [
-        Scaffold(
-          backgroundColor: colorScheme.surfaceContainerLowest.withValues(alpha: 0.5),
+    return Scaffold(
+      backgroundColor: colorScheme.surfaceContainerLowest.withValues(alpha: 0.5),
           appBar: AppBar(
             title: const Text('同步设置'),
             backgroundColor: Colors.transparent,
@@ -495,6 +519,17 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
                           onChanged: _webdavEnabled
                               ? (v) => setState(() => _syncOnLaunch = v)
                               : null,
+                        ),
+                      ),
+                      const Divider(height: 1, indent: 56, endIndent: 16),
+                      _buildSettingRow(
+                        icon: Icons.image_outlined,
+                        iconColor: Colors.purple,
+                        title: '同步图片',
+                        description: '在进行数据同步时，同步日记与笔记中的图片文件',
+                        trailing: Switch(
+                          value: _syncImages,
+                          onChanged: (v) => setState(() => _syncImages = v),
                         ),
                       ),
                       const Divider(height: 1, indent: 56, endIndent: 16),
@@ -678,7 +713,16 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
                           title: '手动同步',
                           desc: '对比本地与云端，执行增量数据同步合并',
                           onTap: syncStatus == SyncStatus.syncing ? null : _performSync,
-                          isLoading: syncStatus == SyncStatus.syncing,
+                          isLoading: syncStatus == SyncStatus.syncing && SyncScheduler.instance.currentProgressStatus == null,
+                        ),
+                        const Divider(height: 1, indent: 56, endIndent: 16),
+                        _buildActionRow(
+                          icon: Icons.image_search_outlined,
+                          color: Colors.purple,
+                          title: '同步图片',
+                          desc: '对比本地与云端，执行图片文件增删同步',
+                          onTap: syncStatus == SyncStatus.syncing ? null : _performSyncImages,
+                          isLoading: syncStatus == SyncStatus.syncing && SyncScheduler.instance.currentProgressStatus != null,
                         ),
                         const Divider(height: 1, indent: 56, endIndent: 16),
                         _buildActionRow(
@@ -742,81 +786,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
               ],
             ),
           ),
-        ),
-        if (_toastMessage != null)
-          Positioned(
-            bottom: 50,
-            left: 24,
-            right: 24,
-            child: IgnorePointer(
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: _toastIsError
-                        ? theme.colorScheme.errorContainer.withValues(alpha: 0.95)
-                        : _toastIsSuccess
-                            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.95)
-                            : const Color(0xE61E1E24),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: _toastIsError
-                          ? theme.colorScheme.error.withValues(alpha: 0.2)
-                          : _toastIsSuccess
-                              ? theme.colorScheme.primary.withValues(alpha: 0.2)
-                              : Colors.white12,
-                      width: 0.8,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.15),
-                        blurRadius: 12,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _toastIsError
-                              ? Icons.error_outline
-                              : _toastIsSuccess
-                                  ? Icons.check_circle_outline
-                                  : Icons.info_outline,
-                          color: _toastIsError
-                              ? theme.colorScheme.onErrorContainer
-                              : _toastIsSuccess
-                                  ? theme.colorScheme.onPrimaryContainer
-                                  : Colors.white70,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 10),
-                        Flexible(
-                          child: Text(
-                            _toastMessage!,
-                            style: TextStyle(
-                              color: _toastIsError
-                                  ? theme.colorScheme.onErrorContainer
-                                  : _toastIsSuccess
-                                      ? theme.colorScheme.onPrimaryContainer
-                                      : Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
+        );
   }
 
   Widget _buildSettingRow({

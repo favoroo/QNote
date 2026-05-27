@@ -18,6 +18,7 @@ import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/widgets/diary/ai_extract_helper.dart';
+import 'package:qnote_flutter/widgets/diary/edit_tag_time_sheet.dart';
 import 'package:qnote_flutter/widgets/time_picker.dart';
 import 'package:qnote_flutter/widgets/time_scroll_picker.dart';
 import 'package:qnote_flutter/widgets/tag_picker.dart';
@@ -100,6 +101,29 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                   final diffMin = _endTime!.difference(newStart).inMinutes;
                   newFields['duration'] = (diffMin / 60.0).toStringAsFixed(1);
                 }
+
+                final baseDate = DateTime(_time.year, _time.month, _time.day);
+                final startOffset = DateTime(newStart.year, newStart.month, newStart.day).difference(baseDate).inDays;
+
+                int? endHour;
+                int? endMinute;
+                int? endOffset;
+                if (_endTime != null) {
+                  endHour = _endTime!.hour;
+                  endMinute = _endTime!.minute;
+                  endOffset = DateTime(_endTime!.year, _endTime!.month, _endTime!.day).difference(baseDate).inDays;
+                }
+
+                entry = entry.copyWith(
+                  startHour: h,
+                  startMinute: m,
+                  startOffset: startOffset,
+                  endHour: endHour,
+                  endMinute: endMinute,
+                  endOffset: endOffset,
+                  clearEndTime: _endTime == null,
+                );
+                entry = entry.copyWith(time: entry.formattedTime);
               }
             }
 
@@ -107,9 +131,24 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               final double? durationHours = double.tryParse(value.toString());
               if (durationHours != null) {
                 final currentStart = _startTime ?? _time;
-                _endTime = currentStart.add(
+                final newEnd = currentStart.add(
                   Duration(minutes: (durationHours * 60).toInt()),
                 );
+                _endTime = newEnd;
+
+                final baseDate = DateTime(_time.year, _time.month, _time.day);
+                final startOffset = DateTime(currentStart.year, currentStart.month, currentStart.day).difference(baseDate).inDays;
+                final endOffset = DateTime(newEnd.year, newEnd.month, newEnd.day).difference(baseDate).inDays;
+
+                entry = entry.copyWith(
+                  startHour: currentStart.hour,
+                  startMinute: currentStart.minute,
+                  startOffset: startOffset,
+                  endHour: newEnd.hour,
+                  endMinute: newEnd.minute,
+                  endOffset: endOffset,
+                );
+                entry = entry.copyWith(time: entry.formattedTime);
               }
             }
           }
@@ -193,15 +232,36 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         _startTime = result;
 
         _tagEntries = _tagEntries.map((entry) {
-          if (entry.id == 'sleep') {
+          if (entry.id == 'sleep' || entry.name == '睡眠') {
             final newFields = Map<String, dynamic>.from(entry.fields);
             newFields['fallAsleepTime'] =
                 '${result.hour.toString().padLeft(2, '0')}:${result.minute.toString().padLeft(2, '0')}';
+            
+            final baseDate = DateTime(_time.year, _time.month, _time.day);
+            final startOffset = DateTime(result.year, result.month, result.day).difference(baseDate).inDays;
+            
+            int? endHour;
+            int? endMinute;
+            int? endOffset;
+
             if (_endTime != null) {
               final diffMin = _endTime!.difference(result).inMinutes;
               newFields['duration'] = (diffMin / 60.0).toStringAsFixed(1);
+              
+              endHour = _endTime!.hour;
+              endMinute = _endTime!.minute;
+              endOffset = DateTime(_endTime!.year, _endTime!.month, _endTime!.day).difference(baseDate).inDays;
             }
-            return entry.copyWith(fields: newFields);
+            
+            return entry.copyWith(
+              fields: newFields,
+              startHour: result.hour,
+              startMinute: result.minute,
+              startOffset: startOffset,
+              endHour: endHour,
+              endMinute: endMinute,
+              endOffset: endOffset,
+            );
           }
           return entry;
         }).toList();
@@ -220,14 +280,125 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         _endTime = result;
 
         _tagEntries = _tagEntries.map((entry) {
-          if (entry.id == 'sleep') {
+          if (entry.id == 'sleep' || entry.name == '睡眠') {
             final newFields = Map<String, dynamic>.from(entry.fields);
             final start = _startTime ?? _time;
             final diffMin = result.difference(start).inMinutes;
             newFields['duration'] = (diffMin / 60.0).toStringAsFixed(1);
-            return entry.copyWith(fields: newFields);
+            
+            final baseDate = DateTime(_time.year, _time.month, _time.day);
+            final startOffset = DateTime(start.year, start.month, start.day).difference(baseDate).inDays;
+            final endOffset = DateTime(result.year, result.month, result.day).difference(baseDate).inDays;
+            
+            return entry.copyWith(
+              fields: newFields,
+              startHour: start.hour,
+              startMinute: start.minute,
+              startOffset: startOffset,
+              endHour: result.hour,
+              endMinute: result.minute,
+              endOffset: endOffset,
+            );
           }
           return entry;
+        }).toList();
+      });
+    }
+  }
+
+  Future<void> _editTagTime(TagEntry entry) async {
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => EditTagTimeSheet(entry: entry),
+    );
+
+    if (result != null) {
+      if (result['clear'] == true) {
+        setState(() {
+          _tagEntries = _tagEntries.map((e) {
+            if (e.id == entry.id || e.name == entry.name) {
+              final updatedFields = Map<String, dynamic>.from(e.fields);
+              if (e.id == 'sleep' || e.name == '睡眠') {
+                updatedFields.remove('fallAsleepTime');
+                updatedFields.remove('duration');
+                _startTime = null;
+                _endTime = null;
+              }
+              return e.copyWith(
+                clearStartTime: true,
+                clearEndTime: true,
+                fields: updatedFields,
+              );
+            }
+            return e;
+          }).toList();
+        });
+        return;
+      }
+
+      final startHour = result['startHour'] as int?;
+      final startMinute = result['startMinute'] as int?;
+      final startOffset = result['startOffset'] as int?;
+      final endHour = result['endHour'] as int?;
+      final endMinute = result['endMinute'] as int?;
+      final endOffset = result['endOffset'] as int?;
+
+      setState(() {
+        _tagEntries = _tagEntries.map((e) {
+          if (e.id == entry.id || e.name == entry.name) {
+            Map<String, dynamic> updatedFields = Map<String, dynamic>.from(e.fields);
+            if (e.id == 'sleep' || e.name == '睡眠') {
+              if (startHour != null && startMinute != null) {
+                updatedFields['fallAsleepTime'] =
+                    '${startHour.toString().padLeft(2, '0')}:${startMinute.toString().padLeft(2, '0')}';
+                
+                final baseDate = DateTime(_time.year, _time.month, _time.day);
+                final startDate = baseDate.add(Duration(days: startOffset ?? 0));
+                final startDt = DateTime(
+                  startDate.year,
+                  startDate.month,
+                  startDate.day,
+                  startHour,
+                  startMinute,
+                );
+
+                if (endHour != null && endMinute != null) {
+                  final endDate = baseDate.add(Duration(days: endOffset ?? 0));
+                  final endDt = DateTime(
+                    endDate.year,
+                    endDate.month,
+                    endDate.day,
+                    endHour,
+                    endMinute,
+                  );
+                  final diffMin = endDt.difference(startDt).inMinutes;
+                  final newDuration = (diffMin / 60.0 * 10).round() / 10.0;
+                  updatedFields['duration'] = newDuration.toStringAsFixed(1);
+                  
+                  _startTime = startDt;
+                  _endTime = endDt;
+                } else {
+                  updatedFields.remove('duration');
+                  _startTime = startDt;
+                  _endTime = null;
+                }
+              }
+            }
+
+            return e.copyWith(
+              fields: updatedFields,
+              startHour: startHour,
+              startMinute: startMinute,
+              startOffset: startOffset,
+              endHour: endHour,
+              endMinute: endMinute,
+              endOffset: endOffset,
+              clearEndTime: endHour == null,
+            );
+          }
+          return e;
         }).toList();
       });
     }
@@ -362,6 +533,38 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   }
 
   Future<void> _save() async {
+    // Ensure sleep tag time is in sync with record time on save (only if sleepEntry has time or _startTime is set)
+    final sleepIndex = _tagEntries.indexWhere((e) => e.id == 'sleep' || e.name == '睡眠');
+    if (sleepIndex != -1) {
+      final sleepEntry = _tagEntries[sleepIndex];
+      if (sleepEntry.hasTime || _startTime != null) {
+        final start = _startTime ?? _time;
+        final baseDate = DateTime(_time.year, _time.month, _time.day);
+        final startOffset = DateTime(start.year, start.month, start.day).difference(baseDate).inDays;
+        
+        int? endHour;
+        int? endMinute;
+        int? endOffset;
+        if (_endTime != null) {
+          endHour = _endTime!.hour;
+          endMinute = _endTime!.minute;
+          endOffset = DateTime(_endTime!.year, _endTime!.month, _endTime!.day).difference(baseDate).inDays;
+        }
+        
+        final updatedSleep = sleepEntry.copyWith(
+          startHour: start.hour,
+          startMinute: start.minute,
+          startOffset: startOffset,
+          endHour: endHour,
+          endMinute: endMinute,
+          endOffset: endOffset,
+          clearEndTime: _endTime == null,
+        );
+        
+        _tagEntries[sleepIndex] = updatedSleep.copyWith(time: updatedSleep.formattedTime);
+      }
+    }
+
     for (final path in _removedPaths) {
       await ImageRepository().deleteImage(path);
     }
@@ -1038,21 +1241,43 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                             ],
                           ),
                         ),
-                        if (entry.time != null && entry.time!.isNotEmpty) ...[
-                          const SizedBox(width: 8),
-                          Icon(
-                            Icons.access_time,
-                            size: 12,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(width: 2),
-                          Text(
-                            entry.time!,
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () => _editTagTime(entry),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.access_time,
+                                  size: 11,
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  entry.hasTime ? entry.displayTime! : '添加时间',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                    fontSize: 10,
+                                  ),
+                                ),
+                                if (entry.hasTime) ...[
+                                  const SizedBox(width: 2),
+                                  Icon(
+                                    Icons.edit,
+                                    size: 10,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ],
+                              ],
                             ),
                           ),
-                        ],
+                        ),
                         const Spacer(),
                         GestureDetector(
                           onTap: () {
@@ -2094,3 +2319,4 @@ class _ExtractModelItem extends StatelessWidget {
     );
   }
 }
+

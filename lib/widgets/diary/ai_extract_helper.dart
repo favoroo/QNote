@@ -6,6 +6,7 @@ import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
+import 'package:qnote_flutter/core/utils/schema_formatter.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
@@ -42,35 +43,16 @@ Future<AiExtractResult?> extractExistingRecord({
   try {
     final aiService = ref.read(aiServiceProvider);
     final roleConfig = await AiRoleService.instance.getEffectiveConfigForRole('timelineOptimization');
-    aiService.updateConfig(roleConfig);
+    final roleSettings = await AiRoleService.instance.getSettingsForRole('timelineOptimization');
+    aiService.updateConfig(
+      roleConfig,
+      temperature: roleSettings.temperature,
+      maxTokens: roleSettings.maxTokens,
+    );
 
     final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
-    final schemaContext = shortcuts.where((s) => s.isVisible).map((s) {
-      final root = <String, dynamic>{'id': s.id, 'name': s.name};
-      if (s.fields.isNotEmpty) {
-        root['fields'] = s.fields.map((f) => {
-          'id': f.id,
-          'name': f.label,
-          'type': f.type,
-          if (f.options.isNotEmpty) 'options': f.options,
-          if (f.allowCustom) 'allowCustom': true
-        }).toList();
-      }
-      if (s.hasPopup && s.categories != null && s.categories!.isNotEmpty) {
-        root['categories'] = s.categories!.map((c) => {
-          'id': c.id,
-          'name': c.name,
-          'fields': c.fields.map((f) => {
-            'id': f.id,
-            'name': f.label,
-            'type': f.type,
-            if (f.options.isNotEmpty) 'options': f.options,
-            if (f.allowCustom) 'allowCustom': true
-          }).toList()
-        }).toList();
-      }
-      return root;
-    }).toList();
+    final visibleShortcuts = shortcuts.where((s) => s.isVisible).toList();
+    final schemaStr = formatCompressedSchema(visibleShortcuts);
 
     final weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
     final now = DateTime.now();
@@ -120,8 +102,8 @@ Future<AiExtractResult?> extractExistingRecord({
     final results = await aiService.extractUnified(
       text: content.isNotEmpty ? content : null,
       imageBase64: imageBase64,
-      mimeType: 'image/jpeg',
-      schema: schemaContext.toString(),
+      mimeType: shouldSendImage ? ImageRepository.getMimeType(photos.first) : null,
+      schema: schemaStr,
       contextStr: contextMap.toString(),
       cancelToken: cancelToken,
     );
@@ -131,7 +113,10 @@ Future<AiExtractResult?> extractExistingRecord({
       for (final result in results) {
         final shortcutId = result['shortcutId'] as String?;
         final foundShortcut = findShortcutById(shortcutId, shortcuts);
-        final fields = Map<String, dynamic>.from(result['fields'] as Map? ?? {});
+        final fields = normalizeExtractedFields(
+          Map<String, dynamic>.from(result['fields'] as Map? ?? {}),
+          foundShortcut,
+        );
         final timeRaw = result['time'];
         String? timeStr;
         int? startHour;

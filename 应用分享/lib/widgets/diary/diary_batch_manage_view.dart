@@ -6,12 +6,20 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import 'package:qnote_flutter/models/diary_record.dart';
+import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 
 class DiaryBatchManageView extends ConsumerStatefulWidget {
-  const DiaryBatchManageView({super.key});
+  final List<String>? initialTags;
+  final DateTimeRange? initialDateRange;
+
+  const DiaryBatchManageView({
+    super.key,
+    this.initialTags,
+    this.initialDateRange,
+  });
 
   @override
   ConsumerState<DiaryBatchManageView> createState() => _DiaryBatchManageViewState();
@@ -29,6 +37,12 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialTags != null) {
+      _selectedTags.addAll(widget.initialTags!);
+    }
+    if (widget.initialDateRange != null) {
+      _dateRange = widget.initialDateRange;
+    }
     _loadRecords();
   }
 
@@ -47,8 +61,8 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
     }
     setState(() {
       _allTags = tags.toList()..sort();
-      _filteredRecords = allRecords;
     });
+    _applyFilters();
   }
 
   void _applyFilters() async {
@@ -198,6 +212,315 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
       return '$dateStr - $endStr';
     }
     return dateStr;
+  }
+
+  // 标签颜色配置，与 DiaryItem 保持一致
+  static const _tagColors = <String, Color>{
+    '睡眠': Color(0xFF6366F1),
+    '饮食': Color(0xFFF59E0B),
+    '活动': Color(0xFF10B981),
+    '记账': Color(0xFFEF4444),
+  };
+
+  static const _defaultColor = Color(0xFF6B7280);
+
+  Color _tagColor(String displayTag) => _tagColors[displayTag] ?? _defaultColor;
+
+  String _formatDouble(dynamic val) {
+    if (val == null) return '';
+    final d = double.tryParse(val.toString());
+    if (d == null) return val.toString();
+    if (d == d.toInt()) return d.toInt().toString();
+    return d.toString();
+  }
+
+  List<String> _buildAdditionalTags(TagEntry entry) {
+    final tags = <String>[];
+    final bs = entry.fields;
+    final handledKeys = <String>{};
+
+    if (entry.name == '睡眠') {
+      final durationVal = _getVal(bs, ['duration', '时长', '睡眠时长']);
+      if (durationVal != null) {
+        final formatted = _formatDouble(durationVal);
+        if (formatted.isNotEmpty) tags.add('$formatted小时');
+      }
+      handledKeys.addAll(['duration', '时长', '睡眠时长']);
+
+      final qualityVal = _getVal(bs, ['quality', '质量', '睡眠质量']);
+      if (qualityVal != null && qualityVal.toString().isNotEmpty) {
+        tags.add(qualityVal.toString());
+      }
+      handledKeys.addAll(['quality', '质量', '睡眠质量']);
+
+      final fallAsleepVal = _getVal(bs, ['fallAsleepTime', '入睡时间']);
+      if (fallAsleepVal != null && fallAsleepVal.toString().isNotEmpty) {
+        tags.add('入睡: ${fallAsleepVal.toString()}');
+      }
+      handledKeys.addAll(['fallAsleepTime', '入睡时间']);
+    } else if (entry.name == '饮食') {
+      final typeVal = _getVal(bs, ['type', 'item', '种类', '类别']);
+      if (typeVal != null && typeVal.toString().isNotEmpty) tags.add(typeVal.toString());
+      final ratingVal = _getVal(bs, ['rating', 'health', '评价']);
+      if (ratingVal != null && ratingVal.toString().isNotEmpty) tags.add(ratingVal.toString());
+      handledKeys.addAll(['type', 'item', '种类', '类别', 'rating', 'health', '评价']);
+    } else if (entry.name == '活动') {
+      final typeVal = _getVal(bs, ['type', 'item', '项目', '类型']);
+      if (typeVal != null && typeVal.toString().isNotEmpty) tags.add(typeVal.toString());
+      final durationVal = _getVal(bs, ['duration', '时长']);
+      if (durationVal != null) {
+        final formatted = _formatDouble(durationVal);
+        if (formatted.isNotEmpty) tags.add('$formatted小时');
+      }
+      handledKeys.addAll(['type', 'item', '项目', '类型', 'duration', '时长']);
+    } else if (entry.name == '健康') {
+      final symptomVal = _getVal(bs, ['symptom', '症状']);
+      if (symptomVal != null) {
+        if (symptomVal is List) {
+          for (final s in symptomVal) {
+            if (s.toString().isNotEmpty) tags.add(s.toString());
+          }
+        } else if (symptomVal.toString().isNotEmpty) {
+          tags.add(symptomVal.toString());
+        }
+      }
+      final severityVal = _getVal(bs, ['severity', '严重程度']);
+      if (severityVal != null && severityVal.toString().isNotEmpty) {
+        tags.add(severityVal.toString());
+      }
+      final medicationVal = _getVal(bs, ['medication', '用药']);
+      if (medicationVal != null && medicationVal.toString().isNotEmpty) {
+        tags.add('💊 ${medicationVal.toString()}');
+      }
+      handledKeys.addAll(['symptom', '症状', 'severity', '严重程度', 'medication', '用药']);
+    } else if (entry.name == '记账') {
+      final categoryVal = _getVal(bs, ['_category', 'category', '收支类型', '收支']);
+      String? direction;
+      if (categoryVal != null) {
+        final catStr = categoryVal.toString().toLowerCase();
+        if (catStr == 'expense' || catStr == '支出') {
+          direction = '支出';
+        } else if (catStr == 'income' || catStr == '收入') {
+          direction = '收入';
+        }
+      }
+      if (direction == null) {
+        if (bs.containsKey('type') || bs.containsKey('支出类型')) {
+          direction = '支出';
+        } else if (bs.containsKey('incomeType') || bs.containsKey('收入类型')) {
+          direction = '收入';
+        }
+      }
+      if (direction != null) tags.add(direction);
+      final typeVal = _getVal(bs, ['type', 'incomeType', '支出类型', '收入类型', '分类', '类型']);
+      if (typeVal != null && typeVal.toString().isNotEmpty) tags.add(typeVal.toString());
+      final amountVal = _getVal(bs, ['amount', '金额', '钱数']);
+      if (amountVal != null) {
+        final formatted = _formatDouble(amountVal);
+        if (formatted.isNotEmpty) tags.add('$formatted元');
+      }
+      handledKeys.addAll([
+        '_category', 'category', '收支类型', '收支',
+        'type', 'incomeType', '支出类型', '收入类型', '分类', '类型',
+        'amount', '金额', '钱数'
+      ]);
+    }
+
+    for (final f in bs.entries) {
+      if (f.key.startsWith('_')) continue;
+      final normKey = f.key.trim().toLowerCase();
+      if (handledKeys.contains(normKey)) continue;
+
+      final label = _getFieldLabel(entry.name, f.key, bs);
+      final normLabel = label.trim().toLowerCase();
+      if (handledKeys.contains(normLabel)) continue;
+
+      final val = _formatFieldValue(entry.name, f.key, f.value);
+      if (val.isNotEmpty) {
+        tags.add('$label: $val');
+      }
+    }
+
+    return tags;
+  }
+
+  dynamic _getVal(Map<String, dynamic> bs, List<String> keys) {
+    for (final k in keys) {
+      if (bs.containsKey(k)) return bs[k];
+      final lowerK = k.toLowerCase();
+      for (final entry in bs.entries) {
+        if (entry.key.toLowerCase() == lowerK) return entry.value;
+      }
+    }
+    return null;
+  }
+
+  String _getFieldLabel(String tagName, String key, Map<String, dynamic> fields) {
+    final lowerKey = key.trim().toLowerCase();
+    switch (lowerKey) {
+      case 'duration':
+        return '时长';
+      case 'quality':
+        return '睡眠质量';
+      case 'fallasleeptime':
+        return '入睡时间';
+      case 'item':
+        if (tagName == '饮食') return '种类';
+        if (tagName == '活动') return '类型';
+        return '项目';
+      case 'type':
+        if (tagName == '饮食') return '种类';
+        if (tagName == '活动') return '类型';
+        if (tagName == '记账') {
+          final isIncome = fields['_category'] == 'income' || 
+                           fields.containsKey('incomeType') || 
+                           fields.containsKey('收入类型');
+          return isIncome ? '收入类型' : '支出类型';
+        }
+        return '类型';
+      case 'rating':
+        return '评价';
+      case 'health':
+        return '评价';
+      case 'amount':
+        if (tagName == '记账') return '金额';
+        return '数量';
+      case 'incometype':
+        if (tagName == '记账') return '收入类型';
+        return '类型';
+      default:
+        final translations = {
+          'duration': '时长',
+          'quality': '质量',
+          'item': '项目',
+          'type': '类型',
+          'rating': '评价',
+          'health': '评价',
+          'amount': '数量',
+          'price': '价格',
+          'cost': '费用',
+          'location': '地点',
+          'note': '备注',
+          'remark': '备注',
+        };
+        return translations[lowerKey] ?? key;
+    }
+  }
+
+  String _formatFieldValue(String tagName, String key, dynamic value) {
+    final valStr = _formatDouble(value);
+    if (valStr.isEmpty) return '';
+    final lowerKey = key.trim().toLowerCase();
+    if (tagName == '睡眠' && lowerKey == 'duration') {
+      if (!valStr.contains('小时') && !valStr.contains('h')) {
+        return '$valStr小时';
+      }
+    }
+    if (tagName == '记账' && lowerKey == 'amount') {
+      if (!valStr.contains('元') && !valStr.contains('￥') && !valStr.contains(r'$')) {
+        return '$valStr元';
+      }
+    }
+    return valStr;
+  }
+
+  Widget _buildTagAndFieldsRow(ThemeData theme, DiaryRecord record, ColorScheme colorScheme) {
+    final rowItems = <Widget>[];
+
+    if (record.tagEntries.isNotEmpty) {
+      for (final entry in record.tagEntries) {
+        final color = _tagColor(entry.name);
+        
+        // Add the primary tag pill (filled)
+        rowItems.add(Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            entry.name,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ));
+
+        final showTime = entry.displayTime ?? entry.time;
+        if (showTime != null && showTime.isNotEmpty) {
+          rowItems.add(Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: Text(
+              showTime,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ));
+        }
+
+        // Add the additional fields (outlined)
+        final additionalTags = _buildAdditionalTags(entry);
+        for (final tagText in additionalTags) {
+          rowItems.add(Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.02),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: color.withValues(alpha: 0.35),
+                width: 1,
+              ),
+            ),
+            child: Text(
+              tagText,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: color.withValues(alpha: 0.9),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ));
+        }
+      }
+    } else if (record.displayTag.isNotEmpty) {
+      // Just display tag if no tagEntries
+      final color = _tagColor(record.displayTag);
+      rowItems.add(Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          record.displayTag,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: color,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ));
+    }
+
+    if (rowItems.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: Row(
+          children: rowItems.map((item) {
+            final isLast = rowItems.last == item;
+            return Padding(
+              padding: EdgeInsets.only(right: isLast ? 0 : 6),
+              child: item,
+            );
+          }).toList(),
+        ),
+      ),
+    );
   }
 
   void _openRecordDetails(DiaryRecord record) {
@@ -484,42 +807,33 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                         Row(
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
-                                color: colorScheme.surfaceContainerHighest,
-                                borderRadius: BorderRadius.circular(4),
+                                color: colorScheme.primary.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(20),
                               ),
-                              child: Text(
-                                _formatTimeRange(record),
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.access_time, size: 12, color: colorScheme.primary),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _formatTimeRange(record),
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: colorScheme.primary,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            if (record.displayTag.isNotEmpty) ...[
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: colorScheme.primary.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  record.displayTag,
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                    color: colorScheme.primary,
-                                  ),
-                                ),
-                              ),
-                            ],
                           ],
                         ),
+                        _buildTagAndFieldsRow(theme, record, colorScheme),
                         const SizedBox(height: 6),
                         Text(
                           record.content.isNotEmpty ? record.content : '无备注内容',
-                          maxLines: 2,
+                          maxLines: 8,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: record.content.isNotEmpty

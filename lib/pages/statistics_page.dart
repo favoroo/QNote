@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:qnote_flutter/models/diary_record.dart';
+import 'package:go_router/go_router.dart';
+
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
-import 'package:qnote_flutter/providers/navigation_provider.dart';
+import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
+import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/widgets/time_range_selector.dart';
 import 'package:qnote_flutter/widgets/statistics/sleep_stats.dart';
 import 'package:qnote_flutter/widgets/statistics/diet_stats.dart';
@@ -33,7 +36,7 @@ const _tabs = [
     label: '记账',
     icon: Icons.account_balance_wallet,
   ),
-  _TabConfig(tab: StatTab.mood, label: '状态', icon: Icons.favorite),
+  _TabConfig(tab: StatTab.mood, label: '健康', icon: Icons.health_and_safety),
   _TabConfig(tab: StatTab.activity, label: '活动', icon: Icons.directions_run),
   _TabConfig(tab: StatTab.score, label: '评分', icon: Icons.insights),
 ];
@@ -73,6 +76,72 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     }
   }
 
+  String _getTagName(StatTab tab) {
+    switch (tab) {
+      case StatTab.sleep:
+        return '睡眠';
+      case StatTab.diet:
+        return '饮食';
+      case StatTab.finance:
+        return '记账';
+      case StatTab.mood:
+        return '健康';
+      case StatTab.activity:
+        return '活动';
+      default:
+        return '';
+    }
+  }
+
+  Widget _buildViewDataButton(ThemeData theme, bool isDark) {
+    final colorScheme = theme.colorScheme;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          final (startDate, endDate) = _getDateRange();
+          final tagName = _getTagName(_activeTab);
+          context.push('/diary/batch', extra: {
+            'initialTags': tagName.isNotEmpty ? [tagName] : null,
+            'initialDateRange': DateTimeRange(start: startDate, end: endDate),
+          });
+        },
+        borderRadius: BorderRadius.circular(20),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: colorScheme.primary.withValues(alpha: 0.2),
+              width: 1,
+            ),
+            borderRadius: BorderRadius.circular(20),
+            color: colorScheme.primary.withValues(alpha: 0.05),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.analytics_outlined,
+                size: 14,
+                color: colorScheme.primary,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '查看数据',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -99,10 +168,20 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
           ),
           if (_activeTab != StatTab.score)
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: TimeRangeSelector(
-                selectedRange: _timeRange,
-                onRangeChanged: _onTimeRangeChanged,
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  const SizedBox(width: double.infinity),
+                  TimeRangeSelector(
+                    selectedRange: _timeRange,
+                    onRangeChanged: _onTimeRangeChanged,
+                  ),
+                  Positioned(
+                    right: 0,
+                    child: _buildViewDataButton(theme, isDark),
+                  ),
+                ],
               ),
             ),
           Expanded(
@@ -210,7 +289,7 @@ class _TabSwitcher extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(
@@ -219,51 +298,49 @@ class _TabSwitcher extends StatelessWidget {
           ),
         ),
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: tabs.map((config) {
-            final isActive = config.tab == activeTab;
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: GestureDetector(
-                onTap: () => onTabChanged(config.tab),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeInOut,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isActive
-                        ? colorScheme.primary
-                        : (isDark
-                              ? const Color(0xFF2A2D36)
-                              : const Color(0xFFECEDF7)),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Center(
-                    child: Text(
-                      config.label,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: isActive
-                            ? FontWeight.bold
-                            : FontWeight.w600,
-                        color: isActive
-                            ? colorScheme.onPrimary
-                            : (isDark
-                                  ? const Color(0xFFC2C6D6)
-                                  : const Color(0xFF424754)),
-                      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: tabs.map((config) {
+          final isActive = config.tab == activeTab;
+          return Padding(
+            padding: const EdgeInsets.only(right: 2),
+            child: GestureDetector(
+              onTap: () => onTabChanged(config.tab),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: isActive
+                      ? colorScheme.primary
+                      : (isDark
+                            ? const Color(0xFF2A2D36)
+                            : const Color(0xFFECEDF7)),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Center(
+                  child: Text(
+                    config.label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: isActive
+                          ? FontWeight.bold
+                          : FontWeight.w600,
+                      color: isActive
+                          ? colorScheme.onPrimary
+                          : (isDark
+                                ? const Color(0xFFC2C6D6)
+                                : const Color(0xFF424754)),
                     ),
                   ),
                 ),
               ),
-            );
-          }).toList(),
-        ),
+            ),
+          );
+        }).toList(),
       ),
     );
   }

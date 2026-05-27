@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -28,6 +30,8 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   final Map<String, bool> _testingMap = {};
   final Map<String, String> _latencyMap = {};
   bool _batchTesting = false;
+  bool _testingImageRecognition = false;
+  String? _imageTestResult;
   bool _isBatchTestingModels = false;
   final ValueNotifier<Map<String, String>> _modelLatencyNotifier = ValueNotifier({});
   final Map<String, List<String>> _fetchedModelsMap = {};
@@ -382,6 +386,83 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       return '请求超时';
     }
     return msg.length > 60 ? '${msg.substring(0, 60)}...' : msg;
+  }
+
+  Future<String> _generateTestImageBase64() async {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder, const Rect.fromLTWH(0, 0, 100, 100));
+    final bgPaint = Paint()..color = Colors.white;
+    canvas.drawRect(const Rect.fromLTWH(0, 0, 100, 100), bgPaint);
+
+    final textPainter = TextPainter(
+      text: const TextSpan(
+        text: '11',
+        style: TextStyle(
+          color: Colors.black,
+          fontSize: 60,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+    textPainter.layout();
+    textPainter.paint(
+      canvas,
+      Offset((100 - textPainter.width) / 2, (100 - textPainter.height) / 2),
+    );
+
+    final picture = recorder.endRecording();
+    final img = await picture.toImage(100, 100);
+    final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+    final bytes = byteData!.buffer.asUint8List();
+    return base64Encode(bytes);
+  }
+
+  Future<void> _testModelImageRecognition(String roleKey, List<AiConfig> configs) async {
+    String? currentId;
+    switch (roleKey) {
+      case 'assistant':
+        currentId = _roles.assistant;
+        break;
+      case 'timelineOptimization':
+        currentId = _roles.timelineOptimization;
+        break;
+    }
+
+    if (currentId == null) {
+      Toast.warning(context, '请先绑定并保存模型');
+      return;
+    }
+
+    final config = configs.firstWhere((c) => c.id == currentId, orElse: () => configs.first);
+    
+    setState(() {
+      _testingImageRecognition = true;
+      _imageTestResult = null;
+    });
+
+    try {
+      final imgBase64 = await _generateTestImageBase64();
+      final service = AiService();
+      final success = await service.checkImageRecognition(config, imgBase64);
+      
+      setState(() {
+        if (success) {
+          _imageTestResult = '支持识别';
+        } else {
+          _imageTestResult = '不支持图片识别';
+        }
+      });
+    } catch (e) {
+      final errMsg = _formatTestError(e);
+      setState(() {
+        _imageTestResult = '测试失败: $errMsg';
+      });
+    } finally {
+      setState(() {
+        _testingImageRecognition = false;
+      });
+    }
   }
 
   Future<void> _testSingleConfig(AiConfig config) async {
@@ -848,6 +929,47 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                   ),
                 ],
               ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '多模态能力检测',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _imageTestResult ?? '一键测试模型是否支持图片识别',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: _imageTestResult == null
+                                ? theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6)
+                                : (_imageTestResult == '支持识别' ? Colors.green : Colors.red),
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _testingImageRecognition
+                        ? null
+                        : () => _testModelImageRecognition(roleKey, configs),
+                    child: _testingImageRecognition
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('检测图片识别', style: TextStyle(fontSize: 12)),
+                  ),
+                ],
+              ),
             ],
           ],
         ),
@@ -916,6 +1038,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           modelCtl.text = defaultProvider.models.first;
         }
         selectedProvider = defaultProvider.provider;
+        // Default to model name as per user preference
         nameCtl.text = getCleanModelName(modelCtl.text);
       }
     }
@@ -925,7 +1048,10 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setDialogState) {
-            return AlertDialog(
+            return GestureDetector(
+              onTap: () => FocusScope.of(ctx).unfocus(),
+              behavior: HitTestBehavior.opaque,
+              child: AlertDialog(
               title: Text(isEditing ? '编辑配置' : '添加配置'),
               content: SingleChildScrollView(
                 child: SizedBox(
@@ -964,9 +1090,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                               } else {
                                 modelCtl.text = '';
                               }
-                              if (!isNameManuallyEdited) {
-                                nameCtl.text = getCleanModelName(modelCtl.text);
-                              }
+                              // Always update name when vendor/model changes as per user request
+                              nameCtl.text = getCleanModelName(modelCtl.text);
+                              isNameManuallyEdited = false;
                             }
                           });
                         },
@@ -983,7 +1109,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                           ],
                           onChanged: (value) {
                             if (value == null) return;
-                            setDialogState(() => selectedProvider = value);
+                            setDialogState(() {
+                              selectedProvider = value;
+                            });
                           },
                         ),
                         const SizedBox(height: 12),
@@ -1124,11 +1252,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                         modelCtl,
                         setDialogState,
                         (newModel) {
-                          setDialogState(() {
-                            if (!isNameManuallyEdited) {
-                              nameCtl.text = getCleanModelName(newModel);
-                            }
-                          });
+                          // Always sync name when model changes, even if previously edited
+                          nameCtl.text = getCleanModelName(newModel);
+                          isNameManuallyEdited = false;
                         },
                       ),
                       const SizedBox(height: 12),
@@ -1137,7 +1263,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                         controller: nameCtl,
                         decoration: const InputDecoration(hintText: '例如：我的模型'),
                         onChanged: (val) {
-                          isNameManuallyEdited = true;
+                          // Only mark as manually edited if there's actual user input
+                          // If user clears it, we allow auto-sync again
+                          isNameManuallyEdited = val.isNotEmpty;
                         },
                       ),
                       const SizedBox(height: 12),
@@ -1314,6 +1442,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                   child: const Text('保存'),
                 ),
               ],
+              ),
             );
           },
         );

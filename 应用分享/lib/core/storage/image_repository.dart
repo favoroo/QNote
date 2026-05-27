@@ -1,8 +1,14 @@
-import 'dart:io';
 import 'dart:convert';
-import 'package:path_provider/path_provider.dart';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
+
+import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
+
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 
 class ImageRepository {
@@ -18,35 +24,105 @@ class ImageRepository {
     if (!await imagesDir.exists()) {
       await imagesDir.create(recursive: true);
     }
-    final ext = p.extension(imageFile.path);
-    final fileName = '${_uuid.v4()}$ext';
+    
+    // 强制转换为 .jpg 后缀
+    final fileName = '${_uuid.v4()}.jpg';
     final newPath = p.join(imagesDir.path, fileName);
     
-    final sizeBytes = await imageFile.length();
+    final bytes = await imageFile.readAsBytes();
+    final originalSize = bytes.length;
+    
+    // 使用 compute 在后台 isolate 线程中执行压缩计算，避免阻塞 UI 主线程
+    final compressedBytes = await compute(_compressImage, bytes);
+    final compressedSize = compressedBytes.length;
+    
     LoggerService.instance.logDatabase(
-      '保存图片文件',
-      details: '源=${imageFile.path}, 目标=$newPath, 大小≈${(sizeBytes / 1024).toStringAsFixed(1)}KB'
+      '保存并压缩图片文件',
+      details: '源=${imageFile.path}, 目标=$newPath, 原始大小≈${(originalSize / 1024).toStringAsFixed(1)}KB, 压缩后大小≈${(compressedSize / 1024).toStringAsFixed(1)}KB'
     );
     
-    await imageFile.copy(newPath);
+    await File(newPath).writeAsBytes(compressedBytes);
     return newPath;
   }
 
+  static Uint8List _compressImage(Uint8List bytes) {
+    try {
+      final image = img.decodeImage(bytes);
+      if (image == null) return bytes;
+      
+      const int maxDim = 1080;
+      int width = image.width;
+      int height = image.height;
+      
+      if (width <= maxDim && height <= maxDim) {
+        // 如果尺寸本身就在限制内，只进行 JPEG 编码压缩 (80 质量)
+        final compressed = img.encodeJpg(image, quality: 80);
+        return Uint8List.fromList(compressed);
+      }
+      
+      int newWidth;
+      int newHeight;
+      if (width > height) {
+        newWidth = maxDim;
+        newHeight = (height * maxDim / width).round();
+      } else {
+        newHeight = maxDim;
+        newWidth = (width * maxDim / height).round();
+      }
+      
+      final resized = img.copyResize(image, width: newWidth, height: newHeight);
+      final compressed = img.encodeJpg(resized, quality: 80);
+      return Uint8List.fromList(compressed);
+    } catch (_) {
+      return bytes;
+    }
+  }
+
+  static String getMimeType(String path) {
+    final ext = p.extension(path).toLowerCase();
+    if (ext == '.png') return 'image/png';
+    if (ext == '.webp') return 'image/webp';
+    if (ext == '.gif') return 'image/gif';
+    return 'image/jpeg';
+  }
+
+  Future<String> resolveLocalPath(String originalPath) async {
+    if (originalPath.isEmpty) return originalPath;
+    final file = File(originalPath);
+    if (await file.exists()) return originalPath;
+    
+    // 如果文件不存在，检测是否包含 images 文件夹路径
+    final normalized = originalPath.replaceAll('\\', '/');
+    final imagesIndex = normalized.lastIndexOf('/images/');
+    if (imagesIndex != -1) {
+      final relativePath = originalPath.substring(imagesIndex + 8);
+      final appDir = await getApplicationDocumentsDirectory();
+      final correctedPath = p.join(appDir.path, 'images', relativePath);
+      if (await File(correctedPath).exists()) {
+        return correctedPath;
+      }
+    }
+    return originalPath;
+  }
+
   Future<File?> getImage(String path) async {
-    final file = File(path);
+    final resolved = await resolveLocalPath(path);
+    final file = File(resolved);
     if (await file.exists()) return file;
     return null;
   }
 
   Future<void> deleteImage(String path) async {
-    final file = File(path);
+    final resolved = await resolveLocalPath(path);
+    final file = File(resolved);
     if (await file.exists()) {
       await file.delete();
     }
   }
 
   Future<String> getBase64Image(String path) async {
-    final file = File(path);
+    final resolved = await resolveLocalPath(path);
+    final file = File(resolved);
     if (!await file.exists()) return '';
     final bytes = await file.readAsBytes();
     return base64Encode(bytes);

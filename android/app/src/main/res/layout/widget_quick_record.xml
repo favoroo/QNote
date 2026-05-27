@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_quick_record_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="54dp"
+        android:layout_gravity="center"
+        android:background="@drawable/bg_widget_quick_record_outer"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingLeft="12dp"
+        android:paddingRight="12dp">
+
+        <!-- Fake text input bar click target -->
+        <LinearLayout
+            android:id="@+id/btn_input_target"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_widget_quick_record_input"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingLeft="12dp"
+            android:paddingRight="12dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:layout_marginEnd="8dp">
+            
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="快速记录..."
+                android:textColor="@color/widget_text_secondary"
+                android:textSize="13sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+        </LinearLayout>
+
+        <!-- Photo Button -->
+        <ImageButton
+            android:id="@+id/btn_widget_photo"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_gallery"
+            android:contentDescription="选择相册图片"
+            android:scaleType="centerInside"
+            android:layout_marginEnd="4dp" />
+
+        <!-- Camera Button -->
+        <ImageButton
+            android:id="@+id/btn_widget_camera"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_camera"
+            android:contentDescription="启动相机拍照"
+            android:scaleType="centerInside"
+            android:layout_marginEnd="4dp" />
+
+        <!-- Send Button representation -->
+        <ImageButton
+            android:id="@+id/btn_widget_send"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_send"
+            android:contentDescription="发送"
+            android:scaleType="centerInside" />
+    </LinearLayout>
+</FrameLayout>
+
