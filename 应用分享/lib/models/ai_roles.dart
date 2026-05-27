@@ -89,7 +89,10 @@ class AiTemperatures {
   const AiTemperatures({
     this.imageExtraction = const AiRoleSettings(),
     this.assistant = const AiRoleSettings(),
-    this.timelineOptimization = const AiRoleSettings(),
+    this.timelineOptimization = const AiRoleSettings(
+      temperature: 0.01,
+      maxTokens: 512,
+    ),
   });
 
   Map<String, dynamic> toMap() {

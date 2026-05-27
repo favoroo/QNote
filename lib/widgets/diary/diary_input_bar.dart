@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
+import 'package:qnote_flutter/core/utils/schema_formatter.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/shortcut_field.dart';
@@ -774,47 +775,17 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       final roleConfig = await AiRoleService.instance.getEffectiveConfigForRole(
         'timelineOptimization',
       );
-      aiService.updateConfig(roleConfig);
+      final roleSettings = await AiRoleService.instance.getSettingsForRole(
+        'timelineOptimization',
+      );
+      aiService.updateConfig(
+        roleConfig,
+        temperature: roleSettings.temperature,
+        maxTokens: roleSettings.maxTokens,
+      );
 
       final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
-      final schemaContext = shortcuts.map((s) {
-        final root = <String, dynamic>{'id': s.id, 'name': s.name};
-        if (s.fields.isNotEmpty) {
-          root['fields'] = s.fields
-              .map(
-                (f) => {
-                  'id': f.id,
-                  'name': f.label,
-                  'type': f.type,
-                  if (f.options.isNotEmpty) 'options': f.options,
-                  if (f.allowCustom) 'allowCustom': true,
-                },
-              )
-              .toList();
-        }
-        if (s.hasPopup && s.categories != null && s.categories!.isNotEmpty) {
-          root['categories'] = s.categories!
-              .map(
-                (c) => {
-                  'id': c.id,
-                  'name': c.name,
-                  'fields': c.fields
-                      .map(
-                        (f) => {
-                          'id': f.id,
-                          'name': f.label,
-                          'type': f.type,
-                          if (f.options.isNotEmpty) 'options': f.options,
-                          if (f.allowCustom) 'allowCustom': true,
-                        },
-                      )
-                      .toList(),
-                },
-              )
-              .toList();
-        }
-        return root;
-      }).toList();
+      final schemaStr = formatCompressedSchema(shortcuts);
 
       final selectedDate = ref.read(selectedDateProvider);
       final draftTime = _calculateStartDateTime(draft, selectedDate);
@@ -866,8 +837,8 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       results = await aiService.extractUnified(
         text: draft.inputText.isNotEmpty ? draft.inputText : null,
         imageBase64: base64,
-        mimeType: 'image/jpeg',
-        schema: schemaContext.toString(),
+        mimeType: shouldSendImage ? ImageRepository.getMimeType(draft.selectedPhotos.first) : null,
+        schema: schemaStr,
         contextStr: contextMap.toString(),
         cancelToken: _cancelToken,
       );
@@ -960,8 +931,9 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
             }
           }
 
-          final fields = Map<String, dynamic>.from(
-            result['fields'] as Map? ?? {},
+          final fields = normalizeExtractedFields(
+            Map<String, dynamic>.from(result['fields'] as Map? ?? {}),
+            foundShortcut,
           );
 
           if (foundShortcut?.id == 'sleep') {
@@ -1920,7 +1892,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          entry.hasTime ? entry.formattedTime! : '添加时间',
+                          entry.hasTime ? entry.displayTime! : '添加时间',
                           style: theme.textTheme.labelSmall?.copyWith(
                             color: colorScheme.onSurfaceVariant,
                             fontSize: 10,

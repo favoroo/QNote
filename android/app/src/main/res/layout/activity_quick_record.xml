@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/layout_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+
+    <!-- Main Card -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/bg_dialog_card"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:elevation="8dp"
+        android:clickable="true"
+        android:focusable="true">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="快速记录日记"
+            android:textColor="@color/dialog_text"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Input Box -->
+        <EditText
+            android:id="@+id/edit_record_content"
+            android:layout_width="match_parent"
+            android:layout_height="120dp"
+            android:background="@drawable/bg_dialog_input"
+            android:gravity="top|left"
+            android:hint="记录些什么呢..."
+            android:textColor="@color/dialog_text"
+            android:textColorHint="@color/widget_text_secondary"
+            android:textSize="14sp"
+            android:padding="12dp"
+            android:inputType="textMultiLine"
+            android:imeOptions="actionDone"
+            android:scrollbars="vertical" />
+
+        <!-- Attached Photos Preview Container -->
+        <HorizontalScrollView
+            android:id="@+id/scroll_photos_preview"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/container_photos_preview"
+                android:layout_width="wrap_content"
+                android:layout_height="72dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical" />
+        </HorizontalScrollView>
+
+        <!-- Tools & Actions Panel -->
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp">
+
+            <!-- Left tool buttons -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_alignParentLeft="true"
+                android:layout_centerVertical="true">
+
+                <ImageButton
+                    android:id="@+id/btn_dialog_photo"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_gallery"
+                    android:contentDescription="选择相册图片"
+                    android:scaleType="centerInside" />
+
+                <Space
+                    android:layout_width="8dp"
+                    android:layout_height="wrap_content" />
+
+                <ImageButton
+                    android:id="@+id/btn_dialog_camera"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_camera"
+                    android:contentDescription="启动相机拍照"
+                    android:scaleType="centerInside" />
+            </LinearLayout>
+
+            <!-- Right action buttons -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_alignParentRight="true"
+                android:layout_centerVertical="true">
+
+                <Button
+                    android:id="@+id/btn_dialog_cancel"
+                    style="?android:attr/borderlessButtonStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="取消"
+                    android:textColor="@color/widget_text_secondary"
+                    android:textSize="14sp" />
+
+                <Button
+                    android:id="@+id/btn_dialog_send"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:backgroundTint="@color/widget_accent"
+                    android:text="发送"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp" />
+            </LinearLayout>
+        </RelativeLayout>
+    </LinearLayout>
+</FrameLayout>

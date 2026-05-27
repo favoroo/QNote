@@ -1260,7 +1260,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
-                                  entry.hasTime ? entry.formattedTime! : '添加时间',
+                                  entry.hasTime ? entry.displayTime! : '添加时间',
                                   style: theme.textTheme.labelSmall?.copyWith(
                                     color: colorScheme.onSurfaceVariant,
                                     fontSize: 10,

@@ -8,10 +8,10 @@ class MoodStatsWidget extends StatelessWidget {
 
   const MoodStatsWidget({super.key, required this.stats});
 
-  String _severityLabel(double val) {
-    if (val >= 2.5) return '轻微';
-    if (val >= 1.5) return '中度';
-    return '严重';
+  String _healthLabel(double val) {
+    if (val >= 2.5) return '良好';
+    if (val >= 1.5) return '一般';
+    return '需关注';
   }
 
   @override
@@ -28,9 +28,9 @@ class MoodStatsWidget extends StatelessWidget {
           children: [
             Expanded(
               child: StatsCard(
-                title: '平均状态',
-                value: stats.averageSeverity > 0 ? _severityLabel(stats.averageSeverity) : '无数据',
-                icon: Icons.shield,
+                title: '健康状况',
+                value: stats.averageSeverity > 0 ? _healthLabel(stats.averageSeverity) : '无数据',
+                icon: Icons.health_and_safety,
                 iconColor: Colors.teal,
               ),
             ),
@@ -48,7 +48,7 @@ class MoodStatsWidget extends StatelessWidget {
         const SizedBox(height: 16),
         _MoodCard(
           isDark: isDark,
-          title: '健康趋势 (评分越高越好)',
+          title: '健康趋势',
           child: SizedBox(
             height: 192,
             child: stats.dailyData.isNotEmpty
@@ -163,11 +163,11 @@ class _SeverityTrendChart extends StatelessWidget {
               getTitlesWidget: (value, meta) {
                 String label;
                 if (value == 1) {
-                  label = '严重';
+                  label = '需关注';
                 } else if (value == 2) {
-                  label = '中度';
+                  label = '一般';
                 } else if (value == 3) {
-                  label = '轻微';
+                  label = '良好';
                 } else {
                   label = '';
                 }

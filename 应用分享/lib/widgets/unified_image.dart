@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 
+import 'package:qnote_flutter/core/storage/image_repository.dart';
+
 class UnifiedImage extends StatefulWidget {
   final String? imagePath;
   final double? width;
@@ -27,6 +29,7 @@ class UnifiedImage extends StatefulWidget {
 class _UnifiedImageState extends State<UnifiedImage> {
   bool _hasChecked = false;
   bool _fileExists = false;
+  String? _resolvedPath;
 
   static bool _isValidWebUrl(String path) {
     if (path.startsWith('http://') || path.startsWith('https://')) return true;
@@ -50,36 +53,54 @@ class _UnifiedImageState extends State<UnifiedImage> {
     }
   }
 
-  void _checkFileExistence() {
+  void _checkFileExistence() async {
     if (widget.imagePath == null || widget.imagePath!.isEmpty) {
-      _hasChecked = true;
-      _fileExists = false;
+      if (mounted) {
+        setState(() {
+          _hasChecked = true;
+          _fileExists = false;
+          _resolvedPath = null;
+        });
+      }
       return;
     }
 
     if (kIsWeb) {
-      _hasChecked = true;
-      _fileExists = _isValidWebUrl(widget.imagePath!);
-      return;
-    }
-
-    File(widget.imagePath!).exists().then((exists) {
       if (mounted) {
         setState(() {
           _hasChecked = true;
-          _fileExists = exists;
+          _fileExists = _isValidWebUrl(widget.imagePath!);
+          _resolvedPath = widget.imagePath;
         });
-        
-        if (!exists) {
-          LoggerService.instance.logUI(
-            '图片文件不存在',
-            details: widget.imagePath,
-            level: LogLevel.warning
-          );
-        }
       }
-      return exists;
-    });
+      return;
+    }
+
+    String path = widget.imagePath!;
+    bool exists = await File(path).exists();
+    if (!exists) {
+      try {
+        final resolved = await ImageRepository().resolveLocalPath(path);
+        path = resolved;
+        exists = await File(path).exists();
+      } catch (_) {}
+    }
+
+    if (mounted) {
+      setState(() {
+        _hasChecked = true;
+        _fileExists = exists;
+        _resolvedPath = path;
+      });
+      
+      if (!exists) {
+        LoggerService.instance.logUI(
+          '图片文件不存在',
+          details: widget.imagePath,
+          level: LogLevel.warning
+        );
+      }
+    }
   }
 
   @override
@@ -126,7 +147,7 @@ class _UnifiedImageState extends State<UnifiedImage> {
                 },
               )
             : Image.file(
-                File(widget.imagePath!),
+                File(_resolvedPath ?? widget.imagePath!),
                 width: widget.width,
                 height: widget.height,
                 fit: widget.fit,

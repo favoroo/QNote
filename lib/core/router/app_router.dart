@@ -59,8 +59,14 @@ final routerProvider = Provider<GoRouter>((ref) {
                     path: 'batch',
                     parentNavigatorKey: _rootNavigatorKey,
                     pageBuilder: (context, state) {
+                      final extra = state.extra as Map<String, dynamic>?;
+                      final initialTags = extra?['initialTags'] as List<String>?;
+                      final initialDateRange = extra?['initialDateRange'] as DateTimeRange?;
                       return CustomTransitionPage(
-                        child: const DiaryBatchManageView(),
+                        child: DiaryBatchManageView(
+                          initialTags: initialTags,
+                          initialDateRange: initialDateRange,
+                        ),
                         transitionsBuilder: (context, animation, secondaryAnimation, child) {
                           return FadeTransition(
                             opacity: CurveTween(curve: Curves.easeInOut).animate(animation),

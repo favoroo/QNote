@@ -340,7 +340,7 @@ Future<TimeScrollPickerResult?> showTimeScrollPicker({
   int? initialHour,
   int? initialMinute,
 }) async {
-  return showModalBottomSheet<TimeScrollPickerResult>(
+  return showDialog<TimeScrollPickerResult>(
     context: context,
     builder: (context) {
       return _TimeScrollPickerDialog(
@@ -374,51 +374,55 @@ class _TimeScrollPickerDialogState extends State<_TimeScrollPickerDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('取消'),
-                ),
-                Text(
-                  '选择时间',
-                  style: theme.textTheme.titleMedium,
-                ),
-                TextButton(
-                  onPressed: () {
-                    Navigator.pop(
-                      context,
-                      TimeScrollPickerResult(
-                        hour: _selectedHour ?? widget.initialHour ?? TimeOfDay.now().hour,
-                        minute: _selectedMinute ?? widget.initialMinute ?? TimeOfDay.now().minute,
-                      ),
-                    );
-                  },
-                  child: const Text('确定'),
-                ),
-              ],
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('取消'),
+                  ),
+                  Text(
+                    '选择时间',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(
+                        context,
+                        TimeScrollPickerResult(
+                          hour: _selectedHour ?? widget.initialHour ?? TimeOfDay.now().hour,
+                          minute: _selectedMinute ?? widget.initialMinute ?? TimeOfDay.now().minute,
+                        ),
+                      );
+                    },
+                    child: const Text('确定'),
+                  ),
+                ],
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: TimeScrollPicker(
-              initialHour: widget.initialHour,
-              initialMinute: widget.initialMinute,
-              onTimeSelected: (time) {
-                _selectedHour = time.hour;
-                _selectedMinute = time.minute;
-              },
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: TimeScrollPicker(
+                initialHour: widget.initialHour,
+                initialMinute: widget.initialMinute,
+                onTimeSelected: (time) {
+                  _selectedHour = time.hour;
+                  _selectedMinute = time.minute;
+                },
+              ),
             ),
-          ),
-          const SizedBox(height: 24),
-        ],
+            const SizedBox(height: 16),
+          ],
+        ),
       ),
     );
   }

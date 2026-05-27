@@ -9,6 +9,11 @@ echo.
 set "PROJECT_ROOT=%~dp0"
 set "BUILD_DIR=%PROJECT_ROOT%build\app\outputs\flutter-apk"
 
+if "%1"=="clean" (
+    echo [0/2] Cleaning build cache...
+    call flutter clean
+)
+
 echo [1/2] Building APK (arm64-v8a)...
 call flutter build apk --release --target-platform android-arm64
 if errorlevel 1 (

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_widget"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <!-- Header -->
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp">
+
+        <TextView
+            android:id="@+id/todo_widget_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="今日待办"
+            android:textColor="@color/widget_text_primary"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:layout_alignParentLeft="true"
+            android:layout_centerVertical="true" />
+
+        <TextView
+            android:id="@+id/todo_widget_count"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="(0)"
+            android:textColor="@color/widget_text_secondary"
+            android:textSize="13sp"
+            android:layout_toRightOf="@id/todo_widget_title"
+            android:layout_marginLeft="6dp"
+            android:layout_centerVertical="true" />
+
+        <!-- Refresh Todo Button -->
+        <ImageButton
+            android:id="@+id/btn_widget_todo_refresh"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_refresh"
+            android:contentDescription="刷新待办"
+            android:layout_alignParentRight="true"
+            android:layout_centerVertical="true"
+            android:scaleType="centerInside" />
+    </RelativeLayout>
+
+    <!-- Todo List View -->
+    <ListView
+        android:id="@+id/todo_list_view"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:divider="@android:color/transparent"
+        android:dividerHeight="4dp" />
+
+    <!-- Empty State -->
+    <TextView
+        android:id="@+id/todo_empty_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:text="暂无今日待办"
+        android:textColor="@color/widget_text_secondary"
+        android:textSize="13sp"
+        android:visibility="gone" />
+</LinearLayout>

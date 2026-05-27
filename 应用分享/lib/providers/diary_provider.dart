@@ -7,6 +7,7 @@ import 'package:qnote_flutter/models/date_color_mark.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:flutter/material.dart';
 import 'package:qnote_flutter/providers/selected_date_provider.dart';
+import 'package:qnote_flutter/core/utils/widget_utils.dart';
 export 'package:qnote_flutter/providers/selected_date_provider.dart';
 
 class TimelineTimeSelectEvent {
@@ -103,6 +104,7 @@ class DiaryListNotifier extends AsyncNotifier<List<DiaryRecord>> {
     );
     await repo.insert(record);
     await refresh();
+    WidgetUtils.updateHomeWidgets();
     return record;
   }
 
@@ -110,6 +112,7 @@ class DiaryListNotifier extends AsyncNotifier<List<DiaryRecord>> {
     final repo = ref.read(diaryRepositoryProvider);
     await repo.update(record);
     await refresh();
+    WidgetUtils.updateHomeWidgets();
   }
 
   Future<void> deleteDiary(String id) async {
@@ -118,6 +121,7 @@ class DiaryListNotifier extends AsyncNotifier<List<DiaryRecord>> {
     _lastDeleted = currentList.where((r) => r.id == id).firstOrNull;
     await repo.softDelete(id);
     await refresh();
+    WidgetUtils.updateHomeWidgets();
   }
 
   Future<void> undoDelete() async {
@@ -130,6 +134,7 @@ class DiaryListNotifier extends AsyncNotifier<List<DiaryRecord>> {
     await repo.update(restored);
     _lastDeleted = null;
     await refresh();
+    WidgetUtils.updateHomeWidgets();
   }
 
   void addDraft(DiaryRecord draft) {

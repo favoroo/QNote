@@ -1161,7 +1161,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
     final controller = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 5),
+      duration: const Duration(seconds: 15),
     );
     controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) {

@@ -365,6 +365,8 @@ class ExportService {
       'daily_scores',
       'export_version',
       'export_time',
+      'snapshot_version',
+      'snapshot_time',
       // 允许一些旧架构的冗余字段，避免验证失败
       'qnote_active_ai_config_id',
       'qnote_vendor_api_keys',

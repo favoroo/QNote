@@ -21,48 +21,24 @@ final defaultSystemPrompts = <String, String>{
 [Schema]
 {{schema}}
 
-[规则]
-1. 严格按Schema提取，fields中只允许出现Schema定义的字段，禁止添加Schema中不存在的字段
-2. select/multi-select类型字段的值优先从Schema中该字段的options选择；若options中无合适选项且字段标注allowCustom:true，可自行填写准确值
-3. 支持添加多个多标签
-4. 相对时间词（昨天、前天、今天等）以[当前时间]中的today为基准解读，recordDate为条目所属日期仅供参考
-5. time格式: HH:mm，跨天加-前缀(如-23:00)，范围用~连接(如-23:00~8:00)；模糊时间: 早→8:00,午→12:00,晚→19:00,宵→23:00；结合当前时间推断(如当前22:00说"刚跑了步"→time:"21:00")
-6. 若[当前时间]中包含 userSelectedTime（用户已选的时间或时间段），且用户输入（文本或图片）中没有提到其它明确时间，所有提取项的 time 均应设为该 userSelectedTime。
-7. 记账: 如有categories则加_category字段
-8. 饮食: 推断健康评价(蔬菜/水果/清淡/水/自制→"健康"，外卖/零食/茶/咖啡→"一般"，烧烤/油炸/甜食/含糖饮料/泡面/快餐→"不健康")；进食方式判断(自己做的→"自制"，点外卖/配送→"外卖"，去餐厅/食堂吃→"堂食")
-9. 健康: 识别身体症状(symptom为multi-select可多选)、严重程度(severity)、用药(medication为自由文本)
-10. 补剂vs用药区分: 日常保健品(维生素/蛋白粉/钙片/鱼油等)→饮食/补剂，治疗性药物(布洛芬/感冒药/胃药等)→健康/用药
+[提取规则]
+1. 严禁虚构/改写字段名：只提取Schema中定义的ID和字段，且fields内部的键名（Key）必须严格与Schema定义的字段ID完全一致。无有用信息输出 {"results":[]}。
+2. 选项匹配：select尽量用给定选项，allowCustom=true时才可自定义。
+3. 时间推断：基准为[当前时间]中的today。时间格式 HH:mm (跨天加-，如-23:00，范围用~连接)。早8:00,午12:00,晚19:00,宵23:00。若提供 userSelectedTime 且无其他明确时间，则强制使用该时间。
+4. 业务逻辑：
+   - 饮食：蔬菜/水/自制->健康；外卖/零食/咖啡->一般；油炸/甜食/快餐->不健康。日常维C/鱼油属补剂(diet)，治病药(如布洛芬)属用药(health)。
+   - 图片处理：截图提核心数据(如深睡1.5h)，食物图提核心菜品。
 
-
-[输出] JSON: {"results":[{"id":"标签id","time":"时间","fields":{},"notes":"备注"}]}
-若未提取到任何有用信息，输出: {"results":[],"message":"NO_USEFUL_INFO"}
+[输出格式] JSON: {"results":[{"id":"标签id","time":"时间","fields":{},"notes":"备注"}]}
+若未提取到任何有用信息，输出: {"results":[]}
 纯文本输入不输出notes，图片或图文输入必须输出notes，notes只写"图："+图片关键信息(不重复用户文字，工具会自动拼接到用户输入下方)
 
 [示例]
-"昨晚十点睡，睡了八个小时" → {"results":[{"id":"sleep","time":"-22:00","fields":{"duration":8}}]}
-"吃了一碗螺蛳粉，花了10元" → {"results":[{"id":"diet","fields":{"type":"外卖","rating":"不健康"}},{"id":"consumption","fields":{"_category":"expense","type":"饮食","amount":10}}]}
-"早上吃了玉米鸡蛋油条，味道一般" → {"results":[{"id":"diet","time":"8:00","fields":{"type":"自制","rating":"一般"}}]}
-"昨晚十点睡，今早七点起，去公园跑了5公里" → {"results":[{"id":"sleep","time":"-22:00~7:00"},{"id":"activity","time":"7:00","fields":{"type":"运动"}}]}
-"下午3点喝了杯奶茶，下班坐地铁花了5元，晚上去健身房跑了一个小时" → {"results":[{"id":"diet","time":"15:00","fields":{"type":"饮品","rating":"不健康"}},{"id":"consumption","time":"18:00","fields":{"_category":"expense","type":"交通","amount":5}},{"id":"activity","time":"20:00","fields":{"type":"运动","duration":1}}]}
-"今天头痛得厉害，吃了布洛芬" → {"results":[{"id":"health","fields":{"symptom":["头痛"],"severity":"严重","medication":"布洛芬"}}]}
-"有点疲劳和脑雾，轻微不适" → {"results":[{"id":"health","fields":{"symptom":["疲劳","脑雾"],"severity":"轻微"}}]}
-"胃不太舒服，吃了奥美拉唑" → {"results":[{"id":"health","fields":{"symptom":["胃胀"],"severity":"中度","medication":"奥美拉唑"}}]}
-"和朋友聚餐花了200" → {"results":[{"id":"diet","fields":{"type":"堂食","rating":"一般"}},{"id":"consumption","fields":{"_category":"expense","type":"饮食","amount":200}},{"id":"activity","fields":{"type":"社交"}}]}
-"吃了维生素和鱼油" → {"results":[{"id":"diet","fields":{"type":"补剂","rating":"健康"}}]}
-
-[图片示例]
-[运动App截图:步数2951/活动11次/中高强度13分钟/睡眠6h4m] → {"results":[{"id":"sleep","fields":{"duration":6,"quality":"良好"},"notes":"图：步数2951/活动11次/中高强度13分钟/睡眠6时4分"},{"id":"activity","fields":{"type":"运动","duration":0.5},"notes":"图：步数2951/活动11次/中高强度13分钟/睡眠6时4分"}]}
-[食物照片:米饭配炒菜和汤] → {"results":[{"id":"diet","fields":{"type":"自制","rating":"健康"},"notes":"图：一碗米饭配炒菜和一碗汤"}]}
-[外卖截图:麻辣烫¥28+奶茶¥15] → {"results":[{"id":"diet","fields":{"type":"外卖","rating":"不健康"},"notes":"图：麻辣烫¥28"},{"id":"diet","fields":{"type":"饮品","rating":"不健康"},"notes":"图：奶茶¥15"},{"id":"consumption","fields":{"_category":"expense","type":"饮食","amount":43},"notes":"图：麻辣烫¥28+奶茶¥15"}]}
-[健身房照片:跑步机3公里25分钟] → {"results":[{"id":"activity","fields":{"type":"运动","duration":0.4},"notes":"图：跑步机3公里用时25分钟"}]}
-
-[图文混合示例]
-"午餐"+[外卖截图:黄焖鸡¥22] → {"results":[{"id":"diet","time":"12:00","fields":{"type":"外卖","rating":"一般"},"notes":"图：黄焖鸡米饭¥22"},{"id":"consumption","time":"12:00","fields":{"_category":"expense","type":"饮食","amount":22},"notes":"图：黄焖鸡米饭¥22"}]}
-"昨晚睡得不好"+[手表截图:深睡1.5h浅睡4h共5.5h] → {"results":[{"id":"sleep","time":"-23:30~7:00","fields":{"duration":7.5,"quality":"较差"},"notes":"图：深睡1.5h/浅睡4h/总时长5.5h"}]}
-"下午茶时间"+[蛋糕和拿铁照片] → {"results":[{"id":"diet","time":"15:00","fields":{"type":"零食","rating":"不健康"},"notes":"图：蛋糕和拿铁"},{"id":"diet","time":"15:00","fields":{"type":"饮品","rating":"一般"},"notes":"图：蛋糕和拿铁"}]}
-
-[用户输入] ({{inputType}})
-{{text}}
+- 昨晚十点睡，睡了八个小时 → {"results":[{"id":"sleep","time":"-22:00","fields":{"duration":8}}]}
+- 下午3点喝奶茶，地铁5元，健身房跑1小时 → {"results":[{"id":"diet","time":"15:00","fields":{"type":"饮品","rating":"不健康"}},{"id":"consumption","time":"18:00","fields":{"_category":"expense","type":"交通","amount":5}},{"id":"activity","time":"20:00","fields":{"type":"运动","duration":1}}]}
+- 今天头痛得厉害，吃了布洛芬 → {"results":[{"id":"health","fields":{"symptom":["头痛"],"severity":"严重","medication":"布洛芬"}}]}
+- 有点疲劳和脑雾，轻微不适 → {"results":[{"id":"health","fields":{"symptom":["疲劳","脑雾"],"severity":"轻微"}}]}
+- [食物照片:米饭配炒菜和汤] → {"results":[{"id":"diet","fields":{"type":"自制","rating":"健康"},"notes":"图：一碗米饭配炒菜和一碗汤"}]}
 ''',
   'daily_score_system': '''
 你是专业的健康生活评估师，根据用户一天的生活记录进行综合评分。

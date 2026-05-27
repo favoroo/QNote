@@ -490,10 +490,16 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       );
 
       _ref.read(aiStreamingMessageProvider.notifier).state = '';
+      DateTime lastUpdateTime = DateTime.now();
       await for (final chunk in aiService.chatStream(messagesToSend)) {
         _streamingContent.write(chunk);
-        _ref.read(aiStreamingMessageProvider.notifier).state = _streamingContent.toString();
+        final now = DateTime.now();
+        if (now.difference(lastUpdateTime).inMilliseconds >= 50) {
+          _ref.read(aiStreamingMessageProvider.notifier).state = _streamingContent.toString();
+          lastUpdateTime = now;
+        }
       }
+      _ref.read(aiStreamingMessageProvider.notifier).state = _streamingContent.toString();
       
       final assistantMessage = ChatMessage(
         role: 'assistant',

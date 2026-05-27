@@ -8,6 +8,7 @@ import 'package:qnote_flutter/core/storage/sync_log_repository.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:qnote_flutter/core/storage/database_helper.dart';
 
 class SyncResult {
   final bool success;
@@ -735,5 +736,180 @@ class WebdavService {
   Future<String> getDatabasesPath() async {
     final appDir = await getApplicationDocumentsDirectory();
     return p.join(appDir.path, 'databases');
+  }
+
+  Future<Set<String>> _getActiveImagesFromDb() async {
+    final activeImages = <String>{};
+    try {
+      final db = await DatabaseHelper.instance.database;
+
+      // 1. 日记图片
+      final diaries = await db.query('diary_records');
+      for (final row in diaries) {
+        final photosStr = row['photos'] as String?;
+        if (photosStr != null && photosStr.isNotEmpty) {
+          try {
+            final photos = jsonDecode(photosStr);
+            if (photos is List) {
+              for (final p in photos) {
+                final rel = _toRelativeImagePath(p.toString());
+                if (rel != null) activeImages.add(rel);
+              }
+            }
+          } catch (_) {}
+        }
+      }
+
+      // 2. 笔记图片
+      final notes = await db.query('notes');
+      for (final row in notes) {
+        final imagesStr = row['images'] as String?;
+        if (imagesStr != null && imagesStr.isNotEmpty) {
+          try {
+            final images = jsonDecode(imagesStr);
+            if (images is List) {
+              for (final img in images) {
+                final rel = _toRelativeImagePath(img.toString());
+                if (rel != null) activeImages.add(rel);
+              }
+            }
+          } catch (_) {}
+        }
+      }
+
+      // 3. 用户头像
+      final profiles = await db.query('user_profiles');
+      for (final row in profiles) {
+        final avatar = row['avatar_path'] as String?;
+        if (avatar != null && avatar.isNotEmpty) {
+          final rel = _toRelativeImagePath(avatar);
+          if (rel != null) activeImages.add(rel);
+        }
+      }
+    } catch (e) {
+      LoggerService.instance.logSync('获取数据库活动图片失败: $e', level: LogLevel.warning);
+    }
+    return activeImages;
+  }
+
+  String? _toRelativeImagePath(String absolutePath) {
+    if (absolutePath.isEmpty) return null;
+    final normalized = absolutePath.replaceAll('\\', '/');
+    final imagesIndex = normalized.lastIndexOf('/images/');
+    if (imagesIndex != -1) {
+      return absolutePath.substring(imagesIndex + 8);
+    }
+    return null;
+  }
+
+  Future<bool> syncImages({Function(String status)? onProgress}) async {
+    if (_config == null) return false;
+
+    try {
+      onProgress?.call('正在扫描本地及云端图片...');
+      LoggerService.instance.logSync('开始 WebDAV 图片同步...');
+
+      // 1. 获取本地数据库中所有被引用的“活动图片”
+      final activeImages = await _getActiveImagesFromDb();
+      
+      // 2. 获取本地磁盘上 images/ 目录下所有物理存在的图片
+      final appDir = await getApplicationDocumentsDirectory();
+      final localImagesDir = Directory(p.join(appDir.path, 'images'));
+      final localPhysicalImages = <String>{};
+      if (await localImagesDir.exists()) {
+        final files = await localImagesDir.list(recursive: true).where((f) => f is File).cast<File>().toList();
+        for (final f in files) {
+          final rel = _toRelativeImagePath(f.path);
+          if (rel != null) {
+            localPhysicalImages.add(rel);
+          }
+        }
+      }
+
+      // 3. 列出云端 images 目录下的图片
+      // 确保云端 images 目录存在
+      final remoteImagesBase = '${_config!.remotePath}images/';
+      try {
+        await _dio.request(remoteImagesBase, options: Options(method: 'MKCOL'));
+      } catch (_) {}
+
+      // 获取云端所有的图片相对路径
+      final remoteImages = <String>{};
+      
+      // 递归获取云端 images 文件夹下的所有文件
+      final subfolders = ['diary', 'notes', 'avatar'];
+      for (final sub in subfolders) {
+        final remoteSubDir = '$remoteImagesBase$sub/';
+        try {
+          await _dio.request(remoteSubDir, options: Options(method: 'MKCOL'));
+        } catch (_) {}
+
+        final filesInSub = await propFind(remoteSubDir);
+        for (final fileHref in filesInSub) {
+          final decodedHref = Uri.decodeFull(fileHref);
+          final fileName = decodedHref.split('/').last;
+          if (fileName.isNotEmpty) {
+            remoteImages.add('$sub/$fileName');
+          }
+        }
+      }
+
+      LoggerService.instance.logSync('图片扫描结果: 本地引用=${activeImages.length}, 本地磁盘=${localPhysicalImages.length}, 云端=${remoteImages.length}');
+
+      // 4. 上传逻辑：本地物理存在且被数据库引用，且云端不存在 -> 上传
+      final uploadTargets = activeImages.intersection(localPhysicalImages).difference(remoteImages);
+      int uploadCount = 0;
+      for (final rel in uploadTargets) {
+        onProgress?.call('正在上传图片: ${uploadCount + 1}/${uploadTargets.length}');
+        final localPath = p.join(appDir.path, 'images', rel);
+        final remoteName = 'images/$rel';
+        
+        // 确保云端子文件夹存在
+        final parentDir = p.dirname(rel);
+        if (parentDir != '.') {
+          try {
+            await _dio.request('$remoteImagesBase$parentDir/', options: Options(method: 'MKCOL'));
+          } catch (_) {}
+        }
+
+        final success = await uploadFile(localPath, remoteName);
+        if (success) uploadCount++;
+      }
+
+      // 5. 下载逻辑：数据库引用但本地物理不存在，且云端存在 -> 下载
+      final downloadTargets = activeImages.difference(localPhysicalImages).intersection(remoteImages);
+      int downloadCount = 0;
+      for (final rel in downloadTargets) {
+        onProgress?.call('正在下载图片: ${downloadCount + 1}/${downloadTargets.length}');
+        final localPath = p.join(appDir.path, 'images', rel);
+        final remoteName = 'images/$rel';
+        final success = await downloadFile(remoteName, localPath);
+        if (success) downloadCount++;
+      }
+
+      // 6. 删除逻辑：云端存在但本地数据库不引用，且本地物理也不存在（或者已被用户删除） -> 从云端删除
+      final deleteFromRemoteTargets = remoteImages.difference(activeImages);
+      int deleteCount = 0;
+      for (final rel in deleteFromRemoteTargets) {
+        onProgress?.call('正在清理云端旧图片: ${deleteCount + 1}/${deleteFromRemoteTargets.length}');
+        final success = await deleteFile('images/$rel');
+        if (success) deleteCount++;
+      }
+
+      // 7. 清理本地物理存在的、但在数据库中没有引用的图片
+      final localCleanupTargets = localPhysicalImages.difference(activeImages);
+      for (final rel in localCleanupTargets) {
+        final localPath = p.join(appDir.path, 'images', rel);
+        try {
+          await File(localPath).delete();
+        } catch (_) {}
+      }
+
+      LoggerService.instance.logSync('图片同步完成! 上传=$uploadCount, 下载=$downloadCount, 清理云端=$deleteCount, 清理本地=${localCleanupTargets.length}');
+      return true;
+    } catch (e, stackTrace) {
+      LoggerService.instance.logSync('图片同步失败: $e', level: LogLevel.error, details: stackTrace.toString());
+      return false;
+    }
   }
 }
