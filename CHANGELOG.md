@@ -6,6 +6,34 @@
 
 ---
 
+## 2026-05-29
+
+- **[22:28]**
+  - **Fixed**: 修复了 WebDAV 同步配置数据被覆盖或丢失的底层严重漏洞。通过修改 `ExportService._clearAllData`，在导入或远程恢复数据覆盖本地数据时，不再将 `webdav_configs` 和 `app_configs` 清空，避免了因云端备份中为保障安全未包含密码而将本地密码也抹去的漏洞 (`lib/core/export/export_service.dart`)。
+  - **Changed**: 优化了同步设置页面（`SyncSettingsPage`）的配置保存体验。引入了对配置修改状态 of 脏标记检测，并通过 `PopScope` 拦截了顶栏返回键及系统手势返回动作。当配置有未保存的更改时，提供“保存/放弃/取消”二次确认弹框；同时在“连接测试”成功通过后，会自动同步保存当前正确的配置状态 (`lib/pages/settings/sync_settings_page.dart`)。
+  - **Changed**: 移除了同步设置页面服务器地址、账户、应用密码和备份子目录的举例占位文字（hintText），在没有配置内容时显示为空，避免对用户造成干扰 (`lib/pages/settings/sync_settings_page.dart`)。
+  - **Changed**: 优化了同步配置输入框的排版与文字大小。将输入框的左右内边距由 16 缩减为 12，并将字体字重调整为 w500，字号微调为 13，以腾出更多横向空间，确保类似服务器长链接地址等信息能够在一行内完整或更多地显示出来 (`lib/pages/settings/sync_settings_page.dart`)。
+
+- **[22:22]**
+  - **Changed**: 调整日记列表项（`DiaryItem`）与批量管理页（`diary_batch_manage_view.dart`）中标签事件的时间展示位置。将原本显示在类别标签右侧、其他属性标签左侧的时间戳，移动至所有属性标签/字段的右侧，以提供更符合直觉的顺序体验 (`lib/widgets/diary/diary_item.dart`, `lib/widgets/diary/diary_batch_manage_view.dart`)。
+
+- **[22:20]**
+  - **Changed**: 将桌面小组件底部的“还有 X 个待办，点击进入应用查看...”长文本重构为极简精致的“圆形数字标 + 简短文字”布局。新建了 `bg_widget_badge.xml` 作为圆形气泡背景，在多于 4 项待办时在底部左侧显示如 `+1` 的强调色数字标并紧跟“更多待办”说明文字，降低视觉噪音，保持了高档的微件格调 (`android/app/src/main/res/layout/widget_todo.xml`, `android/app/src/main/kotlin/com/appone/qnote_flutter/TodoWidgetProvider.kt`, `android/app/src/main/res/drawable/bg_widget_badge.xml`)。
+
+- **[22:15]**
+  - **Changed**: 优化美化待办小组件的界面。去除了列表中每个待办事件外层的灰色圆角背景框 (`bg_widget_input`)，并微调了内边距与外边距。使整个小组件列表与外部大卡片融为一体，排版更显轻盈、开阔与纯粹 (`android/app/src/main/res/layout/widget_todo.xml`)。
+
+- **[21:57]**
+  - **Changed**: 彻底重构今日待办桌面小组件的展示与交互机制。将脆弱且在部分国产定制系统（如魅族 Flyme）上极易被拦截禁用的 `ListView` + `RemoteViewsService` 动态列表，彻底重构为 4 个静态 View 槽位（Static Slots）组合的直连数据库渲染方案。新方案直接在 `TodoWidgetProvider` 的 `updateAppWidget` 中单次检索今日待办，根据是否有数据动态展示和填充静态槽位并挂载独立的点击/勾选广播事件，多于 4 条时展示“更多待办”导航提示。这完全避开了系统对后台跨进程 Service 绑定的权限拦截，实现 100% 刷新可靠性与即时勾选响应 (`android/app/src/main/res/layout/widget_todo.xml`, `android/app/src/main/kotlin/com/appone/qnote_flutter/TodoWidgetProvider.kt`, `android/app/src/main/kotlin/com/appone/qnote_flutter/MainActivity.kt`)。
+  - **Deleted**: 彻底移除不再需要的原生服务类 `TodoWidgetService.kt` 并清理了 `AndroidManifest.xml` 中的服务配置，降低了小组件原生实现的复杂度与维护成本。
+
+- **[21:42]**
+  - **Fixed**: 优化日记列表项（`DiaryItem`）中的时间显示。新增 `_isTagTimeDuplicate` 辅助校验，当标签级时间（多标签或单标签的 `displayTime` / `time`）与整个日记卡片顶部显示的时间完全一致（开始时分与结束时分完全相同，或无结束时间且开始时分相同）时，自动隐藏标签旁边的重复时间，使卡片布局更精简清爽 (`lib/widgets/diary/diary_item.dart`)。
+
+- **[21:37]**
+  - **Fixed**: 修复待办桌面组件列表始终显示"暂无今日待办"的 Bug（头部数字正常但列表内容为空）。根因是 `setEmptyView` 自动机制会在 `RemoteViewsService` 异步加载期间因 ListView Adapter 初始为空而立即触发 EmptyView 显示，后续数据加载完成也无法自动隐藏。修复方案：移除 `setEmptyView` 自动绑定，改为在 Provider 中根据 SQL 查询到的 pendingCount 手动控制 `todo_empty_view` 和 `todo_list_view` 的可见性，使空状态完全由同步查询结果决定而非依赖异步 Adapter。同时在 `TodoWidgetService.onDataSetChanged()` 中补全了 `android.util.Log` 日志链路，便于后续定位 RemoteViewsService 调度问题 (`android/app/src/main/kotlin/com/appone/qnote_flutter/TodoWidgetProvider.kt`, `android/app/src/main/kotlin/com/appone/qnote_flutter/TodoWidgetService.kt`)。
+  - **Changed**: 优化了智能标签提取的 System Prompt，强化了对于图片（特别是食物图片）的提取规则。明确指导 AI 在提取食物图片时识别具体的菜品名称及配料信息，并在 `notes` 字段中详细呈现，从而支持后续 AI 助手更精准的分析 (`lib/config/defaults.dart`)。
+
 ## 2026-05-28
 
 - **[08:18]**

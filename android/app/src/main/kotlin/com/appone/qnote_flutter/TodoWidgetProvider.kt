@@ -57,16 +57,20 @@ class TodoWidgetProvider : AppWidgetProvider() {
                     appWidgetManager.getAppWidgetIds(component)
                 }
                 
-                // 强制触发 ListView 的 Factory 重新拉取数据
-                appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetIds, R.id.todo_list_view)
-                
-                // 重新渲染各个 Widget 实例（更新计数及绑定）
+                // 重新渲染各个 Widget 实例（同步拉取数据并刷新 UI）
                 for (widgetId in appWidgetIds) {
                     updateAppWidget(context, appWidgetManager, widgetId)
                 }
             }
         }
     }
+
+    data class TodoItemData(
+        val id: String,
+        val title: String,
+        val isCompleted: Boolean,
+        val priority: String
+    )
 
     private fun toggleTodoStatus(context: Context, todoId: String, isCompleted: Boolean) {
         // 在后台线程异步修改数据库以保持流畅性
@@ -149,13 +153,12 @@ class TodoWidgetProvider : AppWidgetProvider() {
                 db?.close()
             }
 
-            // 4. 发送刷新通知广播，重新加载待办列表
+            // 4. 发送刷新通知广播，重新加载/渲染待办列表
             val appWidgetManager = AppWidgetManager.getInstance(context)
             val component = ComponentName(context, TodoWidgetProvider::class.java)
             val appWidgetIds = appWidgetManager.getAppWidgetIds(component)
-            appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetIds, R.id.todo_list_view)
             
-            // 同时更新头部计数
+            // 重新渲染各个 Widget 实例
             for (widgetId in appWidgetIds) {
                 updateAppWidget(context, appWidgetManager, widgetId)
             }
@@ -171,17 +174,7 @@ class TodoWidgetProvider : AppWidgetProvider() {
     private fun updateAppWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
         val views = RemoteViews(context.packageName, R.layout.widget_todo)
 
-        // 1. 设置待办列表 Service 适配器
-        val serviceIntent = Intent(context, TodoWidgetService::class.java).apply {
-            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
-            data = Uri.parse("qnote://widget/todo/$appWidgetId")
-            setPackage(context.packageName)
-        }
-        @Suppress("DEPRECATION")
-        views.setRemoteAdapter(R.id.todo_list_view, serviceIntent)
-        views.setEmptyView(R.id.todo_list_view, R.id.todo_empty_view)
-
-        // 2. 设置待办头部刷新点击 -> 发送刷新广播
+        // 1. 设置待办头部刷新点击 -> 发送刷新广播
         val refreshIntent = Intent(context, TodoWidgetProvider::class.java).apply {
             action = ACTION_TODO_REFRESH
             putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
@@ -198,26 +191,27 @@ class TodoWidgetProvider : AppWidgetProvider() {
         val addPendingIntent = getPendingRouteIntent(context, "/todo", appWidgetId + 100)
         views.setOnClickPendingIntent(R.id.todo_widget_title, addPendingIntent)
 
-        // 3. 设置待办项点击 BroadCast PendingIntent 模板 (不预设 action 以便 fillInIntent 能够填充自定义 action)
-        val listClickIntent = Intent(context, TodoWidgetProvider::class.java)
-        val listClickPendingIntent = PendingIntent.getBroadcast(
-            context,
-            appWidgetId + 200,
-            listClickIntent,
-            PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-        views.setPendingIntentTemplate(R.id.todo_list_view, listClickPendingIntent)
-
-        // 4. 加载头部未完成计数
+        // 2. 加载待办数据，前 4 条进行静态渲染
+        val todos = ArrayList<TodoItemData>()
         var pendingCount = 0
         var db: SQLiteDatabase? = null
         try {
             val dbFile = context.getDatabasePath("qnote.db")
             if (dbFile.exists()) {
                 db = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
-                val cursor = db.rawQuery("SELECT COUNT(*) FROM todos WHERE is_deleted = 0 AND is_completed = 0 AND is_long_term = 0", null)
-                if (cursor.moveToFirst()) {
-                    pendingCount = cursor.getInt(0)
+                val cursor = db.rawQuery(
+                    "SELECT id, title, is_completed, priority FROM todos WHERE is_deleted = 0 AND is_completed = 0 AND is_long_term = 0 ORDER BY sort_order ASC, created_at ASC",
+                    null
+                )
+                pendingCount = cursor.count
+                var count = 0
+                while (cursor.moveToNext() && count < 4) {
+                    val id = cursor.getString(0)
+                    val title = cursor.getString(1)
+                    val isCompleted = cursor.getInt(2) == 1
+                    val priority = cursor.getString(3) ?: "normal"
+                    todos.add(TodoItemData(id, title, isCompleted, priority))
+                    count++
                 }
                 cursor.close()
             }
@@ -226,22 +220,106 @@ class TodoWidgetProvider : AppWidgetProvider() {
         } finally {
             db?.close()
         }
+
+        // 设置今日待办总数
         views.setTextViewText(R.id.todo_widget_count, "($pendingCount)")
 
-        appWidgetManager.updateAppWidget(appWidgetId, views)
-        
-        // 5. 绑定完适配器后立即强制通知数据源触发拉取一次，防止部分 Launcher 在首次加载时静默而导致列表显示空
-        appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.todo_list_view)
+        // 3. 静态渲染槽位定义
+        val itemLayouts = intArrayOf(
+            R.id.todo_item_layout_0,
+            R.id.todo_item_layout_1,
+            R.id.todo_item_layout_2,
+            R.id.todo_item_layout_3
+        )
+        val itemTitles = intArrayOf(
+            R.id.todo_item_title_0,
+            R.id.todo_item_title_1,
+            R.id.todo_item_title_2,
+            R.id.todo_item_title_3
+        )
+        val itemCheckboxes = intArrayOf(
+            R.id.todo_item_checkbox_0,
+            R.id.todo_item_checkbox_1,
+            R.id.todo_item_checkbox_2,
+            R.id.todo_item_checkbox_3
+        )
+        val itemPriorities = intArrayOf(
+            R.id.todo_item_priority_0,
+            R.id.todo_item_priority_1,
+            R.id.todo_item_priority_2,
+            R.id.todo_item_priority_3
+        )
 
-        // 6. 延迟 500ms 再次触发一次通知，确保 Launcher 在应用布局并建立 Adapter 后能万无一失地加载出数据
-        android.os.Handler(context.mainLooper).postDelayed({
-            try {
-                AppWidgetManager.getInstance(context).notifyAppWidgetViewDataChanged(appWidgetId, R.id.todo_list_view)
-            } catch (e: Exception) {
-                e.printStackTrace()
+        for (i in 0..3) {
+            val layoutId = itemLayouts[i]
+            val titleId = itemTitles[i]
+            val checkboxId = itemCheckboxes[i]
+            val priorityId = itemPriorities[i]
+
+            if (i < todos.size) {
+                val todo = todos[i]
+                views.setViewVisibility(layoutId, android.view.View.VISIBLE)
+                views.setTextViewText(titleId, todo.title)
+
+                // 设置 Checkbox 与完成文本样式
+                if (todo.isCompleted) {
+                    views.setImageViewResource(checkboxId, R.drawable.ic_checkbox_checked)
+                    views.setTextColor(titleId, context.getColor(R.color.widget_text_secondary))
+                } else {
+                    views.setImageViewResource(checkboxId, R.drawable.ic_checkbox_unchecked)
+                    views.setTextColor(titleId, context.getColor(R.color.widget_text_primary))
+                }
+
+                // 重要待办标绿点
+                if (todo.priority == "important") {
+                    views.setViewVisibility(priorityId, android.view.View.VISIBLE)
+                } else {
+                    views.setViewVisibility(priorityId, android.view.View.GONE)
+                }
+
+                // 点击 Checkbox 进行状态切换
+                val toggleIntent = Intent(context, TodoWidgetProvider::class.java).apply {
+                    action = ACTION_TODO_TOGGLE
+                    putExtra(EXTRA_TODO_ID, todo.id)
+                    putExtra(EXTRA_TODO_STATUS, if (todo.isCompleted) 1 else 0)
+                    data = Uri.parse("qnote://todo/toggle/$appWidgetId/${todo.id}")
+                }
+                val togglePendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    appWidgetId * 10 + i,
+                    toggleIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+                )
+                views.setOnClickPendingIntent(checkboxId, togglePendingIntent)
+
+                // 点击待办项文字直接跳转主应用待办界面
+                val titlePendingIntent = getPendingRouteIntent(context, "/todo", appWidgetId * 10 + i + 100)
+                views.setOnClickPendingIntent(titleId, titlePendingIntent)
+            } else {
+                views.setViewVisibility(layoutId, android.view.View.GONE)
             }
-        }, 500)
+        }
+
+        // 4. 手动控制空状态可见性与“更多”提示
+        if (pendingCount == 0) {
+            views.setViewVisibility(R.id.todo_empty_view, android.view.View.VISIBLE)
+            views.setViewVisibility(R.id.todo_more_layout, android.view.View.GONE)
+        } else {
+            views.setViewVisibility(R.id.todo_empty_view, android.view.View.GONE)
+            if (pendingCount > 4) {
+                views.setViewVisibility(R.id.todo_more_layout, android.view.View.VISIBLE)
+                views.setTextViewText(R.id.todo_more_badge, "+${pendingCount - 4}")
+                // 点击提示文本也可以进入应用
+                val morePendingIntent = getPendingRouteIntent(context, "/todo", appWidgetId + 500)
+                views.setOnClickPendingIntent(R.id.todo_more_layout, morePendingIntent)
+            } else {
+                views.setViewVisibility(R.id.todo_more_layout, android.view.View.GONE)
+            }
+        }
+
+        appWidgetManager.updateAppWidget(appWidgetId, views)
     }
+
 
     private fun getPendingRouteIntent(context: Context, route: String, requestCode: Int): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).apply {

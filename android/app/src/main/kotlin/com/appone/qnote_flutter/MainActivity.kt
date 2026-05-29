@@ -80,13 +80,6 @@ class MainActivity : FlutterActivity() {
         )
         todoIntent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, todoIds)
         context.sendBroadcast(todoIntent)
-        
-        // 强制刷新待办列表的 RemoteViews
-        if (todoIds.isNotEmpty()) {
-            AppWidgetManager.getInstance(context).notifyAppWidgetViewDataChanged(
-                todoIds,
-                R.id.todo_list_view
-            )
-        }
+
     }
 }

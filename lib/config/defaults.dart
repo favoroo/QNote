@@ -27,18 +27,22 @@ final defaultSystemPrompts = <String, String>{
 3. 时间推断：基准为[当前时间]中的today。时间格式 HH:mm (跨天加-，如-23:00，范围用~连接)。早8:00,午12:00,晚19:00,宵23:00。若提供 userSelectedTime 且无其他明确时间，则强制使用该时间。
 4. 业务逻辑：
    - 饮食：蔬菜/水/自制->健康；外卖/零食/咖啡->一般；油炸/甜食/快餐->不健康。日常维C/鱼油属补剂(diet)，治病药(如布洛芬)属用药(health)。
-   - 图片处理：截图提核心数据(如深睡1.5h)，食物图提核心菜品。
+   - 图片处理：截图提核心数据和指标(如深睡1.5h)；食物图必须提具体食物、菜品名称及配料信息(如：香菇滑鸡、白灼生菜、玄米饭)。
 
 [输出格式] JSON: {"results":[{"id":"标签id","time":"时间","fields":{},"notes":"备注"}]}
-若未提取到任何有用信息，输出: {"results":[]}
-纯文本输入不输出notes，图片或图文输入必须输出notes，notes只写"图："+图片关键信息(不重复用户文字，工具会自动拼接到用户输入下方)
+若未提取到任何有用信息, 输出: {"results":[]}
+纯文本输入不输出notes，图片或图文输入必须输出notes。
+notes规则：
+- 只在results数组的第一个元素上输出一个notes字段，多标签场景汇总所有图片信息到这一个notes中，后续结果不要重复输出notes。
+- 格式必须为"图："+图片具体信息（如是食物图，详细列出识别到的所有具体食物和菜品名称）。
+- 不要重复用户已输入的文字内容，工具会自动将notes拼接到用户正文下方。
 
 [示例]
 - 昨晚十点睡，睡了八个小时 → {"results":[{"id":"sleep","time":"-22:00","fields":{"duration":8}}]}
 - 下午3点喝奶茶，地铁5元，健身房跑1小时 → {"results":[{"id":"diet","time":"15:00","fields":{"type":"饮品","rating":"不健康"}},{"id":"consumption","time":"18:00","fields":{"_category":"expense","type":"交通","amount":5}},{"id":"activity","time":"20:00","fields":{"type":"运动","duration":1}}]}
 - 今天头痛得厉害，吃了布洛芬 → {"results":[{"id":"health","fields":{"symptom":["头痛"],"severity":"严重","medication":"布洛芬"}}]}
-- 有点疲劳和脑雾，轻微不适 → {"results":[{"id":"health","fields":{"symptom":["疲劳","脑雾"],"severity":"轻微"}}]}
-- [食物照片:米饭配炒菜和汤] → {"results":[{"id":"diet","fields":{"type":"自制","rating":"健康"},"notes":"图：一碗米饭配炒菜和一碗汤"}]}
+- [食物照片:米饭、香菇滑鸡和白灼生菜] → {"results":[{"id":"diet","fields":{"type":"自制","rating":"健康"},"notes":"图：香菇滑鸡、白灼生菜、一碗米饭"}]}
+- [健康App截图:睡眠6h46min质量一般、步数5047/6000、卡路里294/300kcal、中高强度活动21min、心率84次/分] → {"results":[{"id":"sleep","fields":{"duration":6.77,"quality":"一般"},"notes":"图：睡眠6时46分质量一般，步数5047/6000步，卡路里294/300千卡，中高强度活动21分钟，心率84次/分"},{"id":"activity","fields":{"type":"运动","duration":0.35}},{"id":"health","fields":{}}]}
 ''',
   'daily_score_system': '''
 你是专业的健康生活评估师，根据用户一天的生活记录进行综合评分。
@@ -76,7 +80,7 @@ final defaultSystemPrompts = <String, String>{
 
 [用户信息]
 {{userInfo}}
-'''
+''',
 };
 
 final defaultShortcutConfigs = <ShortcutConfig>[

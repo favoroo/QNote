@@ -447,20 +447,6 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
           ),
         ));
 
-        final showTime = entry.displayTime ?? entry.time;
-        if (showTime != null && showTime.isNotEmpty) {
-          rowItems.add(Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2),
-            child: Text(
-              showTime,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ));
-        }
-
         // Add the additional fields (outlined)
         final additionalTags = _buildAdditionalTags(entry);
         for (final tagText in additionalTags) {
@@ -478,6 +464,20 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
               tagText,
               style: theme.textTheme.labelSmall?.copyWith(
                 color: color.withValues(alpha: 0.9),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ));
+        }
+
+        final showTime = entry.displayTime ?? entry.time;
+        if (showTime != null && showTime.isNotEmpty) {
+          rowItems.add(Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: Text(
+              showTime,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                 fontWeight: FontWeight.w500,
               ),
             ),

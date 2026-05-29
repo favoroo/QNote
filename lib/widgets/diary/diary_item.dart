@@ -539,20 +539,6 @@ class DiaryItem extends StatelessWidget {
           ),
         ));
 
-        final showTime = entry.displayTime ?? entry.time;
-        if (showTime != null && showTime.isNotEmpty) {
-          rowItems.add(Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2),
-            child: Text(
-              showTime,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ));
-        }
-
         // Add the additional fields (outlined)
         final additionalTags = _buildAdditionalTags(entry);
         for (final tagText in additionalTags) {
@@ -570,6 +556,20 @@ class DiaryItem extends StatelessWidget {
               tagText,
               style: theme.textTheme.labelSmall?.copyWith(
                 color: color.withValues(alpha: 0.9),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ));
+        }
+
+        final showTime = entry.displayTime ?? entry.time;
+        if (showTime != null && showTime.isNotEmpty && !_isTagTimeDuplicate(entry)) {
+          rowItems.add(Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: Text(
+              showTime,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -645,21 +645,7 @@ class DiaryItem extends StatelessWidget {
       ),
     ));
 
-    // 2. Optional time display
-    if (showTime != null && showTime.isNotEmpty) {
-      rowItems.add(Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2),
-        child: Text(
-          showTime,
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ));
-    }
-
-    // 3. Field pills (outlined)
+    // 2. Field pills (outlined)
     final additionalTags = _buildAdditionalTags(entry);
     for (final tagText in additionalTags) {
       rowItems.add(Container(
@@ -676,6 +662,20 @@ class DiaryItem extends StatelessWidget {
           tagText,
           style: theme.textTheme.labelSmall?.copyWith(
             color: color.withValues(alpha: 0.9),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ));
+    }
+
+    // 3. Optional time display
+    if (showTime != null && showTime.isNotEmpty && !_isTagTimeDuplicate(entry)) {
+      rowItems.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: Text(
+          showTime,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -950,6 +950,29 @@ class DiaryItem extends StatelessWidget {
       return '$startDateStr $startStr → $endStr';
     }
     return '$startDateStr $startStr';
+  }
+
+  bool _isTagTimeDuplicate(TagEntry entry) {
+    if (entry.startHour == null || entry.startMinute == null) {
+      return false;
+    }
+
+    final recordStart = record.startTime ?? record.time;
+    final recordStartHour = recordStart.hour;
+    final recordStartMinute = recordStart.minute;
+
+    final isStartSame = entry.startHour == recordStartHour && entry.startMinute == recordStartMinute;
+    if (!isStartSame) return false;
+
+    if (record.endTime == null) {
+      return entry.endHour == null;
+    } else {
+      if (entry.endHour == null) return false;
+
+      final recordEndHour = record.endTime!.hour;
+      final recordEndMinute = record.endTime!.minute;
+      return entry.endHour == recordEndHour && entry.endMinute == recordEndMinute;
+    }
   }
 }
 

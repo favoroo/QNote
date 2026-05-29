@@ -75,14 +75,6 @@
                 android:resource="@xml/widget_todo_info" />
         </receiver>
 
-        <service
-            android:name="com.appone.qnote_flutter.TodoWidgetService"
-            android:permission="android.permission.BIND_REMOTEVIEWS"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.widget.RemoteViewsService" />
-            </intent-filter>
-        </service>
 
         <activity
             android:name="com.appone.qnote_flutter.QuickRecordActivity"
