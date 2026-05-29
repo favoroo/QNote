@@ -47,6 +47,9 @@ class TodoWidgetProvider : AppWidgetProvider() {
                 val appWidgetManager = AppWidgetManager.getInstance(context)
                 val targetWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
                 
+                // 弹出 Toast 提示给用户明确的点击反馈
+                android.widget.Toast.makeText(context, "今日待办数据已刷新", android.widget.Toast.LENGTH_SHORT).show()
+
                 val appWidgetIds = if (targetWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
                     intArrayOf(targetWidgetId)
                 } else {

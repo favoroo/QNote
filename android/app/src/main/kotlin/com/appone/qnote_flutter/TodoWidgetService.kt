@@ -73,13 +73,9 @@ class TodoViewsFactory(private val context: Context, intent: Intent) : RemoteVie
         // 1. 设置 Checkbox 图片与完成状态文本样式
         if (data.isCompleted) {
             views.setImageViewResource(R.id.todo_item_checkbox, R.drawable.ic_checkbox_checked)
-            // 灰色删除线字体
-            views.setInt(R.id.todo_item_title, "setPaintFlags", 16) // Paint.STRIKE_THRU_TEXT_FLAG = 16
             views.setTextColor(R.id.todo_item_title, context.getColor(R.color.widget_text_secondary))
         } else {
             views.setImageViewResource(R.id.todo_item_checkbox, R.drawable.ic_checkbox_unchecked)
-            // 恢复常规字体
-            views.setInt(R.id.todo_item_title, "setPaintFlags", 0)
             views.setTextColor(R.id.todo_item_title, context.getColor(R.color.widget_text_primary))
         }
 

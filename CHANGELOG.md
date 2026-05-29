@@ -8,6 +8,9 @@
 
 ## 2026-05-28
 
+- **[08:18]**
+  - **Fixed**: 解决发布版本（`flutter build apk`）打包后待办小组件列表依然显示为空的深层机制缺陷。移除了 `TodoWidgetService.kt` 中针对文本项反射调用 `views.setInt(..., "setPaintFlags", ...)` 的逻辑，规避了现代 Android 系统对 RemoteViews 非白名单反射 API 审计过滤所导致的单项渲染崩溃 Bug。同时在 `TodoWidgetProvider.kt` 中添加了在用户点击刷新小组件时主动弹出“今日待办数据已刷新”的 Toast 反馈，协助用户获得可靠的刷新行为触觉感知 (`android/app/src/main/kotlin/com/appone/qnote_flutter/TodoWidgetService.kt`, `android/app/src/main/kotlin/com/appone/qnote_flutter/TodoWidgetProvider.kt`)。
+
 - **[07:35]**
   - **Fixed**: 修复待办小组件 ListView 无法渲染数据以及点击刷新无效的关键底层缺陷。因 `TodoWidgetService` 在 `AndroidManifest.xml` 中未声明 `android.widget.RemoteViewsService` 的 `<intent-filter>`，导致 Launcher 在尝试跨进程绑定服务时 Intent 校验匹配失败从而静默拒绝加载列表，已为服务正确添加该过滤器。同时将 `setRemoteAdapter` 统改回兼容性最优的双参数重载，规避了部分国产定制系统（MIUI/ColorOS 等）对 API 29 三参数重载的渲染 Bug，并优化了刷新广播，在 Intent 中附带特定的 `appWidgetId` 实现了对被点按组件的精准强制刷新 (`android/app/src/main/AndroidManifest.xml`, `android/app/src/main/kotlin/com/appone/qnote_flutter/TodoWidgetProvider.kt`)。
 
