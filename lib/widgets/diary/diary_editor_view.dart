@@ -46,6 +46,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   late List<TagEntry> _tagEntries;
   bool _isExtracting = false;
   CancelToken? _cancelToken;
+  final Map<String, Future<String>> _compressingTasks = {};
 
   final Map<String, TextEditingController> _formControllers = {};
 
@@ -502,15 +503,48 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       xFile = await GalleryHelper.pickSingleImage(context);
     }
     if (xFile == null) return;
+
+    final tempPath = xFile.path;
+
+    // 立即更新 UI，将临时路径加入到 _photos，实现“秒显”
+    setState(() {
+      _photos.add(tempPath);
+    });
+
     final imageRepo = ImageRepository();
-    final savedPath = await imageRepo.saveImage(
-      File(xFile.path),
+    // 启动异步任务
+    final Future<String> compressFuture = imageRepo.saveImage(
+      File(tempPath),
       subfolder: 'diary',
     );
-    setState(() {
-      _photos.add(savedPath);
-      _newlyUploadedPaths.add(savedPath);
-    });
+    
+    _compressingTasks[tempPath] = compressFuture;
+    
+    try {
+      final savedPath = await compressFuture;
+      
+      if (!mounted) return;
+      
+      setState(() {
+        _compressingTasks.remove(tempPath);
+        // 如果用户在压缩期间没有删除该图片，就把临时路径替换为压缩保存后的永久路径
+        final index = _photos.indexOf(tempPath);
+        if (index != -1) {
+          _photos[index] = savedPath;
+          _newlyUploadedPaths.add(savedPath);
+        } else {
+          // 如果用户已经删除了它，就把新保存的永久图片文件删除，防止垃圾文件堆积
+          imageRepo.deleteImage(savedPath);
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _compressingTasks.remove(tempPath);
+        _photos.remove(tempPath);
+      });
+      Toast.error(context, '图片处理失败：$e');
+    }
   }
 
   void _removePhoto(int index) {
@@ -532,7 +566,42 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     );
   }
 
+  Future<void> _waitForCompressing() async {
+    if (_compressingTasks.isNotEmpty) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(20.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('正在处理图片，请稍候...'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      try {
+        await Future.wait(_compressingTasks.values);
+      } catch (e) {
+        debugPrint('Error waiting for compression: $e');
+      }
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    }
+  }
+
   Future<void> _save() async {
+    await _waitForCompressing();
+    if (!mounted) return;
+
     // Ensure sleep tag time is in sync with record time on save (only if sleepEntry has time or _startTime is set)
     final sleepIndex = _tagEntries.indexWhere((e) => e.id == 'sleep' || e.name == '睡眠');
     if (sleepIndex != -1) {
@@ -765,10 +834,12 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       _formControllers.clear();
 
       if (result.tagEntries.isNotEmpty) {
-        final newContent = _mergeNotesWithContent(
-          result.notes,
-          _contentController.text,
-        );
+        final newContent = _photos.isNotEmpty
+            ? _mergeNotesWithContent(
+                result.notes,
+                _contentController.text,
+              )
+            : _contentController.text;
         setState(() {
           _tagEntries = result.tagEntries;
           _tags = result.tagEntries.map((e) => e.name).toList();
@@ -776,10 +847,12 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
           _contentController.text = newContent;
         });
       } else if (foundShortcut != null) {
-        final newContent = _mergeNotesWithContent(
-          result.notes,
-          _contentController.text,
-        );
+        final newContent = _photos.isNotEmpty
+            ? _mergeNotesWithContent(
+                result.notes,
+                _contentController.text,
+              )
+            : _contentController.text;
         setState(() {
           if (!_tags.contains(foundShortcut.name)) {
             _tags = [
@@ -2018,6 +2091,8 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   }
 
   Widget _buildPhotoItem(int index, ColorScheme colorScheme) {
+    final path = _photos[index];
+    final isCompressing = _compressingTasks.containsKey(path);
     return GestureDetector(
       onTap: () => _previewPhoto(index),
       child: Stack(
@@ -2033,11 +2108,29 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: UnifiedImage(
-                imagePath: _photos[index],
-                width: 80,
-                height: 80,
-                borderRadius: BorderRadius.circular(12),
+              child: Stack(
+                children: [
+                  UnifiedImage(
+                    imagePath: path,
+                    width: 80,
+                    height: 80,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  if (isCompressing)
+                    Container(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      child: const Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),

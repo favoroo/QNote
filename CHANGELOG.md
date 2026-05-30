@@ -6,7 +6,22 @@
 
 ---
 
+## 2026-05-30
+
+- **[22:58]**
+  - **Changed**: 优化了笔记编辑器中的链接展示与删除交互逻辑。引入了块级段落 `_LinkSegment`，将单独成行的链接及其网页预览框绑定在一起作为不可分割的块段落进行整体渲染和删除。去除了原先纯文本段落（`_TextSegment`）中直接渲染链接预览以及用户可以在链接与预览框中间插入内容的设计。实现了在链接卡片上点击 `x` 按钮将整体同时删除链接和预览卡片的交互效果。此外支持了输入/粘贴链接并按回车或失去焦点时，自动将行拆分为块级链接段落并自动聚焦新行的交互 (`lib/widgets/notes/note_editor_view.dart`)。
+  - **Added**: 在笔记编辑器底部的工具栏上新增了“插入链接”按钮（`Icons.link`），点击后将弹出对话框供用户输入链接与可选标题，确认后直接在光标处插入为块级链接段落 (`lib/widgets/notes/note_editor_view.dart`)。
+
+- **[22:45]**
+  - **Fixed**: 修复了在时间线页面对已存记录进行 AI 智能提取时，大模型输出的 `notes`（如图片中识别出的菜品备注信息）未能成功合并保存到日记正文/备注中的 Bug。现在已在 `_handleAiExtract` 中正确将 `result.notes` 合并到 `newContent` 中并更新至数据库 (`lib/pages/diary_page.dart`)。
+  - **Fixed**: 解决了当用户仅输入纯文本（无图片）进行 AI 智能提取时，大模型由于注意力关联偏差可能仍会输出包含 `"图："` 前缀的 `notes`（幻觉/重复输出），导致日记内容中产生冗余文字的 Bug。增加了“只有在存在图片时才合并/使用 AI 返回的 `notes`”的防御性校验规则 (`lib/pages/diary_page.dart`, `lib/widgets/diary/diary_input_bar.dart`, `lib/widgets/diary/diary_editor_view.dart`)。
+
 ## 2026-05-29
+
+- **[22:56]**
+  - **Changed**: 优化了日记编辑页面与快速记录输入栏的图片上传交互体验。实现了“原图路径秒显 + 后台静默压缩保存”的异步处理流程，使得用户在选择图片后无需等待即可在界面上直接看到并继续后续操作 (`lib/widgets/diary/diary_editor_view.dart`, `lib/widgets/diary/diary_input_bar.dart`)。
+  - **Changed**: 为正在后台压缩处理的图片添加了高质感的半透明黑色遮罩与微型进度指示器组件，提供清晰顺畅的交互反馈 (`lib/widgets/diary/diary_editor_view.dart`, `lib/widgets/diary/diary_input_bar.dart`)。
+  - **Added**: 引入了保存/发送日记前的图片压缩任务等待屏障，若用户在压缩期间立即保存，将弹出 `正在处理图片，请稍候...` 对话框，在全部压缩完成后再行写入数据库，从而在提升操作流畅度的同时保障了最终数据路径的完整性。
 
 - **[22:28]**
   - **Fixed**: 修复了 WebDAV 同步配置数据被覆盖或丢失的底层严重漏洞。通过修改 `ExportService._clearAllData`，在导入或远程恢复数据覆盖本地数据时，不再将 `webdav_configs` 和 `app_configs` 清空，避免了因云端备份中为保障安全未包含密码而将本地密码也抹去的漏洞 (`lib/core/export/export_service.dart`)。
