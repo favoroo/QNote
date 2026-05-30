@@ -49,6 +49,12 @@ class _ImageSegment extends _Segment {
   _ImageSegment(this.path);
 }
 
+class _LinkSegment extends _Segment {
+  final String url;
+  final String? title;
+  _LinkSegment({required this.url, this.title});
+}
+
 // ---------------------------------------------------------------------------
 // Widget
 // ---------------------------------------------------------------------------
@@ -150,25 +156,9 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     // Ensure at least one text segment
     if (_segments.isEmpty) _addTextSegment('');
     // Ensure last segment is always a text segment for typing
-    if (_segments.last is _ImageSegment) _addTextSegment('');
-
-    // Ensure last segment is always an empty/non-link text segment for typing if the last one contains a URL
-    if (_segments.isNotEmpty && _segments.last is _TextSegment) {
-      final lastTextSeg = _segments.last as _TextSegment;
-      final text = lastTextSeg.controller.text.trim();
-      final urlReg = RegExp(r'^https?:\/\/[^\s\(\)\[\]\{\}<>"\u4e00-\u9fa5]+$');
-      final mdLinkReg = RegExp(r'^\[([^\]]+)\]\((https?:\/\/[^\)]+)\)$');
-      if (urlReg.hasMatch(text) || mdLinkReg.hasMatch(text)) {
-        _addTextSegment('');
-      }
-    }
+    if (_segments.last is _ImageSegment || _segments.last is _LinkSegment) _addTextSegment('');
 
     _attachListeners();
-    for (final seg in _segments) {
-      if (seg is _TextSegment) {
-        _checkUrlsInSegment(seg);
-      }
-    }
   }
 
   void _addTextSegment(String text) {
@@ -185,14 +175,21 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
 
     for (final line in lines) {
       final trimmed = line.trim();
-      final isUrl = urlReg.hasMatch(trimmed) || mdLinkReg.hasMatch(trimmed);
+      final urlMatch = urlReg.firstMatch(trimmed);
+      final mdLinkMatch = mdLinkReg.firstMatch(trimmed);
 
-      if (isUrl) {
+      if (urlMatch != null || mdLinkMatch != null) {
         if (currentTextLines.isNotEmpty) {
           _addTextSegment(currentTextLines.join('\n'));
           currentTextLines.clear();
         }
-        _addTextSegment(line);
+        if (urlMatch != null) {
+          _segments.add(_LinkSegment(url: trimmed));
+        } else {
+          final title = mdLinkMatch!.group(1)!;
+          final url = mdLinkMatch.group(2)!;
+          _segments.add(_LinkSegment(url: url, title: title));
+        }
       } else {
         currentTextLines.add(line);
       }
@@ -209,7 +206,6 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
       if (seg is _TextSegment && !seg.listenersAttached) {
         seg.listenersAttached = true;
         seg.controller.addListener(_triggerAutoSave);
-        seg.controller.addListener(() => _checkUrlsInSegment(seg));
         seg.controller.addListener(() => _handleTextChanges(seg));
         
         seg.focusNode.addListener(() {
@@ -217,6 +213,12 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
             final currentIndex = _segments.indexOf(seg);
             if (currentIndex >= 0) {
               _focusedSegmentIndex = currentIndex;
+            }
+          } else {
+            // Check if we should split URL lines when segment loses focus
+            final currentIndex = _segments.indexOf(seg);
+            if (currentIndex >= 0) {
+              _splitUrlsInSegment(currentIndex);
             }
           }
         });
@@ -239,45 +241,110 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     final index = _segments.indexOf(seg);
     if (index < 0) return;
     final text = seg.controller.text;
-    if (text.endsWith('\n')) {
-      final trimmed = text.substring(0, text.length - 1).trim();
-      final urlReg = RegExp(r'^https?:\/\/[^\s\(\)\[\]\{\}<>"\u4e00-\u9fa5]+$');
-      final mdLinkReg = RegExp(r'^\[([^\]]+)\]\((https?:\/\/[^\)]+)\)$');
-      if (urlReg.hasMatch(trimmed) || mdLinkReg.hasMatch(trimmed)) {
-        _splitSegmentAtNewline(index);
-      }
+    if (text.contains('\n')) {
+      _splitUrlsInSegment(index);
     }
   }
 
-  void _splitSegmentAtNewline(int index) {
+  void _splitUrlsInSegment(int index) {
     if (index < 0 || index >= _segments.length) return;
-    final seg = _segments[index] as _TextSegment;
+    final seg = _segments[index];
+    if (seg is! _TextSegment) return;
+
     final text = seg.controller.text;
-    final trimmed = text.substring(0, text.length - 1).trim();
+    final lines = text.split('\n');
+    final urlReg = RegExp(r'^https?:\/\/[^\s\(\)\[\]\{\}<>"\u4e00-\u9fa5]+$');
+    final mdLinkReg = RegExp(r'^\[([^\]]+)\]\((https?:\/\/[^\)]+)\)$');
 
-    final before = _TextSegment(context: context, text: trimmed);
-    final after = _TextSegment(context: context, text: '');
+    bool hasUrlLine = false;
+    for (final line in lines) {
+      final trimmed = line.trim();
+      if (urlReg.hasMatch(trimmed) || mdLinkReg.hasMatch(trimmed)) {
+        hasUrlLine = true;
+        break;
+      }
+    }
 
+    if (!hasUrlLine) return;
+
+    final List<_Segment> newSegments = [];
+    List<String> currentTextLines = [];
+    int lastLinkIdxInNew = -1;
+
+    for (final line in lines) {
+      final trimmed = line.trim();
+      final urlMatch = urlReg.firstMatch(trimmed);
+      final mdLinkMatch = mdLinkReg.firstMatch(trimmed);
+
+      if (urlMatch != null || mdLinkMatch != null) {
+        if (currentTextLines.isNotEmpty) {
+          newSegments.add(_TextSegment(context: context, text: currentTextLines.join('\n')));
+          currentTextLines.clear();
+        }
+        if (urlMatch != null) {
+          newSegments.add(_LinkSegment(url: trimmed));
+        } else {
+          final title = mdLinkMatch!.group(1)!;
+          final url = mdLinkMatch.group(2)!;
+          newSegments.add(_LinkSegment(url: url, title: title));
+        }
+        lastLinkIdxInNew = newSegments.length - 1;
+      } else {
+        currentTextLines.add(line);
+      }
+    }
+
+    if (currentTextLines.isNotEmpty) {
+      newSegments.add(_TextSegment(context: context, text: currentTextLines.join('\n')));
+    }
+
+    if (newSegments.isEmpty) {
+      newSegments.add(_TextSegment(context: context, text: ''));
+    }
+
+    // Ensure last segment is always a text segment for typing if it's a link
+    if (newSegments.last is _LinkSegment) {
+      newSegments.add(_TextSegment(context: context, text: ''));
+    }
+
+    // Dispose old segment
     seg.dispose();
-    
-    final afterIdx = index + 1;
-    before.listenersAttached = false;
-    after.listenersAttached = false;
 
     setState(() {
-      _segments.replaceRange(index, index + 1, [before, after]);
-      _focusedSegmentIndex = afterIdx;
+      _segments.replaceRange(index, index + 1, newSegments);
     });
 
     _attachListeners();
-    _checkUrlsInSegment(before);
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (afterIdx < _segments.length && _segments[afterIdx] is _TextSegment) {
-        (_segments[afterIdx] as _TextSegment).focusNode.requestFocus();
+    // Trigger metadata fetch
+    for (final s in newSegments) {
+      if (s is _LinkSegment) {
+        _fetchMetadataForUrl(s.url);
       }
-      _triggerAutoSave();
-    });
+    }
+
+    // Focus the next text segment
+    int focusTargetIdx = -1;
+    if (lastLinkIdxInNew != -1) {
+      final absoluteLastLinkIdx = index + lastLinkIdxInNew;
+      for (int i = absoluteLastLinkIdx + 1; i < _segments.length; i++) {
+        if (_segments[i] is _TextSegment) {
+          focusTargetIdx = i;
+          break;
+        }
+      }
+    }
+
+    if (focusTargetIdx != -1) {
+      _focusedSegmentIndex = focusTargetIdx;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (focusTargetIdx < _segments.length && _segments[focusTargetIdx] is _TextSegment) {
+          (_segments[focusTargetIdx] as _TextSegment).focusNode.requestFocus();
+        }
+      });
+    }
+
+    _triggerAutoSave();
   }
 
   void _mergeSegmentWithPrevious(int index) {
@@ -301,7 +368,6 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
       });
 
       _attachListeners();
-      _checkUrlsInSegment(merged);
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
         merged.focusNode.requestFocus();
@@ -324,6 +390,12 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         }
       } else if (seg is _ImageSegment) {
         buf.write('![image](${seg.path})\n');
+      } else if (seg is _LinkSegment) {
+        if (seg.title != null && seg.title!.isNotEmpty) {
+          buf.write('[${seg.title}](${seg.url})\n');
+        } else {
+          buf.write('${seg.url}\n');
+        }
       }
     }
     return buf.toString();
@@ -451,9 +523,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     // Dispose old segment and attach listeners to new ones before setState
     seg.dispose();
     before.controller.addListener(_triggerAutoSave);
-    before.controller.addListener(() => _checkUrlsInSegment(before));
     after.controller.addListener(_triggerAutoSave);
-    after.controller.addListener(() => _checkUrlsInSegment(after));
     final afterIdx = targetIndex + 2;
     before.focusNode.addListener(() {
       if (before.focusNode.hasFocus) _focusedSegmentIndex = targetIndex;
@@ -463,10 +533,6 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     });
     before.listenersAttached = true;
     after.listenersAttached = true;
-
-    // Trigger URL preview fetches for new segments
-    _checkUrlsInSegment(before);
-    _checkUrlsInSegment(after);
 
     setState(() {
       _segments.replaceRange(targetIndex, targetIndex + 1, [before, imgSeg, after]);
@@ -516,9 +582,124 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
       final end = (nextIdx < _segments.length && _segments[nextIdx] is _TextSegment) ? nextIdx : segmentIndex;
       _segments.replaceRange(start, end + 1, [merged]);
       _attachListeners();
-      _checkUrlsInSegment(merged);
     });
     _triggerAutoSave();
+  }
+
+  void _showInsertLinkDialog() {
+    final urlController = TextEditingController();
+    final titleController = TextEditingController();
+    
+    showDialog(
+      context: context,
+      builder: (context) {
+        final theme = Theme.of(context);
+        return AlertDialog(
+          title: Text('插入链接', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: urlController,
+                decoration: const InputDecoration(
+                  labelText: '链接地址 (URL)',
+                  hintText: 'https://example.com',
+                ),
+                keyboardType: TextInputType.url,
+                autofocus: true,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: titleController,
+                decoration: const InputDecoration(
+                  labelText: '链接标题 (可选)',
+                  hintText: '输入显示标题',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () {
+                final url = urlController.text.trim();
+                if (url.isNotEmpty) {
+                  // Ensure URL has protocol
+                  String formattedUrl = url;
+                  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                    formattedUrl = 'https://$url';
+                  }
+                  final title = titleController.text.trim();
+                  _insertLinkAtFocusedSegment(formattedUrl, title: title.isEmpty ? null : title);
+                }
+                Navigator.pop(context);
+              },
+              child: const Text('确定'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _insertLinkAtFocusedSegment(String url, {String? title}) {
+    int targetIndex = -1;
+    for (int i = 0; i < _segments.length; i++) {
+      final s = _segments[i];
+      if (s is _TextSegment && s.focusNode.hasFocus) {
+        targetIndex = i;
+        break;
+      }
+    }
+    if (targetIndex < 0) targetIndex = _focusedSegmentIndex;
+    if (targetIndex < 0 || targetIndex >= _segments.length || _segments[targetIndex] is! _TextSegment) {
+      for (int i = _segments.length - 1; i >= 0; i--) {
+        if (_segments[i] is _TextSegment) { targetIndex = i; break; }
+      }
+    }
+    if (targetIndex < 0) return;
+
+    final seg = _segments[targetIndex] as _TextSegment;
+    final cursor = seg.controller.selection.baseOffset;
+    final text = seg.controller.text;
+    final splitAt = cursor >= 0 ? cursor : text.length;
+
+    final textBefore = text.substring(0, splitAt);
+    final textAfter = text.substring(splitAt);
+
+    final before = _TextSegment(context: context, text: textBefore);
+    final linkSeg = _LinkSegment(url: url, title: title);
+    final after = _TextSegment(context: context, text: textAfter);
+
+    seg.dispose();
+    before.controller.addListener(_triggerAutoSave);
+    after.controller.addListener(_triggerAutoSave);
+    final afterIdx = targetIndex + 2;
+    before.focusNode.addListener(() {
+      if (before.focusNode.hasFocus) _focusedSegmentIndex = targetIndex;
+    });
+    after.focusNode.addListener(() {
+      if (after.focusNode.hasFocus) _focusedSegmentIndex = afterIdx;
+    });
+    before.listenersAttached = true;
+    after.listenersAttached = true;
+
+    _fetchMetadataForUrl(url);
+
+    setState(() {
+      _segments.replaceRange(targetIndex, targetIndex + 1, [before, linkSeg, after]);
+      _focusedSegmentIndex = afterIdx;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (afterIdx < _segments.length && _segments[afterIdx] is _TextSegment) {
+        (_segments[afterIdx] as _TextSegment).focusNode.requestFocus();
+      }
+      _triggerAutoSave();
+    });
   }
 
   void _previewImage(String path) {
@@ -712,90 +893,183 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         widgets.add(_buildTextSegment(seg, theme));
       } else if (seg is _ImageSegment) {
         widgets.add(_buildImageSegment(seg, i, theme));
+      } else if (seg is _LinkSegment) {
+        widgets.add(_buildLinkSegment(seg, i, theme));
       }
     }
     return widgets;
   }
 
   Widget _buildTextSegment(_TextSegment seg, ThemeData theme) {
-    final text = seg.controller.text;
-    final urlReg = RegExp(r'https?:\/\/[^\s\(\)\[\]\{\}<>"\u4e00-\u9fa5]+');
-    final matches = urlReg.allMatches(text);
-    
-    final List<String> segmentUrls = [];
-    for (final match in matches) {
-      String url = match.group(0)!;
-      final trailingPunct = RegExp(r'[\.\,\?\!\:\;]+$');
-      final punctMatch = trailingPunct.firstMatch(url);
-      if (punctMatch != null) {
-        url = url.substring(0, url.length - punctMatch.group(0)!.length);
-      }
-      if (!segmentUrls.contains(url) && !_dismissedUrls.contains(url)) {
-        segmentUrls.add(url);
-      }
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        TextField(
-          controller: seg.controller,
-          focusNode: seg.focusNode,
-          maxLines: null,
-          keyboardType: TextInputType.multiline,
-          textCapitalization: TextCapitalization.sentences,
-          style: theme.textTheme.bodyLarge?.copyWith(height: 1.6, letterSpacing: 0.3),
-          decoration: const InputDecoration(
-            border: InputBorder.none,
-            focusedBorder: InputBorder.none,
-            enabledBorder: InputBorder.none,
-            errorBorder: InputBorder.none,
-            disabledBorder: InputBorder.none,
-            hintText: '',
-            filled: false,
-            isDense: true,
-            contentPadding: EdgeInsets.symmetric(vertical: 4),
-          ),
-        ),
-        if (segmentUrls.isNotEmpty) ...[
-          ...segmentUrls.map((url) {
-            if (_fetchedMetadata.containsKey(url)) {
-              final meta = _fetchedMetadata[url]!;
-              return _buildLinkPreviewCard(meta, context, () {
-                setState(() {
-                  _dismissedUrls.add(url);
-                });
-              });
-            } else if (_loadingUrls.contains(url)) {
-              return _buildLinkPreviewPlaceholder(url, theme);
-            }
-            return const SizedBox.shrink();
-          }),
-          const SizedBox(height: 12),
-        ],
-      ],
+    return TextField(
+      controller: seg.controller,
+      focusNode: seg.focusNode,
+      maxLines: null,
+      keyboardType: TextInputType.multiline,
+      textCapitalization: TextCapitalization.sentences,
+      style: theme.textTheme.bodyLarge?.copyWith(height: 1.6, letterSpacing: 0.3),
+      decoration: const InputDecoration(
+        border: InputBorder.none,
+        focusedBorder: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        errorBorder: InputBorder.none,
+        disabledBorder: InputBorder.none,
+        hintText: '',
+        filled: false,
+        isDense: true,
+        contentPadding: EdgeInsets.symmetric(vertical: 4),
+      ),
     );
   }
 
-  void _checkUrlsInSegment(_TextSegment seg) {
-    final text = seg.controller.text;
-    final urlReg = RegExp(r'https?:\/\/[^\s\(\)\[\]\{\}<>"\u4e00-\u9fa5]+');
-    final matches = urlReg.allMatches(text);
-    
-    for (final match in matches) {
-      String url = match.group(0)!;
-      final trailingPunct = RegExp(r'[\.\,\?\!\:\;]+$');
-      final punctMatch = trailingPunct.firstMatch(url);
-      if (punctMatch != null) {
-        url = url.substring(0, url.length - punctMatch.group(0)!.length);
+  Widget _buildLinkSegment(_LinkSegment seg, int index, ThemeData theme) {
+    final url = seg.url;
+
+    // Trigger metadata fetch if needed
+    if (!_fetchedMetadata.containsKey(url) && !_loadingUrls.contains(url) && !_dismissedUrls.contains(url)) {
+      _fetchMetadataForUrl(url);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: () {
+              final uri = Uri.tryParse(url);
+              if (uri != null) {
+                launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            },
+            child: Text(
+              seg.title ?? url,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: theme.colorScheme.primary,
+                decoration: TextDecoration.underline,
+                height: 1.6,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ),
+          if (_fetchedMetadata.containsKey(url)) ...[
+            _buildLinkPreviewCard(_fetchedMetadata[url]!, context, () => _removeLinkSegment(index)),
+          ] else if (_loadingUrls.contains(url)) ...[
+            _buildLinkPreviewPlaceholder(url, theme, () => _removeLinkSegment(index)),
+          ] else ...[
+            _buildDefaultLinkPreviewCard(url, () => _removeLinkSegment(index)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDefaultLinkPreviewCard(String url, VoidCallback onDelete) {
+    final theme = Theme.of(context);
+    final domain = Uri.tryParse(url)?.host ?? '';
+    return Container(
+      margin: const EdgeInsets.only(top: 8, bottom: 16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: InkWell(
+        onTap: () {
+          final uri = Uri.tryParse(url);
+          if (uri != null) {
+            launchUrl(uri, mode: LaunchMode.externalApplication);
+          }
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.secondaryContainer,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.link, color: theme.colorScheme.primary, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      url,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    if (domain.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        domain,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, size: 16),
+                onPressed: onDelete,
+                tooltip: '删除链接',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _removeLinkSegment(int index) {
+    if (index < 0 || index >= _segments.length || _segments[index] is! _LinkSegment) return;
+    setState(() {
+      final prevIdx = index - 1;
+      final nextIdx = index + 1;
+      String mergedText = '';
+
+      if (prevIdx >= 0 && _segments[prevIdx] is _TextSegment) {
+        mergedText += (_segments[prevIdx] as _TextSegment).controller.text.trimRight();
+        (_segments[prevIdx] as _TextSegment).dispose();
+      }
+      if (nextIdx < _segments.length && _segments[nextIdx] is _TextSegment) {
+        final nextText = (_segments[nextIdx] as _TextSegment).controller.text.trimLeft();
+        if (mergedText.isNotEmpty && nextText.isNotEmpty) mergedText += '\n';
+        mergedText += nextText;
+        (_segments[nextIdx] as _TextSegment).dispose();
       }
 
-      if (!_fetchedMetadata.containsKey(url) && !_loadingUrls.contains(url) && !_dismissedUrls.contains(url)) {
-        _fetchMetadataForUrl(url);
-      }
-    }
+      final merged = _TextSegment(context: context, text: mergedText);
+
+      final start = (prevIdx >= 0 && _segments[prevIdx] is _TextSegment) ? prevIdx : index;
+      final end = (nextIdx < _segments.length && _segments[nextIdx] is _TextSegment) ? nextIdx : index;
+      _segments.replaceRange(start, end + 1, [merged]);
+      _attachListeners();
+    });
+    _triggerAutoSave();
   }
+
+
 
   Future<void> _fetchMetadataForUrl(String url) async {
     if (_loadingUrls.contains(url)) return;
@@ -818,7 +1092,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     });
   }
 
-  Widget _buildLinkPreviewPlaceholder(String url, ThemeData theme) {
+  Widget _buildLinkPreviewPlaceholder(String url, ThemeData theme, VoidCallback onDelete) {
     return Container(
       margin: const EdgeInsets.only(top: 8, bottom: 16),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -847,6 +1121,11 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
                 color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
               ),
             ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 16),
+            onPressed: onDelete,
+            tooltip: '删除链接',
           ),
         ],
       ),
@@ -1023,12 +1302,13 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
               _ToolbarButton(icon: Icons.title, onPressed: () => _toggleBlockPrefix('# ')),
               _ToolbarButton(icon: Icons.format_bold, onPressed: () => _toggleInlineStyle('**')),
               _ToolbarButton(icon: Icons.format_italic, onPressed: () => _toggleInlineStyle('*')),
-              _ToolbarButton(icon: Icons.strikethrough_s, onPressed: () => _toggleInlineStyle('~~')),
+              _ToolbarButton(icon: Icons.link, onPressed: _showInsertLinkDialog),
               _ToolbarButton(icon: Icons.format_quote, onPressed: () => _toggleBlockPrefix('> ')),
               _ToolbarButton(icon: Icons.image_outlined, onPressed: () => _pickImage(ImageSource.gallery)),
               _ToolbarButton(icon: Icons.camera_alt_outlined, onPressed: () => _pickImage(ImageSource.camera)),
               _ToolbarButton(icon: Icons.format_list_bulleted, onPressed: () => _toggleBlockPrefix('- ')),
               _ToolbarButton(icon: Icons.format_list_numbered, onPressed: () => _toggleBlockPrefix('1. ')),
+              _ToolbarButton(icon: Icons.strikethrough_s, onPressed: () => _toggleInlineStyle('~~')),
               _ToolbarButton(icon: Icons.code, onPressed: () => _toggleInlineStyle('`')),
               _ToolbarButton(icon: Icons.horizontal_rule, onPressed: () => _insertBlock('---')),
               Padding(
