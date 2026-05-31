@@ -39,6 +39,72 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
   bool _testing = false;
   StreamSubscription<SyncStatus>? _statusSubscription;
 
+  // 保存初始配置值，用于判断是否有未保存的更改
+  String _initialServerUrl = '';
+  String _initialUsername = '';
+  String _initialPassword = '';
+  String _initialRemotePath = '';
+  bool _initialWebdavEnabled = false;
+  bool _initialSyncOnLaunch = false;
+  bool _initialSyncImages = false;
+  int _initialSyncInterval = 0;
+
+  void _updateInitialValues() {
+    _initialServerUrl = _serverUrlController.text.trim();
+    _initialUsername = _usernameController.text.trim();
+    _initialPassword = _passwordController.text;
+    _initialRemotePath = _remotePathController.text.trim().isEmpty
+        ? 'QNote'
+        : _remotePathController.text.trim();
+    _initialWebdavEnabled = _webdavEnabled;
+    _initialSyncOnLaunch = _syncOnLaunch;
+    _initialSyncImages = _syncImages;
+    _initialSyncInterval = _syncInterval;
+  }
+
+  bool _hasUnsavedChanges() {
+    return _serverUrlController.text.trim() != _initialServerUrl ||
+        _usernameController.text.trim() != _initialUsername ||
+        _passwordController.text != _initialPassword ||
+        _remotePathController.text.trim() != _initialRemotePath ||
+        _webdavEnabled != _initialWebdavEnabled ||
+        _syncOnLaunch != _initialSyncOnLaunch ||
+        _syncImages != _initialSyncImages ||
+        _syncInterval != _initialSyncInterval;
+  }
+
+  Future<bool> _showUnsavedChangesDialog() async {
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('未保存的更改'),
+        content: const Text('您有未保存的同步设置更改，是否保存？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('discard'),
+            child: const Text('放弃更改', style: TextStyle(color: Colors.red)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('cancel'),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop('save'),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == 'save') {
+      await _saveConfig();
+      return true;
+    } else if (result == 'discard') {
+      return true;
+    }
+    return false;
+  }
+
 
 
   static const _syncIntervalOptions = <MapEntry<String, int>>[
@@ -97,8 +163,10 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
           _syncInterval = 0;
         });
       }
+      _updateInitialValues();
     } catch (e) {
       _remotePathController.text = 'QNote';
+      _updateInitialValues();
     }
   }
 
@@ -134,6 +202,8 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
     await ref.read(webdavConfigProvider.notifier).saveConfig(config);
     await ConfigRepository.instance.setAppConfig('webdav_sync_on_launch', _syncOnLaunch ? 'true' : 'false');
     await ConfigRepository.instance.setAppConfig('webdav_sync_images', _syncImages ? 'true' : 'false');
+
+    _updateInitialValues();
 
     if (mounted) {
       _showNotification('配置已保存', isSuccess: true);
@@ -193,6 +263,9 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
           isSuccess: success,
           isError: !success,
         );
+        if (success) {
+          await _saveConfig();
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -395,14 +468,36 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
     final lastSyncTime = SyncScheduler.instance.lastSyncTime;
     final lastError = SyncScheduler.instance.lastError;
 
-    return Scaffold(
-      backgroundColor: colorScheme.surfaceContainerLowest.withValues(alpha: 0.5),
-          appBar: AppBar(
-            title: const Text('同步设置'),
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            scrolledUnderElevation: 0,
-            actions: [
+    return PopScope(
+      canPop: !_hasUnsavedChanges(),
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final shouldPop = await _showUnsavedChangesDialog();
+        if (shouldPop && context.mounted) {
+          Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: colorScheme.surfaceContainerLowest.withValues(alpha: 0.5),
+        appBar: AppBar(
+          title: const Text('同步设置'),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () async {
+              if (_hasUnsavedChanges()) {
+                final shouldPop = await _showUnsavedChangesDialog();
+                if (shouldPop && context.mounted) {
+                  Navigator.of(context).pop();
+                }
+              } else {
+                Navigator.of(context).pop();
+              }
+            },
+          ),
+          actions: [
               Padding(
                 padding: const EdgeInsets.only(right: 16),
                 child: FilledButton(
@@ -628,19 +723,16 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
                       _buildInputField(
                         label: '服务器地址',
                         controller: _serverUrlController,
-                        hint: 'https://dav.jianguoyun.com/dav/',
                       ),
                       const SizedBox(height: 16),
                       _buildInputField(
                         label: '账户',
                         controller: _usernameController,
-                        hint: 'example@qq.com',
                       ),
                       const SizedBox(height: 16),
                       _buildInputField(
                         label: '应用密码',
                         controller: _passwordController,
-                        hint: '••••••••••••••••',
                         isPassword: true,
                         obscure: _obscurePassword,
                         onToggleObscure: () => setState(() => _obscurePassword = !_obscurePassword),
@@ -649,7 +741,6 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
                       _buildInputField(
                         label: '备份子目录',
                         controller: _remotePathController,
-                        hint: 'QNote',
                       ),
                     ],
                   ),
@@ -786,7 +877,8 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
               ],
             ),
           ),
-        );
+        ),
+      );
   }
 
   Widget _buildSettingRow({
@@ -937,7 +1029,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
             hintText: hint,
             filled: true,
             fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
               borderSide: BorderSide.none,
@@ -957,7 +1049,10 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
                   )
                 : null,
           ),
-          style: const TextStyle(fontWeight: FontWeight.w600),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w500,
+            fontSize: 13,
+          ),
         ),
       ],
     );

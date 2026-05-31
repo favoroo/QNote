@@ -1036,6 +1036,15 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       DateTime? newEndTime = record.endTime;
       DateTime newTime = record.time;
       String newContent = record.content;
+      if (result.notes.isNotEmpty && record.photos.isNotEmpty) {
+        if (newContent.isEmpty) {
+          newContent = result.notes;
+        } else if (result.notes.startsWith('图：') || result.notes.startsWith('图:')) {
+          newContent = '$newContent\n${result.notes}';
+        } else if (!newContent.contains(result.notes)) {
+          newContent = '$newContent\n${result.notes}';
+        }
+      }
       Map<String, dynamic>? newBodyState = record.bodyState != null
           ? Map.from(record.bodyState!)
           : null;

@@ -113,6 +113,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
   final FocusNode _textFocusNode = FocusNode();
   final ImagePicker _imagePicker = ImagePicker();
   final ImageRepository _imageRepo = ImageRepository();
+  final Map<String, Future<String>> _compressingTasks = {};
   final ScrollController _shortcutScrollController = ScrollController();
 
   final Map<String, TextEditingController> _formControllers = {};
@@ -644,12 +645,42 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       if (images.isEmpty) return;
       final paths = <String>[];
       for (final xFile in images) {
-        final savedPath = await _imageRepo.saveImage(
-          File(xFile.path),
+        final tempPath = xFile.path;
+        paths.add(tempPath);
+        
+        // 启动异步压缩保存任务
+        final Future<String> compressFuture = _imageRepo.saveImage(
+          File(tempPath),
           subfolder: 'diary',
         );
-        paths.add(savedPath);
+        _compressingTasks[tempPath] = compressFuture;
+        
+        compressFuture.then((savedPath) {
+          if (!mounted) return;
+          setState(() {
+            _compressingTasks.remove(tempPath);
+            final photos = List<String>.from(_draft.selectedPhotos);
+            final index = photos.indexOf(tempPath);
+            if (index != -1) {
+              photos[index] = savedPath;
+              _updateActiveDraft(selectedPhotos: photos);
+            } else {
+              _imageRepo.deleteImage(savedPath);
+            }
+          });
+        }).catchError((e) {
+          if (!mounted) return;
+          setState(() {
+            _compressingTasks.remove(tempPath);
+            final photos = List<String>.from(_draft.selectedPhotos);
+            photos.remove(tempPath);
+            _updateActiveDraft(selectedPhotos: photos);
+          });
+          debugPrint('Error compressing image: $e');
+        });
       }
+      
+      // 立即秒显本地临时路径
       _updateActiveDraft(
         selectedPhotos: [..._activeDraft.selectedPhotos, ...paths],
       );
@@ -661,13 +692,44 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     try {
       final xFile = await _imagePicker.pickImage(source: ImageSource.camera);
       if (xFile == null) return;
-      final savedPath = await _imageRepo.saveImage(
-        File(xFile.path),
+      
+      final tempPath = xFile.path;
+      
+      // 立即秒显本地临时路径
+      _updateActiveDraft(
+        selectedPhotos: [..._activeDraft.selectedPhotos, tempPath],
+      );
+      
+      // 启动异步压缩保存任务
+      final Future<String> compressFuture = _imageRepo.saveImage(
+        File(tempPath),
         subfolder: 'diary',
       );
-      _updateActiveDraft(
-        selectedPhotos: [..._activeDraft.selectedPhotos, savedPath],
-      );
+      _compressingTasks[tempPath] = compressFuture;
+      
+      compressFuture.then((savedPath) {
+        if (!mounted) return;
+        setState(() {
+          _compressingTasks.remove(tempPath);
+          final photos = List<String>.from(_draft.selectedPhotos);
+          final index = photos.indexOf(tempPath);
+          if (index != -1) {
+            photos[index] = savedPath;
+            _updateActiveDraft(selectedPhotos: photos);
+          } else {
+            _imageRepo.deleteImage(savedPath);
+          }
+        });
+      }).catchError((e) {
+        if (!mounted) return;
+        setState(() {
+          _compressingTasks.remove(tempPath);
+          final photos = List<String>.from(_draft.selectedPhotos);
+          photos.remove(tempPath);
+          _updateActiveDraft(selectedPhotos: photos);
+        });
+        debugPrint('Error compressing image: $e');
+      });
     } catch (_) {}
   }
 
@@ -1075,7 +1137,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           }
 
           final extractedNotes = result['notes']?.toString();
-          if (extractedNotes != null && extractedNotes.isNotEmpty) {
+          if (extractedNotes != null && extractedNotes.isNotEmpty && draft.selectedPhotos.isNotEmpty) {
             if (combinedNotes.isEmpty) {
               combinedNotes = extractedNotes;
             } else if (!combinedNotes.contains(extractedNotes)) {
@@ -1288,7 +1350,41 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     return true;
   }
 
+  Future<void> _waitForCompressing() async {
+    if (_compressingTasks.isNotEmpty) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(20.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('正在处理图片，请稍候...'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      try {
+        await Future.wait(_compressingTasks.values);
+      } catch (e) {
+        debugPrint('Error waiting for compression: $e');
+      }
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    }
+  }
+
   Future<void> _handleSend() async {
+    await _waitForCompressing();
+    if (!mounted) return;
     final draft = _draft;
     if (!_validateDraft(draft)) return;
 
@@ -2941,22 +3037,44 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           itemCount: _activeDraft.selectedPhotos.length,
           separatorBuilder: (_, _) => const SizedBox(width: 8),
           itemBuilder: (context, index) {
+            final path = _activeDraft.selectedPhotos[index];
+            final isCompressing = _compressingTasks.containsKey(path);
             return Stack(
               children: [
                 GestureDetector(
                   onTap: () =>
-                      _showFullImage(_activeDraft.selectedPhotos[index]),
+                      _showFullImage(path),
                   child: AnimatedGradientBorder(
                     isAnimating: isImageExtracting,
                     borderRadius: 12,
                     strokeWidth: 2,
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: UnifiedImage(
-                        imagePath: _activeDraft.selectedPhotos[index],
-                        width: 56,
-                        height: 56,
-                        borderRadius: BorderRadius.circular(12),
+                      child: Stack(
+                        children: [
+                          UnifiedImage(
+                            imagePath: path,
+                            width: 56,
+                            height: 56,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          if (isCompressing)
+                            Container(
+                              width: 56,
+                              height: 56,
+                              color: Colors.black.withValues(alpha: 0.4),
+                              child: const Center(
+                                child: SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ),

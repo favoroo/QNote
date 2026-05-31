@@ -794,7 +794,75 @@ class AiService {
 
   dynamic _parseJsonFromAiContent(String content) {
     final stripped = _stripMarkdownCodeBlock(content);
-    return jsonDecode(stripped);
+    try {
+      return jsonDecode(stripped);
+    } catch (e) {
+      // 当标准解析失败时，记录警告并尝试使用正则/括号定位提取 JSON 子字符串进行二次解析
+      LoggerService.instance.logAI(
+        'AI响应标准JSON解析失败，尝试提取JSON子串。原始内容:\n$content',
+        level: LogLevel.warning,
+      );
+      try {
+        final extracted = _extractJsonString(content);
+        if (extracted != null) {
+          return jsonDecode(extracted);
+        }
+      } catch (innerError) {
+        LoggerService.instance.logAI(
+          '提取JSON子串并解析依然失败: $innerError',
+          level: LogLevel.error,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  String? _extractJsonString(String text) {
+    // 1. 优先尝试提取 ```json ... ``` 包裹的块
+    final jsonBlockReg = RegExp(r'```json\s*([\s\S]*?)\s*```');
+    var match = jsonBlockReg.firstMatch(text);
+    if (match != null) {
+      return match.group(1)!.trim();
+    }
+
+    // 2. 尝试提取普通的 ``` ... ``` 块
+    final codeBlockReg = RegExp(r'```\s*([\s\S]*?)\s*```');
+    match = codeBlockReg.firstMatch(text);
+    if (match != null) {
+      return match.group(1)!.trim();
+    }
+
+    // 3. 通过定位最外层的 { } 或 [ ] 提取 JSON 子串
+    final firstBrace = text.indexOf('{');
+    final firstBracket = text.indexOf('[');
+    final lastBrace = text.lastIndexOf('}');
+    final lastBracket = text.lastIndexOf(']');
+
+    int start = -1;
+    int end = -1;
+
+    if (firstBrace != -1 && firstBracket != -1) {
+      // 哪个括号最先出现，就以哪个作为最外层边界
+      if (firstBrace < firstBracket) {
+        start = firstBrace;
+        end = lastBrace;
+      } else {
+        start = firstBracket;
+        end = lastBracket;
+      }
+    } else if (firstBrace != -1) {
+      start = firstBrace;
+      end = lastBrace;
+    } else if (firstBracket != -1) {
+      start = firstBracket;
+      end = lastBracket;
+    }
+
+    if (start != -1 && end != -1 && end > start) {
+      return text.substring(start, end + 1);
+    }
+
+    return null;
   }
 
   String _stripMarkdownCodeBlock(String content) {
