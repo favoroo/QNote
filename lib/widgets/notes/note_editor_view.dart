@@ -1277,6 +1277,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
             },
             child: Text(
               seg.title ?? url,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodyLarge?.copyWith(
                 color: theme.colorScheme.primary,
                 decoration: TextDecoration.underline,
@@ -1658,8 +1660,23 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
           height: 38,
           child: ListView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
             children: [
+              _ToolbarButton(
+                icon: Icons.undo,
+                onPressed: _undoList.length >= 2 ? _undo : null,
+              ),
+              _ToolbarButton(
+                icon: Icons.redo,
+                onPressed: _redoList.isNotEmpty ? _redo : null,
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: VerticalDivider(
+                  width: 1, indent: 8, endIndent: 8,
+                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                ),
+              ),
               _ToolbarButton(icon: Icons.title, onPressed: () => _toggleBlockPrefix('# ')),
               _ToolbarButton(icon: Icons.format_bold, onPressed: () => _toggleInlineStyle('**')),
               _ToolbarButton(icon: Icons.format_italic, onPressed: () => _toggleInlineStyle('*')),
@@ -1672,21 +1689,6 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
               _ToolbarButton(icon: Icons.strikethrough_s, onPressed: () => _toggleInlineStyle('~~')),
               _ToolbarButton(icon: Icons.code, onPressed: () => _toggleInlineStyle('`')),
               _ToolbarButton(icon: Icons.horizontal_rule, onPressed: () => _insertBlock('---')),
-              Padding(
-                padding: const EdgeInsets.only(left: 4),
-                child: VerticalDivider(
-                  width: 1, indent: 8, endIndent: 8,
-                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-                ),
-              ),
-              _ToolbarButton(
-                icon: Icons.undo,
-                onPressed: _undoList.length >= 2 ? _undo : null,
-              ),
-              _ToolbarButton(
-                icon: Icons.redo,
-                onPressed: _redoList.isNotEmpty ? _redo : null,
-              ),
               _ToolbarButton(
                 icon: Icons.keyboard_hide,
                 onPressed: () => _focusedTextSeg?.focusNode.unfocus(),
@@ -1713,12 +1715,12 @@ class _ToolbarButton extends StatelessWidget {
     final theme = Theme.of(context);
     final isEnabled = onPressed != null;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 1),
       child: IconButton(
         icon: Icon(icon),
         iconSize: 18,
         padding: EdgeInsets.zero,
-        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+        constraints: const BoxConstraints(minWidth: 28, minHeight: 32),
         style: IconButton.styleFrom(
           foregroundColor: isEnabled
               ? theme.colorScheme.onSurface

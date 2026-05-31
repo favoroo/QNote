@@ -1052,9 +1052,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
               onTap: () => FocusScope.of(ctx).unfocus(),
               behavior: HitTestBehavior.opaque,
               child: AlertDialog(
-              title: Text(isEditing ? '编辑配置' : '添加配置'),
-              content: SingleChildScrollView(
-                child: SizedBox(
+                contentPadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+                content: SingleChildScrollView(
+                  child: SizedBox(
                   width: MediaQuery.of(context).size.width * 0.85,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,

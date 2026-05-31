@@ -277,17 +277,21 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          _buildIdentityCard(theme),
-          const SizedBox(height: 20),
-          _buildHealthCard(theme),
-          const SizedBox(height: 20),
-          _buildOtherInfoCard(theme),
-          const SizedBox(height: 20),
-          _buildAiHint(theme),
-        ],
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            _buildIdentityCard(theme),
+            const SizedBox(height: 20),
+            _buildHealthCard(theme),
+            const SizedBox(height: 20),
+            _buildOtherInfoCard(theme),
+            const SizedBox(height: 20),
+            _buildAiHint(theme),
+          ],
+        ),
       ),
     );
   }
@@ -295,238 +299,161 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   Widget _buildIdentityCard(ThemeData theme) {
     return Container(
       decoration: _cardDecoration(theme),
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              // Avatar
-              GestureDetector(
-                onTap: _pickAvatar,
-                child: Stack(
-                  children: [
-                    Container(
-                      width: 72,
-                      height: 72,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primaryContainer.withValues(
-                          alpha: 0.15,
-                        ),
-                        shape: BoxShape.circle,
+          // Avatar Centered
+          Center(
+            child: GestureDetector(
+              onTap: _pickAvatar,
+              child: Stack(
+                children: [
+                  Container(
+                    width: 90,
+                    height: 90,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: theme.colorScheme.surface,
+                        width: 3,
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.08),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: ClipOval(
                       child: _avatarPath.isNotEmpty
                           ? UnifiedImage(
                               imagePath: _avatarPath,
-                              width: 72,
-                              height: 72,
-                              borderRadius: BorderRadius.circular(36),
+                              width: 84,
+                              height: 84,
+                              borderRadius: BorderRadius.circular(42),
                               fit: BoxFit.cover,
                             )
-                          : Icon(
-                              Icons.person_outline,
-                              size: 36,
-                              color: theme.colorScheme.primary,
+                          : Container(
+                              color: theme.colorScheme.primaryContainer.withValues(alpha: 0.2),
+                              child: Icon(
+                                Icons.person_outline,
+                                size: 40,
+                                color: theme.colorScheme.primary,
+                              ),
                             ),
                     ),
-                    Positioned(
-                      right: 0,
-                      bottom: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.camera_alt,
-                          size: 11,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 16),
-              // Nickname
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '姓名 / 昵称',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant.withValues(
-                          alpha: 0.6,
-                        ),
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    TextField(
-                      controller: _nicknameController,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                      decoration: const InputDecoration(
-                        hintText: '输入昵称',
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
-                        isDense: true,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 16),
-              // Age Input
-              Container(
-                width: 90,
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withValues(
-                    alpha: 0.3,
                   ),
-                  borderRadius: BorderRadius.circular(16),
+                  Positioned(
+                    right: 2,
+                    bottom: 2,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: theme.colorScheme.surface,
+                          width: 2,
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.camera_alt,
+                        size: 14,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          // Nickname Input
+          TextField(
+            controller: _nicknameController,
+            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+            textInputAction: TextInputAction.next,
+            decoration: const InputDecoration(
+              labelText: '姓名 / 昵称',
+              hintText: '输入您的姓名或昵称',
+              prefixIcon: Icon(Icons.person_outline),
+              floatingLabelBehavior: FloatingLabelBehavior.always,
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Gender Select
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(left: 4, bottom: 8),
+                child: Text(
+                  '性别',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-                child: Column(
+              ),
+              Container(
+                height: 48,
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
                   children: [
-                    Text(
-                      '年龄',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                        fontSize: 11,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    SizedBox(
-                      height: 24,
-                      child: TextField(
-                        controller: _ageController,
-                        keyboardType: TextInputType.number,
-                        textAlign: TextAlign.center,
-                        onChanged: _onAgeTextChanged,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.primary,
-                        ),
-                        decoration: const InputDecoration(
-                          hintText: '年龄',
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.zero,
-                          isDense: true,
-                        ),
-                      ),
-                    ),
+                    _buildGenderTab(theme, '男', 'male'),
+                    _buildGenderTab(theme, '女', 'female'),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          Divider(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-            thickness: 1,
-          ),
           const SizedBox(height: 16),
-          // Gender and Birthday Row
+          // Birthday & Age Row
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Gender Section
               Expanded(
-                flex: 4,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.wc_outlined,
-                          size: 16,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          '性别',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        _buildGenderOption(theme, '男', 'male'),
-                        const SizedBox(width: 8),
-                        _buildGenderOption(theme, '女', 'female'),
-                      ],
-                    ),
-                  ],
+                flex: 5,
+                child: TextField(
+                  readOnly: true,
+                  onTap: _showBirthdayPicker,
+                  controller: TextEditingController(
+                    text: _birthday != null
+                        ? DateFormat('yyyy-MM-dd').format(_birthday!)
+                        : '',
+                  ),
+                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                  decoration: const InputDecoration(
+                    labelText: '出生年月',
+                    hintText: '选择日期',
+                    suffixIcon: Icon(Icons.calendar_today, size: 16),
+                    floatingLabelBehavior: FloatingLabelBehavior.always,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                  ),
                 ),
               ),
               const SizedBox(width: 16),
-              // Birthday Section
               Expanded(
-                flex: 5,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.cake_outlined,
-                          size: 16,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          '出生年月',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    GestureDetector(
-                      onTap: () => _showBirthdayPicker(),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceContainerHighest
-                              .withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              _birthday != null
-                                  ? DateFormat('yyyy-MM-dd').format(_birthday!)
-                                  : '选择日期',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                              ),
-                            ),
-                            Icon(
-                              Icons.calendar_today,
-                              size: 12,
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
+                flex: 2,
+                child: TextField(
+                  controller: _ageController,
+                  keyboardType: TextInputType.number,
+                  onChanged: _onAgeTextChanged,
+                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(
+                    labelText: '年龄',
+                    hintText: '输入年龄',
+                    suffixText: '岁',
+                    floatingLabelBehavior: FloatingLabelBehavior.always,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                  ),
                 ),
               ),
             ],
@@ -536,36 +463,47 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     );
   }
 
-  Widget _buildGenderOption(ThemeData theme, String label, String value) {
+  Widget _buildGenderTab(ThemeData theme, String label, String value) {
     final isSelected = _gender == value;
     return Expanded(
       child: GestureDetector(
         onTap: () => setState(() => _gender = value),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: isSelected
-                ? theme.colorScheme.primaryContainer.withValues(alpha: 0.15)
-                : theme.colorScheme.surfaceContainerHighest.withValues(
-                    alpha: 0.3,
-                  ),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isSelected
-                  ? theme.colorScheme.primary
-                  : Colors.transparent,
-              width: 1.5,
-            ),
+            color: isSelected ? theme.colorScheme.surface : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
           ),
           alignment: Alignment.center,
-          child: Text(
-            label,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              color: isSelected
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.onSurfaceVariant,
-            ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                value == 'male' ? Icons.male : Icons.female,
+                size: 18,
+                color: isSelected
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  color: isSelected
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -578,114 +516,53 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
 
     return Container(
       decoration: _cardDecoration(theme),
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Height and Weight Fields Side-by-Side
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Height
               Expanded(
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest.withValues(
-                      alpha: 0.3,
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.straighten,
-                            size: 16,
-                            color: theme.colorScheme.primary,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            '身高 (CM)',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _heightController,
-                        keyboardType: TextInputType.number,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                        decoration: const InputDecoration(
-                          hintText: '173',
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.zero,
-                          isDense: true,
-                        ),
-                      ),
-                    ],
+                child: TextField(
+                  controller: _heightController,
+                  keyboardType: TextInputType.number,
+                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(
+                    labelText: '身高',
+                    hintText: '173',
+                    suffixText: 'cm',
+                    floatingLabelBehavior: FloatingLabelBehavior.always,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 12),
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
-              // Latest Weight Display
+              const SizedBox(width: 16),
               Expanded(
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest.withValues(
-                      alpha: 0.3,
-                    ),
-                    borderRadius: BorderRadius.circular(16),
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: '最新体重',
+                    floatingLabelBehavior: FloatingLabelBehavior.always,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 12),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.scale_outlined,
-                            size: 16,
-                            color: theme.colorScheme.primary,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            '最新体重 (kg)',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _latestWeight != null
-                            ? '${_latestWeight!.toStringAsFixed(1)} kg'
-                            : '未记录',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: _latestWeight != null
-                              ? theme.colorScheme.onSurface
-                              : theme.colorScheme.onSurfaceVariant.withValues(
-                                  alpha: 0.6,
-                                ),
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    _latestWeight != null
+                        ? '${_latestWeight!.toStringAsFixed(1)} kg'
+                        : '未记录',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
+                      color: _latestWeight != null
+                          ? theme.colorScheme.onSurface
+                          : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                    ),
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
           Divider(
             color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
             thickness: 1,
@@ -713,14 +590,11 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                 ],
               ),
               GestureDetector(
-                onTap: () =>
-                    setState(() => _showWeightHistory = !_showWeightHistory),
+                onTap: () => setState(() => _showWeightHistory = !_showWeightHistory),
                 child: Row(
                   children: [
                     Icon(
-                      _showWeightHistory
-                          ? Icons.keyboard_arrow_up
-                          : Icons.history,
+                      _showWeightHistory ? Icons.keyboard_arrow_up : Icons.history,
                       size: 16,
                       color: theme.colorScheme.primary,
                     ),
@@ -738,111 +612,106 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
             ],
           ),
           const SizedBox(height: 12),
-          // Weight Input Field + Add Button
-          Row(
-            children: [
-              Expanded(
-                child: Container(
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest.withValues(
-                      alpha: 0.3,
+          // Weight Input Bar
+          Container(
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.8),
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: Row(
+              children: [
+                // Date Select Chip
+                InkWell(
+                  onTap: _selectWeightDate,
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      const SizedBox(width: 10),
-                      GestureDetector(
-                        onTap: _selectWeightDate,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.primaryContainer
-                                .withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.calendar_month,
-                                size: 13,
-                                color: theme.colorScheme.primary,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                _isToday(_weightDate)
-                                    ? '今天'
-                                    : DateFormat('MM-dd').format(_weightDate),
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.primary,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.calendar_month,
+                          size: 14,
+                          color: theme.colorScheme.primary,
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: TextField(
-                          controller: _weightController,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          style: theme.textTheme.bodyMedium?.copyWith(
+                        const SizedBox(width: 4),
+                        Text(
+                          _isToday(_weightDate) ? '今天' : DateFormat('MM-dd').format(_weightDate),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.primary,
                             fontWeight: FontWeight.bold,
                           ),
-                          textAlign: TextAlign.center,
-                          decoration: InputDecoration(
-                            hintText: _isToday(_weightDate)
-                                ? '记录今日体重 (kg)...'
-                                : '记录 ${_weightDate.month}月${_weightDate.day}日 体重 (kg)...',
-                            hintStyle: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant
-                                  .withValues(alpha: 0.5),
-                            ),
-                            border: InputBorder.none,
-                            isDense: true,
-                          ),
                         ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Weight TextField
+                Expanded(
+                  child: TextField(
+                    controller: _weightController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _addWeightRecord(),
+                    decoration: InputDecoration(
+                      hintText: _isToday(_weightDate) ? '记录今日体重...' : '记录该日体重...',
+                      hintStyle: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
                       ),
-                    ],
+                      border: InputBorder.none,
+                      isDense: true,
+                      suffixText: 'kg',
+                      suffixStyle: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              GestureDetector(
-                onTap: _addWeightRecord,
-                child: Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    Icons.add,
-                    color: theme.colorScheme.onPrimary,
-                    size: 20,
+                const SizedBox(width: 8),
+                // Add Button
+                IconButton.filled(
+                  onPressed: _addWeightRecord,
+                  icon: const Icon(Icons.add, size: 20),
+                  style: IconButton.styleFrom(
+                    backgroundColor: theme.colorScheme.primary,
+                    foregroundColor: theme.colorScheme.onPrimary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    minimumSize: const Size(40, 40),
+                    padding: EdgeInsets.zero,
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           // Weight History List / Chart inside the card
           if (_showWeightHistory && weightHistory.isNotEmpty) ...[
             const SizedBox(height: 16),
-            Row(
-              children: [
-                _buildTabButton(theme, title: '折线趋势图', index: 0),
-                const SizedBox(width: 8),
-                _buildTabButton(theme, title: '历史列表', index: 1),
-              ],
+            Container(
+              height: 40,
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildHistoryTabItem(theme, '折线趋势图', 0),
+                  _buildHistoryTabItem(theme, '历史列表', 1),
+                ],
+              ),
             ),
             const SizedBox(height: 12),
             if (_historyTab == 0)
@@ -851,28 +720,19 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
               Container(
                 constraints: const BoxConstraints(maxHeight: 180),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withValues(
-                    alpha: 0.15,
-                  ),
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: theme.colorScheme.outlineVariant.withValues(
-                      alpha: 0.3,
-                    ),
+                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
                   ),
                 ),
                 child: ListView.separated(
                   shrinkWrap: true,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   itemCount: weightHistory.length,
                   separatorBuilder: (context, index) => Divider(
                     height: 1,
-                    color: theme.colorScheme.outlineVariant.withValues(
-                      alpha: 0.3,
-                    ),
+                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
                   ),
                   itemBuilder: (context, index) {
                     final sortedList = List<WeightRecord>.from(weightHistory)
@@ -896,8 +756,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                               Text(
                                 DateFormat('yyyy-MM-dd').format(record.time),
                                 style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant
-                                      .withValues(alpha: 0.7),
+                                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                                 ),
                               ),
                             ],
@@ -924,10 +783,41 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     );
   }
 
+  Widget _buildHistoryTabItem(ThemeData theme, String title, int index) {
+    final isSelected = _historyTab == index;
+    return GestureDetector(
+      onTap: () => setState(() => _historyTab = index),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: isSelected ? theme.colorScheme.surface : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          title,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildOtherInfoCard(ThemeData theme) {
     return Container(
       decoration: _cardDecoration(theme),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -935,45 +825,28 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
             children: [
               Icon(
                 Icons.info_outline,
-                size: 16,
+                size: 20,
                 color: theme.colorScheme.onSurfaceVariant,
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 8),
               Text(
                 '其他信息',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: theme.colorScheme.onSurface,
                   fontWeight: FontWeight.bold,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Container(
-            constraints: const BoxConstraints(minHeight: 60),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest.withValues(
-                alpha: 0.3,
-              ),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: TextField(
-              controller: _otherInfoController,
-              maxLines: null,
-              keyboardType: TextInputType.multiline,
-              style: theme.textTheme.bodyMedium,
-              decoration: InputDecoration(
-                hintText: '职业、爱好、身体状况等',
-                hintStyle: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant.withValues(
-                    alpha: 0.5,
-                  ),
-                ),
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
-                isDense: true,
-              ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _otherInfoController,
+            maxLines: 4,
+            minLines: 2,
+            keyboardType: TextInputType.multiline,
+            style: theme.textTheme.bodyMedium?.copyWith(height: 1.4),
+            decoration: const InputDecoration(
+              hintText: '职业、爱好、身体状况等',
             ),
           ),
         ],
@@ -983,25 +856,30 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
 
   Widget _buildAiHint(ThemeData theme) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: theme.colorScheme.primaryContainer.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.15),
+          color: theme.colorScheme.primary.withValues(alpha: 0.1),
         ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.smart_toy, size: 18, color: theme.colorScheme.primary),
-          const SizedBox(width: 12),
+          Icon(
+            Icons.smart_toy_outlined,
+            size: 20,
+            color: theme.colorScheme.primary,
+          ),
+          const SizedBox(width: 8),
           Expanded(
             child: RichText(
               text: TextSpan(
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
-                  height: 1.5,
+                  height: 1.6,
+                  fontSize: 12,
                 ),
                 children: [
                   const TextSpan(text: '您的资料已集成至 '),
@@ -1022,39 +900,6 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     );
   }
 
-  Widget _buildTabButton(
-    ThemeData theme, {
-    required String title,
-    required int index,
-  }) {
-    final isSelected = _historyTab == index;
-    return GestureDetector(
-      onTap: () => setState(() => _historyTab = index),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? theme.colorScheme.primaryContainer.withValues(alpha: 0.15)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected
-                ? theme.colorScheme.primary.withValues(alpha: 0.3)
-                : theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-          ),
-        ),
-        child: Text(
-          title,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: isSelected
-                ? theme.colorScheme.primary
-                : theme.colorScheme.onSurfaceVariant,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _buildWeightChart(List<dynamic> weightHistory, ThemeData theme) {
     final sortedHistory = List<WeightRecord>.from(weightHistory)
