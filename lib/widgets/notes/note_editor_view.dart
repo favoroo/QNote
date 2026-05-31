@@ -56,6 +56,40 @@ class _LinkSegment extends _Segment {
 }
 
 // ---------------------------------------------------------------------------
+// History states for undo/redo
+// ---------------------------------------------------------------------------
+abstract class _SegmentState {}
+
+class _TextSegmentState extends _SegmentState {
+  final String text;
+  _TextSegmentState(this.text);
+}
+
+class _ImageSegmentState extends _SegmentState {
+  final String path;
+  _ImageSegmentState(this.path);
+}
+
+class _LinkSegmentState extends _SegmentState {
+  final String url;
+  final String? title;
+  _LinkSegmentState(this.url, this.title);
+}
+
+class _EditorHistoryState {
+  final List<_SegmentState> segments;
+  final int focusedSegmentIndex;
+  final TextSelection? selection;
+
+  _EditorHistoryState({
+    required this.segments,
+    required this.focusedSegmentIndex,
+    this.selection,
+  });
+}
+
+
+// ---------------------------------------------------------------------------
 // Widget
 // ---------------------------------------------------------------------------
 class NoteEditorView extends ConsumerStatefulWidget {
@@ -92,6 +126,12 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   final Set<String> _loadingUrls = {};
   final Set<String> _dismissedUrls = {};
 
+  // History system for undo/redo
+  final List<_EditorHistoryState> _undoList = [];
+  final List<_EditorHistoryState> _redoList = [];
+  bool _isHistoryAction = false;
+  Timer? _historyTimer;
+
   @override
   void initState() {
     super.initState();
@@ -103,6 +143,9 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     _parseContentIntoSegments(rawContent);
 
     _titleController.addListener(_triggerAutoSave);
+    
+    // Seed initial history state
+    _undoList.add(_captureHistoryState());
   }
 
   String _initContentString() {
@@ -167,36 +210,44 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   }
 
   void _addTextAndLinkSegments(String text) {
-    final lines = text.split('\n');
-    final urlReg = RegExp(r'^https?:\/\/[^\s\(\)\[\]\{\}<>"\u4e00-\u9fa5]+$');
-    final mdLinkReg = RegExp(r'^\[([^\]]+)\]\((https?:\/\/[^\)]+)\)$');
+    final pattern = RegExp(
+      r'\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)|(https?:\/\/[^\s\(\)\[\]\{\}<>"\u4e00-\u9fa5]+)',
+    );
 
-    List<String> currentTextLines = [];
-
-    for (final line in lines) {
-      final trimmed = line.trim();
-      final urlMatch = urlReg.firstMatch(trimmed);
-      final mdLinkMatch = mdLinkReg.firstMatch(trimmed);
-
-      if (urlMatch != null || mdLinkMatch != null) {
-        if (currentTextLines.isNotEmpty) {
-          _addTextSegment(currentTextLines.join('\n'));
-          currentTextLines.clear();
-        }
-        if (urlMatch != null) {
-          _segments.add(_LinkSegment(url: trimmed));
-        } else {
-          final title = mdLinkMatch!.group(1)!;
-          final url = mdLinkMatch.group(2)!;
-          _segments.add(_LinkSegment(url: url, title: title));
-        }
-      } else {
-        currentTextLines.add(line);
+    int lastEnd = 0;
+    for (final match in pattern.allMatches(text)) {
+      final textBefore = text.substring(lastEnd, match.start);
+      if (textBefore.isNotEmpty) {
+        _addTextSegment(textBefore);
       }
+
+      if (match.group(1) != null) {
+        final title = match.group(1)!;
+        final url = match.group(2)!;
+        _segments.add(_LinkSegment(url: url, title: title));
+      } else {
+        String url = match.group(3)!;
+        final trailingPunct = RegExp(r'[\.\,\?\!\:\;]+$');
+        final punctMatch = trailingPunct.firstMatch(url);
+        String punct = '';
+        if (punctMatch != null) {
+          punct = punctMatch.group(0)!;
+          url = url.substring(0, url.length - punct.length);
+        }
+        
+        _segments.add(_LinkSegment(url: url));
+        
+        if (punct.isNotEmpty) {
+          _addTextSegment(punct);
+        }
+      }
+
+      lastEnd = match.end;
     }
 
-    if (currentTextLines.isNotEmpty) {
-      _addTextSegment(currentTextLines.join('\n'));
+    final remaining = text.substring(lastEnd);
+    if (remaining.isNotEmpty) {
+      _addTextSegment(remaining);
     }
   }
 
@@ -207,6 +258,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         seg.listenersAttached = true;
         seg.controller.addListener(_triggerAutoSave);
         seg.controller.addListener(() => _handleTextChanges(seg));
+        seg.controller.addListener(() => _onTextSegmentChanged(seg));
         
         seg.focusNode.addListener(() {
           if (seg.focusNode.hasFocus) {
@@ -252,50 +304,53 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     if (seg is! _TextSegment) return;
 
     final text = seg.controller.text;
-    final lines = text.split('\n');
-    final urlReg = RegExp(r'^https?:\/\/[^\s\(\)\[\]\{\}<>"\u4e00-\u9fa5]+$');
-    final mdLinkReg = RegExp(r'^\[([^\]]+)\]\((https?:\/\/[^\)]+)\)$');
+    final pattern = RegExp(
+      r'\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)|(https?:\/\/[^\s\(\)\[\]\{\}<>"\u4e00-\u9fa5]+)',
+    );
 
-    bool hasUrlLine = false;
-    for (final line in lines) {
-      final trimmed = line.trim();
-      if (urlReg.hasMatch(trimmed) || mdLinkReg.hasMatch(trimmed)) {
-        hasUrlLine = true;
-        break;
-      }
-    }
+    final matches = pattern.allMatches(text);
+    if (matches.isEmpty) return;
 
-    if (!hasUrlLine) return;
+    _historyTimer?.cancel();
+    _saveHistoryState();
 
     final List<_Segment> newSegments = [];
-    List<String> currentTextLines = [];
+    int lastEnd = 0;
     int lastLinkIdxInNew = -1;
 
-    for (final line in lines) {
-      final trimmed = line.trim();
-      final urlMatch = urlReg.firstMatch(trimmed);
-      final mdLinkMatch = mdLinkReg.firstMatch(trimmed);
-
-      if (urlMatch != null || mdLinkMatch != null) {
-        if (currentTextLines.isNotEmpty) {
-          newSegments.add(_TextSegment(context: context, text: currentTextLines.join('\n')));
-          currentTextLines.clear();
-        }
-        if (urlMatch != null) {
-          newSegments.add(_LinkSegment(url: trimmed));
-        } else {
-          final title = mdLinkMatch!.group(1)!;
-          final url = mdLinkMatch.group(2)!;
-          newSegments.add(_LinkSegment(url: url, title: title));
-        }
-        lastLinkIdxInNew = newSegments.length - 1;
-      } else {
-        currentTextLines.add(line);
+    for (final match in matches) {
+      final textBefore = text.substring(lastEnd, match.start);
+      if (textBefore.isNotEmpty) {
+        newSegments.add(_TextSegment(context: context, text: textBefore));
       }
+
+      if (match.group(1) != null) {
+        final title = match.group(1)!;
+        final url = match.group(2)!;
+        newSegments.add(_LinkSegment(url: url, title: title));
+      } else {
+        String url = match.group(3)!;
+        final trailingPunct = RegExp(r'[\.\,\?\!\:\;]+$');
+        final punctMatch = trailingPunct.firstMatch(url);
+        String punct = '';
+        if (punctMatch != null) {
+          punct = punctMatch.group(0)!;
+          url = url.substring(0, url.length - punct.length);
+        }
+        
+        newSegments.add(_LinkSegment(url: url));
+        
+        if (punct.isNotEmpty) {
+          newSegments.add(_TextSegment(context: context, text: punct));
+        }
+      }
+      lastLinkIdxInNew = newSegments.length - 1;
+      lastEnd = match.end;
     }
 
-    if (currentTextLines.isNotEmpty) {
-      newSegments.add(_TextSegment(context: context, text: currentTextLines.join('\n')));
+    final remaining = text.substring(lastEnd);
+    if (remaining.isNotEmpty) {
+      newSegments.add(_TextSegment(context: context, text: remaining));
     }
 
     if (newSegments.isEmpty) {
@@ -341,7 +396,10 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         if (focusTargetIdx < _segments.length && _segments[focusTargetIdx] is _TextSegment) {
           (_segments[focusTargetIdx] as _TextSegment).focusNode.requestFocus();
         }
+        _saveHistoryState();
       });
+    } else {
+      _saveHistoryState();
     }
 
     _triggerAutoSave();
@@ -356,6 +414,9 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
       final prevText = prev.controller.text;
       final mergedText = prevText.endsWith('\n') ? '$prevText${current.controller.text}' : '$prevText\n${current.controller.text}';
       
+      _historyTimer?.cancel();
+      _saveHistoryState();
+
       current.dispose();
       prev.dispose();
 
@@ -372,6 +433,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         merged.focusNode.requestFocus();
         merged.controller.selection = TextSelection.collapsed(offset: prevText.length);
+        _saveHistoryState();
         _triggerAutoSave();
       });
     }
@@ -448,12 +510,181 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   @override
   void dispose() {
     _autoSaveTimer?.cancel();
+    _historyTimer?.cancel();
     _titleController.dispose();
     _scrollController.dispose();
     for (final seg in _segments) {
       if (seg is _TextSegment) seg.dispose();
     }
     super.dispose();
+  }
+
+  // ---------------------------------------------------------------------------
+  // History Undo/Redo logic
+  // ---------------------------------------------------------------------------
+  _EditorHistoryState _captureHistoryState() {
+    final states = _segments.map((seg) {
+      if (seg is _TextSegment) {
+        return _TextSegmentState(seg.controller.text);
+      } else if (seg is _ImageSegment) {
+        return _ImageSegmentState(seg.path);
+      } else if (seg is _LinkSegment) {
+        return _LinkSegmentState(seg.url, seg.title);
+      } else {
+        throw Exception('Unknown segment type');
+      }
+    }).toList();
+
+    TextSelection? selection;
+    if (_focusedSegmentIndex >= 0 && _focusedSegmentIndex < _segments.length) {
+      final focusedSeg = _segments[_focusedSegmentIndex];
+      if (focusedSeg is _TextSegment) {
+        selection = focusedSeg.controller.selection;
+      }
+    }
+
+    return _EditorHistoryState(
+      segments: states,
+      focusedSegmentIndex: _focusedSegmentIndex,
+      selection: selection,
+    );
+  }
+
+  void _restoreHistoryState(_EditorHistoryState state) {
+    // 1. Dispose existing segments
+    for (final seg in _segments) {
+      if (seg is _TextSegment) {
+        seg.dispose();
+      }
+    }
+    _segments.clear();
+
+    // 2. Re-create segments
+    for (final segState in state.segments) {
+      if (segState is _TextSegmentState) {
+        final seg = _TextSegment(context: context, text: segState.text);
+        _segments.add(seg);
+      } else if (segState is _ImageSegmentState) {
+        _segments.add(_ImageSegment(segState.path));
+      } else if (segState is _LinkSegmentState) {
+        _segments.add(_LinkSegment(url: segState.url, title: segState.title));
+      }
+    }
+
+    // Ensure at least one text segment
+    if (_segments.isEmpty) _addTextSegment('');
+    // Ensure last segment is always a text segment for typing
+    if (_segments.last is _ImageSegment || _segments.last is _LinkSegment) _addTextSegment('');
+
+    // 3. Attach listeners
+    _attachListeners();
+
+    // 4. Restore focus and selection
+    _focusedSegmentIndex = state.focusedSegmentIndex;
+    if (_focusedSegmentIndex >= _segments.length) {
+      _focusedSegmentIndex = _segments.length - 1;
+    }
+
+    final focusedSeg = _segments[_focusedSegmentIndex];
+    if (focusedSeg is _TextSegment) {
+      focusedSeg.focusNode.requestFocus();
+      if (state.selection != null) {
+        focusedSeg.controller.selection = state.selection!;
+      }
+    }
+  }
+
+  bool _areStatesEqual(_EditorHistoryState a, _EditorHistoryState b) {
+    if (a.segments.length != b.segments.length) return false;
+    for (int i = 0; i < a.segments.length; i++) {
+      final sa = a.segments[i];
+      final sb = b.segments[i];
+      if (sa is _TextSegmentState && sb is _TextSegmentState) {
+        if (sa.text != sb.text) return false;
+      } else if (sa is _ImageSegmentState && sb is _ImageSegmentState) {
+        if (sa.path != sb.path) return false;
+      } else if (sa is _LinkSegmentState && sb is _LinkSegmentState) {
+        if (sa.url != sb.url || sa.title != sb.title) return false;
+      } else {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  void _saveHistoryState() {
+    if (_isHistoryAction) return;
+
+    final newState = _captureHistoryState();
+
+    // Check if the content is actually different from the last history item to avoid duplicates
+    if (_undoList.isNotEmpty) {
+      final lastState = _undoList.last;
+      if (_areStatesEqual(lastState, newState)) {
+        return;
+      }
+    }
+
+    if (_undoList.length >= 50) {
+      _undoList.removeAt(0);
+    }
+    _undoList.add(newState);
+    _redoList.clear();
+
+    if (mounted) setState(() {});
+  }
+
+  void _onTextSegmentChanged(_TextSegment seg) {
+    if (_isHistoryAction) return;
+
+    final text = seg.controller.text;
+
+    // If the text ends with space or newline, save immediately to make a clean boundary
+    if (text.endsWith(' ') || text.endsWith('\n')) {
+      _historyTimer?.cancel();
+      _saveHistoryState();
+    } else {
+      // Debounce saving the typing state
+      _historyTimer?.cancel();
+      _historyTimer = Timer(const Duration(milliseconds: 800), () {
+        if (mounted) {
+          _saveHistoryState();
+        }
+      });
+    }
+  }
+
+  void _undo() {
+    _historyTimer?.cancel();
+    _saveHistoryState();
+
+    if (_undoList.length < 2) return;
+    _isHistoryAction = true;
+
+    // Pop current state and push to redo
+    final currentState = _undoList.removeLast();
+    _redoList.add(currentState);
+
+    // Load previous state
+    final prevState = _undoList.last;
+    _restoreHistoryState(prevState);
+
+    _isHistoryAction = false;
+    if (mounted) setState(() {});
+  }
+
+  void _redo() {
+    _historyTimer?.cancel();
+    if (_redoList.isEmpty) return;
+    _isHistoryAction = true;
+
+    final nextState = _redoList.removeLast();
+    _undoList.add(nextState);
+
+    _restoreHistoryState(nextState);
+
+    _isHistoryAction = false;
+    if (mounted) setState(() {});
   }
 
   // ---------------------------------------------------------------------------
@@ -508,6 +739,9 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     }
     if (targetIndex < 0) return;
 
+    _historyTimer?.cancel();
+    _saveHistoryState();
+
     final seg = _segments[targetIndex] as _TextSegment;
     final cursor = seg.controller.selection.baseOffset;
     final text = seg.controller.text;
@@ -520,30 +754,22 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     final imgSeg = _ImageSegment(path);
     final after = _TextSegment(context: context, text: textAfter);
 
-    // Dispose old segment and attach listeners to new ones before setState
     seg.dispose();
-    before.controller.addListener(_triggerAutoSave);
-    after.controller.addListener(_triggerAutoSave);
     final afterIdx = targetIndex + 2;
-    before.focusNode.addListener(() {
-      if (before.focusNode.hasFocus) _focusedSegmentIndex = targetIndex;
-    });
-    after.focusNode.addListener(() {
-      if (after.focusNode.hasFocus) _focusedSegmentIndex = afterIdx;
-    });
-    before.listenersAttached = true;
-    after.listenersAttached = true;
 
     setState(() {
       _segments.replaceRange(targetIndex, targetIndex + 1, [before, imgSeg, after]);
       _focusedSegmentIndex = afterIdx;
     });
 
+    _attachListeners();
+
     // Focus the text field after the image
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (afterIdx < _segments.length && _segments[afterIdx] is _TextSegment) {
         (_segments[afterIdx] as _TextSegment).focusNode.requestFocus();
       }
+      _saveHistoryState();
       _triggerAutoSave();
     });
   }
@@ -551,6 +777,9 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   void _removeImage(int segmentIndex) {
     if (_segments[segmentIndex] is! _ImageSegment) return;
     final img = _segments[segmentIndex] as _ImageSegment;
+
+    _historyTimer?.cancel();
+    _saveHistoryState();
 
     if (_newlyUploadedPaths.contains(img.path)) {
       _newlyUploadedPaths.remove(img.path);
@@ -583,6 +812,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
       _segments.replaceRange(start, end + 1, [merged]);
       _attachListeners();
     });
+    _saveHistoryState();
     _triggerAutoSave();
   }
 
@@ -645,6 +875,87 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     );
   }
 
+  void _showEditLinkDialog(int index) {
+    if (index < 0 || index >= _segments.length) return;
+    final seg = _segments[index];
+    if (seg is! _LinkSegment) return;
+
+    final urlController = TextEditingController(text: seg.url);
+    final titleController = TextEditingController(text: seg.title ?? '');
+    
+    showDialog(
+      context: context,
+      builder: (context) {
+        final theme = Theme.of(context);
+        return AlertDialog(
+          title: Text('编辑链接', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: urlController,
+                decoration: const InputDecoration(
+                  labelText: '链接地址 (URL)',
+                  hintText: 'https://example.com',
+                ),
+                keyboardType: TextInputType.url,
+                autofocus: true,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: titleController,
+                decoration: const InputDecoration(
+                  labelText: '链接标题 (可选)',
+                  hintText: '输入显示标题',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () {
+                final url = urlController.text.trim();
+                if (url.isNotEmpty) {
+                  // Ensure URL has protocol
+                  String formattedUrl = url;
+                  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                    formattedUrl = 'https://$url';
+                  }
+                  final title = titleController.text.trim();
+                  
+                  _historyTimer?.cancel();
+                  _saveHistoryState();
+
+                  setState(() {
+                    _segments[index] = _LinkSegment(
+                      url: formattedUrl,
+                      title: title.isEmpty ? null : title,
+                    );
+                    if (formattedUrl != seg.url) {
+                      _dismissedUrls.remove(formattedUrl);
+                    }
+                  });
+                  
+                  if (formattedUrl != seg.url) {
+                    _fetchMetadataForUrl(formattedUrl);
+                  }
+                  _saveHistoryState();
+                }
+                Navigator.pop(context);
+                _triggerAutoSave();
+              },
+              child: const Text('保存'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _insertLinkAtFocusedSegment(String url, {String? title}) {
     int targetIndex = -1;
     for (int i = 0; i < _segments.length; i++) {
@@ -662,6 +973,9 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     }
     if (targetIndex < 0) return;
 
+    _historyTimer?.cancel();
+    _saveHistoryState();
+
     final seg = _segments[targetIndex] as _TextSegment;
     final cursor = seg.controller.selection.baseOffset;
     final text = seg.controller.text;
@@ -675,17 +989,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     final after = _TextSegment(context: context, text: textAfter);
 
     seg.dispose();
-    before.controller.addListener(_triggerAutoSave);
-    after.controller.addListener(_triggerAutoSave);
     final afterIdx = targetIndex + 2;
-    before.focusNode.addListener(() {
-      if (before.focusNode.hasFocus) _focusedSegmentIndex = targetIndex;
-    });
-    after.focusNode.addListener(() {
-      if (after.focusNode.hasFocus) _focusedSegmentIndex = afterIdx;
-    });
-    before.listenersAttached = true;
-    after.listenersAttached = true;
 
     _fetchMetadataForUrl(url);
 
@@ -694,10 +998,13 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
       _focusedSegmentIndex = afterIdx;
     });
 
+    _attachListeners();
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (afterIdx < _segments.length && _segments[afterIdx] is _TextSegment) {
         (_segments[afterIdx] as _TextSegment).focusNode.requestFocus();
       }
+      _saveHistoryState();
       _triggerAutoSave();
     });
   }
@@ -740,6 +1047,9 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   }
 
   void _toggleBlockPrefix(String prefix) {
+    _historyTimer?.cancel();
+    _saveHistoryState();
+
     final seg = _focusedTextSeg;
     if (seg == null) return;
     final ctrl = seg.controller;
@@ -758,13 +1068,20 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         : '$prefix${lineText.replaceFirst(RegExp(r'^#+\s?'), '')}';
 
     final newText = text.replaceRange(start, end, newLine);
+    _isHistoryAction = true;
     ctrl.value = TextEditingValue(
       text: newText,
       selection: TextSelection.collapsed(offset: sel.baseOffset + (newLine.length - lineText.length)),
     );
+    _isHistoryAction = false;
+    _saveHistoryState();
+    _triggerAutoSave();
   }
 
   void _insertBlock(String markup) {
+    _historyTimer?.cancel();
+    _saveHistoryState();
+
     final seg = _focusedTextSeg;
     if (seg == null) return;
     final ctrl = seg.controller;
@@ -774,13 +1091,20 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     final suffix = (idx == text.length || text[idx] == '\n') ? '' : '\n';
     final insert = '$prefix$markup$suffix';
     final newText = text.replaceRange(idx, idx, insert);
+    _isHistoryAction = true;
     ctrl.value = TextEditingValue(
       text: newText,
       selection: TextSelection.collapsed(offset: idx + insert.length),
     );
+    _isHistoryAction = false;
+    _saveHistoryState();
+    _triggerAutoSave();
   }
 
   void _toggleInlineStyle(String marker) {
+    _historyTimer?.cancel();
+    _saveHistoryState();
+
     final seg = _focusedTextSeg;
     if (seg == null) return;
     final ctrl = seg.controller;
@@ -790,10 +1114,14 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
 
     if (sel.start == sel.end) {
       final newText = text.replaceRange(sel.start, sel.end, '$marker$marker');
+      _isHistoryAction = true;
       ctrl.value = TextEditingValue(
         text: newText,
         selection: TextSelection.collapsed(offset: sel.start + marker.length),
       );
+      _isHistoryAction = false;
+      _saveHistoryState();
+      _triggerAutoSave();
       return;
     }
 
@@ -802,10 +1130,14 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         ? selected.substring(marker.length, selected.length - marker.length)
         : '$marker$selected$marker';
     final newText = text.replaceRange(sel.start, sel.end, newSelected);
+    _isHistoryAction = true;
     ctrl.value = TextEditingValue(
       text: newText,
       selection: TextSelection(baseOffset: sel.start, extentOffset: sel.start + newSelected.length),
     );
+    _isHistoryAction = false;
+    _saveHistoryState();
+    _triggerAutoSave();
   }
 
   // ---------------------------------------------------------------------------
@@ -954,18 +1286,18 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
             ),
           ),
           if (_fetchedMetadata.containsKey(url)) ...[
-            _buildLinkPreviewCard(_fetchedMetadata[url]!, context, () => _removeLinkSegment(index)),
+            _buildLinkPreviewCard(_fetchedMetadata[url]!, context, () => _showEditLinkDialog(index), () => _removeLinkSegment(index)),
           ] else if (_loadingUrls.contains(url)) ...[
             _buildLinkPreviewPlaceholder(url, theme, () => _removeLinkSegment(index)),
           ] else ...[
-            _buildDefaultLinkPreviewCard(url, () => _removeLinkSegment(index)),
+            _buildDefaultLinkPreviewCard(url, () => _showEditLinkDialog(index), () => _removeLinkSegment(index)),
           ],
         ],
       ),
     );
   }
 
-  Widget _buildDefaultLinkPreviewCard(String url, VoidCallback onDelete) {
+  Widget _buildDefaultLinkPreviewCard(String url, VoidCallback onEdit, VoidCallback onDelete) {
     final theme = Theme.of(context);
     final domain = Uri.tryParse(url)?.host ?? '';
     return Container(
@@ -978,64 +1310,76 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
           width: 1,
         ),
       ),
-      child: InkWell(
-        onTap: () {
-          final uri = Uri.tryParse(url);
-          if (uri != null) {
-            launchUrl(uri, mode: LaunchMode.externalApplication);
-          }
-        },
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.secondaryContainer,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(Icons.link, color: theme.colorScheme.primary, size: 24),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: InkWell(
+                onTap: () {
+                  final uri = Uri.tryParse(url);
+                  if (uri != null) {
+                    launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Row(
                   children: [
-                    Text(
-                      url,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.onSurface,
+                    Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.secondaryContainer,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(Icons.link, color: theme.colorScheme.primary, size: 24),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            url,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.onSurface,
+                            ),
+                          ),
+                          if (domain.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              domain,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
-                    if (domain.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        domain,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.close, size: 16),
-                onPressed: onDelete,
-                tooltip: '删除链接',
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.edit, size: 16),
+              onPressed: onEdit,
+              tooltip: '编辑链接',
+            ),
+            IconButton(
+              icon: const Icon(Icons.close, size: 16),
+              onPressed: onDelete,
+              tooltip: '删除链接',
+            ),
+          ],
         ),
       ),
     );
@@ -1043,6 +1387,10 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
 
   void _removeLinkSegment(int index) {
     if (index < 0 || index >= _segments.length || _segments[index] is! _LinkSegment) return;
+    
+    _historyTimer?.cancel();
+    _saveHistoryState();
+
     setState(() {
       final prevIdx = index - 1;
       final nextIdx = index + 1;
@@ -1066,6 +1414,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
       _segments.replaceRange(start, end + 1, [merged]);
       _attachListeners();
     });
+    _saveHistoryState();
     _triggerAutoSave();
   }
 
@@ -1132,7 +1481,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     );
   }
 
-  Widget _buildLinkPreviewCard(LinkMetadata meta, BuildContext context, VoidCallback onDismiss) {
+  Widget _buildLinkPreviewCard(LinkMetadata meta, BuildContext context, VoidCallback onEdit, VoidCallback onDismiss) {
     final theme = Theme.of(context);
     return Container(
       margin: const EdgeInsets.only(top: 8, bottom: 16),
@@ -1144,83 +1493,95 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
           width: 1,
         ),
       ),
-      child: InkWell(
-        onTap: () {
-          final uri = Uri.tryParse(meta.url);
-          if (uri != null) {
-            launchUrl(uri, mode: LaunchMode.externalApplication);
-          }
-        },
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              if (meta.imageUrl != null && meta.imageUrl!.isNotEmpty) ...[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: SizedBox(
-                    width: 50,
-                    height: 50,
-                    child: Image.network(
-                      meta.imageUrl!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          color: theme.colorScheme.secondaryContainer,
-                          child: Icon(Icons.link, color: theme.colorScheme.primary, size: 24),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-              ] else ...[
-                Container(
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.secondaryContainer,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(Icons.link, color: theme.colorScheme.primary, size: 24),
-                ),
-                const SizedBox(width: 12),
-              ],
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: InkWell(
+                onTap: () {
+                  final uri = Uri.tryParse(meta.url);
+                  if (uri != null) {
+                    launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Row(
                   children: [
-                    Text(
-                      meta.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.onSurface,
+                    if (meta.imageUrl != null && meta.imageUrl!.isNotEmpty) ...[
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: SizedBox(
+                          width: 50,
+                          height: 50,
+                          child: Image.network(
+                            meta.imageUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                color: theme.colorScheme.secondaryContainer,
+                                child: Icon(Icons.link, color: theme.colorScheme.primary, size: 24),
+                              );
+                            },
+                          ),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      meta.domain,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                      const SizedBox(width: 12),
+                    ] else ...[
+                      Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.secondaryContainer,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(Icons.link, color: theme.colorScheme.primary, size: 24),
+                      ),
+                      const SizedBox(width: 12),
+                    ],
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            meta.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.onSurface,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            meta.domain,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.close, size: 16),
-                onPressed: onDismiss,
-                tooltip: '关闭预览',
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.edit, size: 16),
+              onPressed: onEdit,
+              tooltip: '编辑链接',
+            ),
+            IconButton(
+              icon: const Icon(Icons.close, size: 16),
+              onPressed: onDismiss,
+              tooltip: '删除链接',
+            ),
+          ],
         ),
       ),
     );
@@ -1319,6 +1680,14 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
                 ),
               ),
               _ToolbarButton(
+                icon: Icons.undo,
+                onPressed: _undoList.length >= 2 ? _undo : null,
+              ),
+              _ToolbarButton(
+                icon: Icons.redo,
+                onPressed: _redoList.isNotEmpty ? _redo : null,
+              ),
+              _ToolbarButton(
                 icon: Icons.keyboard_hide,
                 onPressed: () => _focusedTextSeg?.focusNode.unfocus(),
               ),
@@ -1335,13 +1704,14 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
 // ---------------------------------------------------------------------------
 class _ToolbarButton extends StatelessWidget {
   final IconData icon;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
-  const _ToolbarButton({required this.icon, required this.onPressed});
+  const _ToolbarButton({required this.icon, this.onPressed});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isEnabled = onPressed != null;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: IconButton(
@@ -1350,7 +1720,9 @@ class _ToolbarButton extends StatelessWidget {
         padding: EdgeInsets.zero,
         constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
         style: IconButton.styleFrom(
-          foregroundColor: theme.colorScheme.onSurface,
+          foregroundColor: isEnabled
+              ? theme.colorScheme.onSurface
+              : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.38),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
         onPressed: onPressed,

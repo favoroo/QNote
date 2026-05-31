@@ -393,11 +393,12 @@ class ExportService {
     await db.delete('ai_configs');
     await db.delete('shortcut_configs');
     await db.delete('chat_sessions');
-    await db.delete('webdav_configs');
+    // 导入覆盖数据时，不删除同步配置和应用全局配置，防止账号密码及个性化配置丢失
+    // await db.delete('webdav_configs');
     await db.delete('date_color_marks');
     await db.delete('body_states');
     await db.delete('daily_scores');
-    await db.delete('app_configs');
+    // await db.delete('app_configs');
   }
 
   Future<void> _importFolders(

@@ -6,7 +6,21 @@
 
 ---
 
+## 2026-05-31
+
+- **[08:40]**
+  - **Added**: 还原并优化了分段式笔记编辑器中的撤回 (Undo) 与取消撤回 (Redo) 历史系统。设计了多段状态快照模型 `_EditorHistoryState` 并集成了打字防抖保存、空格/回车即时保存以及格式化/图片/链接增删合并操作的快照触发逻辑，同时在编辑器底部工具栏中恢复了 Undo 与 Redo 按钮的渲染与交互功能 (`lib/widgets/notes/note_editor_view.dart`)。
+
+- **[08:30]**
+  - **Fixed**: 修复了混有文字与链接的文本（如分享的抖音文本、带有说明前缀的链接等）在笔记中无法提取并展示链接预览的缺陷。通过重写 `_addTextAndLinkSegments` 和 `_splitUrlsInSegment`，不再局限于仅匹配整行链接，而是使用正则表达式扫描并提取任意位置的 URL 或 Markdown 链接拆分为独立的 `_LinkSegment` 段落，使其完美展示网页预览卡片并保留与其前后的普通文本的合并机制 (`lib/widgets/notes/note_editor_view.dart`)。
+
 ## 2026-05-30
+
+- **[23:10]**
+  - **Added**: 在笔记块级链接预览卡片（及默认预览卡片）上新增了“编辑”按钮（`Icons.edit` 画笔图标）。点击后将弹出“编辑链接”对话框，支持修改链接 URL 和显示标题；若 URL 发生变更，将自动清除之前的 dismissed 状态并自动拉取新的链接网页预览 (`lib/widgets/notes/note_editor_view.dart`)。
+
+- **[23:08]**
+  - **Fixed**: 修复了在进行 AI 智能提取或评分分析时，若大模型返回包含闲聊说明文字或特定前缀（如 `* Input: ...`）等非标准 JSON 响应时抛出 `FormatException: Unexpected character` 从而导致提取失败的 Bug。我们对 `_parseJsonFromAiContent` 函数引入了更具容错性的 JSON 提取层（通过 `_extractJsonString` 定位最外层的 `{}` 或 `[]` 括号子串进行解析），极大提高了系统对非标 JSON 响应的解析成功率 (`lib/core/ai/ai_service.dart`)。
 
 - **[22:58]**
   - **Changed**: 优化了笔记编辑器中的链接展示与删除交互逻辑。引入了块级段落 `_LinkSegment`，将单独成行的链接及其网页预览框绑定在一起作为不可分割的块段落进行整体渲染和删除。去除了原先纯文本段落（`_TextSegment`）中直接渲染链接预览以及用户可以在链接与预览框中间插入内容的设计。实现了在链接卡片上点击 `x` 按钮将整体同时删除链接和预览卡片的交互效果。此外支持了输入/粘贴链接并按回车或失去焦点时，自动将行拆分为块级链接段落并自动聚焦新行的交互 (`lib/widgets/notes/note_editor_view.dart`)。
