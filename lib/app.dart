@@ -98,19 +98,23 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
       ],
       locale: const Locale('zh', 'CN'),
       builder: (context, child) {
-        return PopScope(
-          canPop: false,
-          onPopInvokedWithResult: (didPop, result) {
-            if (didPop) return;
-            final router = GoRouter.of(context);
-            final location = router.routerDelegate.currentConfiguration.uri.toString();
-            final shellRoutes = ['/diary', '/notes', '/todo', '/ai', '/statistics'];
-            if (shellRoutes.contains(location)) {
-              return;
-            }
-            router.pop();
-          },
-          child: child ?? const SizedBox.shrink(),
+        return GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+          child: PopScope(
+            canPop: false,
+            onPopInvokedWithResult: (didPop, result) {
+              if (didPop) return;
+              final router = GoRouter.of(context);
+              final location = router.routerDelegate.currentConfiguration.uri.toString();
+              final shellRoutes = ['/diary', '/notes', '/todo', '/ai', '/statistics'];
+              if (shellRoutes.contains(location)) {
+                return;
+              }
+              router.pop();
+            },
+            child: child ?? const SizedBox.shrink(),
+          ),
         );
       },
     );
