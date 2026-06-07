@@ -275,7 +275,6 @@ final defaultAiConfigs = <AiConfig>[
 ];
 
 const defaultAiRoles = AiRoles(
-  imageExtraction: null,
   assistant: null,
   timelineOptimization: null,
 );

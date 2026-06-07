@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/widgets/side_drawer.dart';
@@ -72,15 +75,17 @@ class BottomNavBar extends ConsumerWidget {
               final item = entry.value;
               final isSelected = index == currentIndex;
 
-              return GestureDetector(
-                onTap: () => onTap(index),
+              return InkWell(
+                borderRadius: BorderRadius.circular(AppRadius.large),
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  onTap(index);
+                },
                 onLongPress: index == 0
                     ? () {
-                        // Switch to diary branch if not already selected
                         if (!isSelected) {
                           onTap(0);
                         }
-                        // Trigger smooth scroll to current time in timeline
                         ref.read(diaryScrollTriggerProvider.notifier).state =
                             DateTime.now().millisecondsSinceEpoch;
                       }
@@ -88,18 +93,24 @@ class BottomNavBar extends ConsumerWidget {
                         ? () => showDebugConsole(context)
                         : null),
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
+                  duration: AppDurations.normal,
                   padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
                   decoration: BoxDecoration(
                     color: isSelected ? theme.colorScheme.primary.withValues(alpha: 0.12) : Colors.transparent,
                     borderRadius: BorderRadius.circular(24),
                   ),
-                  child: Icon(
-                    isSelected ? item.activeIcon : item.icon,
-                    color: isSelected 
-                        ? theme.colorScheme.primary 
-                        : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-                    size: 24,
+                  child: AnimatedSwitcher(
+                    duration: AppDurations.normal,
+                    switchInCurve: Curves.easeInOut,
+                    switchOutCurve: Curves.easeInOut,
+                    child: Icon(
+                      isSelected ? item.activeIcon : item.icon,
+                      key: ValueKey(isSelected),
+                      color: isSelected
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                      size: 24,
+                    ),
                   ),
                 ),
               );

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/models/folder.dart';
 import 'package:qnote_flutter/providers/note_provider.dart';
@@ -9,6 +10,7 @@ import 'package:qnote_flutter/widgets/action_menu.dart';
 import 'package:qnote_flutter/widgets/search_view.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/widgets/notes/note_editor_view.dart';
+import 'package:qnote_flutter/widgets/empty_state.dart';
 
 class NotesPage extends ConsumerStatefulWidget {
   const NotesPage({super.key});
@@ -192,7 +194,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                   shape: const CircleBorder(),
                   backgroundColor: Theme.of(context).colorScheme.primary,
                   foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                  elevation: 4,
+                  elevation: 2,
                   onPressed: () => _createNote(),
                   child: const Icon(Icons.add, size: 28),
                 ),
@@ -212,7 +214,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
+                    color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.05),
                     offset: const Offset(0, -4),
                     blurRadius: 20,
                   ),
@@ -238,7 +240,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                             : _handleBatchDelete,
                         style: FilledButton.styleFrom(
                           backgroundColor: _isConfirming
-                              ? Colors.amber.shade700
+                              ? Theme.of(context).colorScheme.error
                               : Theme.of(context).colorScheme.error,
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(
@@ -325,41 +327,28 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     List<Note> notes,
   ) {
     if (folders.isEmpty && notes.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.note_add_outlined,
-              size: 64,
-              color: Theme.of(context).colorScheme.outlineVariant,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '暂无笔记',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+      return Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          EmptyStateWidget(icon: Icons.note_outlined, message: '暂无笔记'),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () => _showCreateFolderDialog(),
+                icon: const Icon(Icons.create_new_folder_outlined),
+                label: const Text('新建文件夹'),
               ),
-            ),
-            const SizedBox(height: 24),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: () => _showCreateFolderDialog(),
-                  icon: const Icon(Icons.create_new_folder_outlined),
-                  label: const Text('新建文件夹'),
-                ),
-                const SizedBox(width: 12),
-                FilledButton.icon(
-                  onPressed: () => _createNote(),
-                  icon: const Icon(Icons.add),
-                  label: const Text('新建笔记'),
-                ),
-              ],
-            ),
-          ],
-        ),
+              const SizedBox(width: 12),
+              FilledButton.icon(
+                onPressed: () => _createNote(),
+                icon: const Icon(Icons.add),
+                label: const Text('新建笔记'),
+              ),
+            ],
+          ),
+        ],
       );
     }
 
@@ -513,8 +502,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                     color: isInvalid
                         ? theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.2)
                         : (isCurrentParent
-                            ? Colors.orange
-                            : Colors.orange.withValues(alpha: 0.5)),
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.primary.withValues(alpha: 0.5)),
                   ),
                   title: Text(
                     f.name,
@@ -841,7 +830,7 @@ class _SortableLevelState extends State<_SortableLevel> {
   }
 }
 
-class _NoteTile extends StatelessWidget {
+class _NoteTile extends StatefulWidget {
   final Note note;
   final int depth;
   final int index;
@@ -866,33 +855,39 @@ class _NoteTile extends StatelessWidget {
   });
 
   @override
+  State<_NoteTile> createState() => _NoteTileState();
+}
+
+class _NoteTileState extends State<_NoteTile> {
+  final _menuKey = GlobalKey();
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final menuKey = GlobalKey();
 
     return Container(
       padding: EdgeInsets.only(
-        left: 16.0 + depth * 8.0,
+        left: 16.0 + widget.depth * 8.0,
         right: 12,
         top: 6,
         bottom: 6,
       ),
       child: Row(
         children: [
-          if (isSelectionMode)
+          if (widget.isSelectionMode)
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: SizedBox(
                 width: 24,
                 height: 24,
                 child: Checkbox(
-                  value: isSelected,
-                  onChanged: (_) => onToggleSelection(),
+                  value: widget.isSelected,
+                  onChanged: (_) => widget.onToggleSelection(),
                   activeColor: theme.colorScheme.primary,
                 ),
               ),
             )
-          else if (note.isPinned)
+          else if (widget.note.isPinned)
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: Icon(
@@ -905,7 +900,7 @@ class _NoteTile extends StatelessWidget {
             )
           else
             ReorderableDragStartListener(
-              index: index,
+              index: widget.index,
               child: Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: Icon(
@@ -919,8 +914,8 @@ class _NoteTile extends StatelessWidget {
             ),
           Expanded(
             child: GestureDetector(
-              onTap: isSelectionMode ? onToggleSelection : onEdit,
-              onLongPress: isSelectionMode ? null : onEnterSelectionMode,
+              onTap: widget.isSelectionMode ? widget.onToggleSelection : widget.onEdit,
+              onLongPress: widget.isSelectionMode ? null : widget.onEnterSelectionMode,
               behavior: HitTestBehavior.opaque,
               child: Row(
                 children: [
@@ -938,7 +933,7 @@ class _NoteTile extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  if (note.isPinned) ...[
+                  if (widget.note.isPinned) ...[
                     Icon(
                       Icons.push_pin,
                       size: 14,
@@ -948,7 +943,7 @@ class _NoteTile extends StatelessWidget {
                   ],
                   Expanded(
                     child: Text(
-                      note.title,
+                      widget.note.title,
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w500,
                         letterSpacing: 0.2,
@@ -961,10 +956,10 @@ class _NoteTile extends StatelessWidget {
               ),
             ),
           ),
-          if (!isSelectionMode) ...[
+          if (!widget.isSelectionMode) ...[
             const SizedBox(width: 4),
             SizedBox(
-              key: menuKey,
+              key: _menuKey,
               width: 32,
               height: 32,
               child: IconButton(
@@ -976,7 +971,7 @@ class _NoteTile extends StatelessWidget {
                     alpha: 0.5,
                   ),
                 ),
-                onPressed: () => onMenu(menuKey),
+                onPressed: () => widget.onMenu(_menuKey),
               ),
             ),
           ],
@@ -986,7 +981,7 @@ class _NoteTile extends StatelessWidget {
   }
 }
 
-class _FolderTile extends StatelessWidget {
+class _FolderTile extends StatefulWidget {
   final Folder folder;
   final int depth;
   final int index;
@@ -1017,12 +1012,18 @@ class _FolderTile extends StatelessWidget {
   });
 
   @override
+  State<_FolderTile> createState() => _FolderTileState();
+}
+
+class _FolderTileState extends State<_FolderTile> {
+  final _menuKey = GlobalKey();
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final menuKey = GlobalKey();
 
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
+      duration: AppDurations.normal,
       curve: Curves.easeInOut,
       decoration: BoxDecoration(
         color: Colors.transparent,
@@ -1038,41 +1039,41 @@ class _FolderTile extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
+            duration: AppDurations.normal,
             curve: Curves.easeInOut,
             decoration: BoxDecoration(
               color: Colors.transparent,
               borderRadius: BorderRadius.circular(12),
             ),
             child: GestureDetector(
-              onTap: isSelectionMode ? onToggleSelection : onToggle,
-              onLongPress: isSelectionMode ? null : onEnterSelectionMode,
+              onTap: widget.isSelectionMode ? widget.onToggleSelection : widget.onToggle,
+              onLongPress: widget.isSelectionMode ? null : widget.onEnterSelectionMode,
               behavior: HitTestBehavior.opaque,
               child: Padding(
                 padding: EdgeInsets.only(
-                  left: 12.0 + depth * 8.0,
+                  left: 12.0 + widget.depth * 8.0,
                   right: 12,
                   top: 8,
                   bottom: 4,
                 ),
                 child: Row(
                   children: [
-                    if (isSelectionMode)
+                    if (widget.isSelectionMode)
                       Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: SizedBox(
                           width: 24,
                           height: 24,
                           child: Checkbox(
-                            value: isSelected,
-                            onChanged: (_) => onToggleSelection(),
-                            activeColor: Colors.orange,
+                            value: widget.isSelected,
+                            onChanged: (_) => widget.onToggleSelection(),
+                            activeColor: theme.colorScheme.primary,
                           ),
                         ),
                       )
                     else
                       ReorderableDragStartListener(
-                        index: index,
+                        index: widget.index,
                         child: Padding(
                           padding: const EdgeInsets.only(right: 8),
                           child: Icon(
@@ -1084,13 +1085,13 @@ class _FolderTile extends StatelessWidget {
                         ),
                       ),
                     GestureDetector(
-                      onTap: onToggle,
+                      onTap: widget.onToggle,
                       behavior: HitTestBehavior.opaque,
                       child: SizedBox(
                         width: 32,
                         height: 32,
                         child: Icon(
-                          folder.isExpanded
+                          widget.folder.isExpanded
                               ? Icons.keyboard_arrow_down
                               : Icons.keyboard_arrow_right,
                           size: 16,
@@ -1104,21 +1105,21 @@ class _FolderTile extends StatelessWidget {
                       width: 32,
                       height: 32,
                       decoration: BoxDecoration(
-                        color: Colors.orange.withValues(alpha: 0.08),
+                        color: theme.colorScheme.primary.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Icon(
-                        folder.isExpanded
+                        widget.folder.isExpanded
                             ? Icons.folder_open
                             : Icons.folder,
                         size: 18,
-                        color: Colors.orange,
+                        color: theme.colorScheme.primary,
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        folder.name,
+                        widget.folder.name,
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.bold,
                           letterSpacing: 0.2,
@@ -1127,10 +1128,10 @@ class _FolderTile extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    if (!isSelectionMode) ...[
+                    if (!widget.isSelectionMode) ...[
                       const SizedBox(width: 4),
                       SizedBox(
-                        key: menuKey,
+                        key: _menuKey,
                         width: 32,
                         height: 32,
                         child: IconButton(
@@ -1141,7 +1142,7 @@ class _FolderTile extends StatelessWidget {
                             color: theme.colorScheme.onSurfaceVariant
                                 .withValues(alpha: 0.5),
                           ),
-                          onPressed: () => onMenu(menuKey),
+                          onPressed: () => widget.onMenu(_menuKey),
                         ),
                       ),
                     ],
@@ -1150,9 +1151,9 @@ class _FolderTile extends StatelessWidget {
               ),
             ),
           ),
-          if (folder.isExpanded)
-            onBuildChildLevel(
-              depth: depth + 1,
+          if (widget.folder.isExpanded)
+            widget.onBuildChildLevel(
+              depth: widget.depth + 1,
             ),
         ],
       ),

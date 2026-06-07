@@ -29,9 +29,6 @@ class AiRoleService {
     final roles = await getRoles();
     String? configId;
     switch (role) {
-      case 'imageExtraction':
-        configId = roles.imageExtraction;
-        break;
       case 'assistant':
         configId = roles.assistant;
         break;
@@ -51,8 +48,6 @@ class AiRoleService {
   Future<AiRoleSettings> getSettingsForRole(String role) async {
     final temps = await getTemperatures();
     switch (role) {
-      case 'imageExtraction':
-        return temps.imageExtraction;
       case 'assistant':
         return temps.assistant;
       case 'timelineOptimization':

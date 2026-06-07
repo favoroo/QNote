@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/pages/settings/user_profile_page.dart';
 import 'package:qnote_flutter/pages/settings/personalization_page.dart';
 import 'package:qnote_flutter/pages/settings/ai_config_page.dart';
@@ -106,43 +108,43 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
                   _SectionHeader(title: '设置与管理'),
                   _DrawerMenuItem(
                     icon: Icons.person_outline,
-                    iconBgColor: Colors.blue.withValues(alpha: 0.1),
-                    iconColor: Colors.blue,
+                    iconBgColor: colorScheme.primaryContainer,
+                    iconColor: colorScheme.primary,
                     label: '个人信息',
                     onTap: () => _navigateTo(context, const UserProfilePage()),
                   ),
                   _DrawerMenuItem(
                     icon: Icons.smart_toy_outlined,
-                    iconBgColor: Colors.deepPurple.withValues(alpha: 0.1),
-                    iconColor: Colors.deepPurple,
+                    iconBgColor: colorScheme.tertiary.withValues(alpha: 0.15),
+                    iconColor: colorScheme.tertiary,
                     label: 'AI 配置',
                     onTap: () => _navigateTo(context, const AiConfigPage()),
                   ),
                   _DrawerMenuItem(
                     icon: Icons.hexagon_outlined,
-                    iconBgColor: Colors.orange.withValues(alpha: 0.1),
-                    iconColor: Colors.orange,
+                    iconBgColor: colorScheme.primary.withValues(alpha: 0.12),
+                    iconColor: colorScheme.primary,
                     label: '快捷按钮管理',
                     onTap: () => _navigateTo(context, const ShortcutsPage()),
                   ),
                   _DrawerMenuItem(
                     icon: Icons.cloud_outlined,
-                    iconBgColor: Colors.indigo.withValues(alpha: 0.1),
-                    iconColor: Colors.indigo,
+                    iconBgColor: colorScheme.secondaryContainer,
+                    iconColor: colorScheme.secondary,
                     label: '数据管理',
                     onTap: () => _navigateTo(context, const DataManagementPage()),
                   ),
                   _DrawerMenuItem(
                     icon: Icons.sync_rounded,
-                    iconBgColor: Colors.lightBlue.withValues(alpha: 0.1),
-                    iconColor: Colors.lightBlue,
+                    iconBgColor: colorScheme.primaryContainer,
+                    iconColor: colorScheme.primary,
                     label: '同步设置',
                     onTap: () => _navigateTo(context, const SyncSettingsPage()),
                   ),
                   _DrawerMenuItem(
                     icon: Icons.palette_outlined,
-                    iconBgColor: Colors.red.withValues(alpha: 0.1),
-                    iconColor: Colors.red,
+                    iconBgColor: colorScheme.error.withValues(alpha: 0.1),
+                    iconColor: colorScheme.error,
                     label: '个性化设置',
                     onTap: () => _navigateTo(context, const PersonalizationPage()),
                   ),
@@ -152,8 +154,8 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
                   _SectionHeader(title: '其他'),
                   _DrawerMenuItem(
                     icon: Icons.info_outline,
-                    iconBgColor: Colors.blueGrey.withValues(alpha: 0.1),
-                    iconColor: Colors.blueGrey,
+                    iconBgColor: colorScheme.surfaceContainerHigh,
+                    iconColor: colorScheme.onSurfaceVariant,
                     label: '关于 QNote',
                     onTap: () => _navigateTo(context, const AboutPage()),
                   ),
@@ -247,8 +249,11 @@ class _DrawerMenuItem extends StatelessWidget {
           size: 20,
           color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
         ),
-        onTap: onTap,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.medium)),
       ),
     );
   }

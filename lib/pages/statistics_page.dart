@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
+import 'package:qnote_flutter/widgets/empty_state.dart';
 import 'package:qnote_flutter/widgets/time_range_selector.dart';
 import 'package:qnote_flutter/widgets/statistics/sleep_stats.dart';
 import 'package:qnote_flutter/widgets/statistics/diet_stats.dart';
@@ -93,49 +96,38 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     }
   }
 
-  Widget _buildViewDataButton(ThemeData theme, bool isDark) {
+  Widget _buildViewDataButton(ThemeData theme) {
     final colorScheme = theme.colorScheme;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {
-          final (startDate, endDate) = _getDateRange();
-          final tagName = _getTagName(_activeTab);
-          context.push('/diary/batch', extra: {
-            'initialTags': tagName.isNotEmpty ? [tagName] : null,
-            'initialDateRange': DateTimeRange(start: startDate, end: endDate),
-          });
-        },
-        borderRadius: BorderRadius.circular(20),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: colorScheme.primary.withValues(alpha: 0.2),
-              width: 1,
+    return Tooltip(
+      message: '查看数据',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            final (startDate, endDate) = _getDateRange();
+            final tagName = _getTagName(_activeTab);
+            context.push('/diary/batch', extra: {
+              'initialTags': tagName.isNotEmpty ? [tagName] : null,
+              'initialDateRange': DateTimeRange(start: startDate, end: endDate),
+            });
+          },
+          customBorder: const CircleBorder(),
+          child: AnimatedContainer(
+            duration: AppDurations.normal,
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: colorScheme.primary.withValues(alpha: 0.2),
+                width: 1,
+              ),
+              color: colorScheme.primary.withValues(alpha: 0.05),
             ),
-            borderRadius: BorderRadius.circular(20),
-            color: colorScheme.primary.withValues(alpha: 0.05),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.analytics_outlined,
-                size: 14,
-                color: colorScheme.primary,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                '查看数据',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: colorScheme.primary,
-                ),
-              ),
-            ],
+            child: Icon(
+              Icons.analytics_outlined,
+              size: 20,
+              color: colorScheme.primary,
+            ),
           ),
         ),
       ),
@@ -145,7 +137,6 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final (startDate, endDate) = _getDateRange();
     final diaryListAsync = ref.watch(diaryListProvider);
 
@@ -164,7 +155,6 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
             tabs: _tabs,
             activeTab: _activeTab,
             onTabChanged: _onTabChanged,
-            isDark: isDark,
           ),
           if (_activeTab != StatTab.score)
             Padding(
@@ -179,7 +169,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
                   ),
                   Positioned(
                     right: 0,
-                    child: _buildViewDataButton(theme, isDark),
+                    child: _buildViewDataButton(theme),
                   ),
                 ],
               ),
@@ -189,7 +179,15 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (err, stack) => Center(child: Text('加载失败: $err')),
               data: (records) {
-                return _buildContent(records, startDate, endDate, isDark);
+                return AnimatedSwitcher(
+                  duration: AppDurations.medium,
+                  switchInCurve: Curves.easeInOut,
+                  switchOutCurve: Curves.easeInOut,
+                  child: KeyedSubtree(
+                    key: ValueKey(_activeTab),
+                    child: _buildContent(records, startDate, endDate),
+                  ),
+                );
               },
             ),
           ),
@@ -202,7 +200,6 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     List<DiaryRecord> records,
     DateTime startDate,
     DateTime endDate,
-    bool isDark,
   ) {
     if (_activeTab == StatTab.score) {
       return const SingleChildScrollView(
@@ -219,27 +216,9 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     }).toList();
 
     if (filtered.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.bar_chart,
-              size: 48,
-              color: isDark ? const Color(0xFF383C47) : const Color(0xFFC2C6D6),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '暂无数据',
-              style: TextStyle(
-                fontSize: 14,
-                color: isDark
-                    ? const Color(0xFF94A3B8)
-                    : const Color(0xFF94A3B8),
-              ),
-            ),
-          ],
-        ),
+      return const EmptyStateWidget(
+        icon: Icons.bar_chart,
+        message: '暂无数据',
       );
     }
 
@@ -275,13 +254,11 @@ class _TabSwitcher extends StatelessWidget {
   final List<_TabConfig> tabs;
   final StatTab activeTab;
   final ValueChanged<StatTab> onTabChanged;
-  final bool isDark;
 
   const _TabSwitcher({
     required this.tabs,
     required this.activeTab,
     required this.onTabChanged,
-    required this.isDark,
   });
 
   @override
@@ -293,7 +270,7 @@ class _TabSwitcher extends StatelessWidget {
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(
-            color: isDark ? const Color(0x1A383C47) : const Color(0x1AC2C6D6),
+            color: colorScheme.outlineVariant.withValues(alpha: 0.1),
             width: 0.5,
           ),
         ),
@@ -305,9 +282,12 @@ class _TabSwitcher extends StatelessWidget {
           return Padding(
             padding: const EdgeInsets.only(right: 2),
             child: GestureDetector(
-              onTap: () => onTabChanged(config.tab),
+              onTap: () {
+                HapticFeedback.selectionClick();
+                onTabChanged(config.tab);
+              },
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
+                duration: AppDurations.normal,
                 curve: Curves.easeInOut,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 8,
@@ -316,9 +296,7 @@ class _TabSwitcher extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: isActive
                       ? colorScheme.primary
-                      : (isDark
-                            ? const Color(0xFF2A2D36)
-                            : const Color(0xFFECEDF7)),
+                      : colorScheme.surfaceContainerHigh,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Center(
@@ -331,9 +309,7 @@ class _TabSwitcher extends StatelessWidget {
                           : FontWeight.w600,
                       color: isActive
                           ? colorScheme.onPrimary
-                          : (isDark
-                                ? const Color(0xFFC2C6D6)
-                                : const Color(0xFF424754)),
+                          : colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
