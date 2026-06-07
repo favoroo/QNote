@@ -14,6 +14,9 @@ import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/config/defaults.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_radius.dart';
+import 'package:qnote_flutter/widgets/empty_state.dart';
 
 class AiPage extends ConsumerStatefulWidget {
   const AiPage({super.key});
@@ -89,7 +92,7 @@ class _AiPageState extends ConsumerState<AiPage> {
         } else {
           _scrollController.animateTo(
             _scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 300),
+            duration: AppDurations.medium,
             curve: Curves.easeOut,
           );
         }
@@ -153,6 +156,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     final text = _inputController.text.trim();
     if (text.isEmpty || _isTyping) return;
 
+    HapticFeedback.lightImpact();
     _inputController.clear();
     FocusScope.of(context).unfocus();
     setState(() => _isTyping = true);
@@ -194,7 +198,7 @@ class _AiPageState extends ConsumerState<AiPage> {
             colorScheme: ColorScheme.light(
               primary: Theme.of(context).colorScheme.primary,
               onPrimary: Colors.white,
-              onSurface: Colors.black,
+              onSurface: Theme.of(context).colorScheme.onSurface,
             ),
             dialogTheme: DialogThemeData(
               barrierColor: Colors.black.withValues(alpha: 0.2),
@@ -487,7 +491,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                             _syncContextFilter();
                           },
                           style: TextButton.styleFrom(
-                            foregroundColor: Colors.red,
+                            foregroundColor: theme.colorScheme.error,
                             visualDensity: VisualDensity.compact,
                             padding: const EdgeInsets.symmetric(horizontal: 6),
                             minimumSize: Size.zero,
@@ -496,8 +500,8 @@ class _AiPageState extends ConsumerState<AiPage> {
                           child: const Text(
                             '清除',
                             style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
+                              fontSize: 10,
+                            fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
@@ -774,7 +778,7 @@ class _AiPageState extends ConsumerState<AiPage> {
       constraints: const BoxConstraints(maxHeight: 120),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppRadius.large),
       ),
       child: Stack(
         alignment: Alignment.bottomRight,
@@ -821,11 +825,11 @@ class _AiPageState extends ConsumerState<AiPage> {
                         width: 20,
                         height: 20,
                         decoration: BoxDecoration(
-                          color: Colors.red.withValues(alpha: 0.85),
+                          color: theme.colorScheme.error.withValues(alpha: 0.85),
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.red.withValues(alpha: 0.25),
+                              color: theme.colorScheme.error.withValues(alpha: 0.25),
                               blurRadius: 4,
                               offset: const Offset(0, 2),
                             ),
@@ -950,7 +954,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                           Expanded(
                             child: OutlinedButton(
                               style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.red,
+                                foregroundColor: theme.colorScheme.error,
                               ),
                               onPressed: () async {
                                 final ok = await showDialog<bool>(
@@ -996,26 +1000,7 @@ class _AiPageState extends ConsumerState<AiPage> {
               const Divider(height: 1),
               Expanded(
                 child: sessions.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.chat_bubble_outline,
-                              size: 32,
-                              color: theme.disabledColor,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              '暂无历史对话',
-                              style: TextStyle(
-                                color: theme.disabledColor,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
+                    ? EmptyStateWidget(icon: Icons.chat_bubble_outline, message: '暂无对话')
                     : ListView.builder(
                         itemCount: sessions.length,
                         itemBuilder: (ctx, i) => _buildSessionTile(
@@ -1039,7 +1024,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                       icon: const Icon(Icons.delete_outline, size: 18),
                       label: Text('删除已选 (${_selectedSessionIds.length})'),
                       style: FilledButton.styleFrom(
-                        backgroundColor: Colors.red,
+                        backgroundColor: theme.colorScheme.error,
                       ),
                       onPressed: () async {
                         final ok = await showDialog<bool>(
@@ -1104,7 +1089,7 @@ class _AiPageState extends ConsumerState<AiPage> {
       background: Container(
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 16),
-        color: Colors.red,
+        color: theme.colorScheme.error,
         child: const Icon(Icons.delete, color: Colors.white),
       ),
       confirmDismiss: (_) async {
@@ -1226,20 +1211,35 @@ class _StreamingBubble extends ConsumerWidget {
         content: streamingMessageText ?? '',
         timestamp: DateTime.now(),
       ),
+      showCursor: true,
     );
   }
 }
 
 class _ChatBubble extends StatelessWidget {
   final ChatMessage message;
-  const _ChatBubble({required this.message});
+  final bool showCursor;
+  const _ChatBubble({required this.message, this.showCursor = false});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isUser = message.role == 'user';
 
-    return Column(
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: AppDurations.medium,
+      curve: Curves.easeOut,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, (1 - value) * 20),
+            child: child,
+          ),
+        );
+      },
+      child: Column(
       crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
         // Avatar and sender name header
@@ -1335,35 +1335,43 @@ class _ChatBubble extends StatelessWidget {
                   )
                 : message.content.isEmpty
                 ? const _TypingDots()
-                : MarkdownBody(
-                    data: message.content,
-                    selectable: true,
-                    styleSheet: MarkdownStyleSheet(
-                      p: TextStyle(
-                        color: theme.colorScheme.onSurface,
-                        fontSize: 14,
-                        height: 1.5,
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      MarkdownBody(
+                        data: message.content,
+                        selectable: true,
+                        styleSheet: MarkdownStyleSheet(
+                          p: TextStyle(
+                            color: theme.colorScheme.onSurface,
+                            fontSize: 14,
+                            height: 1.5,
+                          ),
+                          h2: TextStyle(
+                            color: theme.colorScheme.onSurface,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          h3: TextStyle(
+                            color: theme.colorScheme.onSurface,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          code: TextStyle(
+                            color: theme.colorScheme.onSurface,
+                            backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                          ),
+                          listBullet: TextStyle(color: theme.colorScheme.onSurface),
+                        ),
                       ),
-                      h2: TextStyle(
-                        color: theme.colorScheme.onSurface,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      h3: TextStyle(
-                        color: theme.colorScheme.onSurface,
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      code: TextStyle(
-                        color: theme.colorScheme.onSurface,
-                        backgroundColor: theme.colorScheme.surfaceContainerHighest,
-                      ),
-                      listBullet: TextStyle(color: theme.colorScheme.onSurface),
-                    ),
+                      if (showCursor) const _BlinkingCursor(),
+                    ],
                   ),
           ),
         ),
       ],
+    ),
     );
   }
 }
@@ -1483,6 +1491,50 @@ class _TypingDotsState extends State<_TypingDots>
   }
 }
 
+class _BlinkingCursor extends StatefulWidget {
+  const _BlinkingCursor();
+
+  @override
+  State<_BlinkingCursor> createState() => _BlinkingCursorState();
+}
+
+class _BlinkingCursorState extends State<_BlinkingCursor>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.onSurface;
+    return FadeTransition(
+      opacity: _controller,
+      child: Container(
+        width: 2,
+        height: 16,
+        margin: const EdgeInsets.only(left: 2),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(1),
+        ),
+      ),
+    );
+  }
+}
+
 class _ExportDialog extends StatefulWidget {
   final String contextText;
   final String initialQuestion;
@@ -1521,7 +1573,7 @@ class _ExportDialogState extends State<_ExportDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.large)),
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
         constraints: BoxConstraints(
@@ -1692,9 +1744,7 @@ class _ExportDialogState extends State<_ExportDialog> {
                       });
                     },
                     style: FilledButton.styleFrom(
-                      backgroundColor: _copied 
-                          ? Colors.green 
-                          : theme.colorScheme.primary,
+                      backgroundColor: theme.colorScheme.primary,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),

@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
 import 'package:qnote_flutter/models/todo.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
+import 'package:qnote_flutter/widgets/empty_state.dart';
 import 'package:qnote_flutter/widgets/time_picker.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 
@@ -45,7 +49,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
         onPressed: () => _addNewTodo(isLongTerm),
         backgroundColor: colorScheme.primary,
         foregroundColor: colorScheme.onPrimary,
-        elevation: 4,
+        elevation: 2,
         shape: const CircleBorder(),
         child: const Icon(Icons.add, size: 28),
       ),
@@ -60,13 +64,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
             rootScaffoldKey.currentState?.openDrawer();
           },
         ),
-        title: Text(
-          '待办',
-          style: theme.textTheme.headlineSmall?.copyWith(
-            color: colorScheme.primary,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+        title: const Text('待办'),
         actions: [
           IconButton(
             icon: Icon(Icons.history_rounded, color: colorScheme.onSurfaceVariant),
@@ -96,7 +94,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                   ref.read(isLongTermFilterProvider.notifier).state = value;
                   _pageController.animateToPage(
                     value ? 1 : 0,
-                    duration: const Duration(milliseconds: 300),
+                    duration: AppDurations.medium,
                     curve: Curves.easeInOut,
                   );
                 },
@@ -303,6 +301,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
       ),
     );
     if (confirmed == true) {
+      HapticFeedback.heavyImpact();
       ref.read(todoListProvider.notifier).deleteTodo(todo.id);
     }
   }
@@ -323,7 +322,7 @@ class _SegmentedControl extends StatelessWidget {
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(AppRadius.large),
       ),
       child: Row(
         children: [
@@ -331,15 +330,15 @@ class _SegmentedControl extends StatelessWidget {
             child: GestureDetector(
               onTap: () => onChanged(false),
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 250),
+                duration: AppDurations.normal,
                 curve: Curves.easeInOut,
                 decoration: BoxDecoration(
                   color: !isLongTerm ? colorScheme.surface : Colors.transparent,
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(AppRadius.large),
                   boxShadow: !isLongTerm
                       ? [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.05),
+                            color: colorScheme.shadow.withValues(alpha: 0.05),
                             blurRadius: 4,
                             offset: const Offset(0, 2),
                           )
@@ -365,15 +364,15 @@ class _SegmentedControl extends StatelessWidget {
             child: GestureDetector(
               onTap: () => onChanged(true),
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 250),
+                duration: AppDurations.normal,
                 curve: Curves.easeInOut,
                 decoration: BoxDecoration(
                   color: isLongTerm ? colorScheme.surface : Colors.transparent,
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(AppRadius.large),
                   boxShadow: isLongTerm
                       ? [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.05),
+                            color: colorScheme.shadow.withValues(alpha: 0.05),
                             blurRadius: 4,
                             offset: const Offset(0, 2),
                           )
@@ -438,6 +437,7 @@ class _TodoItemState extends State<_TodoItem> with SingleTickerProviderStateMixi
   late Animation<double> _opacityAnimation;
 
   bool _localCompleted = false;
+  bool _isEditing = false; // 是否处于编辑状态
 
   @override
   void initState() {
@@ -448,7 +448,7 @@ class _TodoItemState extends State<_TodoItem> with SingleTickerProviderStateMixi
 
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300),
+      duration: AppDurations.medium,
     );
 
     _scaleAnimation = CurvedAnimation(
@@ -472,8 +472,11 @@ class _TodoItemState extends State<_TodoItem> with SingleTickerProviderStateMixi
     _animController.forward();
 
     if (widget.autoFocus) {
+      _isEditing = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _focusNode.requestFocus();
+        if (_focusNode.canRequestFocus) {
+          _focusNode.requestFocus();
+        }
         widget.onFocused?.call();
       });
     }
@@ -482,6 +485,11 @@ class _TodoItemState extends State<_TodoItem> with SingleTickerProviderStateMixi
   void _onFocusChange() {
     if (!_focusNode.hasFocus) {
       _handleBlur();
+      if (mounted) {
+        setState(() {
+          _isEditing = false;
+        });
+      }
     }
   }
 
@@ -523,6 +531,7 @@ class _TodoItemState extends State<_TodoItem> with SingleTickerProviderStateMixi
   }
 
   void _handleToggleComplete() {
+    HapticFeedback.mediumImpact();
     if (widget.todo.isCompleted) {
       // If restoring, just toggle immediately
       widget.onToggleComplete();
@@ -563,7 +572,7 @@ class _TodoItemState extends State<_TodoItem> with SingleTickerProviderStateMixi
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.02),
+                  color: colorScheme.shadow.withValues(alpha: 0.02),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
@@ -584,7 +593,9 @@ class _TodoItemState extends State<_TodoItem> with SingleTickerProviderStateMixi
                   ),
                   GestureDetector(
                     onTap: _handleToggleComplete,
-                    child: Container(
+                    child: AnimatedContainer(
+                      duration: AppDurations.normal,
+                      curve: Curves.easeInOut,
                       width: 24,
                       height: 24,
                       decoration: BoxDecoration(
@@ -596,7 +607,18 @@ class _TodoItemState extends State<_TodoItem> with SingleTickerProviderStateMixi
                         color: isDone ? colorScheme.primary : Colors.transparent,
                       ),
                       child: isDone
-                          ? Icon(Icons.check, size: 16, color: colorScheme.onPrimary)
+                          ? TweenAnimationBuilder<double>(
+                              tween: Tween(begin: 0.0, end: 1.0),
+                              duration: AppDurations.medium,
+                              curve: Curves.elasticOut,
+                              builder: (context, value, child) {
+                                return Transform.scale(
+                                  scale: value,
+                                  child: child,
+                                );
+                              },
+                              child: Icon(Icons.check, size: 16, color: colorScheme.onPrimary),
+                            )
                           : null,
                     ),
                   ),
@@ -606,27 +628,63 @@ class _TodoItemState extends State<_TodoItem> with SingleTickerProviderStateMixi
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        TextField(
-                          controller: _titleController,
-                          focusNode: _focusNode,
-                          onSubmitted: (_) => _handleBlur(),
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14.5,
-                            decoration: isDone ? TextDecoration.lineThrough : null,
-                            color: isDone ? theme.disabledColor : colorScheme.onSurface,
+                        if (!isDone && _isEditing)
+                          TextField(
+                            controller: _titleController,
+                            focusNode: _focusNode,
+                            onSubmitted: (_) {
+                              _focusNode.unfocus();
+                            },
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14.5,
+                              color: colorScheme.onSurface,
+                            ),
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              contentPadding: EdgeInsets.zero,
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              errorBorder: InputBorder.none,
+                              disabledBorder: InputBorder.none,
+                              filled: false,
+                            ),
+                          )
+                        else
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              if (isDone) return;
+                              setState(() {
+                                _isEditing = true;
+                              });
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (_focusNode.canRequestFocus) {
+                                  _focusNode.requestFocus();
+                                }
+                              });
+                            },
+                            child: Container(
+                              width: double.infinity,
+                              color: Colors.transparent,
+                              child: AnimatedDefaultTextStyle(
+                                duration: AppDurations.medium,
+                                curve: Curves.easeInOut,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14.5,
+                                  decoration: isDone ? TextDecoration.lineThrough : TextDecoration.none,
+                                  color: isDone ? theme.disabledColor : colorScheme.onSurface,
+                                ),
+                                child: Text(
+                                  _titleController.text.isEmpty ? ' ' : _titleController.text,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
                           ),
-                          decoration: const InputDecoration(
-                            isDense: true,
-                            contentPadding: EdgeInsets.zero,
-                            border: InputBorder.none,
-                            enabledBorder: InputBorder.none,
-                            focusedBorder: InputBorder.none,
-                            errorBorder: InputBorder.none,
-                            disabledBorder: InputBorder.none,
-                            filled: false,
-                          ),
-                        ),
                         if (todo.reminderTime != null || todo.description.isNotEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 2),
@@ -650,11 +708,11 @@ class _TodoItemState extends State<_TodoItem> with SingleTickerProviderStateMixi
                       height: 8,
                       margin: const EdgeInsets.only(right: 8),
                       decoration: BoxDecoration(
-                        color: Colors.green,
+                        color: colorScheme.primary,
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.green.withValues(alpha: 0.4),
+                            color: colorScheme.primary.withValues(alpha: 0.4),
                             blurRadius: 4,
                           ),
                         ],
@@ -811,7 +869,7 @@ class _HistoryTodoItem extends ConsumerWidget {
         border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
+            color: theme.colorScheme.shadow.withValues(alpha: 0.02),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),

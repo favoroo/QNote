@@ -6,7 +6,54 @@
 
 ---
 
+## 2026-06-07
+
+- **[21:50]**
+  - **Fixed**: 修复笔记和日记卡片上的“三点”操作菜单按钮点击无反应的问题。将 `NotesPage` 中的 `_FolderTile`、`_NoteTile` 以及 `DiaryItem` 从 `StatelessWidget` 重构为 `StatefulWidget`，并在对应的 `State` 类中持久化其 `GlobalKey`，以防止在 Widget 发生 rebuild 时 `GlobalKey` 频繁重新生成导致其 context 丢失，确保弹窗菜单位置计算正常且能稳定拉起 (`lib/pages/notes_page.dart`, `lib/widgets/diary/diary_item.dart`)。
+
+- **[21:40]**
+  - **Changed**: 优化了数据统计页面的“查看数据”按钮。为避免窄屏设备上与时间范围选择器（周/月/年）发生重叠，将原本包含“查看数据”文本的胶囊按钮优化为精致的圆形图标按钮，并增加 `Tooltip` 提示 (`lib/pages/statistics_page.dart`)。
+
+## 2026-06-03
+
+- **[22:35]**
+  - **Added**: 在 AI 模型供应商配置中新增 Agnes AI 服务商，支持自动填充其默认的 Base URL（`https://apihub.agnes-ai.com/v1`），并预置核心及历史模型 `agnes-2.0-flash`、`agnes-1.5-flash`、`agnes-image-2.1-flash`、`agnes-image-2.0-flash` 和 `agnes-video-2.0`。此外，Agnes AI 完全支持通过 `/v1/models` 端点拉取并更新最新模型列表 (`lib/config/models.dart`)。
+
+- **[22:30]**
+  - **Fixed**: 解决空白待办事项无法被点击重新编辑的问题。通过在待办项文本外部组件设置 `behavior: HitTestBehavior.opaque` 并以 `Container(width: double.infinity)` 容器包裹文本，将非编辑状态下的点击热区从局限的单个空格字符横向拉满到整行宽度，确保空白待办也可被轻松点击选中并进入编辑状态 (`lib/pages/todo_page.dart`)。
+
+## 2026-06-02
+
+- **[21:58]**
+  - **Changed**: 优化日记记录事件时间段的排序与展示位置逻辑。如果为同一天的时间段，展示位置调整为 `endTime`；如果是跨日期时间段，根据其归属日期进行判定：归属于后一天时展示在 `endTime` 处，归属于前一天时展示在前一天的 `23:30`（晚上 11 点半）处，使时间轴上的排序和展示更符合日记记录的直觉 (`lib/models/diary_record.dart`)。
+  - **Added**: 新增针对 `DiaryRecord.getDisplayTime()` 的单元测试，全面校验同天时间段、跨天且归属第二天、跨天且归属第一天等多种情况的返回时间正确性 (`test/models/diary_record_test.dart`)。
+
+- **[09:45]**
+  - **Fixed**: 修复待办事项（Todo）在今日/长期列表下点击无法正常编辑的缺陷。引入 `_isEditing` 状态属性，解耦了在 Widget 构建期对 `_focusNode.hasFocus` 的直接依赖，并改用 `WidgetsBinding.instance.addPostFrameCallback` 在 TextField 渲染挂载完成后延迟请求焦点，彻底解决由于从 Text 动态切换为 TextField 导致焦点瞬间丢失且编辑框闪退的 bug (`lib/pages/todo_page.dart`)。
+
 ## 2026-05-31
+
+- **[11:00]**
+  - **Fixed**: 修复 `ai_roles.dart` 文件结构损坏导致编译失败的问题——`AiRoles` 类内部嵌套了重复的类定义，`AiRoleSettings` 类完全缺失。重新整理为三个独立类：`AiRoles`（角色配置 ID）、`AiRoleSettings`（温度/令牌数设置）、`AiTemperatures`（角色温度组合） (`lib/models/ai_roles.dart`)。
+
+- **[10:30]**
+  - **Added**: 新增主题常量文件 `app_durations.dart`（动画时长）、`tag_colors.dart`（标签颜色）、`app_radius.dart`（圆角值），统一设计令牌 (`lib/core/theme/`)。
+  - **Added**: 新增通用空状态组件 `EmptyStateWidget`，统一四个页面的空状态样式 (`lib/widgets/empty_state.dart`)。
+  - **Added**: 为底部导航、日记删除、待办完成/删除、AI 发送等关键交互添加触觉反馈 (`HapticFeedback`)。
+  - **Added**: 待办完成勾选动画——圆圈填充 `AnimatedContainer`、勾选图标弹性缩放 `TweenAnimationBuilder(elasticOut)`、删除线平滑过渡 `AnimatedDefaultTextStyle` (`lib/pages/todo_page.dart`)。
+  - **Added**: AI 消息气泡入场动画（滑入+淡入）和流式输出闪烁光标 `_BlinkingCursor` (`lib/pages/ai_page.dart`)。
+  - **Added**: 统计页 Tab 切换内容 `AnimatedSwitcher` 过渡动画 (`lib/pages/statistics_page.dart`)。
+  - **Added**: 底部导航栏图标切换 `AnimatedSwitcher` 交叉淡入、`InkWell` 涟漪效果 (`lib/widgets/bottom_nav_bar.dart`)。
+  - **Changed**: 侧边栏菜单项图标颜色从硬编码 `Colors.blue/orange` 等改为 `colorScheme` 语义色，深浅色模式自动适配 (`lib/widgets/side_drawer.dart`)。
+  - **Changed**: 统计页 `_TabSwitcher` 从手动 `isDark` 判断硬编码颜色改为 `colorScheme` 语义令牌 (`lib/pages/statistics_page.dart`)。
+  - **Changed**: 标签颜色从 `diary_item.dart` 和 `diary_editor_view.dart` 重复定义抽取为 `TagColors` 统一常量 (`lib/core/theme/tag_colors.dart`)。
+  - **Changed**: 全项目 40+ 处硬编码颜色（`Colors.red/black/green/orange/amber/grey`）改为 `colorScheme.error/shadow/primary/onSurfaceVariant` 等语义令牌 (`lib/pages/ai_page.dart`, `lib/pages/notes_page.dart`, `lib/pages/todo_page.dart`, `lib/pages/diary_page.dart`)。
+  - **Changed**: 圆角值收敛为 `AppRadius.small(8)/medium(12)/large(20)` 三档，修复 `diary_item` 卡片 16→12、`diary_editor_view` MultiSelectChip 8→20、`ai_page` 输入框 24→20/对话框 28→20、`todo_page` SegmentedControl 22/18→20 等不一致 (`lib/widgets/diary/diary_item.dart`, `lib/widgets/diary/diary_editor_view.dart`, `lib/pages/ai_page.dart`, `lib/pages/todo_page.dart`)。
+  - **Changed**: 字号规范化——待办标题 14.5→14、副标题 11.5→12、AI 页面 9→10、待办页 AppBar 标题改用默认主题样式 (`lib/pages/todo_page.dart`, `lib/pages/ai_page.dart`)。
+  - **Changed**: 四个页面空状态统一使用 `EmptyStateWidget` (`lib/pages/notes_page.dart`, `lib/pages/todo_page.dart`, `lib/pages/ai_page.dart`, `lib/pages/statistics_page.dart`)。
+  - **Changed**: 全项目硬编码 `Duration(milliseconds: ...)` 替换为 `AppDurations.fast/normal/medium/slow` 常量。
+  - **Changed**: FAB elevation 从 4 统一为 2（与主题定义一致） (`lib/pages/notes_page.dart`, `lib/pages/todo_page.dart`)。
+  - **Changed**: 边框透明度统一为 0.4（原 0.3/0.5 散乱） (`lib/widgets/diary/diary_editor_view.dart`)。
 
 - **[09:02]**
   - **Changed**: 整体重构并美化了个人信息页面 (`lib/pages/settings/user_profile_page.dart`)。

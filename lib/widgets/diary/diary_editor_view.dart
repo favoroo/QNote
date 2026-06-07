@@ -6,6 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_radius.dart';
+import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
@@ -1133,12 +1136,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       '活动': Icons.directions_run,
       '记账': Icons.account_balance_wallet,
     };
-    final tagColors = <String, Color>{
-      '睡眠': const Color(0xFF6366F1),
-      '饮食': const Color(0xFFF59E0B),
-      '活动': const Color(0xFF10B981),
-      '记账': const Color(0xFFEF4444),
-    };
+    final tagColors = TagColors.map;
 
     final shortcuts = ref.watch(shortcutListProvider).valueOrNull ?? [];
     final shortcutNames = shortcuts.map((s) => s.name).toSet();
@@ -1191,7 +1189,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                   side: BorderSide(
                     color: isSelected
                         ? Colors.transparent
-                        : colorScheme.outlineVariant.withValues(alpha: 0.5),
+                        : colorScheme.outlineVariant.withValues(alpha: 0.4),
                   ),
                 ),
                 onSelected: (_) => _toggleShortcut(config),
@@ -1239,7 +1237,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
                 side: BorderSide(
-                  color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.4),
                 ),
               ),
             ),
@@ -1275,7 +1273,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                   color: colorScheme.surface,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+                    color: colorScheme.outlineVariant.withValues(alpha: 0.4),
                   ),
                   boxShadow: [
                     BoxShadow(
@@ -1297,7 +1295,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                           ),
                           decoration: BoxDecoration(
                             color: color.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(AppRadius.large),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -1321,7 +1319,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
                               color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(AppRadius.large),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -1440,7 +1438,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               child: GestureDetector(
                 onTap: () => _updateFormValue(tagId, '_category', category.id),
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
+                  duration: AppDurations.normal,
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   decoration: BoxDecoration(
                     color: isSelected ? theme.colorScheme.surface : null,
@@ -1540,7 +1538,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                 onTap: () =>
                     _updateFormValue(tagId, field.id, isSelected ? null : opt),
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
+                  duration: AppDurations.normal,
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
@@ -1661,7 +1659,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                       tagId, field.id, newList.isEmpty ? null : newList);
                 },
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
+                  duration: AppDurations.normal,
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
@@ -1936,7 +1934,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         });
       },
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
+        duration: AppDurations.normal,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected
@@ -2103,7 +2101,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+                color: colorScheme.outlineVariant.withValues(alpha: 0.4),
               ),
             ),
             child: ClipRRect(
@@ -2209,11 +2207,11 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                 height: 52,
                 padding: const EdgeInsets.symmetric(horizontal: 18),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(26),
+                  borderRadius: BorderRadius.circular(AppRadius.medium),
                   border: Border.all(
                     color: _isExtracting
                         ? colorScheme.outlineVariant
-                        : colorScheme.primary.withValues(alpha: 0.5),
+                        : colorScheme.primary.withValues(alpha: 0.4),
                   ),
                   color: _isExtracting
                       ? colorScheme.surfaceContainerHighest.withValues(
@@ -2260,7 +2258,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                   onPressed: _save,
                   style: FilledButton.styleFrom(
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(26),
+                      borderRadius: BorderRadius.circular(AppRadius.medium),
                     ),
                   ),
                   child: const Text(
