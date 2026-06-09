@@ -562,18 +562,40 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     _updateActiveDraft(tagEntries: currentEntries);
   }
 
-  /// 选择固定事件模板，自动填充时间和内容
+  /// 选择固定事件模板，自动填充时间、内容和标签
   void _selectFixedEvent(FixedEventTemplate template) {
     // 使用模板的开始时间和结束时间
     final startTime = TimeOfDay(hour: template.startHour, minute: template.startMinute);
     final endTime = TimeOfDay(hour: template.endHour, minute: template.endMinute);
 
-    // 更新 draft 的时间
-    _updateActiveDraft(
-      startTime: startTime,
-      endTime: endTime,
-      inputText: template.content ?? _textController.text,
-    );
+    // 处理关联标签：将模板中的 tagId 转换为 TagEntry 添加到 draft
+    if (template.tags.isNotEmpty) {
+      final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
+      final currentEntries = List<TagEntry>.from(_activeDraft.tagEntries);
+
+      for (final tagId in template.tags) {
+        try {
+          final config = shortcuts.firstWhere((s) => s.id == tagId);
+          // 避免重复添加已存在的标签
+          if (!currentEntries.any((e) => e.id == config.id)) {
+            currentEntries.add(TagEntry(id: config.id, name: config.name, fields: {}));
+          }
+        } catch (_) {}
+      }
+
+      _updateActiveDraft(
+        startTime: startTime,
+        endTime: endTime,
+        inputText: template.content ?? _textController.text,
+        tagEntries: currentEntries,
+      );
+    } else {
+      _updateActiveDraft(
+        startTime: startTime,
+        endTime: endTime,
+        inputText: template.content ?? _textController.text,
+      );
+    }
 
     // 更新时间选择 Provider
     final selectedDate = ref.read(selectedDateProvider);
@@ -1964,10 +1986,10 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                             decoration: BoxDecoration(
-                              color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.6),
+                              color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: theme.colorScheme.tertiary.withValues(alpha: 0.3),
+                                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
                                 width: 1,
                               ),
                             ),
@@ -1977,14 +1999,14 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                                 Icon(
                                   Icons.schedule,
                                   size: 12,
-                                  color: theme.colorScheme.onTertiaryContainer,
+                                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
                                   template.name,
                                   style: theme.textTheme.labelSmall?.copyWith(
                                     fontWeight: FontWeight.w600,
-                                    color: theme.colorScheme.onTertiaryContainer,
+                                    color: theme.colorScheme.onSurfaceVariant,
                                   ),
                                 ),
                               ],
