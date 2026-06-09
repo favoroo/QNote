@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,8 +12,10 @@ import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/shortcut_field.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
+import 'package:qnote_flutter/models/fixed_event_template.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
+import 'package:qnote_flutter/providers/fixed_event_provider.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
@@ -557,6 +560,46 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     }
 
     _updateActiveDraft(tagEntries: currentEntries);
+  }
+
+  /// 选择固定事件模板，自动填充时间和内容
+  void _selectFixedEvent(FixedEventTemplate template) {
+    // 使用模板的开始时间和结束时间
+    final startTime = TimeOfDay(hour: template.startHour, minute: template.startMinute);
+    final endTime = TimeOfDay(hour: template.endHour, minute: template.endMinute);
+
+    // 更新 draft 的时间
+    _updateActiveDraft(
+      startTime: startTime,
+      endTime: endTime,
+      inputText: template.content ?? _textController.text,
+    );
+
+    // 更新时间选择 Provider
+    final selectedDate = ref.read(selectedDateProvider);
+    final startDateTime = DateTime(
+      selectedDate.year,
+      selectedDate.month,
+      selectedDate.day,
+      startTime.hour,
+      startTime.minute,
+    );
+    final endDateTime = DateTime(
+      selectedDate.year,
+      selectedDate.month,
+      selectedDate.day,
+      endTime.hour,
+      endTime.minute,
+    );
+    ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+      startTime,
+      endTime: endTime,
+      date: startDateTime,
+      endDate: endDateTime,
+    );
+
+    // 显示提示
+    Toast.success(context, '已填充：${template.name} (${template.formattedTimeRange})', duration: const Duration(seconds: 1));
   }
 
   void _updateFormValue(String key, dynamic value, {String? tagId}) {
@@ -1693,8 +1736,19 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     final theme = Theme.of(context);
     final shortcuts = ref.watch(shortcutListProvider);
 
+    // 动态计算可用最大高度，避免软键盘弹起时遮挡输入框
+    final mediaQuery = MediaQuery.of(context);
+    final keyboardHeight = mediaQuery.viewInsets.bottom;
+    final screenHeight = mediaQuery.size.height;
+    final safeAreaTop = mediaQuery.padding.top;
+    const appBarHeight = 56.0; // 对应主页面的头部高度
+
+    // 键盘弹起时，底部输入框最大可占用高度，预留出头部和安全距离
+    final maxAvailableHeight = screenHeight - keyboardHeight - safeAreaTop - appBarHeight - 16;
+    final double dynamicMaxHeight = math.max(120.0, math.min(680.0, maxAvailableHeight));
+
     return Container(
-      constraints: const BoxConstraints(maxHeight: 680),
+      constraints: BoxConstraints(maxHeight: dynamicMaxHeight),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -1774,6 +1828,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     AsyncValue<List<ShortcutConfig>> shortcuts,
     DateTime selectedDate,
   ) {
+    final fixedEvents = ref.watch(fixedEventListProvider);
     return SafeArea(
       top: false,
       bottom: false,
@@ -1782,6 +1837,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         children: [
           const SizedBox(height: 6),
           Flexible(child: _buildFormFieldsArea(theme)),
+          _buildFixedEventRow(theme, fixedEvents),
           _buildShortcutRow(theme, shortcuts),
           _buildTimeAndImageRow(theme, selectedDate),
           if (_activeDraft.selectedPhotos.isNotEmpty) _buildPhotoPreview(theme),
@@ -1879,6 +1935,74 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
 
       _updateActiveDraft(tagEntries: newEntries);
     }
+  }
+
+  /// 构建固定事件按钮行
+  Widget _buildFixedEventRow(ThemeData theme, AsyncValue<List<FixedEventTemplate>> fixedEvents) {
+    return fixedEvents.when(
+      data: (templates) {
+        if (templates.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
+          child: Row(
+            children: [
+              Icon(
+                Icons.event_repeat,
+                size: 14,
+                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: templates.map((template) {
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: GestureDetector(
+                          onTap: () => _selectFixedEvent(template),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.6),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: theme.colorScheme.tertiary.withValues(alpha: 0.3),
+                                width: 1,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.schedule,
+                                  size: 12,
+                                  color: theme.colorScheme.onTertiaryContainer,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  template.name,
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: theme.colorScheme.onTertiaryContainer,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
+    );
   }
 
   Widget _buildFormFieldsArea(ThemeData theme) {

@@ -1010,19 +1010,17 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   }
 
   void _previewImage(String path) {
+    final images = _segments
+        .whereType<_ImageSegment>()
+        .map((seg) => seg.path)
+        .toList();
+    final initialIndex = images.indexOf(path);
+    final fallbackIndex = initialIndex >= 0 ? initialIndex : 0;
+
     Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => Scaffold(
-        backgroundColor: Colors.black,
-        appBar: AppBar(
-          backgroundColor: Colors.black,
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ),
-        body: Center(
-          child: InteractiveViewer(
-            child: UnifiedImage(imagePath: path, fit: BoxFit.contain),
-          ),
-        ),
+      builder: (_) => FullScreenImageGallery(
+        images: images.isNotEmpty ? images : [path],
+        initialIndex: fallbackIndex,
       ),
     ));
   }

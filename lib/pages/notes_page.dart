@@ -321,6 +321,254 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     }
   }
 
+  List<FlattenedItem> _flattenTree(
+    String? parentId,
+    int depth,
+    List<Folder> folders,
+    List<Note> notes,
+  ) {
+    final List<FlattenedItem> result = [];
+
+    // 获取该层级的文件夹和笔记
+    final childFolders = folders.where((f) => f.parentId == parentId).toList();
+    final childNotes = notes.where((n) => n.folderId == parentId).toList();
+
+    final pinnedNotes = childNotes.where((n) => n.isPinned).toList();
+    final unpinnedNotes = childNotes.where((n) => !n.isPinned).toList();
+
+    final List<dynamic> sortableItems = [...unpinnedNotes, ...childFolders];
+    sortableItems.sort((a, b) {
+      final aOrder = a is Note ? a.sortOrder : (a as Folder).sortOrder;
+      final bOrder = b is Note ? b.sortOrder : (b as Folder).sortOrder;
+      if (aOrder != bOrder) {
+        return aOrder.compareTo(bOrder);
+      }
+      if (a is Note && b is Note) {
+        return b.createdAt.compareTo(a.createdAt);
+      } else if (a is Folder && b is Folder) {
+        return a.name.compareTo(b.name);
+      } else {
+        return a is Folder ? -1 : 1;
+      }
+    });
+
+    // 1. 先加入置顶的笔记
+    for (final note in pinnedNotes) {
+      result.add(FlattenedItem(
+        id: note.id,
+        isFolder: false,
+        note: note,
+        depth: depth,
+        parentId: parentId,
+        isPinned: true,
+      ));
+    }
+
+    // 2. 加入排序后的可排项（文件夹和未置顶笔记）
+    for (final item in sortableItems) {
+      if (item is Note) {
+        result.add(FlattenedItem(
+          id: item.id,
+          isFolder: false,
+          note: item,
+          depth: depth,
+          parentId: parentId,
+          isPinned: false,
+        ));
+      } else {
+        final folder = item as Folder;
+        result.add(FlattenedItem(
+          id: folder.id,
+          isFolder: true,
+          folder: folder,
+          depth: depth,
+          parentId: parentId,
+          isPinned: false,
+        ));
+        // 如果文件夹展开，递归将其子孙节点也加入展平列表
+        if (folder.isExpanded) {
+          result.addAll(_flattenTree(folder.id, depth + 1, folders, notes));
+        }
+      }
+    }
+
+    return result;
+  }
+
+  bool _isDescendantOf(String? parentId, String folderId, List<Folder> allFolders) {
+    if (parentId == null) return false;
+    if (parentId == folderId) return true;
+    final parentFolder = allFolders.where((f) => f.id == parentId).firstOrNull;
+    if (parentFolder == null) return false;
+    return _isDescendantOf(parentFolder.parentId, folderId, allFolders);
+  }
+
+  Future<void> _handleDrop({
+    required FlattenedItem draggedItem,
+    required FlattenedItem targetItem,
+    required String dropPosition,
+  }) async {
+    final now = DateTime.now();
+
+    // 1. 基本安全检查
+    if (draggedItem.id == targetItem.id) return;
+
+    final allFolders = ref.read(folderListProvider).value ?? [];
+
+    // 2. 文件夹循环移动防御
+    if (draggedItem.isFolder) {
+      final isTargetDescendant = _isDescendantOf(
+        dropPosition == 'inside' ? targetItem.id : targetItem.parentId,
+        draggedItem.id,
+        allFolders,
+      );
+      if (isTargetDescendant) return;
+    }
+
+    // 3. 确定目标 parentId
+    final String? destParentId = dropPosition == 'inside' ? targetItem.id : targetItem.parentId;
+
+    // 4. 更新 draggedItem 的 parentId 属性并通知 Provider
+    if (draggedItem.isFolder) {
+      final folder = draggedItem.folder!;
+      if (folder.parentId != destParentId) {
+        await ref.read(folderListProvider.notifier).updateFolder(
+          folder.copyWith(parentId: destParentId, updatedAt: now),
+        );
+      }
+    } else {
+      final note = draggedItem.note!;
+      if (note.folderId != destParentId) {
+        await ref.read(noteListProvider.notifier).updateNote(
+          note.copyWith(folderId: destParentId, updatedAt: now),
+        );
+      }
+    }
+
+    if (dropPosition == 'inside') {
+      // 移入文件夹：给它一个最大的 sortOrder 即可
+      final allNotes = ref.read(noteListProvider).value ?? [];
+      final refreshedFolders = ref.read(folderListProvider).value ?? [];
+
+      final siblings = [
+        ...refreshedFolders.where((f) => f.parentId == destParentId && f.id != draggedItem.id),
+        ...allNotes.where((n) => n.folderId == destParentId && !n.isPinned && n.id != draggedItem.id),
+      ];
+      int maxSortOrder = -1;
+      for (final s in siblings) {
+        final order = s is Note ? s.sortOrder : (s as Folder).sortOrder;
+        if (order > maxSortOrder) {
+          maxSortOrder = order;
+        }
+      }
+
+      if (draggedItem.isFolder) {
+        final folder = refreshedFolders.firstWhere((f) => f.id == draggedItem.id);
+        await ref.read(folderListProvider.notifier).updateFolder(
+          folder.copyWith(sortOrder: maxSortOrder + 1, updatedAt: now),
+        );
+      } else {
+        final note = allNotes.firstWhere((n) => n.id == draggedItem.id);
+        await ref.read(noteListProvider.notifier).updateNote(
+          note.copyWith(sortOrder: maxSortOrder + 1, updatedAt: now),
+        );
+      }
+      return;
+    }
+
+    // 对于 before 和 after，重新对 destParentId 下的可排列表排序
+    final allNotes = ref.read(noteListProvider).value ?? [];
+    final refreshedFolders = ref.read(folderListProvider).value ?? [];
+
+    final isPinnedSort = !draggedItem.isFolder && draggedItem.note!.isPinned && 
+                         !targetItem.isFolder && targetItem.note!.isPinned;
+
+    if (isPinnedSort) {
+      final siblingPinnedNotes = allNotes
+          .where((n) => n.folderId == destParentId && n.isPinned && n.id != draggedItem.id)
+          .toList();
+
+      int targetIndex = siblingPinnedNotes.indexWhere((n) => n.id == targetItem.id);
+      if (targetIndex == -1) {
+        siblingPinnedNotes.add(allNotes.firstWhere((n) => n.id == draggedItem.id));
+      } else {
+        final draggedNote = allNotes.firstWhere((n) => n.id == draggedItem.id);
+        if (dropPosition == 'before') {
+          siblingPinnedNotes.insert(targetIndex, draggedNote);
+        } else {
+          siblingPinnedNotes.insert(targetIndex + 1, draggedNote);
+        }
+      }
+
+      final updatedNotes = <Note>[];
+      for (int i = 0; i < siblingPinnedNotes.length; i++) {
+        updatedNotes.add(siblingPinnedNotes[i].copyWith(sortOrder: i, updatedAt: now));
+      }
+      await ref.read(noteListProvider.notifier).reorderNotes(updatedNotes);
+    } else {
+      final siblings = [
+        ...refreshedFolders.where((f) => f.parentId == destParentId && f.id != draggedItem.id),
+        ...allNotes.where((n) => n.folderId == destParentId && !n.isPinned && n.id != draggedItem.id),
+      ];
+
+      siblings.sort((a, b) {
+        final aOrder = a is Note ? a.sortOrder : (a as Folder).sortOrder;
+        final bOrder = b is Note ? b.sortOrder : (b as Folder).sortOrder;
+        if (aOrder != bOrder) {
+          return aOrder.compareTo(bOrder);
+        }
+        if (a is Note && b is Note) {
+          return b.createdAt.compareTo(a.createdAt);
+        } else if (a is Folder && b is Folder) {
+          return a.name.compareTo(b.name);
+        } else {
+          return a is Folder ? -1 : 1;
+        }
+      });
+
+      int targetIndex = siblings.indexWhere((item) {
+        if (item is Folder) return item.id == targetItem.id;
+        if (item is Note) return item.id == targetItem.id;
+        return false;
+      });
+
+      dynamic draggedObject;
+      if (draggedItem.isFolder) {
+        draggedObject = refreshedFolders.firstWhere((f) => f.id == draggedItem.id);
+      } else {
+        draggedObject = allNotes.firstWhere((n) => n.id == draggedItem.id);
+      }
+
+      if (targetIndex == -1) {
+        siblings.add(draggedObject);
+      } else {
+        if (dropPosition == 'before') {
+          siblings.insert(targetIndex, draggedObject);
+        } else {
+          siblings.insert(targetIndex + 1, draggedObject);
+        }
+      }
+
+      final updatedNotes = <Note>[];
+      final updatedFolders = <Folder>[];
+      for (int i = 0; i < siblings.length; i++) {
+        final item = siblings[i];
+        if (item is Note) {
+          updatedNotes.add(item.copyWith(sortOrder: i, updatedAt: now));
+        } else if (item is Folder) {
+          updatedFolders.add(item.copyWith(sortOrder: i, updatedAt: now));
+        }
+      }
+
+      if (updatedNotes.isNotEmpty) {
+        await ref.read(noteListProvider.notifier).reorderNotes(updatedNotes);
+      }
+      if (updatedFolders.isNotEmpty) {
+        await ref.read(folderListProvider.notifier).reorderFolders(updatedFolders);
+      }
+    }
+  }
+
   Widget _buildTree(
     BuildContext context,
     List<Folder> folders,
@@ -352,58 +600,120 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       );
     }
 
-    return SingleChildScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.only(bottom: 120),
-      child: _SortableLevel(
-        folders: folders,
-        notes: notes,
-        parentId: null,
-        depth: 0,
-        onEditNote: (note) => _editNote(note),
-        onShowNoteMenu: (note, key) => _showNoteMenu(note, key),
-        onToggleFolder: (folder) => _toggleFolder(folder),
-        onShowFolderMenu: (folder, key) => _showFolderMenu(folder, key),
-        onCreateNote: (folderId) => _createNote(folderId),
-        onCreateFolder: (parentId) => _showCreateFolderDialog(parentId),
-        isSelectionMode: _isSelectionMode,
-        selectedNoteIds: _selectedNoteIds,
-        selectedFolderIds: _selectedFolderIds,
-        onToggleNoteSelection: (note) {
-          setState(() {
-            if (_selectedNoteIds.contains(note.id)) {
-              _selectedNoteIds.remove(note.id);
-            } else {
-              _selectedNoteIds.add(note.id);
-            }
-            if (_selectedNoteIds.isEmpty && _selectedFolderIds.isEmpty) {
-              _isSelectionMode = false;
-            }
-          });
-        },
-        onToggleFolderSelection: (folder) {
-          setState(() {
-            if (_selectedFolderIds.contains(folder.id)) {
-              _selectedFolderIds.remove(folder.id);
-            } else {
-              _selectedFolderIds.add(folder.id);
-            }
-            if (_selectedNoteIds.isEmpty && _selectedFolderIds.isEmpty) {
-              _isSelectionMode = false;
-            }
-          });
-        },
-        onEnterSelectionMode: (item, type) {
-          setState(() {
-            _isSelectionMode = true;
-            if (type == 'note') {
-              _selectedNoteIds.add(item.id);
-            } else if (type == 'folder') {
-              _selectedFolderIds.add(item.id);
-            }
-          });
-        },
-      ),
+    final flattenedItems = _flattenTree(null, 0, folders, notes);
+    final theme = Theme.of(context);
+
+    return DragTarget<FlattenedItem>(
+      onWillAcceptWithDetails: (details) {
+        return details.data.parentId != null;
+      },
+      onAcceptWithDetails: (details) async {
+        final now = DateTime.now();
+        final draggedItem = details.data;
+        if (draggedItem.isFolder) {
+          final folder = folders.firstWhere((f) => f.id == draggedItem.id);
+          await ref.read(folderListProvider.notifier).updateFolder(
+            folder.copyWith(parentId: null, updatedAt: now),
+          );
+        } else {
+          final note = notes.firstWhere((n) => n.id == draggedItem.id);
+          await ref.read(noteListProvider.notifier).updateNote(
+            note.copyWith(folderId: null, updatedAt: now),
+          );
+        }
+      },
+      builder: (context, candidateData, rejectedData) {
+        final isHoveringRoot = candidateData.isNotEmpty;
+
+        return Stack(
+          children: [
+            ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.only(bottom: 120),
+              itemCount: flattenedItems.length,
+              itemBuilder: (context, index) {
+                final item = flattenedItems[index];
+                return _FlattenedTile(
+                  key: ValueKey('${item.isFolder ? 'folder' : 'note'}_${item.id}'),
+                  item: item,
+                  index: index,
+                  isSelectionMode: _isSelectionMode,
+                  isSelected: item.isFolder
+                      ? _selectedFolderIds.contains(item.id)
+                      : _selectedNoteIds.contains(item.id),
+                  onToggleSelection: () {
+                    setState(() {
+                      if (item.isFolder) {
+                        if (_selectedFolderIds.contains(item.id)) {
+                          _selectedFolderIds.remove(item.id);
+                        } else {
+                          _selectedFolderIds.add(item.id);
+                        }
+                      } else {
+                        if (_selectedNoteIds.contains(item.id)) {
+                          _selectedNoteIds.remove(item.id);
+                        } else {
+                          _selectedNoteIds.add(item.id);
+                        }
+                      }
+                      if (_selectedNoteIds.isEmpty && _selectedFolderIds.isEmpty) {
+                        _isSelectionMode = false;
+                      }
+                    });
+                  },
+                  onEnterSelectionMode: () {
+                    setState(() {
+                      _isSelectionMode = true;
+                      if (item.isFolder) {
+                        _selectedFolderIds.add(item.id);
+                      } else {
+                        _selectedNoteIds.add(item.id);
+                      }
+                    });
+                  },
+                  onEditNote: _editNote,
+                  onShowNoteMenu: _showNoteMenu,
+                  onToggleFolder: _toggleFolder,
+                  onShowFolderMenu: _showFolderMenu,
+                  onCreateNote: _createNote,
+                  onCreateFolder: _showCreateFolderDialog,
+                  onDrop: _handleDrop,
+                );
+              },
+            ),
+            if (isHoveringRoot)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: theme.colorScheme.primary.withValues(alpha: 0.5),
+                        width: 2,
+                      ),
+                      color: theme.colorScheme.primary.withValues(alpha: 0.05),
+                    ),
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primaryContainer,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '释放以移至根目录',
+                          style: TextStyle(
+                            color: theme.colorScheme.onPrimaryContainer,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -630,248 +940,97 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   }
 }
 
-class _SortableLevel extends StatefulWidget {
-  final List<Folder> folders;
-  final List<Note> notes;
-  final String? parentId;
+class FlattenedItem {
+  final String id;
+  final bool isFolder;
+  final Note? note;
+  final Folder? folder;
   final int depth;
+  final String? parentId;
+  final bool isPinned;
+
+  FlattenedItem({
+    required this.id,
+    required this.isFolder,
+    this.note,
+    this.folder,
+    required this.depth,
+    this.parentId,
+    required this.isPinned,
+  });
+}
+
+class _FlattenedTile extends ConsumerStatefulWidget {
+  final FlattenedItem item;
+  final int index;
+  final bool isSelectionMode;
+  final bool isSelected;
+  final VoidCallback onToggleSelection;
+  final VoidCallback onEnterSelectionMode;
   final void Function(Note) onEditNote;
   final void Function(Note, GlobalKey) onShowNoteMenu;
   final void Function(Folder) onToggleFolder;
   final void Function(Folder, GlobalKey) onShowFolderMenu;
   final void Function(String?) onCreateNote;
   final void Function(String?) onCreateFolder;
-  final bool isSelectionMode;
-  final Set<String> selectedNoteIds;
-  final Set<String> selectedFolderIds;
-  final void Function(Note) onToggleNoteSelection;
-  final void Function(Folder) onToggleFolderSelection;
-  final void Function(dynamic item, String type) onEnterSelectionMode;
+  final Future<void> Function({
+    required FlattenedItem draggedItem,
+    required FlattenedItem targetItem,
+    required String dropPosition,
+  }) onDrop;
 
-  const _SortableLevel({
-    required this.folders,
-    required this.notes,
-    required this.parentId,
-    required this.depth,
+  const _FlattenedTile({
+    super.key,
+    required this.item,
+    required this.index,
+    required this.isSelectionMode,
+    required this.isSelected,
+    required this.onToggleSelection,
+    required this.onEnterSelectionMode,
     required this.onEditNote,
     required this.onShowNoteMenu,
     required this.onToggleFolder,
     required this.onShowFolderMenu,
     required this.onCreateNote,
     required this.onCreateFolder,
-    required this.isSelectionMode,
-    required this.selectedNoteIds,
-    required this.selectedFolderIds,
-    required this.onToggleNoteSelection,
-    required this.onToggleFolderSelection,
-    required this.onEnterSelectionMode,
+    required this.onDrop,
   });
 
   @override
-  State<_SortableLevel> createState() => _SortableLevelState();
+  ConsumerState<_FlattenedTile> createState() => _FlattenedTileState();
 }
 
-class _SortableLevelState extends State<_SortableLevel> {
-  @override
-  Widget build(BuildContext context) {
-    final childFolders = widget.folders
-        .where((f) => f.parentId == widget.parentId)
-        .toList();
-    final childNotes = widget.notes
-        .where((n) => n.folderId == widget.parentId)
-        .toList();
-
-    final pinnedNotes = childNotes.where((n) => n.isPinned).toList();
-    final unpinnedNotes = childNotes.where((n) => !n.isPinned).toList();
-
-    final List<dynamic> sortableItems = [...unpinnedNotes, ...childFolders];
-    sortableItems.sort((a, b) {
-      final aOrder = a is Note ? a.sortOrder : (a as Folder).sortOrder;
-      final bOrder = b is Note ? b.sortOrder : (b as Folder).sortOrder;
-      if (aOrder != bOrder) {
-        return aOrder.compareTo(bOrder);
-      }
-      if (a is Note && b is Note) {
-        return b.createdAt.compareTo(a.createdAt);
-      } else if (a is Folder && b is Folder) {
-        return a.name.compareTo(b.name);
-      } else {
-        return a is Folder ? -1 : 1;
-      }
-    });
-
-    final List<dynamic> combined = [...pinnedNotes, ...sortableItems];
-
-    if (combined.isEmpty && widget.parentId == null) {
-      return const SizedBox.shrink();
-    }
-
-    final theme = Theme.of(context);
-
-    return Container(
-      margin: EdgeInsets.symmetric(
-        vertical: 2,
-        horizontal: widget.depth == 0 ? 8 : 0,
-      ),
-      padding: const EdgeInsets.symmetric(vertical: 0),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (combined.isEmpty && widget.parentId != null)
-            Padding(
-              padding: EdgeInsets.only(
-                left: 16.0 + widget.depth * 8.0,
-                top: 8,
-                bottom: 8,
-              ),
-              child: Text(
-                '  空文件夹',
-                style: TextStyle(color: theme.colorScheme.outlineVariant),
-              ),
-            ),
-          ReorderableListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: combined.length,
-            onReorder: (oldIndex, newIndex) {
-              if (newIndex > oldIndex) newIndex -= 1;
-
-              final pinnedCount = pinnedNotes.length;
-              if (oldIndex < pinnedCount || newIndex < pinnedCount) {
-                return;
-              }
-
-              final oldSortableIndex = oldIndex - pinnedCount;
-              final newSortableIndex = newIndex - pinnedCount;
-
-              setState(() {
-                final item = sortableItems.removeAt(oldSortableIndex);
-                sortableItems.insert(newSortableIndex, item);
-              });
-
-              final now = DateTime.now();
-              final updatedNotes = <Note>[];
-              final updatedFolders = <Folder>[];
-
-              for (int i = 0; i < sortableItems.length; i++) {
-                final item = sortableItems[i];
-                if (item is Note) {
-                  updatedNotes.add(item.copyWith(sortOrder: i, updatedAt: now));
-                } else if (item is Folder) {
-                  updatedFolders.add(item.copyWith(sortOrder: i, updatedAt: now));
-                }
-              }
-
-              if (updatedNotes.isNotEmpty) {
-                final container = ProviderScope.containerOf(context, listen: false);
-                container.read(noteListProvider.notifier).reorderNotes(updatedNotes);
-              }
-              if (updatedFolders.isNotEmpty) {
-                final container = ProviderScope.containerOf(context, listen: false);
-                container.read(folderListProvider.notifier).reorderFolders(updatedFolders);
-              }
-            },
-            itemBuilder: (context, index) {
-              final item = combined[index];
-              if (item is Note) {
-                return _NoteTile(
-                  key: ValueKey('note_${item.id}'),
-                  note: item,
-                  depth: widget.depth,
-                  index: index,
-                  onEdit: () => widget.onEditNote(item),
-                  onMenu: (key) => widget.onShowNoteMenu(item, key),
-                  isSelectionMode: widget.isSelectionMode,
-                  isSelected: widget.selectedNoteIds.contains(item.id),
-                  onToggleSelection: () => widget.onToggleNoteSelection(item),
-                  onEnterSelectionMode: () => widget.onEnterSelectionMode(item, 'note'),
-                );
-              } else {
-                final folder = item as Folder;
-                return _FolderTile(
-                  key: ValueKey('folder_${folder.id}'),
-                  folder: folder,
-                  depth: widget.depth,
-                  index: index,
-                  onToggle: () => widget.onToggleFolder(folder),
-                  onMenu: (key) => widget.onShowFolderMenu(folder, key),
-                  onBuildChildLevel: ({required int depth}) => _SortableLevel(
-                    folders: widget.folders,
-                    notes: widget.notes,
-                    parentId: folder.id,
-                    depth: depth,
-                    onEditNote: widget.onEditNote,
-                    onShowNoteMenu: widget.onShowNoteMenu,
-                    onToggleFolder: widget.onToggleFolder,
-                    onShowFolderMenu: widget.onShowFolderMenu,
-                    onCreateNote: widget.onCreateNote,
-                    onCreateFolder: widget.onCreateFolder,
-                    isSelectionMode: widget.isSelectionMode,
-                    selectedNoteIds: widget.selectedNoteIds,
-                    selectedFolderIds: widget.selectedFolderIds,
-                    onToggleNoteSelection: widget.onToggleNoteSelection,
-                    onToggleFolderSelection: widget.onToggleFolderSelection,
-                    onEnterSelectionMode: widget.onEnterSelectionMode,
-                  ),
-                  onCreateNote: () => widget.onCreateNote(folder.id),
-                  onCreateFolder: () => widget.onCreateFolder(folder.id),
-                  isSelectionMode: widget.isSelectionMode,
-                  isSelected: widget.selectedFolderIds.contains(folder.id),
-                  onToggleSelection: () => widget.onToggleFolderSelection(folder),
-                  onEnterSelectionMode: () => widget.onEnterSelectionMode(folder, 'folder'),
-                );
-              }
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _NoteTile extends StatefulWidget {
-  final Note note;
-  final int depth;
-  final int index;
-  final VoidCallback onEdit;
-  final void Function(GlobalKey key) onMenu;
-  final bool isSelectionMode;
-  final bool isSelected;
-  final VoidCallback onToggleSelection;
-  final VoidCallback onEnterSelectionMode;
-
-  const _NoteTile({
-    super.key,
-    required this.note,
-    required this.depth,
-    required this.index,
-    required this.onEdit,
-    required this.onMenu,
-    required this.isSelectionMode,
-    required this.isSelected,
-    required this.onToggleSelection,
-    required this.onEnterSelectionMode,
-  });
-
-  @override
-  State<_NoteTile> createState() => _NoteTileState();
-}
-
-class _NoteTileState extends State<_NoteTile> {
+class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
   final _menuKey = GlobalKey();
+  String? _hoverPosition; // 'before' | 'inside' | 'after' | null
+
+  void _setHoverPosition(String? position) {
+    if (_hoverPosition != position) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            _hoverPosition = position;
+          });
+        }
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isFolder = widget.item.isFolder;
 
-    return Container(
+    Widget tileContent = Container(
       padding: EdgeInsets.only(
-        left: 16.0 + widget.depth * 8.0,
+        left: 12.0 + widget.item.depth * 16.0,
         right: 12,
-        top: 6,
-        bottom: 6,
+        top: isFolder ? 6 : 4,
+        bottom: isFolder ? 6 : 4,
       ),
+      color: _hoverPosition == 'inside'
+          ? theme.colorScheme.primaryContainer.withValues(alpha: 0.25)
+          : Colors.transparent,
       child: Row(
         children: [
           if (widget.isSelectionMode)
@@ -887,75 +1046,86 @@ class _NoteTileState extends State<_NoteTile> {
                 ),
               ),
             )
-          else if (widget.note.isPinned)
+          else
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: Icon(
                 Icons.drag_indicator,
-                size: 18,
+                size: 16,
                 color: theme.colorScheme.onSurfaceVariant.withValues(
-                  alpha: 0.1,
+                  alpha: widget.item.isPinned ? 0.1 : 0.35,
+                ),
+              ),
+            ),
+
+          if (isFolder)
+            GestureDetector(
+              onTap: () => widget.onToggleFolder(widget.item.folder!),
+              behavior: HitTestBehavior.opaque,
+              child: SizedBox(
+                width: 28,
+                height: 28,
+                child: Icon(
+                  widget.item.folder!.isExpanded
+                      ? Icons.keyboard_arrow_down
+                      : Icons.keyboard_arrow_right,
+                  size: 16,
+                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
                 ),
               ),
             )
           else
-            ReorderableDragStartListener(
-              index: widget.index,
-              child: Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Icon(
-                  Icons.drag_indicator,
-                  size: 18,
-                  color: theme.colorScheme.onSurfaceVariant.withValues(
-                    alpha: 0.35,
-                  ),
-                ),
+            const SizedBox(width: 8),
+
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary.withValues(
+                alpha: isFolder ? 0.08 : 0.1,
               ),
+              borderRadius: BorderRadius.circular(8),
             ),
+            child: Icon(
+              isFolder
+                  ? (widget.item.folder!.isExpanded ? Icons.folder_open : Icons.folder)
+                  : Icons.description,
+              size: 18,
+              color: theme.colorScheme.primary,
+            ),
+          ),
+          const SizedBox(width: 12),
+
+          if (!isFolder && widget.item.isPinned) ...[
+            Icon(
+              Icons.push_pin,
+              size: 14,
+              color: theme.colorScheme.primary,
+            ),
+            const SizedBox(width: 4),
+          ],
+
           Expanded(
             child: GestureDetector(
-              onTap: widget.isSelectionMode ? widget.onToggleSelection : widget.onEdit,
+              onTap: widget.isSelectionMode
+                  ? widget.onToggleSelection
+                  : (isFolder
+                      ? () => widget.onToggleFolder(widget.item.folder!)
+                      : () => widget.onEditNote(widget.item.note!)),
               onLongPress: widget.isSelectionMode ? null : widget.onEnterSelectionMode,
               behavior: HitTestBehavior.opaque,
-              child: Row(
-                children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      Icons.description,
-                      size: 18,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  if (widget.note.isPinned) ...[
-                    Icon(
-                      Icons.push_pin,
-                      size: 14,
-                      color: theme.colorScheme.primary,
-                    ),
-                    const SizedBox(width: 4),
-                  ],
-                  Expanded(
-                    child: Text(
-                      widget.note.title,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0.2,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
+              child: Text(
+                isFolder ? widget.item.folder!.name : widget.item.note!.title,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: isFolder ? FontWeight.bold : FontWeight.w500,
+                  letterSpacing: 0.2,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ),
+
           if (!widget.isSelectionMode) ...[
             const SizedBox(width: 4),
             SizedBox(
@@ -971,193 +1141,178 @@ class _NoteTileState extends State<_NoteTile> {
                     alpha: 0.5,
                   ),
                 ),
-                onPressed: () => widget.onMenu(_menuKey),
+                onPressed: () => isFolder
+                    ? widget.onShowFolderMenu(widget.item.folder!, _menuKey)
+                    : widget.onShowNoteMenu(widget.item.note!, _menuKey),
               ),
             ),
           ],
         ],
       ),
     );
-  }
-}
 
-class _FolderTile extends StatefulWidget {
-  final Folder folder;
-  final int depth;
-  final int index;
-  final VoidCallback onToggle;
-  final void Function(GlobalKey key) onMenu;
-  final Widget Function({required int depth}) onBuildChildLevel;
-  final VoidCallback onCreateNote;
-  final VoidCallback onCreateFolder;
-  final bool isSelectionMode;
-  final bool isSelected;
-  final VoidCallback onToggleSelection;
-  final VoidCallback onEnterSelectionMode;
-
-  const _FolderTile({
-    super.key,
-    required this.folder,
-    required this.depth,
-    required this.index,
-    required this.onToggle,
-    required this.onMenu,
-    required this.onBuildChildLevel,
-    required this.onCreateNote,
-    required this.onCreateFolder,
-    required this.isSelectionMode,
-    required this.isSelected,
-    required this.onToggleSelection,
-    required this.onEnterSelectionMode,
-  });
-
-  @override
-  State<_FolderTile> createState() => _FolderTileState();
-}
-
-class _FolderTileState extends State<_FolderTile> {
-  final _menuKey = GlobalKey();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return AnimatedContainer(
-      duration: AppDurations.normal,
-      curve: Curves.easeInOut,
-      decoration: BoxDecoration(
+    Widget tileWithDraggable = LongPressDraggable<FlattenedItem>(
+      data: widget.item,
+      maxSimultaneousDrags: widget.isSelectionMode ? 0 : 1,
+      feedback: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.transparent,
-          width: 1.5,
+        child: Container(
+          width: MediaQuery.of(context).size.width - 32,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.9),
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isFolder ? Icons.folder : Icons.description,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                isFolder ? widget.item.folder!.name : widget.item.note!.title,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-      margin: const EdgeInsets.symmetric(vertical: 1, horizontal: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AnimatedContainer(
-            duration: AppDurations.normal,
-            curve: Curves.easeInOut,
-            decoration: BoxDecoration(
-              color: Colors.transparent,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: GestureDetector(
-              onTap: widget.isSelectionMode ? widget.onToggleSelection : widget.onToggle,
-              onLongPress: widget.isSelectionMode ? null : widget.onEnterSelectionMode,
-              behavior: HitTestBehavior.opaque,
-              child: Padding(
-                padding: EdgeInsets.only(
-                  left: 12.0 + widget.depth * 8.0,
-                  right: 12,
-                  top: 8,
-                  bottom: 4,
-                ),
-                child: Row(
-                  children: [
-                    if (widget.isSelectionMode)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: Checkbox(
-                            value: widget.isSelected,
-                            onChanged: (_) => widget.onToggleSelection(),
-                            activeColor: theme.colorScheme.primary,
-                          ),
-                        ),
-                      )
-                    else
-                      ReorderableDragStartListener(
-                        index: widget.index,
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: Icon(
-                            Icons.drag_indicator,
-                            size: 16,
-                            color: theme.colorScheme.onSurfaceVariant
-                                .withValues(alpha: 0.35),
-                          ),
-                        ),
-                      ),
-                    GestureDetector(
-                      onTap: widget.onToggle,
-                      behavior: HitTestBehavior.opaque,
-                      child: SizedBox(
-                        width: 32,
-                        height: 32,
-                        child: Icon(
-                          widget.folder.isExpanded
-                              ? Icons.keyboard_arrow_down
-                              : Icons.keyboard_arrow_right,
-                          size: 16,
-                          color: theme.colorScheme.onSurfaceVariant
-                              .withValues(alpha: 0.5),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(
-                        widget.folder.isExpanded
-                            ? Icons.folder_open
-                            : Icons.folder,
-                        size: 18,
-                        color: theme.colorScheme.primary,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        widget.folder.name,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.2,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (!widget.isSelectionMode) ...[
-                      const SizedBox(width: 4),
-                      SizedBox(
-                        key: _menuKey,
-                        width: 32,
-                        height: 32,
-                        child: IconButton(
-                          padding: EdgeInsets.zero,
-                          iconSize: 20,
-                          icon: Icon(
-                            Icons.more_vert,
-                            color: theme.colorScheme.onSurfaceVariant
-                                .withValues(alpha: 0.5),
-                          ),
-                          onPressed: () => widget.onMenu(_menuKey),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
+      childWhenDragging: Opacity(
+        opacity: 0.4,
+        child: tileContent,
+      ),
+      child: tileContent,
+    );
+
+    return Stack(
+      children: [
+        tileWithDraggable,
+
+        if (_hoverPosition == 'before')
+          Positioned(
+            top: 0,
+            left: 12.0 + widget.item.depth * 16.0,
+            right: 12,
+            child: Container(
+              height: 3,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary,
+                borderRadius: BorderRadius.circular(1.5),
               ),
             ),
           ),
-          if (widget.folder.isExpanded)
-            widget.onBuildChildLevel(
-              depth: widget.depth + 1,
+        if (_hoverPosition == 'after')
+          Positioned(
+            bottom: 0,
+            left: 12.0 + widget.item.depth * 16.0,
+            right: 12,
+            child: Container(
+              height: 3,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary,
+                borderRadius: BorderRadius.circular(1.5),
+              ),
             ),
-        ],
-      ),
+          ),
+
+        Positioned.fill(
+          child: Column(
+            children: [
+              Expanded(
+                flex: 1,
+                child: DragTarget<FlattenedItem>(
+                  onWillAcceptWithDetails: (details) {
+                    if (details.data.id == widget.item.id) return false;
+                    _setHoverPosition('before');
+                    return true;
+                  },
+                  onLeave: (data) => _setHoverPosition(null),
+                  onAcceptWithDetails: (details) {
+                    _setHoverPosition(null);
+                    widget.onDrop(
+                      draggedItem: details.data,
+                      targetItem: widget.item,
+                      dropPosition: 'before',
+                    );
+                  },
+                  builder: (context, candidateData, rejectedData) => const SizedBox.expand(),
+                ),
+              ),
+
+              if (isFolder)
+                Expanded(
+                  flex: 2,
+                  child: DragTarget<FlattenedItem>(
+                    onWillAcceptWithDetails: (details) {
+                      if (details.data.id == widget.item.id) return false;
+                      if (details.data.isFolder) {
+                        final allFolders = ref.read(folderListProvider).value ?? [];
+                        if (_checkIsDescendant(widget.item.id, details.data.id, allFolders)) {
+                          return false;
+                        }
+                      }
+                      _setHoverPosition('inside');
+                      return true;
+                    },
+                    onLeave: (data) => _setHoverPosition(null),
+                    onAcceptWithDetails: (details) {
+                      _setHoverPosition(null);
+                      widget.onDrop(
+                        draggedItem: details.data,
+                        targetItem: widget.item,
+                        dropPosition: 'inside',
+                      );
+                    },
+                    builder: (context, candidateData, rejectedData) => const SizedBox.expand(),
+                  ),
+                )
+              else
+                const SizedBox.shrink(),
+
+              Expanded(
+                flex: 1,
+                child: DragTarget<FlattenedItem>(
+                  onWillAcceptWithDetails: (details) {
+                    if (details.data.id == widget.item.id) return false;
+                    _setHoverPosition('after');
+                    return true;
+                  },
+                  onLeave: (data) => _setHoverPosition(null),
+                  onAcceptWithDetails: (details) {
+                    _setHoverPosition(null);
+                    widget.onDrop(
+                      draggedItem: details.data,
+                      targetItem: widget.item,
+                      dropPosition: 'after',
+                    );
+                  },
+                  builder: (context, candidateData, rejectedData) => const SizedBox.expand(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
+}
+
+bool _checkIsDescendant(String? parentId, String folderId, List<Folder> allFolders) {
+  if (parentId == null) return false;
+  if (parentId == folderId) return true;
+  final parentFolder = allFolders.where((f) => f.id == parentId).firstOrNull;
+  if (parentFolder == null) return false;
+  return _checkIsDescendant(parentFolder.parentId, folderId, allFolders);
 }
 

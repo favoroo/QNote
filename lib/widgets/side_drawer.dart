@@ -6,6 +6,7 @@ import 'package:qnote_flutter/pages/settings/user_profile_page.dart';
 import 'package:qnote_flutter/pages/settings/personalization_page.dart';
 import 'package:qnote_flutter/pages/settings/ai_config_page.dart';
 import 'package:qnote_flutter/pages/settings/shortcuts_page.dart';
+import 'package:qnote_flutter/pages/settings/fixed_events_page.dart';
 import 'package:qnote_flutter/pages/settings/data_management_page.dart';
 import 'package:qnote_flutter/pages/settings/sync_settings_page.dart';
 import 'package:qnote_flutter/pages/settings/about_page.dart';
@@ -71,6 +72,35 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
   Widget _buildMenu(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
+    // 个人信息：使用系统主品牌色（蓝色），代表身份与主要入口
+    final profileColor = colorScheme.primary;
+    final profileBgColor = colorScheme.primaryContainer;
+
+    // AI 配置：使用紫罗兰色（Purple），富有机能感与智慧感
+    final aiColor = isDark ? const Color(0xFFB39DDB) : const Color(0xFF673AB7);
+    final aiBgColor = aiColor.withValues(alpha: isDark ? 0.18 : 0.1);
+
+    // 快捷按钮：使用琥珀橙色（Orange），代表高效、操作与自定义工具
+    final shortcutColor = isDark ? const Color(0xFFFFB74D) : const Color(0xFFE65100);
+    final shortcutBgColor = shortcutColor.withValues(alpha: isDark ? 0.18 : 0.1);
+
+    // 数据管理：使用翡翠青色（Teal），代表冷静、稳固与存储安全
+    final dataColor = isDark ? const Color(0xFF4DB6AC) : const Color(0xFF00796B);
+    final dataBgColor = dataColor.withValues(alpha: isDark ? 0.18 : 0.1);
+
+    // 同步设置：使用薄荷绿色（Green），代表畅通、健康的数据传输
+    final syncColor = isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32);
+    final syncBgColor = syncColor.withValues(alpha: isDark ? 0.18 : 0.1);
+
+    // 个性化设置：使用玫瑰粉色（Pink），代表丰富色彩与界面美化，比原先的 error 红色更温和且契合主题
+    final personalizationColor = isDark ? const Color(0xFFF48FB1) : const Color(0xFFD81B60);
+    final personalizationBgColor = personalizationColor.withValues(alpha: isDark ? 0.18 : 0.1);
+
+    // 关于 QNote：使用中性灰色，低调不喧宾夺主
+    final aboutColor = colorScheme.onSurfaceVariant;
+    final aboutBgColor = aboutColor.withValues(alpha: isDark ? 0.15 : 0.08);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -108,43 +138,50 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
                   _SectionHeader(title: '设置与管理'),
                   _DrawerMenuItem(
                     icon: Icons.person_outline,
-                    iconBgColor: colorScheme.primaryContainer,
-                    iconColor: colorScheme.primary,
+                    iconBgColor: profileBgColor,
+                    iconColor: profileColor,
                     label: '个人信息',
                     onTap: () => _navigateTo(context, const UserProfilePage()),
                   ),
                   _DrawerMenuItem(
                     icon: Icons.smart_toy_outlined,
-                    iconBgColor: colorScheme.tertiary.withValues(alpha: 0.15),
-                    iconColor: colorScheme.tertiary,
+                    iconBgColor: aiBgColor,
+                    iconColor: aiColor,
                     label: 'AI 配置',
                     onTap: () => _navigateTo(context, const AiConfigPage()),
                   ),
                   _DrawerMenuItem(
                     icon: Icons.hexagon_outlined,
-                    iconBgColor: colorScheme.primary.withValues(alpha: 0.12),
-                    iconColor: colorScheme.primary,
+                    iconBgColor: shortcutBgColor,
+                    iconColor: shortcutColor,
                     label: '快捷按钮管理',
                     onTap: () => _navigateTo(context, const ShortcutsPage()),
                   ),
                   _DrawerMenuItem(
+                    icon: Icons.event_repeat,
+                    iconBgColor: shortcutBgColor,
+                    iconColor: shortcutColor,
+                    label: '固定事件管理',
+                    onTap: () => _navigateTo(context, const FixedEventsPage()),
+                  ),
+                  _DrawerMenuItem(
                     icon: Icons.cloud_outlined,
-                    iconBgColor: colorScheme.secondaryContainer,
-                    iconColor: colorScheme.secondary,
+                    iconBgColor: dataBgColor,
+                    iconColor: dataColor,
                     label: '数据管理',
                     onTap: () => _navigateTo(context, const DataManagementPage()),
                   ),
                   _DrawerMenuItem(
                     icon: Icons.sync_rounded,
-                    iconBgColor: colorScheme.primaryContainer,
-                    iconColor: colorScheme.primary,
+                    iconBgColor: syncBgColor,
+                    iconColor: syncColor,
                     label: '同步设置',
                     onTap: () => _navigateTo(context, const SyncSettingsPage()),
                   ),
                   _DrawerMenuItem(
                     icon: Icons.palette_outlined,
-                    iconBgColor: colorScheme.error.withValues(alpha: 0.1),
-                    iconColor: colorScheme.error,
+                    iconBgColor: personalizationBgColor,
+                    iconColor: personalizationColor,
                     label: '个性化设置',
                     onTap: () => _navigateTo(context, const PersonalizationPage()),
                   ),
@@ -154,8 +191,8 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
                   _SectionHeader(title: '其他'),
                   _DrawerMenuItem(
                     icon: Icons.info_outline,
-                    iconBgColor: colorScheme.surfaceContainerHigh,
-                    iconColor: colorScheme.onSurfaceVariant,
+                    iconBgColor: aboutBgColor,
+                    iconColor: aboutColor,
                     label: '关于 QNote',
                     onTap: () => _navigateTo(context, const AboutPage()),
                   ),

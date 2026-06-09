@@ -1,56 +1,315 @@
 import requests
 import json
+import re
 from datetime import datetime
+from pathlib import Path
 
-API_KEY = 'ak_2o89sS1gm81S8b90Lp7Oq2PZ9j14L'
-BASE_URL = 'https://api.longcat.chat/openai/v1'
-MODEL_NAME = 'LongCat-2.0-Preview'
+# ============================================================
+# 用户配置区（直接修改这里）
+# ============================================================
 
-SYSTEM_PROMPT = '''智能提取助手，将文本内容映射到Schema，输出JSON数组。
+# --- 模型配置 ---
+# 如果 OVERRIDE_MODEL_* 不为空，则覆盖 defaults.dart 中的配置
+OVERRIDE_MODEL_NAME = ''          # 覆盖模型名称，如 'agnes-2.0-flash'
+OVERRIDE_API_KEY = ''             # 覆盖 API Key
+OVERRIDE_BASE_URL = ''            # 覆盖 API 地址，如 'https://apihub.agnes-ai.com/v1'
 
----
-[上下文]
-{context_str}
+# --- 请求参数 ---
+TEMPERATURE = 0.01
+MAX_TOKENS = 1024
+TIMEOUT = 60
 
-[Schema]
-{schema}
+# --- 测试用例（直接在这里增删改） ---
+TEST_CASES = [
+    '昨晚十点睡，睡了八个小时',
+    # '吃了一碗螺蛳粉，花了10元',
+    # '早上吃了玉米鸡蛋油条',
+    # '昨晚11点半才睡，睡得极差',
+    # '今天下午喝了杯美式，花了18元',
+    # '昨晚一点才睡着，今天早上吃了米粉',
+    # '状态不错，头脑清醒',
+    # '感觉有点累，头有点晕',
+    # '今天头痛得厉害，吃了布洛芬',
+]
 
-[规则]
-1. 多事件→多元素
-2. 未提及字段不输出，未映射细节→n
-3. date: yyyy-MM-dd
-4. t格式: HH:mm，跨天用-前缀(如-23:00=昨晚)，范围用~连接(如-23:00~8:00)
-5. 模糊时间：早8 午12:30 晚19 宵23
-6. 财务意向→consumption，有categories加_category
-7. n极简，不重复已映射信息
+# ============================================================
+# 自动从 defaults.dart 同步配置（下方代码，一般无需修改）
+# ============================================================
 
-[例子]
-"昨晚十点睡，睡了八个小时" → [{{"id":"sleep","t":"-22:00~6:00","f":{{"duration":8}}}}]
-"吃了一碗螺蛳粉，花了10元" → [{{"id":"diet","f":{{"item":"正餐"}},"n":"螺蛳粉"}},{{"id":"consumption","f":{{"_category":"expense","type":"饮食","amount":10}}}}]
-"早上吃了玉米鸡蛋油条" → [{{"id":"diet","t":"8:00","f":{{"item":"正餐"}},"n":"玉米鸡蛋油条"}}]
+DEFAULTS_FILE = Path(__file__).parent / 'lib' / 'config' / 'defaults.dart'
 
----
-[输入]
-{text}'''
+# 供应商默认 Base URL 映射
+VENDOR_BASE_URLS = {
+    'agnes': 'https://apihub.agnes-ai.com/v1',
+    'longcat': 'https://api.longcat.chat/openai/v1',
+    'gemini': 'https://generativelanguage.googleapis.com',
+}
 
-SCHEMA = '''[
-  {{'id': 'sleep', 'name': '睡眠', 'fields': [
-    {{'id': 'duration', 'name': '时长 (小时)', 'type': 'number'}},
-    {{'id': 'quality', 'name': '睡眠质量', 'type': 'select', 'options': ['极好', '良好', '一般', '较差']}}
-  ]}},
-  {{'id': 'diet', 'name': '饮食'}},
-  {{'id': 'activity', 'name': '活动'}},
-  {{'id': 'consumption', 'name': '记账', 'categories': [
-    {{'id': 'expense', 'name': '支出', 'fields': [
-      {{'id': 'type', 'name': '支出类型', 'type': 'select', 'options': ['饮食', '交通', '购物', '娱乐', '居家', '人情', '医疗', '房租', '数码', '其他']}},
-      {{'id': 'amount', 'name': '金额', 'type': 'number'}}
-    ]}},
-    {{'id': 'income', 'name': '收入', 'fields': [
-      {{'id': 'incomeType', 'name': '收入类型', 'type': 'select', 'options': ['工资', '奖金', '红包', '兼职', '理财', '其他']}},
-      {{'id': 'amount', 'name': '金额', 'type': 'number'}}
-    ]}}
-  ]}}
-]'''
+def parse_defaults_dart(file_path: Path) -> dict:
+    """解析 defaults.dart，提取提示词、Schema 和 AI 配置"""
+    content = file_path.read_text(encoding='utf-8')
+    result = {}
+    
+    # 1. 提取 unified_extraction 提示词
+    match = re.search(r"'unified_extraction':\s*'''(.*?)'''", content, re.DOTALL)
+    if match:
+        result['unified_extraction_prompt'] = match.group(1)
+    
+    # 2. 提取 defaultAiConfigs 中的第一个配置
+    ai_match = re.search(
+        r"final defaultAiConfigs.*?AiConfig\(\s*id:\s*'([^']+)',.*?modelName:\s*'([^']+)',.*?apiKey:\s*'([^']+)',.*?baseUrl:\s*'([^']*)',.*?vendorId:\s*'([^']*)'",
+        content,
+        re.DOTALL,
+    )
+    if ai_match:
+        result['ai_config'] = {
+            'id': ai_match.group(1),
+            'model': ai_match.group(2),
+            'api_key': ai_match.group(3),
+            'base_url': ai_match.group(4),
+            'vendor_id': ai_match.group(5),
+        }
+    
+    # 3. 解析 defaultShortcutConfigs 生成 Schema JSON
+    schema = parse_shortcut_configs(content)
+    if schema:
+        result['schema'] = schema
+    
+    return result
+
+def extract_dart_block(text: str, start: int, initial_depth: int = 0) -> str:
+    """从 start 位置开始，提取平衡括号内的完整代码块"""
+    depth_paren = initial_depth
+    depth_bracket = 0
+    i = start
+    while i < len(text):
+        ch = text[i]
+        if ch == '(':
+            depth_paren += 1
+        elif ch == ')':
+            depth_paren -= 1
+            if depth_paren == 0 and depth_bracket == 0:
+                return text[start:i+1]
+        elif ch == '[':
+            depth_bracket += 1
+        elif ch == ']':
+            depth_bracket -= 1
+        i += 1
+    return text[start:]
+
+def parse_shortcut_configs(content: str) -> list:
+    """从 Dart 源码解析快捷方式配置，生成 Schema JSON"""
+    configs = []
+    
+    start_match = re.search(r'final defaultShortcutConfigs\s*=\s*<ShortcutConfig>\[', content)
+    if not start_match:
+        return []
+    
+    start_pos = start_match.end()
+    end_match = re.search(r'\];', content[start_pos:])
+    if not end_match:
+        return []
+    
+    configs_block = content[start_pos:start_pos + end_match.start()]
+    
+    pos = 0
+    while True:
+        idx = configs_block.find('ShortcutConfig(', pos)
+        if idx == -1:
+            break
+        
+        inner_start = idx + len('ShortcutConfig(')
+        depth_paren = 1
+        depth_bracket = 0
+        i = inner_start
+        while i < len(configs_block):
+            ch = configs_block[i]
+            if ch == '(':
+                depth_paren += 1
+            elif ch == ')':
+                depth_paren -= 1
+                if depth_paren == 0 and depth_bracket == 0:
+                    block = configs_block[inner_start:i]
+                    break
+            elif ch == '[':
+                depth_bracket += 1
+            elif ch == ']':
+                depth_bracket -= 1
+            i += 1
+        else:
+            break
+        
+        id_match = re.search(r"id:\s*'([^']+)'", block)
+        name_match = re.search(r"name:\s*'([^']+)'", block)
+        
+        if id_match and name_match:
+            config = {
+                'id': id_match.group(1),
+                'name': name_match.group(1),
+            }
+            
+            fields_match = re.search(r"fields:\s*\[", block)
+            if fields_match:
+                fields_inner_start = fields_match.end()
+                f_depth = 1
+                j = fields_inner_start
+                while j < len(block) and f_depth > 0:
+                    if block[j] == '[':
+                        f_depth += 1
+                    elif block[j] == ']':
+                        f_depth -= 1
+                        if f_depth == 0:
+                            fields_block = block[fields_inner_start:j]
+                            fields = parse_fields(fields_block)
+                            if fields:
+                                config['fields'] = fields
+                            break
+                    j += 1
+            
+            categories_match = re.search(r"categories:\s*\[", block)
+            if categories_match:
+                cat_inner_start = categories_match.end()
+                c_depth = 1
+                j = cat_inner_start
+                while j < len(block) and c_depth > 0:
+                    if block[j] == '[':
+                        c_depth += 1
+                    elif block[j] == ']':
+                        c_depth -= 1
+                        if c_depth == 0:
+                            cat_block = block[cat_inner_start:j]
+                            categories = parse_categories(cat_block)
+                            if categories:
+                                config['categories'] = categories
+                            break
+                    j += 1
+            
+            configs.append(config)
+        
+        pos = i + 1
+    
+    return configs
+
+def parse_fields(fields_str: str) -> list:
+    """解析字段定义"""
+    fields = []
+    pos = 0
+    
+    while True:
+        idx = fields_str.find('ShortcutField(', pos)
+        if idx == -1:
+            break
+        
+        inner_start = idx + len('ShortcutField(')
+        depth_paren = 1
+        depth_bracket = 0
+        i = inner_start
+        while i < len(fields_str):
+            ch = fields_str[i]
+            if ch == '(':
+                depth_paren += 1
+            elif ch == ')':
+                depth_paren -= 1
+                if depth_paren == 0 and depth_bracket == 0:
+                    block = fields_str[inner_start:i]
+                    break
+            elif ch == '[':
+                depth_bracket += 1
+            elif ch == ']':
+                depth_bracket -= 1
+            i += 1
+        else:
+            break
+        
+        id_match = re.search(r"id:\s*'([^']+)'", block)
+        label_match = re.search(r"label:\s*'([^']+)'", block)
+        type_match = re.search(r"type:\s*'([^']+)'", block)
+        options_match = re.search(r"options:\s*\[", block)
+        allow_custom_match = re.search(r"allowCustom:\s*(true|false)", block)
+        
+        if id_match and label_match and type_match:
+            field = {
+                'id': id_match.group(1),
+                'name': label_match.group(1),
+                'type': type_match.group(1),
+            }
+            
+            if options_match:
+                opt_inner = options_match.end()
+                o_depth = 1
+                j = opt_inner
+                while j < len(block) and o_depth > 0:
+                    if block[j] == '[':
+                        o_depth += 1
+                    elif block[j] == ']':
+                        o_depth -= 1
+                        if o_depth == 0:
+                            options_content = block[opt_inner:j]
+                            if options_content.strip():
+                                options = re.findall(r"'([^']+)'", options_content)
+                                field['options'] = options
+                            break
+                    j += 1
+            
+            if allow_custom_match and allow_custom_match.group(1) == 'true':
+                field['allowCustom'] = True
+            
+            fields.append(field)
+        
+        pos = i + 1
+    
+    return fields
+
+def parse_categories(categories_str: str) -> list:
+    """解析分类定义"""
+    categories = []
+    pos = 0
+    
+    while True:
+        idx = categories_str.find('ShortcutCategory(', pos)
+        if idx == -1:
+            break
+        
+        block = extract_dart_block(categories_str, idx + len('ShortcutCategory('))
+        
+        id_match = re.search(r"id:\s*'([^']+)'", block)
+        name_match = re.search(r"name:\s*'([^']+)'", block)
+        fields_match = re.search(r"fields:\s*\[", block)
+        
+        if id_match and name_match:
+            category = {
+                'id': id_match.group(1),
+                'name': name_match.group(1),
+            }
+            
+            if fields_match:
+                fields_start = fields_match.end()
+                fields_block = extract_dart_block(block, fields_start)
+                fields = parse_fields(fields_block)
+                if fields:
+                    category['fields'] = fields
+            
+            categories.append(category)
+        
+        pos = idx + 1
+    
+    return categories
+
+# 解析 defaults.dart
+defaults_data = parse_defaults_dart(DEFAULTS_FILE)
+
+# 从 defaults.dart 获取 AI 配置（用户覆盖优先）
+_ai_config = defaults_data.get('ai_config', {})
+vendor_id = _ai_config.get('vendor_id', '')
+
+MODEL_NAME = OVERRIDE_MODEL_NAME or _ai_config.get('model', '')
+API_KEY = OVERRIDE_API_KEY or _ai_config.get('api_key', '')
+_base_url = OVERRIDE_BASE_URL or _ai_config.get('base_url', '')
+BASE_URL = _base_url or VENDOR_BASE_URLS.get(vendor_id, 'https://api.longcat.chat/openai/v1')
+
+# 从 defaults.dart 获取提示词和 Schema
+UNIFIED_EXTRACTION_PROMPT = defaults_data.get('unified_extraction_prompt', '')
+SCHEMA = json.dumps(defaults_data.get('schema', []), ensure_ascii=False, indent=2)
 
 def get_context_str():
     now = datetime.now()
@@ -64,10 +323,19 @@ def get_context_str():
 def call_ai(user_input: str) -> dict:
     context_str = get_context_str()
     
-    system_prompt = SYSTEM_PROMPT.format(
+    # 将 Dart 占位符转换为 Python format 占位符
+    prompt = UNIFIED_EXTRACTION_PROMPT.replace('{contextStr}', '{context_str}')
+    
+    # 转义所有其他 { } 以避免 Python format 误解析
+    prompt = prompt.replace('{context_str}', '___CONTEXT___')
+    prompt = prompt.replace('{schema}', '___SCHEMA___')
+    prompt = prompt.replace('{', '{{').replace('}', '}}')
+    prompt = prompt.replace('___CONTEXT___', '{context_str}')
+    prompt = prompt.replace('___SCHEMA___', '{schema}')
+    
+    system_prompt = prompt.format(
         context_str=str(context_str),
         schema=SCHEMA,
-        text=user_input
     )
     
     headers = {
@@ -81,8 +349,8 @@ def call_ai(user_input: str) -> dict:
             {'role': 'system', 'content': system_prompt},
             {'role': 'user', 'content': user_input},
         ],
-        'temperature': 0.7,
-        'max_tokens': 1024,
+        'temperature': TEMPERATURE,
+        'max_tokens': MAX_TOKENS,
         'response_format': {'type': 'json_object'},
     }
     
@@ -90,7 +358,7 @@ def call_ai(user_input: str) -> dict:
         f'{BASE_URL}/chat/completions',
         headers=headers,
         json=payload,
-        timeout=60,
+        timeout=TIMEOUT,
     )
     
     data = response.json()
@@ -109,107 +377,22 @@ def call_ai(user_input: str) -> dict:
     
     return data
 
-def parse_simplified_time(t: str) -> dict:
-    result = {}
-    
-    if '~' in t:
-        parts = t.split('~')
-        start_part = parts[0]
-        end_part = parts[1]
-        
-        if start_part:
-            if start_part.startswith('-'):
-                result['start'] = start_part[1:]
-                result['startOffset'] = -1
-            else:
-                result['start'] = start_part
-        
-        if end_part:
-            if end_part.startswith('-'):
-                result['end'] = end_part[1:]
-                result['endOffset'] = -1
-            else:
-                result['end'] = end_part
-                result['endOffset'] = 0
-    else:
-        if t.startswith('-'):
-            result['start'] = t[1:]
-            result['startOffset'] = -1
-        else:
-            result['start'] = t
-    
-    return result
-
-def convert_result(simplified: dict) -> dict:
-    result = {}
-    
-    result['shortcutId'] = simplified.get('id') or simplified.get('shortcutId')
-    
-    if 't' in simplified:
-        result['time'] = parse_simplified_time(simplified['t'])
-    elif 'time' in simplified:
-        result['time'] = simplified['time']
-    else:
-        result['time'] = {}
-    
-    result['fields'] = simplified.get('f') or simplified.get('fields') or {}
-    result['notes'] = simplified.get('n') or simplified.get('notes') or ''
-    
-    if 'date' in simplified:
-        result['date'] = simplified['date']
-    
-    return result
-
 def main():
     print('=' * 60)
     print('AI 提取测试工具')
     print('=' * 60)
     print(f'模型: {MODEL_NAME}')
+    print(f'API: {BASE_URL}')
     print(f'当前时间: {datetime.now().strftime("%Y-%m-%d %H:%M")}')
+    print(f'测试用例数: {len(TEST_CASES)}')
     print('=' * 60)
     print()
     
-    test_inputs = [
-        '昨晚十点睡，睡了八个小时',
-        '吃了一碗螺蛳粉，花了10元',
-        '早上吃了玉米鸡蛋油条',
-        '昨晚11点半才睡，睡得极差',
-        '今天下午喝了杯美式，花了18元',
-        '昨晚一点才睡着，今天早上吃了米粉',
-    ]
-    
-    print('预设测试用例:')
-    for i, text in enumerate(test_inputs, 1):
-        print(f'  {i}. {text}')
-    print('  0. 自定义输入')
-    print()
-    
-    while True:
+    for i, user_input in enumerate(TEST_CASES, 1):
+        print(f'[{i}/{len(TEST_CASES)}] 输入: {user_input}')
+        print('-' * 60)
+        
         try:
-            choice = input('请选择测试用例编号 (1-6, 0=自定义, q=退出): ').strip()
-            
-            if choice.lower() == 'q':
-                print('退出测试')
-                break
-            
-            if choice == '0':
-                user_input = input('请输入测试文本: ').strip()
-                if not user_input:
-                    print('输入不能为空')
-                    continue
-            else:
-                idx = int(choice) - 1
-                if 0 <= idx < len(test_inputs):
-                    user_input = test_inputs[idx]
-                else:
-                    print('无效选择')
-                    continue
-            
-            print()
-            print('-' * 60)
-            print(f'输入: {user_input}')
-            print('-' * 60)
-            
             response = call_ai(user_input)
             content = response['choices'][0]['message']['content']
             
@@ -220,27 +403,28 @@ def main():
             try:
                 json_result = json.loads(content)
                 
-                if isinstance(json_result, list):
+                if isinstance(json_result, dict) and 'results' in json_result:
+                    results = json_result['results']
+                elif isinstance(json_result, list):
                     results = json_result
                 else:
                     results = [json_result]
                 
-                converted = [convert_result(r) for r in results]
-                
-                print('转换后结果:')
-                print(json.dumps(converted, ensure_ascii=False, indent=2))
+                print('解析后结果:')
+                print(json.dumps(results, ensure_ascii=False, indent=2))
             except json.JSONDecodeError as e:
                 print(f'JSON 解析失败: {e}')
             
-            print()
-            
-        except KeyboardInterrupt:
-            print('\n退出测试')
-            break
         except Exception as e:
-            print(f'错误: {e}')
             import traceback
+            print(f'错误: {e}')
             traceback.print_exc()
+        
+        print()
+        print('=' * 60)
+        print()
+    
+    print('测试完成!')
 
 if __name__ == '__main__':
     main()

@@ -564,7 +564,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   void _previewPhoto(int index) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => _FullScreenImageView(imagePath: _photos[index]),
+        builder: (_) => FullScreenImageGallery(images: _photos, initialIndex: index),
       ),
     );
   }
@@ -2275,28 +2275,6 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   }
 }
 
-class _FullScreenImageView extends StatelessWidget {
-  final String imagePath;
-
-  const _FullScreenImageView({required this.imagePath});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: Center(
-        child: InteractiveViewer(
-          child: UnifiedImage(imagePath: imagePath, fit: BoxFit.contain),
-        ),
-      ),
-    );
-  }
-}
 
 class _ExtractModelDialog extends StatelessWidget {
   final List<AiConfig> configs;
