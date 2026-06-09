@@ -95,13 +95,13 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.6),
+                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
                 template.formattedTimeRange,
                 style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onTertiaryContainer,
+                  color: theme.colorScheme.onSurfaceVariant,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -399,6 +399,7 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                               startTime: '${startHour.toString().padLeft(2, '0')}:${startMinute.toString().padLeft(2, '0')}',
                               endTime: '${endHour.toString().padLeft(2, '0')}:${endMinute.toString().padLeft(2, '0')}',
                               content: contentCtl.text.isEmpty ? null : contentCtl.text,
+                              tags: selectedTagIds,
                               sortOrder: existingTemplate?.sortOrder ?? ref.read(fixedEventNotifierProvider).length,
                               isEnabled: existingTemplate?.isEnabled ?? true,
                               createdAt: existingTemplate?.createdAt ?? now,
