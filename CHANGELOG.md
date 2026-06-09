@@ -6,7 +6,47 @@
 
 ---
 
+## 2026-06-09
+
+- **[时间]**
+  - **Added**: 新增固定事件快捷记录功能，支持用户自定义每日固定事件模板（如"8点到12点上班"），点击按钮即可自动填充时间段和内容 (`lib/models/fixed_event_template.dart`, `lib/core/storage/fixed_event_repository.dart`, `lib/providers/fixed_event_provider.dart`)。
+  - **Added**: 新增固定事件管理页面，支持添加、编辑、删除、排序和启用/禁用固定事件模板 (`lib/pages/settings/fixed_events_page.dart`)。
+  - **Changed**: 在日记输入栏上方新增固定事件按钮区域，点击模板按钮自动填充开始时间、结束时间和备注内容 (`lib/widgets/diary/diary_input_bar.dart`)。
+  - **Changed**: 在侧边栏设置菜单新增"固定事件管理"入口 (`lib/widgets/side_drawer.dart`)。
+  - **Changed**: 在路由配置中新增固定事件管理页面路由 (`lib/core/router/app_router.dart`)。
+  - **Changed**: 数据库版本升级至 14，新增 `fixed_event_templates` 表 (`lib/core/storage/database_helper.dart`)。
+
+---
+
 ## 2026-06-07
+
+- **[22:45]**
+  - **Added**: 新增了公共图片大图预览画廊组件 `FullScreenImageGallery`，支持在全屏下多张图片左右滑动切换和手势缩放 (`lib/widgets/unified_image.dart`)。
+  - **Changed**: 调整了日记卡片 (`lib/widgets/diary/diary_item.dart`) 的图片点击交互。现在点击日记卡片上的图片会自动弹出大图预览画廊，而非触发整个卡片的编辑事件。
+  - **Changed**: 优化了日记编辑页面 (`lib/widgets/diary/diary_editor_view.dart`) 与便签编辑页面 (`lib/widgets/notes/note_editor_view.dart`) 的图片预览体验，统一使用 `FullScreenImageGallery` 代替原本的单图预览，且便签编辑中支持左右滑动预览便签内的全部图片。
+
+- **[22:38]**
+  - **Added**: 支持对体重单位偏好 `weight_unit` 进行本地持久化保存，保证再次打开页面时能够恢复用户偏好。
+  - **Changed**: 重构了个人信息页面 (`lib/pages/settings/user_profile_page.dart`) 的体重展示和录入系统。现在用户可以直接点击“最新体重”或体重输入框的后缀单位，在 `kg` 与 `斤` 之间切换单位。
+  - **Changed**: 为维护底层数据物理单位一致性，数据库始终以 `kg` 作为绝对标准存储。在展示“最新体重”、绘制“折线趋势图”以及渲染“历史记录列表”时根据单位偏好将数值自动折算（1 kg = 2 斤）；在录入体重时，如果当前是“斤”模式，则先除以 2 折算成 `kg` 再保存至数据库。
+
+- **[22:27]**
+  - **Fixed**: 修复了当输入法弹起时，底部输入框及发送按钮可能会被键盘遮挡的缺陷。动态读取 `MediaQuery` 中的键盘弹起高度与屏幕可用尺寸，为快速记录输入栏的底部容器引入了动态最大高度限制 `dynamicMaxHeight`。在键盘弹起时，能自适应挤压收缩其上方的表单内容区域（`_buildFormFieldsArea`），并保持内部表单（如“症状”、“用药”等字段）的 `SingleChildScrollView` 正常滚动，以确保底部的文本输入框和发送按钮能稳定靠齐并高亮显示在键盘顶部，免受输入法遮蔽。 (`lib/widgets/diary/diary_input_bar.dart`)
+
+- **[22:11]**
+  - **Changed**: 重构了侧边栏设置菜单项图标的颜色搭配 (`lib/widgets/side_drawer.dart`)。为“个人信息”、“AI配置”、“快捷按钮管理”、“数据管理”、“同步设置”、“个性化设置”以及“关于”选项定制了色彩更饱满、语义更贴合且不重复的双色调配色，在深浅色模式下分别自动采用高对比度原色与低饱和度柔和微光毛玻璃风格，解决了原有配色中多项重复蓝色、数据管理置灰感及个性化设置使用警示红的突兀视觉体验。
+
+- **[22:04]**
+  - **Changed**: 彻底重构了笔记列表的层级渲染与拖拽逻辑。废弃了原本多层嵌套的 `ReorderableListView`（其会导致严重的手势冲突和 `DragTarget` 手势吞噬），重构为主页面在 `build` 期将整个嵌套树结构通过 `_flattenTree` 递归展平为 `List<FlattenedItem>` 一维扁平列表，并使用单层 `ListView.builder` 进行极速流畅渲染，彻底杜绝手势冲突；
+  - **Added**: 实现了基于 `LongPressDraggable` 和三敏感区 `DragTarget` 叠加层（顶部 `before` 排序 / 中部 `inside` 移入，仅限文件夹 / 底部 `after` 排序）的 VS Code Style 高级拖拽重排与移入交互。在拖拽悬停至顶部/底部时显示蓝色高亮 Drop 横线，悬停在中部时高亮文件夹整行背景，并使用下一帧安全回调 `addPostFrameCallback` 驱动状态更新以杜绝 build 期间 setState 报错；
+  - **Added**: 实现了列表底部全局的根目录 `DragTarget`，将任意内部节点的项拖拽到空白区域释放即可自动移回根目录；
+  - **Added**: 在重构后的拖拽处理 `_handleDrop` 中集成了严密的循环文件夹拖入防御（禁止将父文件夹移入它自身或其子孙文件夹下）和精准的 `sortOrder` 序列化重算与批量入库逻辑，确保底层排序数据始终紧凑和一致 (`lib/pages/notes_page.dart`)。
+
+- **[21:58]**
+  - **Added**: 实现笔记和文件夹的长按拖拽跨层级移入文件夹或拖回根目录功能。通过为 `_NoteTile` 和 `_FolderTile` 外层添加 `LongPressDraggable` 并在 `_FolderTile` 外部套上 `DragTarget` 接收拖入，配合全局 `DragTarget` 接收拖出根目录。在长按拖拽时具有浮动小卡片预览及目标文件夹的高亮底色和边框反馈，同时内置循环引用检测（禁止将父文件夹拖入它自己或其子孙文件夹下），此操作与原本拖拽左侧六点按钮进行的同一层级重排功能互不冲突、完美共存 (`lib/pages/notes_page.dart`)。
+
+- **[21:53]**
+  - **Changed**: 优化笔记列表的布局紧凑度。缩小了文件夹和笔记行最左侧的六点拖拽指示器（`Icons.drag_indicator`）尺寸（16/18 -> 14），收窄其右侧间距与组件整体左侧内边距，并将文件夹折叠/展开箭头的点击宽度收窄以大幅释放横向物理空间，使笔记页面排版更加精致紧凑 (`lib/pages/notes_page.dart`)。
 
 - **[21:50]**
   - **Fixed**: 修复笔记和日记卡片上的“三点”操作菜单按钮点击无反应的问题。将 `NotesPage` 中的 `_FolderTile`、`_NoteTile` 以及 `DiaryItem` 从 `StatelessWidget` 重构为 `StatefulWidget`，并在对应的 `State` 类中持久化其 `GlobalKey`，以防止在 Widget 发生 rebuild 时 `GlobalKey` 频繁重新生成导致其 context 丢失，确保弹窗菜单位置计算正常且能稳定拉起 (`lib/pages/notes_page.dart`, `lib/widgets/diary/diary_item.dart`)。

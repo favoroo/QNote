@@ -418,13 +418,28 @@ class _DiaryItemState extends State<DiaryItem> {
                                       child: Wrap(
                                         spacing: spacing,
                                         runSpacing: spacing,
-                                        children: record.photos.map((photo) {
-                                          return UnifiedImage(
-                                            imagePath: photo,
-                                            width: itemWidth,
-                                            height: itemWidth,
-                                            borderRadius: BorderRadius.circular(
-                                              8,
+                                        children: record.photos.asMap().entries.map((entry) {
+                                          final index = entry.key;
+                                          final photo = entry.value;
+                                          return GestureDetector(
+                                            behavior: HitTestBehavior.opaque,
+                                            onTap: () {
+                                              Navigator.of(context).push(
+                                                MaterialPageRoute(
+                                                  builder: (_) => FullScreenImageGallery(
+                                                    images: record.photos,
+                                                    initialIndex: index,
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                            child: UnifiedImage(
+                                              imagePath: photo,
+                                              width: itemWidth,
+                                              height: itemWidth,
+                                              borderRadius: BorderRadius.circular(
+                                                8,
+                                              ),
                                             ),
                                           );
                                         }).toList(),

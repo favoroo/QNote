@@ -1,19 +1,23 @@
-import 'dart:io';
 import 'dart:convert' show base64Encode;
-import 'package:flutter/material.dart';
+import 'dart:io';
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:flutter/material.dart';
+
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
+
+import 'package:qnote_flutter/core/storage/config_repository.dart';
+import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/models/user_profile.dart';
-import 'package:qnote_flutter/providers/user_profile_provider.dart';
-import 'package:qnote_flutter/core/storage/image_repository.dart';
-import 'package:qnote_flutter/widgets/unified_image.dart';
-import 'package:qnote_flutter/widgets/birthday_picker.dart';
-import 'dart:math' as math;
-import 'package:fl_chart/fl_chart.dart';
 import 'package:qnote_flutter/models/weight_record.dart';
+import 'package:qnote_flutter/providers/user_profile_provider.dart';
+import 'package:qnote_flutter/widgets/birthday_picker.dart';
+import 'package:qnote_flutter/widgets/unified_image.dart';
 
 class UserProfilePage extends ConsumerStatefulWidget {
   const UserProfilePage({super.key});
@@ -35,6 +39,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   int _historyTab = 0; // 0: 折线趋势图, 1: 历史记录列表
   bool _saveSuccess = false;
   String _avatarPath = '';
+  String _weightUnit = 'kg'; // 体重单位：'kg' 或 '斤'
 
   final ImagePicker _imagePicker = ImagePicker();
   final ImageRepository _imageRepo = ImageRepository();
@@ -48,6 +53,12 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   Future<void> _loadProfile() async {
     try {
       await ref.read(userProfileNotifierProvider.notifier).load();
+      final unit = await ConfigRepository.instance.getAppConfig('weight_unit');
+      if (unit != null && mounted) {
+        setState(() {
+          _weightUnit = unit;
+        });
+      }
     } catch (e) {
       debugPrint('加载用户资料失败: $e');
     }
@@ -66,6 +77,18 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
         final age = _calculateAge();
         _ageController.text = age > 0 ? '$age' : '';
       });
+    }
+  }
+
+  void _toggleWeightUnit() async {
+    final newUnit = _weightUnit == 'kg' ? '斤' : 'kg';
+    setState(() {
+      _weightUnit = newUnit;
+    });
+    try {
+      await ConfigRepository.instance.setAppConfig('weight_unit', newUnit);
+    } catch (e) {
+      debugPrint('保存体重单位偏好失败: $e');
     }
   }
 
@@ -198,10 +221,11 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     try {
       final weight = double.tryParse(_weightController.text);
       if (weight == null) return;
+      final weightInKg = _weightUnit == '斤' ? weight / 2.0 : weight;
       await ref
           .read(userProfileNotifierProvider.notifier)
           .addWeightRecord(
-            weight,
+            weightInKg,
             time: DateTime(
               _weightDate.year,
               _weightDate.month,
@@ -541,21 +565,25 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: '最新体重',
-                    floatingLabelBehavior: FloatingLabelBehavior.always,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                  ),
-                  child: Text(
-                    _latestWeight != null
-                        ? '${_latestWeight!.toStringAsFixed(1)} kg'
-                        : '未记录',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w500,
-                      color: _latestWeight != null
-                          ? theme.colorScheme.onSurface
-                          : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                child: GestureDetector(
+                  onTap: _toggleWeightUnit,
+                  behavior: HitTestBehavior.opaque,
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: '最新体重',
+                      floatingLabelBehavior: FloatingLabelBehavior.always,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                    ),
+                    child: Text(
+                      _latestWeight != null
+                          ? '${_weightUnit == '斤' ? (_latestWeight! * 2).toStringAsFixed(1) : _latestWeight!.toStringAsFixed(1)} $_weightUnit'
+                          : '未记录',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w500,
+                        color: _latestWeight != null
+                            ? theme.colorScheme.onSurface
+                            : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                      ),
                     ),
                   ),
                 ),
@@ -669,10 +697,19 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                       ),
                       border: InputBorder.none,
                       isDense: true,
-                      suffixText: 'kg',
-                      suffixStyle: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                        fontWeight: FontWeight.bold,
+                      suffix: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _toggleWeightUnit,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 8, right: 4),
+                          child: Text(
+                            _weightUnit,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -747,7 +784,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                '${record.weight} kg',
+                                '${_weightUnit == '斤' ? (record.weight * 2.0).toStringAsFixed(1) : record.weight.toStringAsFixed(1)} $_weightUnit',
                                 style: theme.textTheme.bodyMedium?.copyWith(
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -907,12 +944,13 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
 
     final spots = <FlSpot>[];
     for (var i = 0; i < sortedHistory.length; i++) {
-      spots.add(FlSpot(i.toDouble(), sortedHistory[i].weight));
+      final double weightVal = _weightUnit == '斤' ? sortedHistory[i].weight * 2.0 : sortedHistory[i].weight;
+      spots.add(FlSpot(i.toDouble(), weightVal));
     }
 
-    final weights = sortedHistory.map((e) => e.weight).toList();
-    final double minW = weights.reduce((a, b) => a < b ? a : b);
-    final double maxW = weights.reduce((a, b) => a > b ? a : b);
+    final weights = sortedHistory.map((e) => _weightUnit == '斤' ? e.weight * 2.0 : e.weight).toList();
+    final double minW = weights.isEmpty ? 0.0 : weights.reduce((a, b) => a < b ? a : b);
+    final double maxW = weights.isEmpty ? 0.0 : weights.reduce((a, b) => a > b ? a : b);
 
     final double range = maxW - minW;
     final double padding = range < 1.0 ? 2.0 : range * 0.15;
@@ -1066,8 +1104,9 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                           final dateStr = DateFormat(
                             'yyyy-MM-dd',
                           ).format(record.time);
+                          final displayWeight = _weightUnit == '斤' ? (record.weight * 2.0) : record.weight;
                           return LineTooltipItem(
-                            '${record.weight} kg\n$dateStr',
+                            '${displayWeight.toStringAsFixed(1)} $_weightUnit\n$dateStr',
                             TextStyle(
                               color: theme.colorScheme.onSurface,
                               fontWeight: FontWeight.bold,

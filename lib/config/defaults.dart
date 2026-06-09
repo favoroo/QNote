@@ -28,6 +28,7 @@ final defaultSystemPrompts = <String, String>{
 4. 业务逻辑：
    - 饮食：蔬菜/水/自制->健康；外卖/零食/咖啡->一般；油炸/甜食/快餐->不健康。日常维C/鱼油属补剂(diet)，治病药(如布洛芬)属用药(health)。
    - 图片处理：截图提核心数据和指标(如深睡1.5h)；食物图必须提具体食物、菜品名称及配料信息(如：香菇滑鸡、白灼生菜、玄米饭)。
+   - 精神状态/身体感受：状态不错、头脑清醒、精力充沛->健康标签，severity="轻微"或空；疲惫、头晕、乏力、犯困->健康标签，symptom=["疲劳"]，severity根据描述定(严重/中度/轻微)。
 
 [输出格式] JSON: {"results":[{"id":"标签id","time":"时间","fields":{},"notes":"备注"}]}
 若未提取到任何有用信息, 输出: {"results":[]}
@@ -41,6 +42,8 @@ notes规则：
 - 昨晚十点睡，睡了八个小时 → {"results":[{"id":"sleep","time":"-22:00","fields":{"duration":8}}]}
 - 下午3点喝奶茶，地铁5元，健身房跑1小时 → {"results":[{"id":"diet","time":"15:00","fields":{"type":"饮品","rating":"不健康"}},{"id":"consumption","time":"18:00","fields":{"_category":"expense","type":"交通","amount":5}},{"id":"activity","time":"20:00","fields":{"type":"运动","duration":1}}]}
 - 今天头痛得厉害，吃了布洛芬 → {"results":[{"id":"health","fields":{"symptom":["头痛"],"severity":"严重","medication":"布洛芬"}}]}
+- 状态不错，头脑清醒 → {"results":[{"id":"health","fields":{}}]}
+- 感觉有点累，头有点晕 → {"results":[{"id":"health","fields":{"symptom":["疲劳","头晕"],"severity":"轻微"}}]}
 - [食物照片:米饭、香菇滑鸡和白灼生菜] → {"results":[{"id":"diet","fields":{"type":"自制","rating":"健康"},"notes":"图：香菇滑鸡、白灼生菜、一碗米饭"}]}
 - [健康App截图:睡眠6h46min质量一般、步数5047/6000、卡路里294/300kcal、中高强度活动21min、心率84次/分] → {"results":[{"id":"sleep","fields":{"duration":6.77,"quality":"一般"},"notes":"图：睡眠6时46分质量一般，步数5047/6000步，卡路里294/300千卡，中高强度活动21分钟，心率84次/分"},{"id":"activity","fields":{"type":"运动","duration":0.35}},{"id":"health","fields":{}}]}
 ''',
@@ -249,41 +252,26 @@ final defaultShortcutConfigs = <ShortcutConfig>[
 
 final defaultAiConfigs = <AiConfig>[
   AiConfig(
-    id: 'longcat-flash',
-    name: 'LongCat Flash',
+    id: 'agnes-2.0-flash',
+    name: 'Agnes 2.0 Flash',
     provider: 'openai',
-    modelName: 'LongCat-Flash-Lite',
-    apiKey: 'ak_2o89sS1gm81S8b90Lp7Oq2PZ9j14L',
-    baseUrl: 'https://api.longcat.chat/openai/v1',
-    vendorId: 'longcat',
-    isDefault: true,
-    createdAt: DateTime.now(),
-    updatedAt: DateTime.now(),
-  ),
-  AiConfig(
-    id: 'gemini-preset',
-    name: 'Google Gemini Flash',
-    provider: 'gemini',
-    modelName: 'gemini-3-flash',
-    apiKey: '',
+    modelName: 'agnes-2.0-flash',
+    apiKey: 'sk-ywtKENdgygWK82Rx5ZPI6QLp5hJZ5EIdXgSL4SJ1fu4OAcJG',
     baseUrl: '',
-    vendorId: 'gemini',
-    isDefault: false,
+    vendorId: 'agnes',
+    isDefault: true,
     createdAt: DateTime.now(),
     updatedAt: DateTime.now(),
   ),
 ];
 
-const defaultAiRoles = AiRoles(
-  assistant: null,
-  timelineOptimization: null,
-);
+const defaultAiRoles = AiRoles(assistant: null, timelineOptimization: null);
 
 const defaultAiTemperatures = AiTemperatures();
 
 const defaultActiveShortcuts = ['睡眠', '饮食', '活动', '健康', '记账', '其他'];
 
 const defaultMoodLabels = ['很差', '较差', '一般', '较好', '很好'];
-const defaultWeatherOptions = ['晴天', '多云', '阴天', '小雨', '大雨', '雪', '雾'];
+
 const defaultPriorityLabels = ['低', '中', '高'];
 const defaultSymptomTypes = ['头痛', '疲劳', '失眠', '胃胀', '发热', '咳嗽', '疼痛', '过敏'];
