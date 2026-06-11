@@ -470,10 +470,32 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
 
     for (final tagId in selectedTagIds) {
       final config = shortcuts.where((s) => s.id == tagId).firstOrNull;
-      if (config == null || config.fields.isEmpty) continue;
+      if (config == null) continue;
 
       // 该标签当前保存的字段值
       final currentFieldValues = selectedTagFields[tagId] ?? {};
+
+      // 确定要展示的字段列表：优先使用分类下的字段，其次用 config.fields
+      List<ShortcutField> fieldsToProcess;
+      bool hasCategories = config.categories != null && config.categories!.isNotEmpty;
+
+      if (hasCategories) {
+        // 有分类时，先确定当前选中的分类，再用该分类的字段
+        final currentCategoryId = currentFieldValues['_category'] as String? ?? '';
+        ShortcutCategory currentCategory;
+        if (currentCategoryId.isNotEmpty) {
+          currentCategory = config.categories!.where((c) => c.id == currentCategoryId).firstOrNull
+              ?? config.categories!.first;
+        } else {
+          currentCategory = config.categories!.first;
+        }
+        fieldsToProcess = currentCategory.fields;
+      } else {
+        fieldsToProcess = config.fields;
+      }
+
+      // 无字段可编辑则跳过
+      if (fieldsToProcess.isEmpty && !hasCategories) continue;
 
       fields.add(const SizedBox(height: 10));
       fields.add(
@@ -503,8 +525,66 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
       );
       fields.add(const SizedBox(height: 6));
 
-      // 遍历该标签下的每个字段
-      for (final field in config.fields) {
+      // 如果有分类，先展示分类选择器
+      if (hasCategories) {
+        final currentCategoryId = currentFieldValues['_category'] as String? ?? '';
+        fields.add(
+          Padding(
+            padding: const EdgeInsets.only(left: 8, bottom: 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('分类', style: theme.textTheme.labelSmall),
+                const SizedBox(height: 3),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: config.categories!.map((cat) {
+                    final isCatSelected = cat.id == currentCategoryId ||
+                        (currentCategoryId.isEmpty && cat == config.categories!.first);
+                    return GestureDetector(
+                      onTap: () {
+                        setDialogState(() {
+                          selectedTagFields.putIfAbsent(tagId, () => {});
+                          // 切换分类时清除该标签之前的字段值（避免残留旧分类的字段）
+                          selectedTagFields[tagId]! = {'_category': cat.id};
+                        });
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: isCatSelected
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: isCatSelected
+                                ? Colors.transparent
+                                : theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Text(
+                          cat.name,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: isCatSelected
+                                ? theme.colorScheme.onPrimary
+                                : theme.colorScheme.onSurface,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+
+      // 遍历每个字段
+      for (final field in fieldsToProcess) {
         final currentValue = currentFieldValues[field.id];
 
         fields.add(
@@ -518,7 +598,6 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
 
                 // 根据字段类型渲染不同输入控件
                 if (field.type == 'select' && field.options.isNotEmpty)
-                  // 下拉选择
                   DropdownButtonFormField<String>(
                     value: field.options.contains(currentValue as String?) ? currentValue : null,
                     decoration: InputDecoration(
@@ -542,7 +621,6 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                     },
                   )
                 else if (field.type == 'multiselect' && field.options.isNotEmpty)
-                  // 多选 Chip 组
                   Wrap(
                     spacing: 6,
                     runSpacing: 4,
@@ -591,7 +669,6 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                     }).toList(),
                   )
                 else
-                  // 文本输入
                   TextField(
                     controller: TextEditingController(text: currentValue?.toString() ?? ''),
                     onChanged: (val) {
