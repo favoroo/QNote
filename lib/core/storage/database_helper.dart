@@ -25,7 +25,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 14,
+      version: 15,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onOpen: (db) async {
@@ -308,6 +308,7 @@ class DatabaseHelper {
         end_time TEXT NOT NULL,
         content TEXT DEFAULT '',
         tags TEXT DEFAULT '[]',
+        tag_fields TEXT DEFAULT '{}',
         sort_order INTEGER DEFAULT 0,
         is_enabled INTEGER DEFAULT 1,
         created_at TEXT NOT NULL,
@@ -441,6 +442,13 @@ class DatabaseHelper {
 
       try {
         await db.execute('CREATE INDEX IF NOT EXISTS idx_fixed_event_templates_sort ON fixed_event_templates(sort_order)');
+      } catch (_) {}
+    }
+
+    if (oldVersion < 15) {
+      // 为 fixed_event_templates 表添加 tag_fields 列
+      try {
+        await db.execute('ALTER TABLE fixed_event_templates ADD COLUMN tag_fields TEXT DEFAULT "{}"');
       } catch (_) {}
     }
   }

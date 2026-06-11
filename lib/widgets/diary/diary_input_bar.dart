@@ -562,13 +562,13 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     _updateActiveDraft(tagEntries: currentEntries);
   }
 
-  /// 选择固定事件模板，自动填充时间、内容和标签
+  /// 选择固定事件模板，自动填充时间、内容和标签（含字段值）
   void _selectFixedEvent(FixedEventTemplate template) {
     // 使用模板的开始时间和结束时间
     final startTime = TimeOfDay(hour: template.startHour, minute: template.startMinute);
     final endTime = TimeOfDay(hour: template.endHour, minute: template.endMinute);
 
-    // 处理关联标签：将模板中的 tagId 转换为 TagEntry 添加到 draft
+    // 处理关联标签：将模板中的 tagId 转换为 TagEntry 添加到 draft，并填充预设字段值
     if (template.tags.isNotEmpty) {
       final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
       final currentEntries = List<TagEntry>.from(_activeDraft.tagEntries);
@@ -578,7 +578,11 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           final config = shortcuts.firstWhere((s) => s.id == tagId);
           // 避免重复添加已存在的标签
           if (!currentEntries.any((e) => e.id == config.id)) {
-            currentEntries.add(TagEntry(id: config.id, name: config.name, fields: {}));
+            // 取出该标签的预设字段值
+            final presetFields = template.tagFields[tagId] ?? {};
+            currentEntries.add(
+              TagEntry(id: config.id, name: config.name, fields: Map<String, dynamic>.from(presetFields)),
+            );
           }
         } catch (_) {}
       }
