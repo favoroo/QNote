@@ -152,7 +152,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
           );
         }
         return ReorderableListView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 88),
           itemCount: filteredTodos.length,
           onReorder: (oldIndex, newIndex) {
             if (newIndex > oldIndex) newIndex -= 1;

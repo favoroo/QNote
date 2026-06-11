@@ -8,7 +8,9 @@ class FixedEventTemplate {
   String startTime;      // 开始时间，格式 "HH:mm"，如 "08:00"
   String endTime;        // 结束时间，格式 "HH:mm"，如 "12:00"
   String? content;       // 默认备注内容
-  List<String> tags;     // 关联标签
+  List<String> tags;     // 关联标签 ID 列表
+  /// 每个标签下预设的字段值：key = tagId, value = {fieldKey: fieldValue}
+  Map<String, Map<String, dynamic>> tagFields;
   int sortOrder;         // 排序顺序
   bool isEnabled;        // 是否启用
   DateTime createdAt;
@@ -21,6 +23,7 @@ class FixedEventTemplate {
     required this.endTime,
     this.content,
     this.tags = const [],
+    this.tagFields = const {},
     this.sortOrder = 0,
     this.isEnabled = true,
     required this.createdAt,
@@ -35,6 +38,7 @@ class FixedEventTemplate {
       'end_time': endTime,
       'content': content ?? '',
       'tags': jsonEncode(tags),
+      'tag_fields': jsonEncode(tagFields),
       'sort_order': sortOrder,
       'is_enabled': isEnabled ? 1 : 0,
       'created_at': createdAt.toIso8601String(),
@@ -46,6 +50,12 @@ class FixedEventTemplate {
     final tags = map['tags'] != null
         ? List<String>.from(jsonDecode(map['tags'] as String) as List)
         : <String>[];
+    Map<String, dynamic> tagFields = {};
+    if (map['tag_fields'] != null && (map['tag_fields'] as String).isNotEmpty) {
+      try {
+        tagFields = jsonDecode(map['tag_fields'] as String) as Map<String, dynamic>;
+      } catch (_) {}
+    }
     return FixedEventTemplate(
       id: map['id'] as String,
       name: map['name'] as String,
@@ -53,6 +63,7 @@ class FixedEventTemplate {
       endTime: map['end_time'] as String,
       content: map['content'] as String?,
       tags: tags,
+      tagFields: tagFields.map((k, v) => MapEntry(k, v is Map<String, dynamic> ? v : {})),
       sortOrder: map['sort_order'] as int? ?? 0,
       isEnabled: (map['is_enabled'] as int? ?? 1) == 1,
       createdAt: DateTime.parse(map['created_at'] as String),
@@ -67,6 +78,7 @@ class FixedEventTemplate {
     String? endTime,
     String? content,
     List<String>? tags,
+    Map<String, Map<String, dynamic>>? tagFields,
     int? sortOrder,
     bool? isEnabled,
     DateTime? createdAt,
@@ -79,6 +91,7 @@ class FixedEventTemplate {
       endTime: endTime ?? this.endTime,
       content: content ?? this.content,
       tags: tags ?? this.tags,
+      tagFields: tagFields ?? this.tagFields,
       sortOrder: sortOrder ?? this.sortOrder,
       isEnabled: isEnabled ?? this.isEnabled,
       createdAt: createdAt ?? this.createdAt,

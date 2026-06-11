@@ -22,6 +22,7 @@ import 'package:qnote_flutter/widgets/search_view.dart';
 import 'package:qnote_flutter/widgets/diary/diary_item.dart';
 import 'package:qnote_flutter/widgets/diary/diary_input_bar.dart';
 import 'package:qnote_flutter/widgets/diary/custom_date_picker.dart';
+import 'package:qnote_flutter/widgets/action_menu.dart';
 
 class DiaryPage extends ConsumerStatefulWidget {
   const DiaryPage({super.key});
@@ -44,6 +45,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   final GlobalKey _viewportKey = GlobalKey();
   // GlobalKey placed on the current-time node so we can read its actual RenderBox position
   final GlobalKey _currentTimeNodeKey = GlobalKey();
+  final GlobalKey _smartExtractFabKey = GlobalKey();
   int? _dragStartIndex;
   int? _dragEndIndex;
   bool _isShiftingWindow = false;
@@ -67,10 +69,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   int _batchExtractTotal = 0;
   int _batchExtractCompleted = 0;
   bool _batchExtractCancelled = false;
-
-  // Triple-click detection
-  int _smartExtractTapCount = 0;
-  Timer? _smartExtractTapTimer;
 
   bool _showBatchConfirmButton = false;
   final Set<String> _batchExtractedRecordIds = {};
@@ -656,7 +654,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     } catch (_) {}
     WidgetsBinding.instance.removeObserver(this);
     _stopAutoScrollTimer();
-    _smartExtractTapTimer?.cancel();
     _itemContexts.clear();
     _itemHeights.clear();
     _scrollController.removeListener(_onScroll);
@@ -1214,17 +1211,61 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       return;
     }
 
-    _smartExtractTapCount++;
-    _smartExtractTapTimer?.cancel();
+    final allRecords = ref.read(diaryListProvider).valueOrNull;
+    if (allRecords == null) return;
 
-    if (_smartExtractTapCount >= 3) {
-      _smartExtractTapCount = 0;
-      _startBatchExtract(allDates: true);
+    final selectedDate = ref.read(selectedDateProvider);
+
+    int untaggedToday = 0;
+    int untaggedAll = 0;
+
+    for (final r in allRecords) {
+      if (r.isDeleted) continue;
+      if (r.displayTag.isNotEmpty && r.displayTag != '记录') continue;
+      if (r.content.trim().isEmpty && r.photos.isEmpty) continue;
+      
+      untaggedAll++;
+      if (_isSameDay(r.time, selectedDate)) {
+        untaggedToday++;
+      }
+    }
+
+    if (untaggedAll == 0) {
+      Toast.info(context, '没有需要优化的记录');
+      return;
+    }
+
+    final items = <ActionMenuItem>[];
+    
+    if (untaggedToday > 0) {
+      items.add(
+        ActionMenuItem(
+          icon: Icons.today,
+          label: '提取今日记录 ($untaggedToday条)',
+          onTap: () => _startBatchExtract(allDates: false),
+        ),
+      );
+    }
+    
+    if (untaggedAll > untaggedToday) {
+      items.add(
+        ActionMenuItem(
+          icon: Icons.date_range,
+          label: '提取全部记录 ($untaggedAll条)',
+          onTap: () => _startBatchExtract(allDates: true),
+        ),
+      );
+    }
+
+    if (items.length == 1) {
+      // If only one option, just execute it directly
+      items.first.onTap();
     } else {
-      _smartExtractTapTimer = Timer(AppDurations.medium, () {
-        _smartExtractTapCount = 0;
-        _startBatchExtract(allDates: false);
-      });
+      ActionMenu.show(
+        context: context,
+        key: _smartExtractFabKey,
+        items: items,
+      );
     }
   }
 
@@ -1379,6 +1420,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   Widget _buildSmartExtractFAB(ThemeData theme) {
     if (_showBatchConfirmButton) return const SizedBox.shrink();
     return GestureDetector(
+      key: _smartExtractFabKey,
       onTap: _handleSmartExtractTap,
       onLongPress: _handleSmartExtractLongPress,
       child: AnimatedContainer(
