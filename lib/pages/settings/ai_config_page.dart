@@ -1043,6 +1043,14 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       }
     }
 
+    // 防御性兜底：编辑已有配置时，若 baseUrl 为空且有 vendorId，从供应商配置自动填充
+    if (isEditing && baseUrlCtl.text.isEmpty && existingConfig!.vendorId != null) {
+      final providerConfig = getProviderById(existingConfig!.vendorId!);
+      if (providerConfig != null && providerConfig.defaultBaseUrl.isNotEmpty) {
+        baseUrlCtl.text = providerConfig.defaultBaseUrl;
+      }
+    }
+
     showDialog(
       context: context,
       builder: (ctx) {

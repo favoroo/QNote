@@ -257,7 +257,7 @@ final defaultAiConfigs = <AiConfig>[
     provider: 'openai',
     modelName: 'agnes-2.0-flash',
     apiKey: 'sk-ywtKENdgygWK82Rx5ZPI6QLp5hJZ5EIdXgSL4SJ1fu4OAcJG',
-    baseUrl: '',
+    baseUrl: 'https://apihub.agnes-ai.com/v1',
     vendorId: 'agnes',
     isDefault: true,
     createdAt: DateTime.now(),
