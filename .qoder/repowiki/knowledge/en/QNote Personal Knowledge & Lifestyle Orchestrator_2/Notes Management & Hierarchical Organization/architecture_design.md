@@ -1,0 +1,4 @@
+- **Data Layer**: `Note` model (`lib/models/note.dart`) handles serialization via `toMap`/`fromMap` with JSON-encoded fields for complex types like images.
+- **State Management**: `NoteListNotifier` (`lib/providers/note_provider.dart`) extends Riverpod's `AsyncNotifier` to manage asynchronous note lists, delegating persistence to `NoteRepository`.
+- **UI Layer**: `NotesPage` (`lib/pages/notes_page.dart`) implements a flattened tree view for mixed folder/note hierarchy, supporting drag-and-drop reordering via `LongPressDraggable` and `DragTarget` widgets.
+- **Persistence**: `NoteRepository` (`lib/core/storage/note_repository.dart`) interacts with SQLite through `DatabaseHelper`, enforcing soft deletes and maintaining sync logs for change tracking.

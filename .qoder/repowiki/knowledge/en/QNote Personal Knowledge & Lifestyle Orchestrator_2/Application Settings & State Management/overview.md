@@ -1,0 +1,1 @@
+Manages user preferences, theme customization, data synchronization, and shortcut configurations using a provider-based state management architecture.

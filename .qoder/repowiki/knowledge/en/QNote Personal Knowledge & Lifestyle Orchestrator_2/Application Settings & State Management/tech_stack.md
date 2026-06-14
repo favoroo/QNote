@@ -1,0 +1,1 @@
+Uses `flutter_riverpod` for state management (specifically `StateNotifierProvider` and `AsyncNotifierProvider`), `shared_preferences` for lightweight key-value storage (theme), and `sqflite` via `ConfigRepository` for structured settings persistence.

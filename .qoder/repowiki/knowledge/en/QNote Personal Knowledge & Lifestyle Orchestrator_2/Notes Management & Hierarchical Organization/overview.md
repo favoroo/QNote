@@ -1,0 +1,1 @@
+Manages note lifecycle, hierarchical folder organization, and interactive UI features like drag-and-drop reordering and batch selection.

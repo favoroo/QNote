@@ -1,0 +1,630 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: en-US
+branch: master
+exported_at: "2026-06-13T23:57:06Z"
+modules:
+    "":
+        dir_name: QNote Personal Knowledge & Lifestyle Orchestrator
+        title: QNote Personal Knowledge & Lifestyle Orchestrator
+        scope:
+            - README.md
+            - AGENTS.md
+            - .gitignore
+            - .mcp.json
+            - pubspec.yaml
+            - pubspec.lock
+            - analysis_options.yaml
+            - qnote_flutter.iml
+            - test_ai_extract.py
+            - build_install.bat
+            - build_send.bat
+            - build_send_mail.bat
+            - send_email.ps1
+            - send_email_split.ps1
+            - sync_to_share.ps1
+            - 一键归纳更新.bat
+            - 01构建到手机命令.md
+            - .agents\skills\frontend-design\LICENSE.txt
+            - .agents\skills\frontend-design\SKILL.md
+            - .agents\skills\mobile-android-design\SKILL.md
+            - .agents\skills\mobile-android-design\references\android-navigation.md
+            - .agents\skills\mobile-android-design\references\compose-components.md
+            - .agents\skills\mobile-android-design\references\material3-theming.md
+            - .claude\CLAUDE.md
+            - .claude\settings.json
+            - .codegraph\.gitignore
+            - .codegraph\codegraph.db
+            - .flutter-plugins-dependencies
+            - .idea\libraries\Dart_SDK.xml
+            - .idea\libraries\KotlinJavaRuntime.xml
+            - .idea\modules.xml
+            - .idea\runConfigurations\main_dart.xml
+            - .idea\workspace.xml
+            - .metadata
+            - .trae\documents\add-health-shortcut-tag.md
+            - .trae\documents\ai-extract-optimization-plan.md
+            - .trae\documents\cross_date_event_fix_plan.md
+            - .trae\documents\fix-app-freeze-issues.md
+            - .trae\documents\fix-initial-scroll-to-current-time.md
+            - .trae\documents\fix-relative-date-double-offset.md
+            - .trae\documents\fix-sidebar-navigation.md
+            - .trae\documents\flutter-apk-build-optimization.md
+            - .trae\documents\multi-tag-no-split.md
+            - .trae\documents\qnote-optimization-plan.md
+            - .trae\documents\qnote-react-to-flutter-migration-plan.md
+            - .trae\documents\shortcut-options-optimization.md
+            - .trae\documents\simplify-agents-md.md
+            - .trae\documents\smart-extract-optimization.md
+            - .trae\documents\timeline-scroll-positioning-refactor.md
+            - .trae\documents\timeline-smart-extract-plan.md
+            - .trae\documents\timeline_remark_display_optimization.md
+            - .trae\documents\toast-notification-redesign.md
+            - .trae\documents\todo-widget-empty-list-fix.md
+            - .trae\documents\unified_extraction_prompt_plan.md
+            - .trae\documents\update-agents-md.md
+            - .trae\documents\webdav-sync-optimization-plan.md
+            - .trae\documents\智能提取模型思考模式分析.md
+            - 01旧架构数据\.env.example
+            - 01旧架构数据\.gitignore
+            - 01旧架构数据\QNoteBackup_2026-05-14.json
+            - 01旧架构数据\README.md
+            - 01旧架构数据\android\app\src\main\res\mipmap-hdpi\ic_launcher.png
+            - 01旧架构数据\android\app\src\main\res\mipmap-hdpi\ic_launcher_foreground.png
+            - 01旧架构数据\android\app\src\main\res\mipmap-mdpi\ic_launcher.png
+            - 01旧架构数据\android\app\src\main\res\mipmap-mdpi\ic_launcher_foreground.png
+            - 01旧架构数据\android\app\src\main\res\mipmap-xhdpi\ic_launcher.png
+            - 01旧架构数据\android\app\src\main\res\mipmap-xhdpi\ic_launcher_foreground.png
+            - 01旧架构数据\android\app\src\main\res\mipmap-xxhdpi\ic_launcher.png
+            - 01旧架构数据\android\app\src\main\res\mipmap-xxhdpi\ic_launcher_foreground.png
+            - 01旧架构数据\android\app\src\main\res\mipmap-xxxhdpi\ic_launcher.png
+            - 01旧架构数据\android\app\src\main\res\mipmap-xxxhdpi\ic_launcher_foreground.png
+            - 01旧架构数据\capacitor.config.ts
+            - 01旧架构数据\generate-icons.mjs
+            - 01旧架构数据\index.html
+            - 01旧架构数据\metadata.json
+            - 01旧架构数据\package-lock.json
+            - 01旧架构数据\package.json
+            - 01旧架构数据\public\icon.svg
+            - 01旧架构数据\script.cjs
+            - 01旧架构数据\server.ts
+            - 01旧架构数据\src\App.tsx
+            - 01旧架构数据\src\components\ActionMenu.tsx
+            - 01旧架构数据\src\components\BottomNavBar.tsx
+            - 01旧架构数据\src\components\DatePickerInput.tsx
+            - 01旧架构数据\src\components\DateRangePicker.tsx
+            - 01旧架构数据\src\components\DebugConsole.tsx
+            - 01旧架构数据\src\components\DiaryBatchManageView.tsx
+            - 01旧架构数据\src\components\DiaryEditorView.tsx
+            - 01旧架构数据\src\components\DiaryItem.tsx
+            - 01旧架构数据\src\components\ErrorBoundary.tsx
+            - 01旧架构数据\src\components\MultiNoteSelector.tsx
+            - 01旧架构数据\src\components\NoteEditorView.tsx
+            - 01旧架构数据\src\components\NotificationManager.tsx
+            - 01旧架构数据\src\components\SearchView.tsx
+            - 01旧架构数据\src\components\Select.tsx
+            - 01旧架构数据\src\components\SideDrawer.tsx
+            - 01旧架构数据\src\components\TimePicker.tsx
+            - 01旧架构数据\src\components\TimeScrollPicker.tsx
+            - 01旧架构数据\src\components\TopTabSwitcher.tsx
+            - 01旧架构数据\src\components\common\StatsCard.tsx
+            - 01旧架构数据\src\components\common\TimeRangeSelector.tsx
+            - 01旧架构数据\src\components\common\UnifiedImage.tsx
+            - 01旧架构数据\src\components\statistics\ActivityStats.tsx
+            - 01旧架构数据\src\components\statistics\DietStats.tsx
+            - 01旧架构数据\src\components\statistics\FinanceStats.tsx
+            - 01旧架构数据\src\components\statistics\MoodStats.tsx
+            - 01旧架构数据\src\components\statistics\SleepStats.tsx
+            - 01旧架构数据\src\components\statistics\StatsTabSwitcher.tsx
+            - 01旧架构数据\src\config\defaults.ts
+            - 01旧架构数据\src\config\models.ts
+            - 01旧架构数据\src\context\AIContext.tsx
+            - 01旧架构数据\src\context\NavigationContext.tsx
+            - 01旧架构数据\src\context\ThemeContext.tsx
+            - 01旧架构数据\src\hooks\useBackHandler.ts
+            - 01旧架构数据\src\hooks\useDiary.ts
+            - 01旧架构数据\src\hooks\useLongPress.ts
+            - 01旧架构数据\src\hooks\useNotes.ts
+            - 01旧架构数据\src\hooks\useStatistics.ts
+            - 01旧架构数据\src\hooks\useTodo.ts
+            - 01旧架构数据\src\hooks\useUser.ts
+            - 01旧架构数据\src\index.css
+            - 01旧架构数据\src\lib\detailedLogger.ts
+            - 01旧架构数据\src\lib\fileExport.ts
+            - 01旧架构数据\src\lib\gemini.ts
+            - 01旧架构数据\src\lib\idbStorage.ts
+            - 01旧架构数据\src\lib\logger.ts
+            - 01旧架构数据\src\lib\notifications.ts
+            - 01旧架构数据\src\lib\opfsStorage.ts
+            - 01旧架构数据\src\lib\schemas.ts
+            - 01旧架构数据\src\lib\statsUtils.ts
+            - 01旧架构数据\src\lib\storage.ts
+            - 01旧架构数据\src\lib\unifiedStorage.ts
+            - 01旧架构数据\src\main.tsx
+            - 01旧架构数据\src\pages\AIPage.tsx
+            - 01旧架构数据\src\pages\DiaryPage.tsx
+            - 01旧架构数据\src\pages\NotesPage.tsx
+            - 01旧架构数据\src\pages\StatisticsPage.tsx
+            - 01旧架构数据\src\pages\TodoPage.tsx
+            - 01旧架构数据\src\services\syncService.ts
+            - 01旧架构数据\src\types\index.ts
+            - 01旧架构数据\test-api2.mjs
+            - 01旧架构数据\test-api3.mjs
+            - 01旧架构数据\test-api4.mjs
+            - 01旧架构数据\tsconfig.json
+            - 01旧架构数据\vite.config.ts
+            - 01旧架构数据\转化Flutter手册.md
+            - CHANGELOG.md
+            - android\.gitignore
+            - android\app\build.gradle.kts
+            - android\app\src\main\AndroidManifest.xml
+            - android\app\src\main\java\io\flutter\plugins\GeneratedPluginRegistrant.java
+            - android\app\src\main\kotlin\com\appone\qnote_flutter\MainActivity.kt
+            - android\app\src\main\kotlin\com\appone\qnote_flutter\QuickRecordActivity.kt
+            - android\app\src\main\kotlin\com\appone\qnote_flutter\QuickRecordWidgetProvider.kt
+            - android\app\src\main\kotlin\com\appone\qnote_flutter\TodoWidgetProvider.kt
+            - android\app\src\main\res\drawable-v21\launch_background.xml
+            - android\app\src\main\res\drawable\bg_dialog_card.xml
+            - android\app\src\main\res\drawable\bg_dialog_input.xml
+            - android\app\src\main\res\drawable\bg_widget.xml
+            - android\app\src\main\res\drawable\bg_widget_badge.xml
+            - android\app\src\main\res\drawable\bg_widget_input.xml
+            - android\app\src\main\res\drawable\bg_widget_quick_record_input.xml
+            - android\app\src\main\res\drawable\bg_widget_quick_record_outer.xml
+            - android\app\src\main\res\drawable\ic_add.xml
+            - android\app\src\main\res\drawable\ic_camera.xml
+            - android\app\src\main\res\drawable\ic_checkbox_checked.xml
+            - android\app\src\main\res\drawable\ic_checkbox_unchecked.xml
+            - android\app\src\main\res\drawable\ic_gallery.xml
+            - android\app\src\main\res\drawable\ic_refresh.xml
+            - android\app\src\main\res\drawable\ic_send.xml
+            - android\app\src\main\res\drawable\launch_background.xml
+            - android\app\src\main\res\layout\activity_quick_record.xml
+            - android\app\src\main\res\layout\todo_item_widget.xml
+            - android\app\src\main\res\layout\widget_quick_record.xml
+            - android\app\src\main\res\layout\widget_todo.xml
+            - android\app\src\main\res\mipmap-hdpi\ic_launcher.png
+            - android\app\src\main\res\mipmap-hdpi\ic_launcher_foreground.png
+            - android\app\src\main\res\mipmap-mdpi\ic_launcher.png
+            - android\app\src\main\res\mipmap-mdpi\ic_launcher_foreground.png
+            - android\app\src\main\res\mipmap-xhdpi\ic_launcher.png
+            - android\app\src\main\res\mipmap-xhdpi\ic_launcher_foreground.png
+            - android\app\src\main\res\mipmap-xxhdpi\ic_launcher.png
+            - android\app\src\main\res\mipmap-xxhdpi\ic_launcher_foreground.png
+            - android\app\src\main\res\mipmap-xxxhdpi\ic_launcher.png
+            - android\app\src\main\res\mipmap-xxxhdpi\ic_launcher_foreground.png
+            - android\app\src\main\res\values-night\colors.xml
+            - android\app\src\main\res\values-night\ic_launcher_background.xml
+            - android\app\src\main\res\values-night\styles.xml
+            - android\app\src\main\res\values\colors.xml
+            - android\app\src\main\res\values\ic_launcher_background.xml
+            - android\app\src\main\res\values\styles.xml
+            - android\app\src\main\res\xml\file_paths.xml
+            - android\app\src\main\res\xml\widget_quick_record_info.xml
+            - android\app\src\main\res\xml\widget_todo_info.xml
+            - android\app\src\profile\AndroidManifest.xml
+            - android\build.gradle.kts
+            - android\gradle.properties
+            - android\gradle\wrapper\gradle-wrapper.jar
+            - android\gradle\wrapper\gradle-wrapper.properties
+            - android\gradlew
+            - android\gradlew.bat
+            - android\local.properties
+            - android\qnote_flutter_android.iml
+            - android\settings.gradle.kts
+            - assets\fonts\Inter-Bold.ttf
+            - assets\fonts\Inter-Medium.ttf
+            - assets\fonts\Inter-Regular.ttf
+            - assets\fonts\Inter-SemiBold.ttf
+            - assets\images\app_icon.png
+            - assets\images\app_icon.svg
+            - email_config.json
+            - lib\app.dart
+            - lib\config\defaults.dart
+            - lib\config\models.dart
+            - lib\core\ai\ai_role_service.dart
+            - lib\core\ai\ai_service.dart
+            - lib\core\ai\model_fetch_service.dart
+            - lib\core\export\export_service.dart
+            - lib\core\logger\logger_service.dart
+            - lib\core\network\sync_scheduler.dart
+            - lib\core\network\webdav_service.dart
+            - lib\core\notification\notification_service.dart
+            - lib\core\router\app_router.dart
+            - lib\core\storage\color_mark_repository.dart
+            - lib\core\storage\config_repository.dart
+            - lib\core\storage\daily_score_repository.dart
+            - lib\core\storage\database_helper.dart
+            - lib\core\storage\diary_repository.dart
+            - lib\core\storage\fixed_event_repository.dart
+            - lib\core\storage\folder_repository.dart
+            - lib\core\storage\image_repository.dart
+            - lib\core\storage\note_repository.dart
+            - lib\core\storage\sync_log_repository.dart
+            - lib\core\storage\todo_repository.dart
+            - lib\core\theme\app_colors.dart
+            - lib\core\theme\app_durations.dart
+            - lib\core\theme\app_radius.dart
+            - lib\core\theme\app_theme.dart
+            - lib\core\theme\tag_colors.dart
+            - lib\core\utils\delta_markdown.dart
+            - lib\core\utils\gallery_helper.dart
+            - lib\core\utils\link_preview_helper.dart
+            - lib\core\utils\schema_formatter.dart
+            - lib\core\utils\stats_utils.dart
+            - lib\core\utils\toast_utils.dart
+            - lib\core\utils\widget_utils.dart
+            - lib\database_init.dart
+            - lib\database_init_io.dart
+            - lib\main.dart
+            - lib\models\ai_config.dart
+            - lib\models\ai_roles.dart
+            - lib\models\chat_session.dart
+            - lib\models\daily_score.dart
+            - lib\models\date_color_mark.dart
+            - lib\models\diary_record.dart
+            - lib\models\fixed_event_template.dart
+            - lib\models\folder.dart
+            - lib\models\note.dart
+            - lib\models\shortcut_category.dart
+            - lib\models\shortcut_config.dart
+            - lib\models\shortcut_field.dart
+            - lib\models\tag_entry.dart
+            - lib\models\todo.dart
+            - lib\models\user_profile.dart
+            - lib\models\webdav_config.dart
+            - lib\models\weight_record.dart
+            - lib\pages\ai_page.dart
+            - lib\pages\diary_page.dart
+            - lib\pages\notes_page.dart
+            - lib\pages\settings\about_page.dart
+            - lib\pages\settings\ai_config_page.dart
+            - lib\pages\settings\data_management_page.dart
+            - lib\pages\settings\fixed_events_page.dart
+            - lib\pages\settings\personalization_page.dart
+            - lib\pages\settings\shortcuts_page.dart
+            - lib\pages\settings\sync_settings_page.dart
+            - lib\pages\settings\user_profile_page.dart
+            - lib\pages\statistics_page.dart
+            - lib\pages\todo_page.dart
+            - lib\providers\ai_provider.dart
+            - lib\providers\daily_score_provider.dart
+            - lib\providers\diary_provider.dart
+            - lib\providers\fixed_event_provider.dart
+            - lib\providers\folder_provider.dart
+            - lib\providers\navigation_provider.dart
+            - lib\providers\note_provider.dart
+            - lib\providers\selected_date_provider.dart
+            - lib\providers\shortcut_provider.dart
+            - lib\providers\sync_provider.dart
+            - lib\providers\theme_provider.dart
+            - lib\providers\todo_provider.dart
+            - lib\providers\user_profile_provider.dart
+            - lib\widgets\action_menu.dart
+            - lib\widgets\animated_gradient_border.dart
+            - lib\widgets\birthday_picker.dart
+            - lib\widgets\bottom_nav_bar.dart
+            - lib\widgets\debug_console.dart
+            - lib\widgets\diary\ai_extract_helper.dart
+            - lib\widgets\diary\custom_date_picker.dart
+            - lib\widgets\diary\diary_batch_manage_view.dart
+            - lib\widgets\diary\diary_editor_view.dart
+            - lib\widgets\diary\diary_input_bar.dart
+            - lib\widgets\diary\diary_item.dart
+            - lib\widgets\diary\edit_tag_time_sheet.dart
+            - lib\widgets\empty_state.dart
+            - lib\widgets\notes\note_editor_view.dart
+            - lib\widgets\q_button.dart
+            - lib\widgets\q_card.dart
+            - lib\widgets\q_chip.dart
+            - lib\widgets\q_section_header.dart
+            - lib\widgets\search_view.dart
+            - lib\widgets\side_drawer.dart
+            - lib\widgets\statistics\activity_stats.dart
+            - lib\widgets\statistics\daily_score_stats.dart
+            - lib\widgets\statistics\diet_stats.dart
+            - lib\widgets\statistics\finance_stats.dart
+            - lib\widgets\statistics\mood_stats.dart
+            - lib\widgets\statistics\sleep_stats.dart
+            - lib\widgets\stats_card.dart
+            - lib\widgets\tag_picker.dart
+            - lib\widgets\time_picker.dart
+            - lib\widgets\time_range_selector.dart
+            - lib\widgets\time_scroll_picker.dart
+            - lib\widgets\unified_image.dart
+            - scratch.dart
+            - skills-lock.json
+            - test\config\models_test.dart
+            - test\core\utils\schema_formatter_test.dart
+            - test\models\diary_record_test.dart
+            - test\widget_test.dart
+            - web\favicon.png
+            - web\icons\Icon-192.png
+            - web\icons\Icon-512.png
+            - web\icons\Icon-maskable-192.png
+            - web\icons\Icon-maskable-512.png
+            - web\index.html
+            - web\manifest.json
+            - web\sqflite_sw.js
+            - web\sqlite3.wasm
+            - windows\.gitignore
+            - windows\CMakeLists.txt
+            - windows\flutter\CMakeLists.txt
+            - windows\flutter\generated_plugin_registrant.cc
+            - windows\flutter\generated_plugin_registrant.h
+            - windows\flutter\generated_plugins.cmake
+            - windows\runner\CMakeLists.txt
+            - windows\runner\Runner.rc
+            - windows\runner\flutter_window.cpp
+            - windows\runner\flutter_window.h
+            - windows\runner\main.cpp
+            - windows\runner\resource.h
+            - windows\runner\resources\app_icon.ico
+            - windows\runner\runner.exe.manifest
+            - windows\runner\utils.cpp
+            - windows\runner\utils.h
+            - windows\runner\win32_window.cpp
+            - windows\runner\win32_window.h
+            - 应用分享.zip
+            - 应用分享\.flutter-plugins-dependencies
+            - 应用分享\.gitignore
+            - 应用分享\.metadata
+            - 应用分享\AGENTS.md
+            - 应用分享\README.md
+            - 应用分享\analysis_options.yaml
+            - 应用分享\assets\fonts\Inter-Bold.ttf
+            - 应用分享\assets\fonts\Inter-Medium.ttf
+            - 应用分享\assets\fonts\Inter-Regular.ttf
+            - 应用分享\assets\fonts\Inter-SemiBold.ttf
+            - 应用分享\assets\images\app_icon.png
+            - 应用分享\assets\images\app_icon.svg
+            - 应用分享\lib\app.dart
+            - 应用分享\lib\config\defaults.dart
+            - 应用分享\lib\config\models.dart
+            - 应用分享\lib\core\ai\ai_role_service.dart
+            - 应用分享\lib\core\ai\ai_service.dart
+            - 应用分享\lib\core\ai\model_fetch_service.dart
+            - 应用分享\lib\core\export\export_service.dart
+            - 应用分享\lib\core\logger\logger_service.dart
+            - 应用分享\lib\core\network\sync_scheduler.dart
+            - 应用分享\lib\core\network\webdav_service.dart
+            - 应用分享\lib\core\notification\notification_service.dart
+            - 应用分享\lib\core\router\app_router.dart
+            - 应用分享\lib\core\storage\color_mark_repository.dart
+            - 应用分享\lib\core\storage\config_repository.dart
+            - 应用分享\lib\core\storage\daily_score_repository.dart
+            - 应用分享\lib\core\storage\database_helper.dart
+            - 应用分享\lib\core\storage\diary_repository.dart
+            - 应用分享\lib\core\storage\folder_repository.dart
+            - 应用分享\lib\core\storage\image_repository.dart
+            - 应用分享\lib\core\storage\note_repository.dart
+            - 应用分享\lib\core\storage\sync_log_repository.dart
+            - 应用分享\lib\core\storage\todo_repository.dart
+            - 应用分享\lib\core\theme\app_theme.dart
+            - 应用分享\lib\core\utils\delta_markdown.dart
+            - 应用分享\lib\core\utils\gallery_helper.dart
+            - 应用分享\lib\core\utils\link_preview_helper.dart
+            - 应用分享\lib\core\utils\schema_formatter.dart
+            - 应用分享\lib\core\utils\stats_utils.dart
+            - 应用分享\lib\core\utils\toast_utils.dart
+            - 应用分享\lib\core\utils\widget_utils.dart
+            - 应用分享\lib\database_init.dart
+            - 应用分享\lib\database_init_io.dart
+            - 应用分享\lib\main.dart
+            - 应用分享\lib\models\ai_config.dart
+            - 应用分享\lib\models\ai_roles.dart
+            - 应用分享\lib\models\chat_session.dart
+            - 应用分享\lib\models\daily_score.dart
+            - 应用分享\lib\models\date_color_mark.dart
+            - 应用分享\lib\models\diary_record.dart
+            - 应用分享\lib\models\folder.dart
+            - 应用分享\lib\models\note.dart
+            - 应用分享\lib\models\shortcut_category.dart
+            - 应用分享\lib\models\shortcut_config.dart
+            - 应用分享\lib\models\shortcut_field.dart
+            - 应用分享\lib\models\tag_entry.dart
+            - 应用分享\lib\models\todo.dart
+            - 应用分享\lib\models\user_profile.dart
+            - 应用分享\lib\models\webdav_config.dart
+            - 应用分享\lib\models\weight_record.dart
+            - 应用分享\lib\pages\ai_page.dart
+            - 应用分享\lib\pages\diary_page.dart
+            - 应用分享\lib\pages\notes_page.dart
+            - 应用分享\lib\pages\settings\about_page.dart
+            - 应用分享\lib\pages\settings\ai_config_page.dart
+            - 应用分享\lib\pages\settings\data_management_page.dart
+            - 应用分享\lib\pages\settings\personalization_page.dart
+            - 应用分享\lib\pages\settings\shortcuts_page.dart
+            - 应用分享\lib\pages\settings\sync_settings_page.dart
+            - 应用分享\lib\pages\settings\user_profile_page.dart
+            - 应用分享\lib\pages\statistics_page.dart
+            - 应用分享\lib\pages\todo_page.dart
+            - 应用分享\lib\providers\ai_provider.dart
+            - 应用分享\lib\providers\daily_score_provider.dart
+            - 应用分享\lib\providers\diary_provider.dart
+            - 应用分享\lib\providers\folder_provider.dart
+            - 应用分享\lib\providers\navigation_provider.dart
+            - 应用分享\lib\providers\note_provider.dart
+            - 应用分享\lib\providers\selected_date_provider.dart
+            - 应用分享\lib\providers\shortcut_provider.dart
+            - 应用分享\lib\providers\sync_provider.dart
+            - 应用分享\lib\providers\theme_provider.dart
+            - 应用分享\lib\providers\todo_provider.dart
+            - 应用分享\lib\providers\user_profile_provider.dart
+            - 应用分享\lib\widgets\action_menu.dart
+            - 应用分享\lib\widgets\animated_gradient_border.dart
+            - 应用分享\lib\widgets\birthday_picker.dart
+            - 应用分享\lib\widgets\bottom_nav_bar.dart
+            - 应用分享\lib\widgets\debug_console.dart
+            - 应用分享\lib\widgets\diary\ai_extract_helper.dart
+            - 应用分享\lib\widgets\diary\custom_date_picker.dart
+            - 应用分享\lib\widgets\diary\diary_batch_manage_view.dart
+            - 应用分享\lib\widgets\diary\diary_editor_view.dart
+            - 应用分享\lib\widgets\diary\diary_input_bar.dart
+            - 应用分享\lib\widgets\diary\diary_item.dart
+            - 应用分享\lib\widgets\diary\edit_tag_time_sheet.dart
+            - 应用分享\lib\widgets\notes\note_editor_view.dart
+            - 应用分享\lib\widgets\search_view.dart
+            - 应用分享\lib\widgets\side_drawer.dart
+            - 应用分享\lib\widgets\statistics\activity_stats.dart
+            - 应用分享\lib\widgets\statistics\daily_score_stats.dart
+            - 应用分享\lib\widgets\statistics\diet_stats.dart
+            - 应用分享\lib\widgets\statistics\finance_stats.dart
+            - 应用分享\lib\widgets\statistics\mood_stats.dart
+            - 应用分享\lib\widgets\statistics\sleep_stats.dart
+            - 应用分享\lib\widgets\stats_card.dart
+            - 应用分享\lib\widgets\tag_picker.dart
+            - 应用分享\lib\widgets\time_picker.dart
+            - 应用分享\lib\widgets\time_range_selector.dart
+            - 应用分享\lib\widgets\time_scroll_picker.dart
+            - 应用分享\lib\widgets\unified_image.dart
+            - 应用分享\pubspec.lock
+            - 应用分享\pubspec.yaml
+            - 应用分享\web\favicon.png
+            - 应用分享\web\icons\Icon-192.png
+            - 应用分享\web\icons\Icon-512.png
+            - 应用分享\web\icons\Icon-maskable-192.png
+            - 应用分享\web\icons\Icon-maskable-512.png
+            - 应用分享\web\index.html
+            - 应用分享\web\manifest.json
+            - 应用分享\web\sqflite_sw.js
+            - 应用分享\web\sqlite3.wasm
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    distribution_copy:
+        dir_name: QNote Personal Knowledge Management
+        title: QNote Personal Knowledge Management
+        scope:
+            - 应用分享/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    flutter_app:
+        dir_name: QNote Personal Knowledge & Lifestyle Orchestrator_2
+        title: QNote Personal Knowledge & Lifestyle Orchestrator
+        scope:
+            - lib/
+        source_files: []
+        children:
+            - flutter_app/shared_core
+            - flutter_app/statistics
+            - flutter_app/todo
+            - flutter_app/ai
+            - flutter_app/settings
+            - flutter_app/notes
+            - flutter_app/diary
+        depends_on: []
+        related_to: []
+    flutter_app/ai:
+        dir_name: AI Chat & Contextual Analysis
+        title: AI Chat & Contextual Analysis
+        scope:
+            - lib/pages/ai_page.dart
+            - lib/providers/ai_provider.dart
+            - lib/models/ai_config.dart
+            - lib/models/ai_roles.dart
+            - lib/models/chat_session.dart
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: flutter_app/diary
+            - path: flutter_app/notes
+    flutter_app/diary:
+        dir_name: Diary Timeline & Management
+        title: Diary Timeline & Management
+        scope:
+            - lib/pages/diary_page.dart
+            - lib/providers/diary_provider.dart
+            - lib/models/diary_record.dart
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: flutter_app/ai
+            - path: flutter_app/statistics
+            - path: flutter_app/todo
+            - path: flutter_app/notes
+    flutter_app/notes:
+        dir_name: Notes Management & Hierarchical Organization
+        title: Notes Management & Hierarchical Organization
+        scope:
+            - lib/pages/notes_page.dart
+            - lib/providers/note_provider.dart
+            - lib/models/note.dart
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: flutter_app/ai
+            - path: flutter_app/diary
+            - path: flutter_app/todo
+    flutter_app/settings:
+        dir_name: Application Settings & State Management
+        title: Application Settings & State Management
+        scope:
+            - lib/providers/user_profile_provider.dart
+            - lib/providers/theme_provider.dart
+            - lib/providers/sync_provider.dart
+            - lib/providers/shortcut_provider.dart
+            - lib/models/user_profile.dart
+            - lib/models/webdav_config.dart
+            - lib/models/shortcut_category.dart
+            - lib/models/shortcut_config.dart
+            - lib/models/shortcut_field.dart
+            - lib/models/folder.dart
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: flutter_app/shared_core
+    flutter_app/shared_core:
+        dir_name: Application Core & Shared State
+        title: Application Core & Shared State
+        scope:
+            - lib/providers/navigation_provider.dart
+            - lib/providers/selected_date_provider.dart
+            - lib/app.dart
+            - lib/main.dart
+            - lib/database_init.dart
+            - lib/database_init_io.dart
+            - lib/models/tag_entry.dart
+            - lib/models/date_color_mark.dart
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: flutter_app/settings
+    flutter_app/statistics:
+        dir_name: Daily Health Scoring & Statistics
+        title: Daily Health Scoring & Statistics
+        scope:
+            - lib/pages/statistics_page.dart
+            - lib/providers/daily_score_provider.dart
+            - lib/models/daily_score.dart
+            - lib/models/weight_record.dart
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: flutter_app/diary
+            - path: flutter_app/todo
+    flutter_app/todo:
+        dir_name: Todo Management & Fixed Event Templates
+        title: Todo Management & Fixed Event Templates
+        scope:
+            - lib/pages/todo_page.dart
+            - lib/providers/todo_provider.dart
+            - lib/providers/fixed_event_provider.dart
+            - lib/models/todo.dart
+            - lib/models/fixed_event_template.dart
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: flutter_app/diary
+            - path: flutter_app/notes
+            - path: flutter_app/statistics

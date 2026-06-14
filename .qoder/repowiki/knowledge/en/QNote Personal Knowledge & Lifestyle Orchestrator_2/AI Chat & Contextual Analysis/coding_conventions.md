@@ -1,0 +1,3 @@
+- Model classes implement consistent `toMap`, `fromMap`, and `copyWith` methods for serialization and immutable updates.
+- Riverpod notifiers use a standard `refresh` pattern that re-fetches data from repositories and updates the `AsyncData` state.
+- UI components utilize `Theme.of(context)` for dynamic styling and `AppColors`/`AppRadius` constants to maintain design system consistency.

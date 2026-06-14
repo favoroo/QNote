@@ -9,6 +9,7 @@ import 'package:qnote_flutter/pages/statistics_page.dart';
 import 'package:qnote_flutter/pages/settings/user_profile_page.dart';
 import 'package:qnote_flutter/pages/settings/ai_config_page.dart';
 import 'package:qnote_flutter/pages/settings/shortcuts_page.dart';
+import 'package:qnote_flutter/pages/settings/fixed_events_page.dart';
 import 'package:qnote_flutter/pages/settings/data_management_page.dart';
 import 'package:qnote_flutter/pages/settings/sync_settings_page.dart';
 import 'package:qnote_flutter/pages/settings/personalization_page.dart';
@@ -148,6 +149,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/settings/shortcuts',
         parentNavigatorKey: _rootNavigatorKey,
         pageBuilder: (context, state) => _fadeTransitionPage(const ShortcutsPage()),
+      ),
+      GoRoute(
+        path: '/settings/fixed-events',
+        parentNavigatorKey: _rootNavigatorKey,
+        pageBuilder: (context, state) => _fadeTransitionPage(const FixedEventsPage()),
       ),
       GoRoute(
         path: '/settings/data',
