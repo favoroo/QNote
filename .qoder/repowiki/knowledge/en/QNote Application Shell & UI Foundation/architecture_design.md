@@ -1,5 +1,0 @@
-- Entry point: `lib/main.dart` initializes services (logging, database, notifications) and wraps the app in a `ProviderScope`.
-- App Shell: `lib/app.dart` defines the root `MaterialApp.router`, integrating `go_router` for navigation and Riverpod for state management. It handles lifecycle events and global gesture detection.
-- Routing: `lib/core/router/app_router.dart` configures a `StatefulShellRoute` with five main branches (Diary, Notes, Todo, AI, Statistics) and nested routes for editors and settings, using custom fade transitions.
-- Theming: `lib/core/theme/app_theme.dart` implements Material 3 light and dark themes with dynamic accent colors. `lib/providers/theme_provider.dart` manages theme mode and accent color persistence via `SharedPreferences`.
-- Structure: Follows a feature-based layout with `lib/pages` for screens, `lib/widgets` for reusable components, `lib/providers` for Riverpod state, `lib/models` for data classes, and `lib/core` for shared services (storage, network, AI, etc.).

@@ -17,6 +17,11 @@
 - [diary_repository.dart](file://lib/core/storage/diary_repository.dart)
 - [diary_record_model.dart](file://lib/models/diary_record_model.dart)
 - [delta_markdown.dart](file://lib/core/utils/delta_markdown.dart)
+- [app_theme.dart](file://lib/core/theme/app_theme.dart)
+- [app_durations.dart](file://lib/core/theme/app_durations.dart)
+- [app_radius.dart](file://lib/core/theme/app_radius.dart)
+- [theme_provider.dart](file://lib/providers/theme_provider.dart)
+- [personalization_page.dart](file://lib/pages/settings/personalization_page.dart)
 - [colors.xml](file://android/app/src/main/res/values/colors.xml)
 - [styles.xml](file://android/app/src/main/res/values/styles.xml)
 - [colors.xml (night)](file://android/app/src/main/res/values-night/colors.xml)
@@ -26,10 +31,11 @@
 
 ## Update Summary
 **Changes Made**
-- Enhanced note editor with improved text formatting and markdown support
-- Redesigned diary input bar with expanded emoji support
-- Improved diary item rendering capabilities with better markdown parsing
-- Added delta to markdown conversion utilities for enhanced formatting
+- Enhanced theming system with improved switch controls and checkbox styling
+- Refined visual feedback for interactive elements with enhanced color schemes
+- Added accessibility features for interactive elements
+- Updated personalization page with improved theme mode buttons
+- Added duration and radius constants for consistent animations and spacing
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -38,19 +44,20 @@
 4. [Architecture Overview](#architecture-overview)
 5. [Detailed Component Analysis](#detailed-component-analysis)
 6. [Enhanced Editor Features](#enhanced-editor-features)
-7. [Dependency Analysis](#dependency-analysis)
-8. [Performance Considerations](#performance-considerations)
-9. [Troubleshooting Guide](#troubleshooting-guide)
-10. [Conclusion](#conclusion)
-11. [Appendices](#appendices)
+7. [Enhanced Theming System](#enhanced-theming-system)
+8. [Dependency Analysis](#dependency-analysis)
+9. [Performance Considerations](#performance-considerations)
+10. [Troubleshooting Guide](#troubleshooting-guide)
+11. [Conclusion](#conclusion)
+12. [Appendices](#appendices)
 
 ## Introduction
 This document describes the UI components and page architecture of QNote Flutter. It focuses on the page-based navigation system powered by GoRouter, the organization of screens, reusable UI components, theming and styling, responsive design patterns, accessibility compliance, component composition, integration with state management, cross-platform considerations, and guidelines for building consistent UI elements.
 
-**Updated** Enhanced with new markdown formatting capabilities, improved emoji support, and advanced diary item rendering features.
+**Updated** Enhanced with new markdown formatting capabilities, improved emoji support, advanced diary item rendering features, and a significantly improved theming system with enhanced interactive element styling and accessibility features.
 
 ## Project Structure
-QNote Flutter organizes UI-related code under lib/, with distinct layers for application bootstrap, routing, pages, widgets, providers, models, and configuration. The navigation system centers around a provider-managed GoRouter instance configured via a dedicated router module. Pages and views are separated to promote composability and testability, while reusable UI components live in a dedicated widgets directory. Providers manage global state such as theme mode and accent color, enabling reactive UI updates.
+QNote Flutter organizes UI-related code under lib/, with distinct layers for application bootstrap, routing, pages, widgets, providers, models, and configuration. The navigation system centers around a provider-managed GoRouter instance configured via a dedicated router module. Pages and views are separated to promote composability and testability, while reusable UI components live in a dedicated widgets directory. Providers manage global state such as theme mode and accent color, enabling reactive UI updates. The theming system now includes comprehensive styling for interactive elements like switches, checkboxes, and radios with enhanced visual feedback.
 
 ```mermaid
 graph TB
@@ -68,6 +75,7 @@ DIARY_EDITOR["widgets/diary/diary_editor_view.dart"]
 NOTE_EDITOR["widgets/notes/note_editor_view.dart"]
 DIARY_INPUT_BAR["widgets/diary/diary_input_bar.dart"]
 DIARY_ITEM["widgets/diary/diary_item.dart"]
+PERSONALIZATION["pages/settings/personalization_page.dart"]
 END
 subgraph "Widgets"
 SNA["widgets/scaffold_with_nav_bar.dart"]
@@ -75,6 +83,12 @@ END
 subgraph "State Management"
 THEME_MODE["providers/theme_mode_provider.dart"]
 ACCENT_COLOR["providers/accent_color_provider.dart"]
+THEME_PROVIDER["providers/theme_provider.dart"]
+END
+subgraph "Theming System"
+APP_THEME["core/theme/app_theme.dart"]
+APP_DURATIONS["core/theme/app_durations.dart"]
+APP_RADIUS["core/theme/app_radius.dart"]
 END
 subgraph "Models & Repositories"
 MODEL["models/diary_record_model.dart"]
@@ -91,6 +105,8 @@ DIARY_PAGE --> SNA
 DIARY_EDITOR --> SNA
 NOTE_EDITOR --> DIARY_INPUT_BAR
 DIARY_ITEM --> DELTA_MD
+PERSONALIZATION --> THEME_PROVIDER
+APP_THEME --> THEME_PROVIDER
 ```
 
 **Diagram sources**
@@ -105,9 +121,15 @@ DIARY_ITEM --> DELTA_MD
 - [scaffold_with_nav_bar.dart](file://lib/widgets/scaffold_with_nav_bar.dart)
 - [theme_mode_provider.dart](file://lib/providers/theme_mode_provider.dart)
 - [accent_color_provider.dart](file://lib/providers/accent_color_provider.dart)
+- [router_provider.dart](file://lib/providers/router_provider.dart)
 - [diary_repository.dart](file://lib/core/storage/diary_repository.dart)
 - [diary_record_model.dart](file://lib/models/diary_record_model.dart)
 - [delta_markdown.dart](file://lib/core/utils/delta_markdown.dart)
+- [app_theme.dart](file://lib/core/theme/app_theme.dart)
+- [app_durations.dart](file://lib/core/theme/app_durations.dart)
+- [app_radius.dart](file://lib/core/theme/app_radius.dart)
+- [theme_provider.dart](file://lib/providers/theme_provider.dart)
+- [personalization_page.dart](file://lib/pages/settings/personalization_page.dart)
 
 **Section sources**
 - [main.dart](file://lib/main.dart)
@@ -119,7 +141,8 @@ DIARY_ITEM --> DELTA_MD
 - Navigation system: A provider-based GoRouter manages stateful shell routes with nested routes for editor overlays. Transitions are customized per route.
 - Page and view separation: Pages represent top-level screens; views encapsulate editor/editorial UI and are presented as overlays or embedded content.
 - Reusable widgets: A scaffold wrapper integrates bottom navigation and shell-aware layouts.
-- State management: Theme mode and accent color are managed via providers, enabling runtime theme switching.
+- State management: Theme mode and accent color are managed via providers, enabling runtime theme switching with persistent storage.
+- **Enhanced theming system**: Comprehensive styling for interactive elements including switches, checkboxes, and radio buttons with enhanced visual feedback and accessibility.
 - **Enhanced editor components**: Specialized editors with markdown support and rich formatting capabilities.
 
 **Section sources**
@@ -128,6 +151,7 @@ DIARY_ITEM --> DELTA_MD
 - [scaffold_with_nav_bar.dart](file://lib/widgets/scaffold_with_nav_bar.dart)
 - [theme_mode_provider.dart](file://lib/providers/theme_mode_provider.dart)
 - [accent_color_provider.dart](file://lib/providers/accent_color_provider.dart)
+- [theme_provider.dart](file://lib/providers/theme_provider.dart)
 
 ## Architecture Overview
 The UI architecture follows a layered pattern:
@@ -135,6 +159,7 @@ The UI architecture follows a layered pattern:
 - Routing defines a stateful shell with tab-like branches and nested routes for editors.
 - Pages and views are composed with reusable widgets and state providers.
 - Models and repositories provide domain data and persistence.
+- **Enhanced theming system**: AppTheme provides comprehensive Material 3 theming with specialized styling for interactive elements.
 - **Enhanced markdown processing**: Delta to markdown conversion utilities enable sophisticated text formatting.
 
 ```mermaid
@@ -202,6 +227,7 @@ Back --> HomeScreen
 - Page-level screens: The diary page serves as the primary screen for the diary branch.
 - View-level editors: The editor view encapsulates editing UI and is presented as an overlay via nested routing.
 - Shell integration: The scaffold wrapper coordinates bottom navigation and shell-aware rendering for the active branch.
+- **Personalization integration**: Settings pages utilize the enhanced theming system for consistent UI styling.
 
 ```mermaid
 classDiagram
@@ -220,9 +246,14 @@ class NoteEditorView {
 +markdownSupport
 +build(context)
 }
+class PersonalizationPage {
++themeModeButtons
++build(context)
+}
 ScaffoldWithNavBar --> DiaryPage : "hosts"
 ScaffoldWithNavBar --> DiaryEditorView : "overlay"
 DiaryEditorView --> NoteEditorView : "enhanced editor"
+PersonalizationPage --> ThemeProvider : "uses"
 ```
 
 **Diagram sources**
@@ -230,22 +261,30 @@ DiaryEditorView --> NoteEditorView : "enhanced editor"
 - [diary_page.dart](file://lib/pages/diary_page.dart)
 - [diary_editor_view.dart](file://lib/widgets/diary/diary_editor_view.dart)
 - [note_editor_view.dart](file://lib/widgets/notes/note_editor_view.dart)
+- [personalization_page.dart](file://lib/pages/settings/personalization_page.dart)
 
 **Section sources**
 - [diary_page.dart](file://lib/pages/diary_page.dart)
 - [diary_editor_view.dart](file://lib/widgets/diary/diary_editor_view.dart)
 - [scaffold_with_nav_bar.dart](file://lib/widgets/scaffold_with_nav_bar.dart)
+- [personalization_page.dart](file://lib/pages/settings/personalization_page.dart)
 
 ### Theming and Styling System
 - Runtime theme switching: Theme mode and accent color are provided via dedicated providers, allowing dynamic updates without rebuilding the entire tree.
 - Platform-specific resources: Android defines colors and styles for day/night modes; web provides HTML and manifest configurations for PWA behavior.
 - Color management: Colors are centralized in platform resources and consumed by widgets and pages.
+- **Enhanced interactive elements**: Comprehensive styling for switches, checkboxes, and radio buttons with widget state properties for visual feedback.
+- **Consistent spacing and timing**: AppDurations and AppRadius provide standardized animation durations and corner radii.
 
 ```mermaid
 graph LR
 THEME_MODE["ThemeModeProvider"] --> APP["app.dart"]
 ACCENT_COLOR["AccentColorProvider"] --> APP
+THEME_PROVIDER["ThemeProvider"] --> APP
 APP --> WIDGETS["Widgets consume theme"]
+APP_THEME["AppTheme"] --> WIDGETS
+APP_DURATIONS["AppDurations"] --> WIDGETS
+APP_RADIUS["AppRadius"] --> WIDGETS
 ANDROID_COLORS["Android colors.xml"] --> WIDGETS
 WEB_MANIFEST["Web manifest.json"] --> WIDGETS
 ```
@@ -253,7 +292,11 @@ WEB_MANIFEST["Web manifest.json"] --> WIDGETS
 **Diagram sources**
 - [theme_mode_provider.dart](file://lib/providers/theme_mode_provider.dart)
 - [accent_color_provider.dart](file://lib/providers/accent_color_provider.dart)
+- [theme_provider.dart](file://lib/providers/theme_provider.dart)
 - [app.dart](file://lib/app.dart)
+- [app_theme.dart](file://lib/core/theme/app_theme.dart)
+- [app_durations.dart](file://lib/core/theme/app_durations.dart)
+- [app_radius.dart](file://lib/core/theme/app_radius.dart)
 - [colors.xml](file://android/app/src/main/res/values/colors.xml)
 - [styles.xml](file://android/app/src/main/res/values/styles.xml)
 - [colors.xml (night)](file://android/app/src/main/res/values-night/colors.xml)
@@ -262,7 +305,11 @@ WEB_MANIFEST["Web manifest.json"] --> WIDGETS
 **Section sources**
 - [theme_mode_provider.dart](file://lib/providers/theme_mode_provider.dart)
 - [accent_color_provider.dart](file://lib/providers/accent_color_provider.dart)
+- [theme_provider.dart](file://lib/providers/theme_provider.dart)
 - [app.dart](file://lib/app.dart)
+- [app_theme.dart](file://lib/core/theme/app_theme.dart)
+- [app_durations.dart](file://lib/core/theme/app_durations.dart)
+- [app_radius.dart](file://lib/core/theme/app_radius.dart)
 - [colors.xml](file://android/app/src/main/res/values/colors.xml)
 - [styles.xml](file://android/app/src/main/res/values/styles.xml)
 - [colors.xml (night)](file://android/app/src/main/res/values-night/colors.xml)
@@ -272,6 +319,7 @@ WEB_MANIFEST["Web manifest.json"] --> WIDGETS
 - Provider-based state: Theme mode and accent color are exposed via providers and watched by the app shell to rebuild UI accordingly.
 - Router lifecycle: The router provider supplies a single GoRouter instance to the app, ensuring consistent navigation state across the app.
 - Domain state: The diary editor view consumes a diary record model and interacts with a repository for persistence.
+- **Persistent theme preferences**: Theme mode and accent color are stored in SharedPreferences for persistence across app sessions.
 
 ```mermaid
 sequenceDiagram
@@ -395,18 +443,88 @@ Diary items now feature enhanced rendering capabilities:
 - [diary_item.dart](file://lib/widgets/diary/diary_item.dart)
 - [delta_markdown.dart](file://lib/core/utils/delta_markdown.dart)
 
+## Enhanced Theming System
+
+### Interactive Element Styling
+The enhanced theming system provides comprehensive styling for interactive elements with improved visual feedback:
+
+#### Switch Controls
+- **Thumb styling**: White thumb for selected state, light gray for unselected state
+- **Track styling**: Accent color for selected state, light background for unselected state
+- **Outline transparency**: Transparent track outlines for clean appearance
+- **Widget state properties**: Dynamic color changes based on selection state
+
+#### Checkbox Styling
+- **Fill color**: Accent color for selected state, transparent for unselected state
+- **Check mark**: White check marks for high contrast
+- **Shape**: Small rounded corners (4px radius) for modern appearance
+- **Widget state properties**: Dynamic fill color changes
+
+#### Radio Button Styling
+- **Fill color**: Accent color for selected state, secondary color for unselected state
+- **Widget state properties**: Dynamic fill color changes for consistent behavior
+
+#### Enhanced Visual Feedback
+- **Consistent color schemes**: Light and dark themes with appropriate color variations
+- **Accessibility compliance**: Sufficient contrast ratios and state differentiation
+- **Smooth transitions**: Consistent animation durations for interactive feedback
+
+### Theme Mode Buttons
+The personalization page features improved theme mode buttons with enhanced visual feedback:
+
+- **Modern card design**: Rounded corners with subtle shadows
+- **Border styling**: Outline borders with alpha transparency
+- **Icon integration**: Clear visual indicators for each theme mode
+- **Selection highlighting**: Dynamic state changes for selected/unselected states
+- **Responsive layout**: Flexible row-based arrangement for different screen sizes
+
+### Duration and Radius Constants
+The theming system includes standardized constants for consistent UI behavior:
+
+- **AppDurations**: Fast (150ms), normal (200ms), medium (300ms), slow (450ms) animations
+- **AppRadius**: Small (8px), medium (12px), large (20px) corner radii
+- **Consistent timing**: Standardized animation durations across interactive elements
+- **Scalable spacing**: Proportional corner radii for consistent visual hierarchy
+
+```mermaid
+flowchart TD
+ThemeSystem["Enhanced Theming System"] --> LightTheme["Light Theme"]
+ThemeSystem --> DarkTheme["Dark Theme"]
+LightTheme --> SwitchLight["Switch: Light<br/>Thumb: Gray → White<br/>Track: Light → Accent"]
+LightTheme --> CheckboxLight["Checkbox: Light<br/>Fill: Transparent → Accent<br/>Check: White"]
+DarkTheme --> SwitchDark["Switch: Dark<br/>Thumb: Gray → White<br/>Track: Dark → Accent"]
+DarkTheme --> CheckboxDark["Checkbox: Dark<br/>Fill: Transparent → Accent<br/>Check: White"]
+ThemeSystem --> Personalization["Personalization Page"]
+Personalization --> ThemeButtons["Enhanced Theme Buttons<br/>Card + Shadow + Border"]
+ThemeSystem --> Constants["Duration & Radius<br/>AppDurations & AppRadius"]
+```
+
+**Diagram sources**
+- [app_theme.dart](file://lib/core/theme/app_theme.dart)
+- [personalization_page.dart](file://lib/pages/settings/personalization_page.dart)
+- [app_durations.dart](file://lib/core/theme/app_durations.dart)
+- [app_radius.dart](file://lib/core/theme/app_radius.dart)
+
+**Section sources**
+- [app_theme.dart](file://lib/core/theme/app_theme.dart)
+- [personalization_page.dart](file://lib/pages/settings/personalization_page.dart)
+- [app_durations.dart](file://lib/core/theme/app_durations.dart)
+- [app_radius.dart](file://lib/core/theme/app_radius.dart)
+
 ## Dependency Analysis
 The UI layer depends on:
 - Routing: Router provider supplies a GoRouter instance to the app shell.
 - State: Theme providers influence widget appearance; router provider ensures navigation consistency.
 - Domain: Editor views depend on models and repositories for data operations.
 - **Enhanced formatting**: Delta to markdown conversion utilities for sophisticated text processing.
+- **Enhanced theming**: AppTheme provides comprehensive styling for interactive elements.
+- **Persistent preferences**: Theme providers store user preferences in SharedPreferences.
 
 ```mermaid
 graph LR
 ROUTER_PROVIDER["router_provider.dart"] --> APP_SHELL["app.dart"]
-THEME_PROVIDER["theme_mode_provider.dart"] --> APP_SHELL
-ACCENT_PROVIDER["accent_color_provider.dart"] --> APP_SHELL
+THEME_PROVIDER["theme_provider.dart"] --> APP_SHELL
+THEME_PROVIDER --> PERSONALIZATION["personalization_page.dart"]
 APP_SHELL --> ROUTER["app_router.dart"]
 ROUTER --> DIARY_PAGE["diary_page.dart"]
 ROUTER --> DIARY_EDITOR["diary_editor_view.dart"]
@@ -415,6 +533,9 @@ DIARY_EDITOR --> MODEL["diary_record_model.dart"]
 MODEL --> REPO["diary_repository.dart"]
 NOTE_EDITOR --> DELTA_MD["delta_markdown.dart"]
 DELTA_MD --> RENDERING["Enhanced Rendering"]
+APP_THEME["app_theme.dart"] --> WIDGETS["Interactive Elements<br/>Switches/Checkboxes/Radios"]
+APP_DURATIONS["app_durations.dart"] --> ANIMATIONS["Standardized Animations"]
+APP_RADIUS["app_radius.dart"] --> SPACING["Consistent Spacing"]
 ```
 
 **Diagram sources**
@@ -427,6 +548,11 @@ DELTA_MD --> RENDERING["Enhanced Rendering"]
 - [diary_record_model.dart](file://lib/models/diary_record_model.dart)
 - [diary_repository.dart](file://lib/core/storage/diary_repository.dart)
 - [delta_markdown.dart](file://lib/core/utils/delta_markdown.dart)
+- [app_theme.dart](file://lib/core/theme/app_theme.dart)
+- [app_durations.dart](file://lib/core/theme/app_durations.dart)
+- [app_radius.dart](file://lib/core/theme/app_radius.dart)
+- [theme_provider.dart](file://lib/providers/theme_provider.dart)
+- [personalization_page.dart](file://lib/pages/settings/personalization_page.dart)
 
 **Section sources**
 - [router_provider.dart](file://lib/providers/router_provider.dart)
@@ -438,6 +564,10 @@ DELTA_MD --> RENDERING["Enhanced Rendering"]
 - [diary_record_model.dart](file://lib/models/diary_record_model.dart)
 - [diary_repository.dart](file://lib/core/storage/diary_repository.dart)
 - [delta_markdown.dart](file://lib/core/utils/delta_markdown.dart)
+- [app_theme.dart](file://lib/core/theme/app_theme.dart)
+- [app_durations.dart](file://lib/core/theme/app_durations.dart)
+- [app_radius.dart](file://lib/core/theme/app_radius.dart)
+- [theme_provider.dart](file://lib/providers/theme_provider.dart)
 
 ## Performance Considerations
 - Route transitions: Prefer lightweight transitions for nested routes to minimize jank during navigation.
@@ -446,6 +576,8 @@ DELTA_MD --> RENDERING["Enhanced Rendering"]
 - Platform resources: Optimize Android drawables and web assets to improve startup and render performance.
 - **Enhanced rendering**: Implement efficient markdown parsing algorithms to prevent UI blocking during text processing.
 - **Memory management**: Cache frequently used markdown renderers and emoji data to reduce memory allocation overhead.
+- **Animation optimization**: Use standardized durations from AppDurations for consistent performance across interactive elements.
+- **State management**: WidgetStateProperty.resolveWith ensures efficient state-based styling updates.
 
 ## Troubleshooting Guide
 - Navigation failures: Verify the router provider is initialized and the GoRouter instance is accessible before calling navigation methods.
@@ -455,17 +587,20 @@ DELTA_MD --> RENDERING["Enhanced Rendering"]
 - **Markdown rendering issues**: Check delta to markdown conversion utility for proper syntax handling and fallback rendering.
 - **Emoji display problems**: Verify emoji font availability and proper encoding for cross-platform compatibility.
 - **Performance degradation**: Monitor markdown parsing performance and consider implementing lazy loading for complex content.
+- **Interactive element styling**: Verify WidgetStateProperty usage for proper state-based styling in switches, checkboxes, and radio buttons.
+- **Theme persistence**: Check SharedPreferences storage for theme mode and accent color preferences if theme changes don't persist.
 
 **Section sources**
 - [app.dart](file://lib/app.dart)
 - [app_router.dart](file://lib/core/router/app_router.dart)
 - [theme_mode_provider.dart](file://lib/providers/theme_mode_provider.dart)
 - [accent_color_provider.dart](file://lib/providers/accent_color_provider.dart)
+- [theme_provider.dart](file://lib/providers/theme_provider.dart)
 
 ## Conclusion
-QNote Flutter's UI architecture emphasizes a clean separation of concerns: routing via a provider-managed GoRouter, composable pages and views, reusable widgets, and reactive state management for theming. The system supports nested navigation, customizable transitions, and cross-platform deployment with platform-specific resources. 
+QNote Flutter's UI architecture emphasizes a clean separation of concerns: routing via a provider-managed GoRouter, composable pages and views, reusable widgets, and reactive state management for theming. The system supports nested navigation, customizable transitions, and cross-platform deployment with platform-specific resources.
 
-**Updated** The enhanced editor features provide comprehensive markdown support, expanded emoji capabilities, and improved rendering performance, making the application more powerful for content creation and management. Following the outlined patterns ensures consistency and maintainability as the application evolves.
+**Updated** The enhanced editor features provide comprehensive markdown support, expanded emoji capabilities, and improved rendering performance, making the application more powerful for content creation and management. The significantly enhanced theming system now includes comprehensive styling for interactive elements with improved visual feedback, accessibility features, and consistent animation patterns. Following the outlined patterns ensures consistency and maintainability as the application evolves.
 
 ## Appendices
 
@@ -475,8 +610,10 @@ QNote Flutter's UI architecture emphasizes a clean separation of concerns: routi
 - Leverage providers: Expose theme and navigation state via providers for reactive updates.
 - Keep transitions minimal: Favor subtle transitions for nested routes to preserve responsiveness.
 - Test cross-platform: Validate themes and layouts across Android and web environments.
-- **Implement markdown support**: Consider adding delta to markdown conversion capabilities for enhanced text formatting.
-- **Add emoji integration**: Design input bars with emoji picker functionality for improved user experience.
+- **Implement enhanced theming**: Utilize AppTheme for consistent styling and WidgetStateProperty for interactive element states.
+- **Follow accessibility guidelines**: Ensure sufficient contrast ratios and proper state differentiation for interactive elements.
+- **Use standardized durations**: Employ AppDurations for consistent animation timing across components.
+- **Apply consistent spacing**: Use AppRadius for proportional corner radii in UI elements.
 
 ### Common UI Patterns and Interaction Handling
 - Bottom navigation with shell: Use a shell scaffold to host multiple branches and coordinate navigation.
@@ -485,6 +622,8 @@ QNote Flutter's UI architecture emphasizes a clean separation of concerns: routi
 - Interop-driven navigation: Listen for platform channel messages and trigger router.go to navigate programmatically.
 - **Enhanced text editing**: Implement markdown parsing and rendering for rich text experiences.
 - **Emoji integration**: Provide contextual emoji selection and real-time preview functionality.
+- **Interactive element styling**: Implement proper state-based styling for switches, checkboxes, and radio buttons.
+- **Persistent theme preferences**: Store user theme choices in SharedPreferences for session continuity.
 
 ### Accessibility Compliance Checklist
 - Contrast ratios: Ensure sufficient contrast between foreground and background colors in both day and night themes.
@@ -495,6 +634,7 @@ QNote Flutter's UI architecture emphasizes a clean separation of concerns: routi
 - **Content readability**: Ensure markdown-rendered content maintains accessibility standards.
 - **Emoji alternatives**: Provide text alternatives for emoji content where appropriate.
 - **Screen reader support**: Verify proper announcement of formatted content and interactive elements.
+- **State indication**: Ensure interactive elements clearly indicate their state (selected/unselected) for accessibility.
 
 ### Enhanced Editor Implementation Guidelines
 - **Markdown syntax support**: Implement comprehensive markdown parsing for headers, lists, blockquotes, and inline formatting.
@@ -502,3 +642,13 @@ QNote Flutter's UI architecture emphasizes a clean separation of concerns: routi
 - **Performance optimization**: Implement efficient rendering algorithms to handle complex markdown content without UI blocking.
 - **Cross-platform compatibility**: Ensure emoji and markdown rendering work consistently across iOS, Android, and web platforms.
 - **Accessibility considerations**: Provide proper semantic markup for rendered content and support screen readers.
+- **Interactive element styling**: Follow the enhanced theming system guidelines for consistent styling of form controls.
+
+### Theming System Guidelines
+- **Comprehensive interactive styling**: Follow the enhanced switch, checkbox, and radio button styling patterns.
+- **Widget state management**: Use WidgetStateProperty.resolveWith for dynamic state-based styling.
+- **Consistent animation timing**: Utilize AppDurations for standardized animation durations.
+- **Proportional spacing**: Apply AppRadius for consistent corner radii across UI elements.
+- **Accessibility compliance**: Ensure all interactive elements meet accessibility standards with proper contrast and state indication.
+- **Theme persistence**: Implement SharedPreferences storage for user theme preferences.
+- **Cross-theme consistency**: Maintain consistent styling patterns across light and dark themes.

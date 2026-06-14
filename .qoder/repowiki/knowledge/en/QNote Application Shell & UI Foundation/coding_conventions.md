@@ -1,4 +1,0 @@
-- Riverpod `StateNotifierProvider` is used for complex state logic requiring persistence (e.g., `ThemeModeNotifier`, `AccentColorNotifier`), while simple state may use other provider types.
-- Custom page transitions using `CustomTransitionPage` with `FadeTransition` are consistently applied to nested routes (editors, settings) in `app_router.dart`.
-- Material 3 `ColorScheme` is fully customized for both light and dark themes in `app_theme.dart`, with dynamic accent color injection from Riverpod providers.
-- Global app lifecycle management (e.g., refreshing data on resume) is handled in `app.dart` via `WidgetsBindingObserver`.

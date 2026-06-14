@@ -13,6 +13,14 @@
 - [search_view.dart](file://lib/widgets/search_view.dart)
 </cite>
 
+## Update Summary
+**Changes Made**
+- Enhanced NotesPage with comprehensive batch editing capabilities
+- Added selection mode with multi-selection support for notes and folders
+- Implemented long-press gesture integration for improved user interaction
+- Added confirmation-based batch deletion workflow
+- Integrated checkbox-based selection controls in the UI
+
 ## Table of Contents
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
@@ -27,6 +35,8 @@
 ## Introduction
 This document explains the Note Taking feature, covering note creation and editing, folder organization, rich text editing, and search integration. It documents the Note and Folder models, state management via Riverpod providers, data persistence through repositories, and the user interface for note listing and folder navigation. It also describes how images are attached, how tags are applied conceptually, and how search spans both notes and diary records.
 
+**Updated** Enhanced with comprehensive batch editing capabilities, selection modes for bulk operations, and improved user interaction flow with long-press gestures and multi-selection support.
+
 ## Project Structure
 The Note Taking feature is organized into models, providers, repositories, pages, and widgets:
 
@@ -38,7 +48,7 @@ The Note Taking feature is organized into models, providers, repositories, pages
 ```mermaid
 graph TB
 subgraph "UI Layer"
-NP["NotesPage<br/>Note Listing + Navigation"]
+NP["NotesPage<br/>Note Listing + Navigation<br/>+ Batch Selection Mode"]
 NEV["NoteEditorView<br/>Rich Editor"]
 SV["SearchView<br/>Unified Search"]
 end
@@ -95,6 +105,8 @@ FR --> FM
 - Note editor: Rich text editor supporting Markdown-like composition, inline styles, block prefixes, links with preview, images from camera/gallery, auto-save, undo/redo, and copy-to-clipboard.
 - Search view: Unified search across notes and diary records with debounced queries and highlighted results.
 
+**Updated** Enhanced NotesPage now includes comprehensive batch editing capabilities with selection mode, multi-selection support, and confirmation-based deletion workflow.
+
 **Section sources**
 - [note.dart](file://lib/models/note.dart)
 - [folder.dart](file://lib/models/folder.dart)
@@ -119,7 +131,6 @@ participant User as "User"
 participant Page as "NotesPage"
 participant Provider as "NoteListNotifier"
 participant Repo as "NoteRepository"
-participant DB as "Database"
 User->>Page : Tap "New Note"
 Page->>Provider : addNote(title, content, folderId, tags)
 Provider->>Repo : insert(note)
@@ -287,38 +298,45 @@ The FolderRepository encapsulates folder database operations:
 **Section sources**
 - [folder_repository.dart](file://lib/core/storage/folder_repository.dart)
 
-### Notes Page (Interface and Navigation)
-The NotesPage provides:
-- AppBar with search and selection modes.
-- Tree rendering of folders and notes with pinned items first.
-- Drag-and-drop reordering respecting hierarchy and sort orders.
-- Batch selection and deletion of notes and folders.
-- Creation dialogs for folders and navigation to the editor.
+### Notes Page (Enhanced Interface and Navigation)
+The NotesPage provides comprehensive note management with enhanced batch editing capabilities:
+
+#### Selection Mode and Multi-Selection
+- **Selection State Management**: Tracks selected note IDs and folder IDs separately using Set collections.
+- **Selection Toggle**: Individual items can be selected/unselected via checkbox controls or tap gestures.
+- **Bulk Selection**: Full selection mode allows selecting all notes and folders with a single action.
+- **Visual Feedback**: Selection mode displays a bottom navigation bar with selected count and batch delete button.
+
+#### Batch Editing and Deletion Workflow
+- **Confirmation System**: Batch deletion uses a 3-second confirmation timer to prevent accidental deletions.
+- **Recursive Folder Deletion**: When deleting folders, all child folders and notes are recursively removed.
+- **Batch Operations**: Supports simultaneous deletion of multiple notes and folders in a single operation.
+
+#### Enhanced User Interaction
+- **Long-Press Gestures**: Implements LongPressDraggable for improved drag-and-drop experience during selection mode.
+- **Visual Indicators**: Hover states show before/after/inside drop positions with visual cues.
+- **Selection Controls**: Checkbox-based selection with visual feedback for selected items.
 
 ```mermaid
 sequenceDiagram
 participant User as "User"
-participant Page as "NotesPage"
-participant FolderProv as "FolderListNotifier"
-participant NoteProv as "NoteListNotifier"
-participant Repo as "NoteRepository"
-User->>Page : Drag item "inside/before/after" target
-Page->>Page : Validate drop position and ancestors
-alt Drop inside folder
-Page->>NoteProv : updateNote(note.copyWith(folderId, sortOrder))
-NoteProv->>Repo : update(note)
-else Before/After within same parent
-Page->>NoteProv : reorderNotes(updatedNotes)
-NoteProv->>Repo : batchUpdate(reordered)
-end
-Repo-->>Page : Updated state
-Page-->>User : UI reflects new order
+participant NotesPage as "NotesPage"
+participant Selection as "Selection State"
+participant BatchOps as "Batch Operations"
+User->>NotesPage : Long-press item
+NotesPage->>Selection : Enter selection mode
+Selection->>NotesPage : Toggle selection
+NotesPage->>NotesPage : Update selection state
+User->>NotesPage : Tap batch delete
+NotesPage->>BatchOps : Start confirmation timer
+BatchOps->>NotesPage : Show confirmation UI
+User->>NotesPage : Confirm deletion
+NotesPage->>BatchOps : Execute batch delete
+BatchOps->>NotesPage : Clear selections & exit mode
 ```
 
 **Diagram sources**
 - [notes_page.dart](file://lib/pages/notes_page.dart)
-- [note_provider.dart](file://lib/providers/note_provider.dart)
-- [note_repository.dart](file://lib/core/storage/note_repository.dart)
 
 **Section sources**
 - [notes_page.dart](file://lib/pages/notes_page.dart)
@@ -415,6 +433,7 @@ FR --> FM["Folder Model"]
 - Debounced search: Prevents excessive queries during typing.
 - Sorting and ordering: Database-level ordering ensures efficient rendering and drag-and-drop updates.
 - Image handling: On web, base64 is used; on native, files are persisted and cleaned up on discard.
+- **Selection State Optimization**: Uses Set collections for efficient selection tracking and reduces memory overhead during multi-selection operations.
 
 ## Troubleshooting Guide
 - Notes not appearing after creation: Ensure refresh is called after insert/update and that the provider state is AsyncData.
@@ -422,6 +441,8 @@ FR --> FM["Folder Model"]
 - Images not saved: Confirm image upload path is recorded and that cleanup on discard removes only newly uploaded images.
 - Search returns empty: Check debounce timing and ensure repository search filters out deleted notes.
 - Pinning not reflected: Confirm togglePin updates both DB and provider state, and UI sorts by is_pinned first.
+- **Batch deletion not working**: Verify selection state is properly tracked and confirmation timer is functioning correctly.
+- **Selection mode issues**: Check that selection state clears properly after batch operations and that visual indicators update correctly.
 
 **Section sources**
 - [note_provider.dart](file://lib/providers/note_provider.dart)
@@ -431,4 +452,6 @@ FR --> FM["Folder Model"]
 - [search_view.dart](file://lib/widgets/search_view.dart)
 
 ## Conclusion
-The Note Taking feature combines a robust model layer, reactive state management, and efficient data access to deliver a seamless note-taking experience. Users can create, edit, organize, and search notes with rich content, including images and links. The folder system supports hierarchical organization with intuitive drag-and-drop reordering. The architecture cleanly separates concerns and provides extensibility for future enhancements such as export functionality and advanced tagging.
+The Note Taking feature combines a robust model layer, reactive state management, and efficient data access to deliver a seamless note-taking experience. Users can create, edit, organize, and search notes with rich content, including images and links. The folder system supports hierarchical organization with intuitive drag-and-drop reordering. 
+
+**Updated** The enhanced NotesPage now provides comprehensive batch editing capabilities with selection modes, multi-selection support, and improved user interaction flow through long-press gestures. The confirmation-based deletion workflow prevents accidental data loss while maintaining efficient bulk operations. The architecture cleanly separates concerns and provides extensibility for future enhancements such as export functionality and advanced tagging.

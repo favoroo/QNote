@@ -1,1 +1,0 @@
-Uses `flutter_riverpod` for state management (specifically `AsyncNotifierProvider`) and `sqflite` for local persistence with manual schema migration in `DatabaseHelper`.

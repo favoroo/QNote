@@ -1,1 +1,0 @@
-Flutter, Riverpod, go_router, sqflite/sqflite_common_ffi_web

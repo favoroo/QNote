@@ -1,1 +1,0 @@
-Flutter SDK with Riverpod for state orchestration, GoRouter for declarative navigation, and Sqflite (with FFI/Web backends) for cross-platform persistence.

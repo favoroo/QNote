@@ -1,1 +1,0 @@
-Orchestrates a cross-platform personal knowledge management system by unifying state, navigation, and native platform integration for notes, diaries, and AI-driven insights.

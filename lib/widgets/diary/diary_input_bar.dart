@@ -2908,38 +2908,41 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                       (e) => e.id == config.id,
                     );
                     return Padding(
-                      padding: const EdgeInsets.only(right: 4),
+                      padding: const EdgeInsets.only(right: 8),
                       child: GestureDetector(
                         onTap: () => _selectShortcut(config),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
+                          height: 32,
+                          constraints: const BoxConstraints(minWidth: 32),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isSelected ? 12 : 0,
                           ),
+                          alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: isSelected
                                 ? theme.colorScheme.primary
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(20),
+                                : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                            borderRadius: BorderRadius.circular(16),
                             border: Border.all(
                               color: isSelected
                                   ? Colors.transparent
-                                  : theme.colorScheme.outlineVariant,
+                                  : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
                             ),
                           ),
-                            child: AnimatedSize(
+                          child: AnimatedSize(
                             duration: const Duration(milliseconds: 200),
                             curve: Curves.easeInOut,
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Icon(
                                   _getShortcutIcon(config.name),
-                                  size: 14,
+                                  size: 16,
                                   color: isSelected
                                       ? theme.colorScheme.onPrimary
-                                      : theme.colorScheme.onSurface,
+                                      : theme.colorScheme.onSurfaceVariant,
                                 ),
                                 if (isSelected) const SizedBox(width: 4),
                                 if (isSelected)
@@ -2960,7 +2963,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                   loading: () => <Widget>[
                     const SizedBox(
                       width: 60,
-                      height: 28,
+                      height: 32,
                       child: Center(
                         child: SizedBox(
                           width: 16,
@@ -2981,14 +2984,14 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
               widget.onClose?.call();
             },
             child: Container(
-              width: 28, // Slightly larger to match standard icon touch targets, was 24
-              height: 28,
+              width: 32,
+              height: 32,
               margin: const EdgeInsets.only(left: 4, right: 4),
               decoration: BoxDecoration(
-                color: Colors.transparent,
+                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: theme.colorScheme.outlineVariant,
+                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
                 ),
               ),
               child: Icon(
@@ -3166,38 +3169,38 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                             ],
                           ),
                         )
-                      : CustomPaint(
-                          painter: DashedRectPainter(
-                            color: theme.colorScheme.primary.withValues(
-                              alpha: 0.3,
-                            ),
-                            strokeWidth: 1.2,
-                            borderRadius: 12,
-                          ),
-                          child: GestureDetector(
-                            onTap: _pickEndTime,
-                            child: Container(
-                              height: 36,
+                      : GestureDetector(
+                          onTap: _pickEndTime,
+                          child: Container(
+                            height: 36,
+                            decoration: BoxDecoration(
                               color: Colors.transparent,
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.add,
-                                    size: 14,
-                                    color: theme.colorScheme.primary,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '结束时间',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.primary,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: theme.colorScheme.primary.withValues(
+                                  alpha: 0.3,
+                                ),
+                                width: 1.2,
                               ),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.add,
+                                  size: 14,
+                                  color: theme.colorScheme.primary,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '结束时间',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.primary,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -3822,60 +3825,3 @@ class _UndoCountdownPainter extends CustomPainter {
   }
 }
 
-class DashedRectPainter extends CustomPainter {
-  final Color color;
-  final double strokeWidth;
-  final double borderRadius;
-  final double dashWidth;
-  final double dashSpace;
-
-  DashedRectPainter({
-    required this.color,
-    this.strokeWidth = 1.0,
-    this.borderRadius = 0.0,
-    this.dashWidth = 5.0,
-    this.dashSpace = 3.0,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = strokeWidth
-      ..style = PaintingStyle.stroke;
-
-    final path = Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-            strokeWidth / 2,
-            strokeWidth / 2,
-            size.width - strokeWidth,
-            size.height - strokeWidth,
-          ),
-          Radius.circular(borderRadius),
-        ),
-      );
-
-    final dashedPath = Path();
-    for (final metric in path.computeMetrics()) {
-      double distance = 0.0;
-      while (distance < metric.length) {
-        dashedPath.addPath(
-          metric.extractPath(distance, distance + dashWidth),
-          Offset.zero,
-        );
-        distance += dashWidth + dashSpace;
-      }
-    }
-
-    canvas.drawPath(dashedPath, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant DashedRectPainter oldDelegate) {
-    return oldDelegate.color != color ||
-        oldDelegate.strokeWidth != strokeWidth ||
-        oldDelegate.borderRadius != borderRadius;
-  }
-}

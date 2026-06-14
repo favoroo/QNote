@@ -1,3 +1,0 @@
-- Immutable data updates: DiaryRecord modifications use the `copyWith` pattern to create new instances rather than mutating existing ones.
-- Soft deletion: Records are marked as `isDeleted = 1` instead of being physically removed from the database to support undo functionality.
-- Repository pattern: Data access is encapsulated in singleton repositories (e.g., `DiaryRepository`, `ColorMarkRepository`) injected via Riverpod providers.

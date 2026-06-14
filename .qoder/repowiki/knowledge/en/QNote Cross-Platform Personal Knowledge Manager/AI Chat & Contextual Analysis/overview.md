@@ -1,1 +1,0 @@
-Provides an interactive chat interface for AI-assisted analysis of user notes and diary records with configurable context filtering.

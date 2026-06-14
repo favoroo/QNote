@@ -20,12 +20,14 @@ class RotatingGradientTransform extends GradientTransform {
 class GradientBorderPainter extends CustomPainter {
   final double animationValue;
   final List<Color> gradientColors;
+  final List<double>? gradientStops;
   final double strokeWidth;
   final double borderRadius;
 
   GradientBorderPainter({
     required this.animationValue,
     required this.gradientColors,
+    this.gradientStops,
     required this.strokeWidth,
     required this.borderRadius,
   });
@@ -41,6 +43,7 @@ class GradientBorderPainter extends CustomPainter {
 
     final shader = SweepGradient(
       colors: gradientColors,
+      stops: gradientStops,
       transform: RotatingGradientTransform(animationValue),
     ).createShader(rect);
 
@@ -50,7 +53,6 @@ class GradientBorderPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.0)
-      ..color = Colors.white.withValues(alpha: 0.25)
       ..shader = shader;
 
     canvas.drawRRect(rrect, glowPaint);
@@ -60,7 +62,6 @@ class GradientBorderPainter extends CustomPainter {
       ..strokeWidth = strokeWidth
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
-      ..color = Colors.white.withValues(alpha: 0.85)
       ..shader = shader;
 
     canvas.drawRRect(rrect, sharpPaint);
@@ -70,6 +71,7 @@ class GradientBorderPainter extends CustomPainter {
   bool shouldRepaint(covariant GradientBorderPainter oldDelegate) {
     return oldDelegate.animationValue != animationValue ||
         oldDelegate.gradientColors != gradientColors ||
+        oldDelegate.gradientStops != gradientStops ||
         oldDelegate.strokeWidth != strokeWidth ||
         oldDelegate.borderRadius != borderRadius;
   }
@@ -134,11 +136,33 @@ class _AnimatedGradientBorderState extends State<AnimatedGradientBorder>
     }
 
     final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+    final baseColor = theme.colorScheme.outlineVariant.withValues(alpha: 0.3);
+
+    // 采用与整体主题完美融合的“双流星追逐”流光效果
+    // 使用低透明度的边框色作为基底，叠加主色调作为流光点，高级且不突兀
     final colors = [
-      theme.colorScheme.primary,
-      theme.colorScheme.tertiary,
-      theme.colorScheme.secondary,
-      theme.colorScheme.primary,
+      baseColor,
+      primary.withValues(alpha: 0.5),
+      primary,
+      baseColor,
+      baseColor,
+      primary.withValues(alpha: 0.5),
+      primary,
+      baseColor,
+      baseColor,
+    ];
+    
+    const stops = [
+      0.0,
+      0.1,
+      0.15,
+      0.25,
+      0.5,
+      0.6,
+      0.65,
+      0.75,
+      1.0,
     ];
 
     return AnimatedBuilder(
@@ -148,6 +172,7 @@ class _AnimatedGradientBorderState extends State<AnimatedGradientBorder>
           foregroundPainter: GradientBorderPainter(
             animationValue: _controller.value,
             gradientColors: colors,
+            gradientStops: stops,
             strokeWidth: widget.strokeWidth,
             borderRadius: widget.borderRadius,
           ),

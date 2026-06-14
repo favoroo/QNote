@@ -9,6 +9,7 @@
 - [shortcut_config.dart](file://lib/models/shortcut_config.dart)
 - [webdav_config.dart](file://lib/models/webdav_config.dart)
 - [ai_config_page.dart](file://lib/pages/settings/ai_config_page.dart)
+- [fixed_events_page.dart](file://lib/pages/settings/fixed_events_page.dart)
 - [main.dart](file://lib/main.dart)
 - [app.dart](file://lib/app.dart)
 - [database_helper.dart](file://lib/core/storage/database_helper.dart)
@@ -19,6 +20,13 @@
 - [model_fetch_service.dart](file://lib/core/ai/model_fetch_service.dart)
 - [webdav_service.dart](file://lib/core/network/webdav_service.dart)
 </cite>
+
+## Update Summary
+**Changes Made**
+- Added documentation for enhanced fixed events settings page with new segmented button interface
+- Updated time point/time range mode toggling functionality
+- Documented intelligent field validation and automatic time synchronization features
+- Enhanced user interface components section with new segmented control implementation
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -37,6 +45,8 @@
 ## Introduction
 This document describes QNote Flutter's configuration and settings system. It covers global settings management, user preferences, theme customization, WebDAV cloud synchronization configuration, AI service configuration and model management, application-wide settings (language, notifications, performance), configuration file structures, defaults, overrides, persistence strategy, propagation mechanisms, and security considerations for sensitive data.
 
+**Updated** Enhanced fixed events settings page now features a segmented button interface for time point/time range mode toggling with intelligent field validation and automatic time synchronization capabilities.
+
 ## Project Structure
 The configuration system spans several layers:
 - Defaults and provider models define built-in configurations and provider metadata
@@ -54,7 +64,7 @@ subgraph "Settings Layer"
 CFG_REPO["ConfigRepository<br/>Centralized persistence"]
 DEFAULTS["defaults.dart<br/>Defaults for shortcuts, AI, roles, temperatures"]
 MODELS_CFG["models.dart<br/>AI provider configs"]
-end
+END
 subgraph "Domain Services"
 AI_SVC["ai_service.dart<br/>AI orchestration"]
 AI_ROLE_SVC["ai_role_service.dart<br/>Role management"]
@@ -62,12 +72,12 @@ MODEL_FETCH["model_fetch_service.dart<br/>Model discovery"]
 WEBDAV_SVC["webdav_service.dart<br/>Cloud sync"]
 SYNC_SCHED["sync_scheduler.dart<br/>Schedule sync"]
 NOTIF_SVC["notification_service.dart<br/>Reminders"]
-end
+END
 subgraph "Models"
 AI_CFG["ai_config.dart"]
 SHORTCUT_CFG["shortcut_config.dart"]
 WEBDAV_CFG["webdav_config.dart"]
-end
+END
 MAIN --> CFG_REPO
 CFG_REPO --> AI_CFG
 CFG_REPO --> SHORTCUT_CFG
@@ -362,6 +372,37 @@ F --> G["UI reflects changes"]
 - [config_repository.dart:334-340](file://lib/core/storage/config_repository.dart#L334-L340)
 - [defaults.dart:89-251](file://lib/config/defaults.dart#L89-L251)
 
+### Fixed Events Settings Page Enhancement
+**Updated** The fixed events settings page now features an enhanced segmented button interface for time point/time range mode toggling with intelligent field validation and automatic time synchronization.
+
+- Segmented button interface: Toggle between time point mode and time range mode using a segmented control
+- Intelligent field validation: Automatic validation and synchronization of time-related fields based on selected mode
+- Automatic time synchronization: When switching modes, the system automatically adjusts time fields and clears incompatible data
+- Sleep duration management: When switching to time point mode, sleep duration fields are automatically cleared to prevent conflicts
+
+```mermaid
+sequenceDiagram
+participant User as "User"
+participant UI as "FixedEventsPage"
+participant SegmentedControl as "SegmentedButton"
+participant FieldValidator as "FieldValidator"
+participant TimeSync as "TimeSynchronizer"
+User->>SegmentedControl : "Toggle mode (Time Point/Time Range)"
+SegmentedControl->>UI : "onSelectionChanged(mode)"
+UI->>FieldValidator : "Validate current fields"
+FieldValidator-->>UI : "Validation results"
+UI->>TimeSync : "_syncTagFieldsFromTime(selectedTagFields, startHour, startMinute, endHour, endMinute)"
+TimeSync-->>UI : "Synchronized fields"
+UI->>UI : "Clear incompatible fields (e.g., sleep duration in time point mode)"
+UI-->>User : "Updated UI with validated fields"
+```
+
+**Diagram sources**
+- [fixed_events_page.dart:242-270](file://lib/pages/settings/fixed_events_page.dart#L242-L270)
+
+**Section sources**
+- [fixed_events_page.dart:242-270](file://lib/pages/settings/fixed_events_page.dart#L242-L270)
+
 ### Application-Wide Settings
 - Language preferences: Supported locales configured in the app shell
 - Notifications: Notification service initialized during bootstrap; reminder checks started after configuration load
@@ -406,6 +447,7 @@ WebDavService --> ConfigRepository
 NotificationService --> ConfigRepository
 SyncScheduler --> ConfigRepository
 UI["ai_config_page.dart"] --> ConfigRepository
+UI["fixed_events_page.dart"] --> ConfigRepository
 ```
 
 **Diagram sources**
@@ -417,6 +459,7 @@ UI["ai_config_page.dart"] --> ConfigRepository
 - [notification_service.dart](file://lib/core/notification/notification_service.dart)
 - [sync_scheduler.dart](file://lib/core/network/sync_scheduler.dart)
 - [ai_config_page.dart](file://lib/pages/settings/ai_config_page.dart)
+- [fixed_events_page.dart](file://lib/pages/settings/fixed_events_page.dart)
 
 **Section sources**
 - [config_repository.dart:18-19](file://lib/core/storage/config_repository.dart#L18-L19)
@@ -427,16 +470,12 @@ UI["ai_config_page.dart"] --> ConfigRepository
 - Efficient updates: Timestamps are updated atomically during writes to maintain consistency
 - Avoid unnecessary refreshes: UI providers refresh only on lifecycle resume to minimize work
 
-[No sources needed since this section provides general guidance]
-
 ## Security Considerations
 - Sensitive data handling: WebDAV credentials and AI API keys are stored in the local database. Treat the device storage as sensitive and secure
 - Authentication types: Some providers require bearer tokens, others query parameters, and some do not require API keys for model discovery. Respect provider authType and requirements
 - Least privilege: Prefer provider endpoints that do not require API keys for read-only operations when possible
 - Secure transport: Ensure WebDAV server URLs use HTTPS and validate certificates appropriately
 - Secrets rotation: Provide mechanisms to update API keys and WebDAV passwords without reinstallation
-
-[No sources needed since this section provides general guidance]
 
 ## Persistence and Propagation
 - Persistence strategy: Settings are persisted in the local SQLite database via ConfigRepository with upsert semantics and conflict resolution
@@ -454,7 +493,6 @@ UI->>Repo : "setAppConfig(key,value)"
 Repo->>DB : "INSERT ... ON CONFLICT REPLACE"
 Repo->>Log : "logChange(app_configs, key, upsert, data)"
 Log-->>Repo : "OK"
-Repo-->>UI : "Success"
 UI-->>Providers : "Triggers reactive updates"
 ```
 
@@ -506,12 +544,18 @@ UI-->>Providers : "Triggers reactive updates"
 - Theme not updating:
   - Confirm themeModeProvider and accentColorProvider are wired in the app shell
   - References: [app.dart:78-89](file://lib/app.dart#L78-L89)
+- Fixed events mode toggle issues:
+  - Verify segmented button interface is properly initialized
+  - Check field validation logic for time point vs time range mode
+  - Ensure automatic time synchronization is functioning correctly
+  - References: [fixed_events_page.dart:242-270](file://lib/pages/settings/fixed_events_page.dart#L242-L270)
 
 **Section sources**
 - [main.dart:19-27](file://lib/main.dart#L19-L27)
 - [config_repository.dart:326-358](file://lib/core/storage/config_repository.dart#L326-L358)
 - [models.dart:31-241](file://lib/config/models.dart#L31-L241)
 - [app.dart:78-89](file://lib/app.dart#L78-L89)
+- [fixed_events_page.dart:242-270](file://lib/pages/settings/fixed_events_page.dart#L242-L270)
 
 ## Conclusion
-QNote Flutter’s configuration system centers on a robust, database-backed repository that manages defaults, user overrides, and domain-specific settings. AI, WebDAV, and UI components consume these settings reactively, ensuring a consistent and secure configuration experience across the application.
+QNote Flutter's configuration system centers on a robust, database-backed repository that manages defaults, user overrides, and domain-specific settings. AI, WebDAV, and UI components consume these settings reactively, ensuring a consistent and secure configuration experience across the application. **Updated** The enhanced fixed events settings page now provides users with an intuitive segmented button interface for time mode selection, intelligent field validation, and automatic time synchronization, improving the overall user experience for time-based event configuration.
