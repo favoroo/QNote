@@ -369,19 +369,17 @@ class _DiaryItemState extends State<DiaryItem> {
                 behavior: HitTestBehavior.opaque,
                 child: AnimatedGradientBorder(
                   isAnimating: isExtracting,
-                  borderRadius: AppRadius.medium,
+                  borderRadius: 16,
                   strokeWidth: 2,
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.surface,
-                      borderRadius: BorderRadius.circular(AppRadius.medium),
+                      color: tagColor.withValues(alpha: 0.04),
+                      borderRadius: BorderRadius.circular(16),
                       border: Border.all(
                         color: isExtracting
                             ? Colors.transparent
-                            : theme.colorScheme.outlineVariant.withValues(
-                                alpha: 0.4,
-                              ),
+                            : tagColor.withValues(alpha: 0.15),
                       ),
                     ),
                     child: Stack(
@@ -591,24 +589,24 @@ class _DiaryItemState extends State<DiaryItem> {
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(20),
+              color: primaryTagColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  Icons.access_time,
-                  size: 12,
-                  color: theme.colorScheme.primary,
+                  Icons.access_time_filled,
+                  size: 14,
+                  color: primaryTagColor,
                 ),
                 const SizedBox(width: 4),
                 Text(
                   _formatTimeRangeWithDate(),
                   style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.primary,
+                    color: primaryTagColor,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -630,15 +628,22 @@ class _DiaryItemState extends State<DiaryItem> {
         // Add the primary tag pill (filled)
         rowItems.add(
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(6),
+              color: color,
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.25),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
             child: Text(
               entry.name,
               style: theme.textTheme.labelSmall?.copyWith(
-                color: color,
+                color: Colors.white,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -650,20 +655,16 @@ class _DiaryItemState extends State<DiaryItem> {
         for (final tagText in additionalTags) {
           rowItems.add(
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.02),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: color.withValues(alpha: 0.35),
-                  width: 1,
-                ),
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
                 tagText,
                 style: theme.textTheme.labelSmall?.copyWith(
                   color: color.withValues(alpha: 0.9),
-                  fontWeight: FontWeight.w500,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -694,15 +695,22 @@ class _DiaryItemState extends State<DiaryItem> {
       // Just display tag if no tagEntries
       rowItems.add(
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
-            color: primaryTagColor.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(6),
+            color: primaryTagColor,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                color: primaryTagColor.withValues(alpha: 0.25),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           child: Text(
             record.displayTag,
             style: theme.textTheme.labelSmall?.copyWith(
-              color: primaryTagColor,
+              color: Colors.white,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -713,7 +721,7 @@ class _DiaryItemState extends State<DiaryItem> {
     if (rowItems.isEmpty) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.only(top: 10),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
@@ -744,22 +752,29 @@ class _DiaryItemState extends State<DiaryItem> {
     // 1. Tag name pill (filled)
     rowItems.add(
       Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(6),
+          color: color,
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.25),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (showIcon) ...[
-              Icon(icon, size: 11, color: color),
+              Icon(icon, size: 12, color: Colors.white),
               const SizedBox(width: 4),
             ],
             Text(
               entry.name,
               style: theme.textTheme.labelSmall?.copyWith(
-                color: color,
+                color: Colors.white,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -773,17 +788,16 @@ class _DiaryItemState extends State<DiaryItem> {
     for (final tagText in additionalTags) {
       rowItems.add(
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.02),
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: color.withValues(alpha: 0.35), width: 1),
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
           ),
           child: Text(
             tagText,
             style: theme.textTheme.labelSmall?.copyWith(
               color: color.withValues(alpha: 0.9),
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ),

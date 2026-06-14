@@ -8,6 +8,9 @@
 
 ## 2026-06-14
 
+- **[22:10]**
+  - **Fixed**: 修复 AI 配置中默认 agnes 模型的 `baseUrl` 为空的问题，修正默认值并在编辑对话框中增加空 URL 兜底填充逻辑 (`lib/config/defaults.dart`, `lib/pages/settings/ai_config_page.dart`)。
+
 - **[15:30]**
   - **Fixed**: 修复 `app.dart` 中 3 处空 catch 块，补充 `debugPrint` 日志记录 (`lib/app.dart`)。
   - **Changed**: 增强 `analysis_options.yaml` lint 规则，启用 `prefer_single_quotes`、`prefer_const_constructors`、`prefer_final_fields` 等 12 条规则 (`analysis_options.yaml`)。
