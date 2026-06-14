@@ -220,23 +220,23 @@ class DiaryRecord {
     final start = startTime!;
     final end = endTime!;
 
+    // 如果在同一天，返回结束时间 (endTime)
     if (start.year == end.year && start.month == end.month && start.day == end.day) {
-      return start;
+      return end;
     }
 
-    final startDay = DateTime(start.year, start.month, start.day);
+    // 如果跨天，根据 getEffectiveDate() 判定归属日期
+    final effectiveDate = getEffectiveDate();
     final endDay = DateTime(end.year, end.month, end.day);
 
-    final startDayEnd = startDay.add(const Duration(days: 1)).subtract(const Duration(milliseconds: 1));
-    final endDayStart = endDay;
-
-    final durationInStartDay = startDayEnd.difference(start).inMilliseconds;
-    final durationInEndDay = end.difference(endDayStart).inMilliseconds;
-
-    if (durationInEndDay >= durationInStartDay) {
+    if (effectiveDate.year == endDay.year &&
+        effectiveDate.month == endDay.month &&
+        effectiveDate.day == endDay.day) {
+      // 如果归属为后一天，返回结束时间 (endTime)
       return end;
     } else {
-      return start;
+      // 如果归属为前一天，返回前一天的 23:30 (即 11 点半)
+      return DateTime(start.year, start.month, start.day, 23, 30);
     }
   }
 }

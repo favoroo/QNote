@@ -190,6 +190,21 @@ final aiProviders = <AiProviderConfig>[
     modelsEndpoint: '',
   ),
   const AiProviderConfig(
+    id: 'agnes',
+    name: 'Agnes AI',
+    provider: 'openai',
+    defaultBaseUrl: 'https://apihub.agnes-ai.com/v1',
+    urlRequired: true,
+    models: [
+      'agnes-2.0-flash',
+      'agnes-1.5-flash',
+      'agnes-image-2.1-flash',
+      'agnes-image-2.0-flash',
+      'agnes-video-2.0',
+    ],
+    modelsEndpoint: '/v1/models',
+  ),
+  const AiProviderConfig(
     id: 'custom',
     name: '自定义 (Custom)',
     provider: 'openai',

@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:qnote_flutter/core/theme/app_radius.dart';
+import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/widgets/animated_gradient_border.dart';
 
-class DiaryItem extends StatelessWidget {
+class DiaryItem extends StatefulWidget {
   final DiaryRecord record;
   final VoidCallback? onTap;
   final void Function(DiaryRecord)? onEdit;
@@ -32,6 +34,24 @@ class DiaryItem extends StatelessWidget {
     this.undoAnimation,
   });
 
+  @override
+  State<DiaryItem> createState() => _DiaryItemState();
+}
+
+class _DiaryItemState extends State<DiaryItem> {
+  final _actionMenuKey = GlobalKey();
+
+  DiaryRecord get record => widget.record;
+  VoidCallback? get onTap => widget.onTap;
+  void Function(DiaryRecord)? get onEdit => widget.onEdit;
+  void Function(DiaryRecord)? get onDelete => widget.onDelete;
+  VoidCallback? get onAiExtract => widget.onAiExtract;
+  VoidCallback? get onAiExtractLongPress => widget.onAiExtractLongPress;
+  bool get isExtracting => widget.isExtracting;
+  VoidCallback? get onUndo => widget.onUndo;
+  bool get isUndoable => widget.isUndoable;
+  Animation<double>? get undoAnimation => widget.undoAnimation;
+
   static const _tagIcons = <String, IconData>{
     '睡眠': Icons.nightlight_round,
     '饮食': Icons.restaurant,
@@ -41,14 +61,9 @@ class DiaryItem extends StatelessWidget {
 
   static const _defaultIcon = Icons.description_outlined;
 
-  static const _tagColors = <String, Color>{
-    '睡眠': Color(0xFF6366F1),
-    '饮食': Color(0xFFF59E0B),
-    '活动': Color(0xFF10B981),
-    '记账': Color(0xFFEF4444),
-  };
+  static const _tagColors = TagColors.map;
 
-  static const _defaultColor = Color(0xFF6B7280);
+  static const _defaultColor = TagColors.defaultTag;
 
   IconData _tagIcon(String displayTag) => _tagIcons[displayTag] ?? _defaultIcon;
 
@@ -88,13 +103,24 @@ class DiaryItem extends StatelessWidget {
       handledKeys.addAll(['fallAsleepTime', '入睡时间']);
     } else if (entry.name == '饮食') {
       final typeVal = _getVal(bs, ['type', 'item', '种类', '类别']);
-      if (typeVal != null && typeVal.toString().isNotEmpty) tags.add(typeVal.toString());
+      if (typeVal != null && typeVal.toString().isNotEmpty)
+        tags.add(typeVal.toString());
       final ratingVal = _getVal(bs, ['rating', 'health', '评价']);
-      if (ratingVal != null && ratingVal.toString().isNotEmpty) tags.add(ratingVal.toString());
-      handledKeys.addAll(['type', 'item', '种类', '类别', 'rating', 'health', '评价']);
+      if (ratingVal != null && ratingVal.toString().isNotEmpty)
+        tags.add(ratingVal.toString());
+      handledKeys.addAll([
+        'type',
+        'item',
+        '种类',
+        '类别',
+        'rating',
+        'health',
+        '评价',
+      ]);
     } else if (entry.name == '活动') {
       final typeVal = _getVal(bs, ['type', 'item', '项目', '类型']);
-      if (typeVal != null && typeVal.toString().isNotEmpty) tags.add(typeVal.toString());
+      if (typeVal != null && typeVal.toString().isNotEmpty)
+        tags.add(typeVal.toString());
       final durationVal = _getVal(bs, ['duration', '时长']);
       if (durationVal != null) {
         final formatted = _formatDouble(durationVal);
@@ -120,7 +146,14 @@ class DiaryItem extends StatelessWidget {
       if (medicationVal != null && medicationVal.toString().isNotEmpty) {
         tags.add('💊 ${medicationVal.toString()}');
       }
-      handledKeys.addAll(['symptom', '症状', 'severity', '严重程度', 'medication', '用药']);
+      handledKeys.addAll([
+        'symptom',
+        '症状',
+        'severity',
+        '严重程度',
+        'medication',
+        '用药',
+      ]);
     } else if (entry.name == '记账') {
       final categoryVal = _getVal(bs, ['_category', 'category', '收支类型', '收支']);
       String? direction;
@@ -140,17 +173,35 @@ class DiaryItem extends StatelessWidget {
         }
       }
       if (direction != null) tags.add(direction);
-      final typeVal = _getVal(bs, ['type', 'incomeType', '支出类型', '收入类型', '分类', '类型']);
-      if (typeVal != null && typeVal.toString().isNotEmpty) tags.add(typeVal.toString());
+      final typeVal = _getVal(bs, [
+        'type',
+        'incomeType',
+        '支出类型',
+        '收入类型',
+        '分类',
+        '类型',
+      ]);
+      if (typeVal != null && typeVal.toString().isNotEmpty)
+        tags.add(typeVal.toString());
       final amountVal = _getVal(bs, ['amount', '金额', '钱数']);
       if (amountVal != null) {
         final formatted = _formatDouble(amountVal);
         if (formatted.isNotEmpty) tags.add('$formatted元');
       }
       handledKeys.addAll([
-        '_category', 'category', '收支类型', '收支',
-        'type', 'incomeType', '支出类型', '收入类型', '分类', '类型',
-        'amount', '金额', '钱数'
+        '_category',
+        'category',
+        '收支类型',
+        '收支',
+        'type',
+        'incomeType',
+        '支出类型',
+        '收入类型',
+        '分类',
+        '类型',
+        'amount',
+        '金额',
+        '钱数',
       ]);
     }
 
@@ -183,7 +234,11 @@ class DiaryItem extends StatelessWidget {
     return null;
   }
 
-  String _getFieldLabel(String tagName, String key, Map<String, dynamic> fields) {
+  String _getFieldLabel(
+    String tagName,
+    String key,
+    Map<String, dynamic> fields,
+  ) {
     final lowerKey = key.trim().toLowerCase();
     switch (lowerKey) {
       case 'duration':
@@ -200,9 +255,10 @@ class DiaryItem extends StatelessWidget {
         if (tagName == '饮食') return '种类';
         if (tagName == '活动') return '类型';
         if (tagName == '记账') {
-          final isIncome = fields['_category'] == 'income' || 
-                           fields.containsKey('incomeType') || 
-                           fields.containsKey('收入类型');
+          final isIncome =
+              fields['_category'] == 'income' ||
+              fields.containsKey('incomeType') ||
+              fields.containsKey('收入类型');
           return isIncome ? '收入类型' : '支出类型';
         }
         return '类型';
@@ -245,19 +301,19 @@ class DiaryItem extends StatelessWidget {
       }
     }
     if (tagName == '记账' && lowerKey == 'amount') {
-      if (!valStr.contains('元') && !valStr.contains('￥') && !valStr.contains(r'$')) {
+      if (!valStr.contains('元') &&
+          !valStr.contains('￥') &&
+          !valStr.contains(r'$')) {
         return '$valStr元';
       }
     }
     return valStr;
   }
 
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tagColor = _tagColor(record.displayTag);
-    final actionMenuKey = GlobalKey();
     final hasMultipleTags = record.tagEntries.length > 1;
 
     return IntrinsicHeight(
@@ -313,17 +369,19 @@ class DiaryItem extends StatelessWidget {
                 behavior: HitTestBehavior.opaque,
                 child: AnimatedGradientBorder(
                   isAnimating: isExtracting,
-                  borderRadius: 16,
+                  borderRadius: AppRadius.medium,
                   strokeWidth: 2,
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: theme.colorScheme.surface,
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(AppRadius.medium),
                       border: Border.all(
                         color: isExtracting
                             ? Colors.transparent
-                            : theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+                            : theme.colorScheme.outlineVariant.withValues(
+                                alpha: 0.4,
+                              ),
                       ),
                     ),
                     child: Stack(
@@ -344,21 +402,45 @@ class DiaryItem extends StatelessWidget {
                               if (record.photos.isNotEmpty)
                                 Builder(
                                   builder: (context) {
-                                    final screenWidth = MediaQuery.of(context).size.width;
+                                    final screenWidth = MediaQuery.of(
+                                      context,
+                                    ).size.width;
                                     final maxWidth = screenWidth - 132;
                                     final spacing = 6.0;
-                                    final itemWidth = ((maxWidth - spacing * 2 - 2.0) / 3).clamp(50.0, 70.0);
+                                    final itemWidth =
+                                        ((maxWidth - spacing * 2 - 2.0) / 3)
+                                            .clamp(50.0, 70.0);
                                     return Padding(
-                                      padding: const EdgeInsets.only(left: 4, top: 4),
+                                      padding: const EdgeInsets.only(
+                                        left: 4,
+                                        top: 4,
+                                      ),
                                       child: Wrap(
                                         spacing: spacing,
                                         runSpacing: spacing,
-                                        children: record.photos.map((photo) {
-                                          return UnifiedImage(
-                                            imagePath: photo,
-                                            width: itemWidth,
-                                            height: itemWidth,
-                                            borderRadius: BorderRadius.circular(8),
+                                        children: record.photos.asMap().entries.map((entry) {
+                                          final index = entry.key;
+                                          final photo = entry.value;
+                                          return GestureDetector(
+                                            behavior: HitTestBehavior.opaque,
+                                            onTap: () {
+                                              Navigator.of(context).push(
+                                                MaterialPageRoute(
+                                                  builder: (_) => FullScreenImageGallery(
+                                                    images: record.photos,
+                                                    initialIndex: index,
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                            child: UnifiedImage(
+                                              imagePath: photo,
+                                              width: itemWidth,
+                                              height: itemWidth,
+                                              borderRadius: BorderRadius.circular(
+                                                8,
+                                              ),
+                                            ),
                                           );
                                         }).toList(),
                                       ),
@@ -372,7 +454,7 @@ class DiaryItem extends StatelessWidget {
                           top: 0,
                           right: -14,
                           child: IconButton(
-                            key: actionMenuKey,
+                            key: _actionMenuKey,
                             icon: Icon(
                               Icons.more_vert,
                               size: 18,
@@ -381,7 +463,7 @@ class DiaryItem extends StatelessWidget {
                             onPressed: () {
                               ActionMenu.show(
                                 context: context,
-                                key: actionMenuKey,
+                                key: _actionMenuKey,
                                 items: [
                                   ActionMenuItem(
                                     icon: Icons.edit,
@@ -398,7 +480,10 @@ class DiaryItem extends StatelessWidget {
                               );
                             },
                             padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                            constraints: const BoxConstraints(
+                              minWidth: 32,
+                              minHeight: 32,
+                            ),
                           ),
                         ),
                         if (onAiExtract != null)
@@ -408,7 +493,11 @@ class DiaryItem extends StatelessWidget {
                             child: GestureDetector(
                               behavior: HitTestBehavior.opaque,
                               onTap: isUndoable ? onUndo : onAiExtract,
-                              onLongPress: isUndoable ? null : (isExtracting ? null : onAiExtractLongPress),
+                              onLongPress: isUndoable
+                                  ? null
+                                  : (isExtracting
+                                        ? null
+                                        : onAiExtractLongPress),
                               child: Padding(
                                 padding: const EdgeInsets.all(16),
                                 child: Container(
@@ -416,59 +505,70 @@ class DiaryItem extends StatelessWidget {
                                   height: 28,
                                   decoration: BoxDecoration(
                                     color: isUndoable
-                                        ? theme.colorScheme.error.withValues(alpha: 0.08)
-                                        : theme.colorScheme.primary.withValues(alpha: 0.08),
+                                        ? theme.colorScheme.error.withValues(
+                                            alpha: 0.08,
+                                          )
+                                        : theme.colorScheme.primary.withValues(
+                                            alpha: 0.08,
+                                          ),
                                     shape: BoxShape.circle,
                                   ),
                                   child: isUndoable
                                       ? (undoAnimation != null
-                                          ? AnimatedBuilder(
-                                              animation: undoAnimation!,
-                                              builder: (context, child) {
-                                                return Stack(
-                                                  alignment: Alignment.center,
-                                                  children: [
-                                                    SizedBox(
-                                                      width: 24,
-                                                      height: 24,
-                                                      child: CustomPaint(
-                                                        painter: _UndoCountdownPainter(
-                                                          progress: undoAnimation!.value,
-                                                          color: theme.colorScheme.error,
+                                            ? AnimatedBuilder(
+                                                animation: undoAnimation!,
+                                                builder: (context, child) {
+                                                  return Stack(
+                                                    alignment: Alignment.center,
+                                                    children: [
+                                                      SizedBox(
+                                                        width: 24,
+                                                        height: 24,
+                                                        child: CustomPaint(
+                                                          painter:
+                                                              _UndoCountdownPainter(
+                                                                progress:
+                                                                    undoAnimation!
+                                                                        .value,
+                                                                color: theme
+                                                                    .colorScheme
+                                                                    .error,
+                                                              ),
                                                         ),
                                                       ),
-                                                    ),
-                                                    child!,
-                                                  ],
-                                                );
-                                              },
-                                              child: Icon(
+                                                      child!,
+                                                    ],
+                                                  );
+                                                },
+                                                child: Icon(
+                                                  Icons.undo,
+                                                  size: 12,
+                                                  color:
+                                                      theme.colorScheme.error,
+                                                ),
+                                              )
+                                            : Icon(
                                                 Icons.undo,
                                                 size: 12,
                                                 color: theme.colorScheme.error,
-                                              ),
-                                            )
-                                          : Icon(
-                                              Icons.undo,
-                                              size: 12,
-                                              color: theme.colorScheme.error,
-                                            ))
+                                              ))
                                       : isExtracting
-                                          ? Center(
-                                              child: SizedBox(
-                                                width: 14,
-                                                height: 14,
-                                                child: CircularProgressIndicator(
-                                                  strokeWidth: 1.8,
-                                                  color: theme.colorScheme.primary,
-                                                ),
-                                              ),
-                                            )
-                                          : Icon(
-                                              Icons.auto_awesome,
-                                              size: 14,
-                                              color: theme.colorScheme.primary.withValues(alpha: 0.8),
+                                      ? Center(
+                                          child: SizedBox(
+                                            width: 14,
+                                            height: 14,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 1.8,
+                                              color: theme.colorScheme.primary,
                                             ),
+                                          ),
+                                        )
+                                      : Icon(
+                                          Icons.auto_awesome,
+                                          size: 14,
+                                          color: theme.colorScheme.primary
+                                              .withValues(alpha: 0.8),
+                                        ),
                                 ),
                               ),
                             ),
@@ -499,7 +599,11 @@ class DiaryItem extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.access_time, size: 12, color: theme.colorScheme.primary),
+                Icon(
+                  Icons.access_time,
+                  size: 12,
+                  color: theme.colorScheme.primary,
+                ),
                 const SizedBox(width: 4),
                 Text(
                   _formatTimeRangeWithDate(),
@@ -522,76 +626,88 @@ class DiaryItem extends StatelessWidget {
     if (record.tagEntries.isNotEmpty) {
       for (final entry in record.tagEntries) {
         final color = _tagColor(entry.name);
-        
+
         // Add the primary tag pill (filled)
-        rowItems.add(Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Text(
-            entry.name,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: color,
-              fontWeight: FontWeight.bold,
+        rowItems.add(
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              entry.name,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: color,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
-        ));
+        );
 
         // Add the additional fields (outlined)
         final additionalTags = _buildAdditionalTags(entry);
         for (final tagText in additionalTags) {
-          rowItems.add(Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.02),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: color.withValues(alpha: 0.35),
-                width: 1,
+          rowItems.add(
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.02),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: color.withValues(alpha: 0.35),
+                  width: 1,
+                ),
+              ),
+              child: Text(
+                tagText,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: color.withValues(alpha: 0.9),
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
-            child: Text(
-              tagText,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: color.withValues(alpha: 0.9),
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ));
+          );
         }
 
         final showTime = entry.displayTime ?? entry.time;
-        if (showTime != null && showTime.isNotEmpty && !_isTagTimeDuplicate(entry)) {
-          rowItems.add(Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2),
-            child: Text(
-              showTime,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                fontWeight: FontWeight.w500,
+        if (showTime != null &&
+            showTime.isNotEmpty &&
+            !_isTagTimeDuplicate(entry)) {
+          rowItems.add(
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: Text(
+                showTime,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant.withValues(
+                    alpha: 0.7,
+                  ),
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
-          ));
+          );
         }
       }
     } else if (record.displayTag.isNotEmpty) {
       // Just display tag if no tagEntries
-      rowItems.add(Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: primaryTagColor.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          record.displayTag,
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: primaryTagColor,
-            fontWeight: FontWeight.bold,
+      rowItems.add(
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: primaryTagColor.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            record.displayTag,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: primaryTagColor,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
-      ));
+      );
     }
 
     if (rowItems.isEmpty) return const SizedBox.shrink();
@@ -614,72 +730,82 @@ class DiaryItem extends StatelessWidget {
     );
   }
 
-  Widget _buildTagEntryPills(ThemeData theme, TagEntry entry, {bool showIcon = false, String? showTime}) {
+  Widget _buildTagEntryPills(
+    ThemeData theme,
+    TagEntry entry, {
+    bool showIcon = false,
+    String? showTime,
+  }) {
     final color = _tagColor(entry.name);
     final icon = _tagIcon(entry.name);
-    
+
     final rowItems = <Widget>[];
 
     // 1. Tag name pill (filled)
-    rowItems.add(Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (showIcon) ...[
-            Icon(icon, size: 11, color: color),
-            const SizedBox(width: 4),
-          ],
-          Text(
-            entry.name,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: color,
-              fontWeight: FontWeight.bold,
+    rowItems.add(
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (showIcon) ...[
+              Icon(icon, size: 11, color: color),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              entry.name,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: color,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ));
+    );
 
     // 2. Field pills (outlined)
     final additionalTags = _buildAdditionalTags(entry);
     for (final tagText in additionalTags) {
-      rowItems.add(Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.02),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(
-            color: color.withValues(alpha: 0.35),
-            width: 1,
+      rowItems.add(
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.02),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: color.withValues(alpha: 0.35), width: 1),
+          ),
+          child: Text(
+            tagText,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: color.withValues(alpha: 0.9),
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
-        child: Text(
-          tagText,
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: color.withValues(alpha: 0.9),
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ));
+      );
     }
 
     // 3. Optional time display
-    if (showTime != null && showTime.isNotEmpty && !_isTagTimeDuplicate(entry)) {
-      rowItems.add(Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2),
-        child: Text(
-          showTime,
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-            fontWeight: FontWeight.w500,
+    if (showTime != null &&
+        showTime.isNotEmpty &&
+        !_isTagTimeDuplicate(entry)) {
+      rowItems.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: Text(
+            showTime,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
-      ));
+      );
     }
 
     return Wrap(
@@ -697,13 +823,15 @@ class DiaryItem extends StatelessWidget {
       final entry = record.tagEntries[i];
 
       if (i > 0) {
-        sections.add(Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Divider(
-            height: 1,
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+        sections.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Divider(
+              height: 1,
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+            ),
           ),
-        ));
+        );
       }
 
       sections.add(
@@ -725,13 +853,15 @@ class DiaryItem extends StatelessWidget {
       isMultiTag: true,
     );
     if (richContent != null) {
-      sections.add(Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: Divider(
-          height: 1,
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+      sections.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Divider(
+            height: 1,
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+          ),
         ),
-      ));
+      );
       sections.add(richContent);
     }
 
@@ -749,7 +879,13 @@ class DiaryItem extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 12),
-        _buildRichContent(context: theme, text: record.content, bodyState: record.bodyState, tag: record.displayTag) ?? const SizedBox.shrink(),
+        _buildRichContent(
+              context: theme,
+              text: record.content,
+              bodyState: record.bodyState,
+              tag: record.displayTag,
+            ) ??
+            const SizedBox.shrink(),
       ],
     );
   }
@@ -779,14 +915,44 @@ class DiaryItem extends StatelessWidget {
     final isSpecialTag = !isMultiTag && (tag == '睡眠' || tag == '记账');
 
     final keysToSkip = {
-      'duration', 'quality', 'fallasleeptime', 'type', 'rating', 'item', 'amount', 'incometype',
-      'symptom', 'severity', 'notes', 'note', 'remark', 'remarks', 'health',
+      'duration',
+      'quality',
+      'fallasleeptime',
+      'type',
+      'rating',
+      'item',
+      'amount',
+      'incometype',
+      'symptom',
+      'severity',
+      'notes',
+      'note',
+      'remark',
+      'remarks',
+      'health',
       'medication',
-      '时长', '质量', '入睡时间', '类型', '评价', '项目', '金额', '收入类型', '症状', '严重程度', '备注', '种类', '睡眠质量', '类别', '用药'
+      '时长',
+      '质量',
+      '入睡时间',
+      '类型',
+      '评价',
+      '项目',
+      '金额',
+      '收入类型',
+      '症状',
+      '严重程度',
+      '备注',
+      '种类',
+      '睡眠质量',
+      '类别',
+      '用药',
     };
 
     String normalizeKey(String key) {
-      return key.trim().toLowerCase().replaceAll(RegExp(r'[\s\(_\)（）\-:]+'), '');
+      return key.trim().toLowerCase().replaceAll(
+        RegExp(r'[\s\(_\)（）\-:]+'),
+        '',
+      );
     }
 
     for (final entry in record.tagEntries) {
@@ -842,12 +1008,16 @@ class DiaryItem extends StatelessWidget {
 
         bool shouldSkip = false;
         for (final skipKey in keysToSkip) {
-          if (normKey == skipKey || normKey.contains(skipKey) || skipKey.contains(normKey)) {
+          if (normKey == skipKey ||
+              normKey.contains(skipKey) ||
+              skipKey.contains(normKey)) {
             shouldSkip = true;
             break;
           }
-          if (lastPartNorm.isNotEmpty && 
-              (lastPartNorm == skipKey || lastPartNorm.contains(skipKey) || skipKey.contains(lastPartNorm))) {
+          if (lastPartNorm.isNotEmpty &&
+              (lastPartNorm == skipKey ||
+                  lastPartNorm.contains(skipKey) ||
+                  skipKey.contains(lastPartNorm))) {
             shouldSkip = true;
             break;
           }
@@ -864,12 +1034,17 @@ class DiaryItem extends StatelessWidget {
       }
 
       if (lastIndex < trimmedLine.length) {
-        final suffix = trimmedLine.substring(lastIndex).trim().replaceAll(RegExp(r'^[，,;；]+|[，,;；]+$'), '');
+        final suffix = trimmedLine
+            .substring(lastIndex)
+            .trim()
+            .replaceAll(RegExp(r'^[，,;；]+|[，,;；]+$'), '');
         if (suffix.isNotEmpty) {
           final normSuffix = normalizeKey(suffix);
           bool suffixShouldSkip = false;
           for (final skipKey in keysToSkip) {
-            if (normSuffix == skipKey || normSuffix.contains(skipKey) || skipKey.contains(normSuffix)) {
+            if (normSuffix == skipKey ||
+                normSuffix.contains(skipKey) ||
+                skipKey.contains(normSuffix)) {
               suffixShouldSkip = true;
               break;
             }
@@ -938,11 +1113,12 @@ class DiaryItem extends StatelessWidget {
     if (record.endTime != null) {
       final end = record.endTime!;
       final endStr = DateFormat.Hm().format(end);
-      
-      final isCrossDate = start.year != end.year || 
-                          start.month != end.month || 
-                          start.day != end.day;
-      
+
+      final isCrossDate =
+          start.year != end.year ||
+          start.month != end.month ||
+          start.day != end.day;
+
       if (isCrossDate) {
         final endDateStr = DateFormat('MM-dd').format(end);
         return '$startDateStr $startStr → $endDateStr $endStr';
@@ -961,7 +1137,9 @@ class DiaryItem extends StatelessWidget {
     final recordStartHour = recordStart.hour;
     final recordStartMinute = recordStart.minute;
 
-    final isStartSame = entry.startHour == recordStartHour && entry.startMinute == recordStartMinute;
+    final isStartSame =
+        entry.startHour == recordStartHour &&
+        entry.startMinute == recordStartMinute;
     if (!isStartSame) return false;
 
     if (record.endTime == null) {
@@ -971,7 +1149,8 @@ class DiaryItem extends StatelessWidget {
 
       final recordEndHour = record.endTime!.hour;
       final recordEndMinute = record.endTime!.minute;
-      return entry.endHour == recordEndHour && entry.endMinute == recordEndMinute;
+      return entry.endHour == recordEndHour &&
+          entry.endMinute == recordEndMinute;
     }
   }
 }
@@ -980,10 +1159,7 @@ class _UndoCountdownPainter extends CustomPainter {
   final double progress;
   final Color color;
 
-  _UndoCountdownPainter({
-    required this.progress,
-    required this.color,
-  });
+  _UndoCountdownPainter({required this.progress, required this.color});
 
   @override
   void paint(Canvas canvas, Size size) {

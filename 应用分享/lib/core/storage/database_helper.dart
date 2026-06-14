@@ -25,7 +25,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 13,
+      version: 15,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onOpen: (db) async {
@@ -300,6 +300,22 @@ class DatabaseHelper {
       )
     ''');
 
+    await db.execute('''
+      CREATE TABLE fixed_event_templates (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        content TEXT DEFAULT '',
+        tags TEXT DEFAULT '[]',
+        tag_fields TEXT DEFAULT '{}',
+        sort_order INTEGER DEFAULT 0,
+        is_enabled INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+
     // Performance indexes
     await _createIndexes(db);
   }
@@ -326,6 +342,7 @@ class DatabaseHelper {
       'CREATE INDEX IF NOT EXISTS idx_sync_log_table ON sync_log(table_name, record_id)',
       'CREATE INDEX IF NOT EXISTS idx_daily_scores_date ON daily_scores(date)',
       'CREATE INDEX IF NOT EXISTS idx_body_states_timestamp ON body_states(timestamp)',
+      'CREATE INDEX IF NOT EXISTS idx_fixed_event_templates_sort ON fixed_event_templates(sort_order)',
     ];
     for (final sql in indexes) {
       try {
@@ -402,6 +419,36 @@ class DatabaseHelper {
 
       try {
         await db.execute('CREATE INDEX IF NOT EXISTS idx_body_states_timestamp ON body_states(timestamp)');
+      } catch (_) {}
+    }
+
+    if (oldVersion < 14) {
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS fixed_event_templates (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            content TEXT DEFAULT '',
+            tags TEXT DEFAULT '[]',
+            sort_order INTEGER DEFAULT 0,
+            is_enabled INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          )
+        ''');
+      } catch (_) {}
+
+      try {
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_fixed_event_templates_sort ON fixed_event_templates(sort_order)');
+      } catch (_) {}
+    }
+
+    if (oldVersion < 15) {
+      // 为 fixed_event_templates 表添加 tag_fields 列
+      try {
+        await db.execute('ALTER TABLE fixed_event_templates ADD COLUMN tag_fields TEXT DEFAULT "{}"');
       } catch (_) {}
     }
   }

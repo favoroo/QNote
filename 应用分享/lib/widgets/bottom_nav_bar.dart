@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
@@ -50,63 +51,45 @@ class BottomNavBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        border: Border(
-          top: BorderSide(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-            width: 0.5,
-          ),
-        ),
-      ),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: navigationItems.asMap().entries.map((entry) {
-              final index = entry.key;
-              final item = entry.value;
-              final isSelected = index == currentIndex;
+    return NavigationBar(
+      selectedIndex: currentIndex,
+      onDestinationSelected: (index) {
+        HapticFeedback.selectionClick();
+        onTap(index);
+      },
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+      destinations: navigationItems.asMap().entries.map((entry) {
+        final index = entry.key;
+        final item = entry.value;
+        final isSelected = index == currentIndex;
 
-              return GestureDetector(
-                onTap: () => onTap(index),
-                onLongPress: index == 0
-                    ? () {
-                        // Switch to diary branch if not already selected
-                        if (!isSelected) {
-                          onTap(0);
-                        }
-                        // Trigger smooth scroll to current time in timeline
-                        ref.read(diaryScrollTriggerProvider.notifier).state =
-                            DateTime.now().millisecondsSinceEpoch;
-                      }
-                    : (index == 2
-                        ? () => showDebugConsole(context)
-                        : null),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: isSelected ? theme.colorScheme.primary.withValues(alpha: 0.12) : Colors.transparent,
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: Icon(
-                    isSelected ? item.activeIcon : item.icon,
-                    color: isSelected 
-                        ? theme.colorScheme.primary 
-                        : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-                    size: 24,
-                  ),
-                ),
-              );
-            }).toList(),
+        return NavigationDestination(
+          icon: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onLongPress: index == 0
+                ? () {
+                    if (!isSelected) {
+                      onTap(0);
+                    }
+                    ref.read(diaryScrollTriggerProvider.notifier).state =
+                        DateTime.now().millisecondsSinceEpoch;
+                  }
+                : (index == 2 ? () => showDebugConsole(context) : null),
+            child: Icon(item.icon),
           ),
-        ),
-      ),
+          selectedIcon: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onLongPress: index == 0
+                ? () {
+                    ref.read(diaryScrollTriggerProvider.notifier).state =
+                        DateTime.now().millisecondsSinceEpoch;
+                  }
+                : (index == 2 ? () => showDebugConsole(context) : null),
+            child: Icon(item.activeIcon),
+          ),
+          label: item.label,
+        );
+      }).toList(),
     );
   }
 }

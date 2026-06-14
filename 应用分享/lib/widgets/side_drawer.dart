@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/pages/settings/user_profile_page.dart';
 import 'package:qnote_flutter/pages/settings/personalization_page.dart';
 import 'package:qnote_flutter/pages/settings/ai_config_page.dart';
 import 'package:qnote_flutter/pages/settings/shortcuts_page.dart';
+import 'package:qnote_flutter/pages/settings/fixed_events_page.dart';
 import 'package:qnote_flutter/pages/settings/data_management_page.dart';
 import 'package:qnote_flutter/pages/settings/sync_settings_page.dart';
 import 'package:qnote_flutter/pages/settings/about_page.dart';
@@ -69,6 +72,15 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
   Widget _buildMenu(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
+    // 设置与管理菜单项统一使用系统主品牌色（蓝色），使界面色彩一致不杂乱
+    final itemColor = colorScheme.primary;
+    final itemBgColor = colorScheme.primaryContainer;
+
+    // 关于 QNote：使用中性灰色，低调不喧宾夺主
+    final aboutColor = colorScheme.onSurfaceVariant;
+    final aboutBgColor = aboutColor.withValues(alpha: isDark ? 0.15 : 0.08);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -106,43 +118,50 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
                   _SectionHeader(title: '设置与管理'),
                   _DrawerMenuItem(
                     icon: Icons.person_outline,
-                    iconBgColor: Colors.blue.withValues(alpha: 0.1),
-                    iconColor: Colors.blue,
+                    iconBgColor: itemBgColor,
+                    iconColor: itemColor,
                     label: '个人信息',
                     onTap: () => _navigateTo(context, const UserProfilePage()),
                   ),
                   _DrawerMenuItem(
                     icon: Icons.smart_toy_outlined,
-                    iconBgColor: Colors.deepPurple.withValues(alpha: 0.1),
-                    iconColor: Colors.deepPurple,
+                    iconBgColor: itemBgColor,
+                    iconColor: itemColor,
                     label: 'AI 配置',
                     onTap: () => _navigateTo(context, const AiConfigPage()),
                   ),
                   _DrawerMenuItem(
                     icon: Icons.hexagon_outlined,
-                    iconBgColor: Colors.orange.withValues(alpha: 0.1),
-                    iconColor: Colors.orange,
+                    iconBgColor: itemBgColor,
+                    iconColor: itemColor,
                     label: '快捷按钮管理',
                     onTap: () => _navigateTo(context, const ShortcutsPage()),
                   ),
                   _DrawerMenuItem(
+                    icon: Icons.event_repeat,
+                    iconBgColor: itemBgColor,
+                    iconColor: itemColor,
+                    label: '固定事件管理',
+                    onTap: () => _navigateTo(context, const FixedEventsPage()),
+                  ),
+                  _DrawerMenuItem(
                     icon: Icons.cloud_outlined,
-                    iconBgColor: Colors.indigo.withValues(alpha: 0.1),
-                    iconColor: Colors.indigo,
+                    iconBgColor: itemBgColor,
+                    iconColor: itemColor,
                     label: '数据管理',
                     onTap: () => _navigateTo(context, const DataManagementPage()),
                   ),
                   _DrawerMenuItem(
                     icon: Icons.sync_rounded,
-                    iconBgColor: Colors.lightBlue.withValues(alpha: 0.1),
-                    iconColor: Colors.lightBlue,
+                    iconBgColor: itemBgColor,
+                    iconColor: itemColor,
                     label: '同步设置',
                     onTap: () => _navigateTo(context, const SyncSettingsPage()),
                   ),
                   _DrawerMenuItem(
                     icon: Icons.palette_outlined,
-                    iconBgColor: Colors.red.withValues(alpha: 0.1),
-                    iconColor: Colors.red,
+                    iconBgColor: itemBgColor,
+                    iconColor: itemColor,
                     label: '个性化设置',
                     onTap: () => _navigateTo(context, const PersonalizationPage()),
                   ),
@@ -152,8 +171,8 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
                   _SectionHeader(title: '其他'),
                   _DrawerMenuItem(
                     icon: Icons.info_outline,
-                    iconBgColor: Colors.blueGrey.withValues(alpha: 0.1),
-                    iconColor: Colors.blueGrey,
+                    iconBgColor: aboutBgColor,
+                    iconColor: aboutColor,
                     label: '关于 QNote',
                     onTap: () => _navigateTo(context, const AboutPage()),
                   ),
@@ -247,8 +266,11 @@ class _DrawerMenuItem extends StatelessWidget {
           size: 20,
           color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
         ),
-        onTap: onTap,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.medium)),
       ),
     );
   }

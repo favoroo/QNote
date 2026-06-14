@@ -471,7 +471,9 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
         }
 
         final showTime = entry.displayTime ?? entry.time;
-        if (showTime != null && showTime.isNotEmpty) {
+        // 时间与记录主时间相同则不重复显示
+        final recordTimeStr = DateFormat('HH:mm').format(record.startTime ?? record.time);
+        if (showTime != null && showTime.isNotEmpty && showTime != recordTimeStr) {
           rowItems.add(Padding(
             padding: const EdgeInsets.symmetric(horizontal: 2),
             child: Text(
@@ -542,6 +544,12 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
     );
   }
 
+  // 跳转编辑页
+  Future<void> _editRecord(DiaryRecord record) async {
+    await GoRouter.of(context).push('/diary/editor', extra: record);
+    _applyFilters(); // 编辑返回后刷新列表
+  }
+
   void _openGallery(DiaryRecord record, int index) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -595,23 +603,23 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
   Widget _buildFilterCard(ThemeData theme, ColorScheme colorScheme) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Icon(Icons.filter_list, size: 16, color: colorScheme.primary),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 Text(
                   '筛选条件',
                   style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 10),
             _buildDateFilter(theme, colorScheme),
-            const SizedBox(height: 16),
+            const SizedBox(height: 10),
             _buildTagFilter(theme, colorScheme),
           ],
         ),
@@ -875,11 +883,11 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                   const SizedBox(width: 8),
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
-                    onTap: () => _openRecordDetails(record), // Prevent card tap selection and open detail view
+                    onTap: () => _editRecord(record),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
                       child: Icon(
-                        Icons.visibility_outlined,
+                        Icons.edit_outlined,
                         color: colorScheme.primary,
                         size: 20,
                       ),

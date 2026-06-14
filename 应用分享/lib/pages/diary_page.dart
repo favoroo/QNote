@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:math' as math;
 import 'dart:async';
 import 'package:dio/dio.dart';
@@ -6,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/date_color_mark.dart';
@@ -20,6 +22,7 @@ import 'package:qnote_flutter/widgets/search_view.dart';
 import 'package:qnote_flutter/widgets/diary/diary_item.dart';
 import 'package:qnote_flutter/widgets/diary/diary_input_bar.dart';
 import 'package:qnote_flutter/widgets/diary/custom_date_picker.dart';
+import 'package:qnote_flutter/widgets/action_menu.dart';
 
 class DiaryPage extends ConsumerStatefulWidget {
   const DiaryPage({super.key});
@@ -42,6 +45,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   final GlobalKey _viewportKey = GlobalKey();
   // GlobalKey placed on the current-time node so we can read its actual RenderBox position
   final GlobalKey _currentTimeNodeKey = GlobalKey();
+  final GlobalKey _smartExtractFabKey = GlobalKey();
   int? _dragStartIndex;
   int? _dragEndIndex;
   bool _isShiftingWindow = false;
@@ -65,10 +69,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   int _batchExtractTotal = 0;
   int _batchExtractCompleted = 0;
   bool _batchExtractCancelled = false;
-
-  // Triple-click detection
-  int _smartExtractTapCount = 0;
-  Timer? _smartExtractTapTimer;
 
   bool _showBatchConfirmButton = false;
   final Set<String> _batchExtractedRecordIds = {};
@@ -318,7 +318,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
         _scrollController
             .animateTo(
               targetOffset,
-              duration: const Duration(milliseconds: 300),
+              duration: AppDurations.medium,
               curve: Curves.easeOutCubic,
             )
             .then((_) {
@@ -654,7 +654,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     } catch (_) {}
     WidgetsBinding.instance.removeObserver(this);
     _stopAutoScrollTimer();
-    _smartExtractTapTimer?.cancel();
     _itemContexts.clear();
     _itemHeights.clear();
     _scrollController.removeListener(_onScroll);
@@ -979,6 +978,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   }
 
   void _handleDelete(DiaryRecord record) {
+    HapticFeedback.heavyImpact();
     _clearUndoForRecord(record.id);
     ref.read(diaryListProvider.notifier).deleteDiary(record.id);
     Toast.show(
@@ -1211,17 +1211,61 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       return;
     }
 
-    _smartExtractTapCount++;
-    _smartExtractTapTimer?.cancel();
+    final allRecords = ref.read(diaryListProvider).valueOrNull;
+    if (allRecords == null) return;
 
-    if (_smartExtractTapCount >= 3) {
-      _smartExtractTapCount = 0;
-      _startBatchExtract(allDates: true);
+    final selectedDate = ref.read(selectedDateProvider);
+
+    int untaggedToday = 0;
+    int untaggedAll = 0;
+
+    for (final r in allRecords) {
+      if (r.isDeleted) continue;
+      if (r.displayTag.isNotEmpty && r.displayTag != '记录') continue;
+      if (r.content.trim().isEmpty && r.photos.isEmpty) continue;
+      
+      untaggedAll++;
+      if (_isSameDay(r.time, selectedDate)) {
+        untaggedToday++;
+      }
+    }
+
+    if (untaggedAll == 0) {
+      Toast.info(context, '没有需要优化的记录');
+      return;
+    }
+
+    final items = <ActionMenuItem>[];
+    
+    if (untaggedToday > 0) {
+      items.add(
+        ActionMenuItem(
+          icon: Icons.today,
+          label: '提取今日记录 ($untaggedToday条)',
+          onTap: () => _startBatchExtract(allDates: false),
+        ),
+      );
+    }
+    
+    if (untaggedAll > untaggedToday) {
+      items.add(
+        ActionMenuItem(
+          icon: Icons.date_range,
+          label: '提取全部记录 ($untaggedAll条)',
+          onTap: () => _startBatchExtract(allDates: true),
+        ),
+      );
+    }
+
+    if (items.length == 1) {
+      // If only one option, just execute it directly
+      items.first.onTap();
     } else {
-      _smartExtractTapTimer = Timer(const Duration(milliseconds: 300), () {
-        _smartExtractTapCount = 0;
-        _startBatchExtract(allDates: false);
-      });
+      ActionMenu.show(
+        context: context,
+        key: _smartExtractFabKey,
+        items: items,
+      );
     }
   }
 
@@ -1376,10 +1420,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   Widget _buildSmartExtractFAB(ThemeData theme) {
     if (_showBatchConfirmButton) return const SizedBox.shrink();
     return GestureDetector(
+      key: _smartExtractFabKey,
       onTap: _handleSmartExtractTap,
       onLongPress: _handleSmartExtractLongPress,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
+        duration: AppDurations.medium,
         curve: Curves.easeOutCubic,
         width: _isBatchExtracting ? 52 : 44,
         height: _isBatchExtracting ? 52 : 44,
@@ -1402,7 +1447,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
             BoxShadow(
               color: _isBatchExtracting
                   ? theme.colorScheme.primary.withValues(alpha: 0.3)
-                  : Colors.black.withValues(alpha: 0.06),
+                  : theme.colorScheme.shadow.withValues(alpha: 0.06),
               blurRadius: _isBatchExtracting ? 12 : 6,
               offset: const Offset(0, 3),
             ),
@@ -1420,14 +1465,14 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                           ? _batchExtractCompleted / _batchExtractTotal
                           : null,
                       strokeWidth: 2.5,
-                      color: Colors.white.withValues(alpha: 0.9),
-                      backgroundColor: Colors.white.withValues(alpha: 0.2),
+                      color: theme.colorScheme.surface.withValues(alpha: 0.9),
+                      backgroundColor: theme.colorScheme.surface.withValues(alpha: 0.2),
                     ),
                   ),
                   Text(
                     '$_batchExtractCompleted',
                     style: theme.textTheme.labelSmall?.copyWith(
-                      color: Colors.white,
+                      color: theme.colorScheme.onPrimary,
                       fontWeight: FontWeight.bold,
                       fontSize: 11,
                     ),
@@ -1714,7 +1759,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                       children: [
                         AnimatedOpacity(
                           opacity: _isInitialScrollCompleted ? 1.0 : 0.0,
-                          duration: const Duration(milliseconds: 200),
+                          duration: AppDurations.normal,
                           curve: Curves.easeInOut,
                           child: Stack(
                             children: [
@@ -2114,7 +2159,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     if (hexStr.length == 8) {
       return Color(int.parse(hexStr, radix: 16));
     }
-    return Colors.grey;
+    return Theme.of(context).colorScheme.outlineVariant;
   }
 
   int _pointToItemIndex(Offset globalPosition) {
@@ -2139,6 +2184,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   void _handleDragStart(LongPressStartDetails details) {
     final index = _pointToItemIndex(details.globalPosition);
     if (index != -1 && index % _itemsPerDay != 0) {
+      HapticFeedback.mediumImpact();
       setState(() {
         _dragStartIndex = index;
         _dragEndIndex = index;
@@ -2316,7 +2362,7 @@ class _EmptyTimeNode extends StatelessWidget {
               width: 48,
               child: Center(
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
+                  duration: AppDurations.normal,
                   curve: Curves.easeOut,
                   width: circleSize,
                   height: circleSize,
@@ -2340,8 +2386,8 @@ class _EmptyTimeNode extends StatelessWidget {
                           child: Container(
                             width: 6,
                             height: 6,
-                            decoration: const BoxDecoration(
-                              color: Colors.white,
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.onPrimary,
                               shape: BoxShape.circle,
                             ),
                           ),
@@ -2351,7 +2397,7 @@ class _EmptyTimeNode extends StatelessWidget {
               ),
             ),
             AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 200),
+              duration: AppDurations.normal,
               curve: Curves.easeOut,
               style: (theme.textTheme.bodySmall ?? const TextStyle()).copyWith(
                 color: isSelected
@@ -2387,7 +2433,7 @@ class _EmptyTimeNode extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
+                duration: AppDurations.normal,
                 curve: Curves.easeOut,
                 height: 1,
                 color: isSelected

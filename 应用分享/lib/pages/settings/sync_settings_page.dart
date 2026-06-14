@@ -594,7 +594,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
                     children: [
                       _buildSettingRow(
                         icon: Icons.sync_outlined,
-                        iconColor: Colors.blue,
+                        iconColor: colorScheme.primary,
                         title: '自动同步',
                         description: '允许应用在后台按规则自动同步数据',
                         trailing: Switch(
@@ -605,7 +605,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
                       const Divider(height: 1, indent: 56, endIndent: 16),
                       _buildSettingRow(
                         icon: Icons.bolt_outlined,
-                        iconColor: Colors.orange,
+                        iconColor: colorScheme.primary,
                         title: '启动时自动同步',
                         description: '每次打开或进入应用时自动执行一次同步',
                         enabled: _webdavEnabled,
@@ -619,7 +619,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
                       const Divider(height: 1, indent: 56, endIndent: 16),
                       _buildSettingRow(
                         icon: Icons.image_outlined,
-                        iconColor: Colors.purple,
+                        iconColor: colorScheme.primary,
                         title: '同步图片',
                         description: '在进行数据同步时，同步日记与笔记中的图片文件',
                         trailing: Switch(
@@ -630,7 +630,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
                       const Divider(height: 1, indent: 56, endIndent: 16),
                       _buildSettingRow(
                         icon: Icons.access_time_outlined,
-                        iconColor: Colors.indigoAccent,
+                        iconColor: colorScheme.primary,
                         title: '自动同步间隔',
                         description: '设定应用运行期间自动同步的时间间隔',
                         enabled: _webdavEnabled,
@@ -662,7 +662,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
                       const Divider(height: 1, indent: 56, endIndent: 16),
                       _buildSettingRow(
                         icon: Icons.cloud_done_outlined,
-                        iconColor: Colors.teal,
+                        iconColor: colorScheme.primary,
                         title: '上次同步时间',
                         description: '最近一次与云端成功同步数据的时间',
                         trailing: Text(
@@ -791,7 +791,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
                         ),
                         _buildActionRow(
                           icon: Icons.wifi_protected_setup_outlined,
-                          color: Colors.blue,
+                          color: colorScheme.primary,
                           title: '连接测试',
                           desc: '检查当前配置能否成功连接 WebDAV 服务器',
                           onTap: _testing ? null : _testConnection,
@@ -800,7 +800,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
                         const Divider(height: 1, indent: 56, endIndent: 16),
                         _buildActionRow(
                           icon: Icons.sync,
-                          color: Colors.green,
+                          color: colorScheme.primary,
                           title: '手动同步',
                           desc: '对比本地与云端，执行增量数据同步合并',
                           onTap: syncStatus == SyncStatus.syncing ? null : _performSync,
@@ -809,7 +809,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
                         const Divider(height: 1, indent: 56, endIndent: 16),
                         _buildActionRow(
                           icon: Icons.image_search_outlined,
-                          color: Colors.purple,
+                          color: colorScheme.primary,
                           title: '同步图片',
                           desc: '对比本地与云端，执行图片文件增删同步',
                           onTap: syncStatus == SyncStatus.syncing ? null : _performSyncImages,
@@ -818,7 +818,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
                         const Divider(height: 1, indent: 56, endIndent: 16),
                         _buildActionRow(
                           icon: Icons.cloud_upload_outlined,
-                          color: Colors.purple,
+                          color: colorScheme.primary,
                           title: '全量同步',
                           desc: '忽略历史状态，强制上传完整数据快照到云端',
                           onTap: syncStatus == SyncStatus.syncing ? null : _performFullSync,
@@ -826,7 +826,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
                         const Divider(height: 1, indent: 56, endIndent: 16),
                         _buildActionRow(
                           icon: Icons.cleaning_services_outlined,
-                          color: Colors.amber.shade700,
+                          color: colorScheme.primary,
                           title: '清理旧备份',
                           desc: '清理云端冗余的旧格式备份文件，释放网盘空间',
                           onTap: syncStatus == SyncStatus.syncing ? null : _cleanupOldBackups,

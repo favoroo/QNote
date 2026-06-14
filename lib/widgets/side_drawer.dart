@@ -74,29 +74,9 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
-    // 个人信息：使用系统主品牌色（蓝色），代表身份与主要入口
-    final profileColor = colorScheme.primary;
-    final profileBgColor = colorScheme.primaryContainer;
-
-    // AI 配置：使用紫罗兰色（Purple），富有机能感与智慧感
-    final aiColor = isDark ? const Color(0xFFB39DDB) : const Color(0xFF673AB7);
-    final aiBgColor = aiColor.withValues(alpha: isDark ? 0.18 : 0.1);
-
-    // 快捷按钮：使用琥珀橙色（Orange），代表高效、操作与自定义工具
-    final shortcutColor = isDark ? const Color(0xFFFFB74D) : const Color(0xFFE65100);
-    final shortcutBgColor = shortcutColor.withValues(alpha: isDark ? 0.18 : 0.1);
-
-    // 数据管理：使用翡翠青色（Teal），代表冷静、稳固与存储安全
-    final dataColor = isDark ? const Color(0xFF4DB6AC) : const Color(0xFF00796B);
-    final dataBgColor = dataColor.withValues(alpha: isDark ? 0.18 : 0.1);
-
-    // 同步设置：使用薄荷绿色（Green），代表畅通、健康的数据传输
-    final syncColor = isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32);
-    final syncBgColor = syncColor.withValues(alpha: isDark ? 0.18 : 0.1);
-
-    // 个性化设置：使用玫瑰粉色（Pink），代表丰富色彩与界面美化，比原先的 error 红色更温和且契合主题
-    final personalizationColor = isDark ? const Color(0xFFF48FB1) : const Color(0xFFD81B60);
-    final personalizationBgColor = personalizationColor.withValues(alpha: isDark ? 0.18 : 0.1);
+    // 设置与管理菜单项统一使用系统主品牌色（蓝色），使界面色彩一致不杂乱
+    final itemColor = colorScheme.primary;
+    final itemBgColor = colorScheme.primaryContainer;
 
     // 关于 QNote：使用中性灰色，低调不喧宾夺主
     final aboutColor = colorScheme.onSurfaceVariant;
@@ -138,50 +118,50 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
                   _SectionHeader(title: '设置与管理'),
                   _DrawerMenuItem(
                     icon: Icons.person_outline,
-                    iconBgColor: profileBgColor,
-                    iconColor: profileColor,
+                    iconBgColor: itemBgColor,
+                    iconColor: itemColor,
                     label: '个人信息',
                     onTap: () => _navigateTo(context, const UserProfilePage()),
                   ),
                   _DrawerMenuItem(
                     icon: Icons.smart_toy_outlined,
-                    iconBgColor: aiBgColor,
-                    iconColor: aiColor,
+                    iconBgColor: itemBgColor,
+                    iconColor: itemColor,
                     label: 'AI 配置',
                     onTap: () => _navigateTo(context, const AiConfigPage()),
                   ),
                   _DrawerMenuItem(
                     icon: Icons.hexagon_outlined,
-                    iconBgColor: shortcutBgColor,
-                    iconColor: shortcutColor,
+                    iconBgColor: itemBgColor,
+                    iconColor: itemColor,
                     label: '快捷按钮管理',
                     onTap: () => _navigateTo(context, const ShortcutsPage()),
                   ),
                   _DrawerMenuItem(
                     icon: Icons.event_repeat,
-                    iconBgColor: shortcutBgColor,
-                    iconColor: shortcutColor,
+                    iconBgColor: itemBgColor,
+                    iconColor: itemColor,
                     label: '固定事件管理',
                     onTap: () => _navigateTo(context, const FixedEventsPage()),
                   ),
                   _DrawerMenuItem(
                     icon: Icons.cloud_outlined,
-                    iconBgColor: dataBgColor,
-                    iconColor: dataColor,
+                    iconBgColor: itemBgColor,
+                    iconColor: itemColor,
                     label: '数据管理',
                     onTap: () => _navigateTo(context, const DataManagementPage()),
                   ),
                   _DrawerMenuItem(
                     icon: Icons.sync_rounded,
-                    iconBgColor: syncBgColor,
-                    iconColor: syncColor,
+                    iconBgColor: itemBgColor,
+                    iconColor: itemColor,
                     label: '同步设置',
                     onTap: () => _navigateTo(context, const SyncSettingsPage()),
                   ),
                   _DrawerMenuItem(
                     icon: Icons.palette_outlined,
-                    iconBgColor: personalizationBgColor,
-                    iconColor: personalizationColor,
+                    iconBgColor: itemBgColor,
+                    iconColor: itemColor,
                     label: '个性化设置',
                     onTap: () => _navigateTo(context, const PersonalizationPage()),
                   ),

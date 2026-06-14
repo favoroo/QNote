@@ -1,0 +1,4 @@
+- Adopts a Provider-Model separation where `lib/providers/` contains Riverpod notifiers (e.g., `ThemeModeNotifier`, `WebdavConfigNotifier`) handling state logic, while `lib/models/` defines immutable data structures with serialization support.
+- Delegates persistence to a shared `ConfigRepository` (SQLite/SharedPreferences) rather than implementing local storage within providers, ensuring a clean separation between state management and data access.
+- Supports diverse setting types: UI themes (via `SharedPreferences`), complex user profiles and shortcuts (via SQLite), and remote sync configurations (WebDAV).
+- Exposes both read-only `FutureProvider`s for initial data fetching and `StateNotifierProvider`s for mutable state interactions.
