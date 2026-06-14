@@ -1,3 +1,0 @@
-- **State Management**: `flutter_riverpod` (AsyncNotifier, StateProvider, FutureProvider).
-- **Local Storage**: SQLite via `sqflite` (abstracted by `DiaryRepository`).
-- **Navigation**: `go_router` for deep linking to editors and batch views.

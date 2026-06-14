@@ -2,11 +2,11 @@
 schema_version: 1
 locale: en-US
 branch: master
-exported_at: "2026-06-14T03:23:35Z"
+exported_at: "2026-06-14T04:18:49Z"
 modules:
     "":
-        dir_name: QNote Personal Knowledge Orchestrator
-        title: QNote Personal Knowledge Orchestrator
+        dir_name: QNote Cross-Platform Orchestrator
+        title: QNote Cross-Platform Orchestrator
         scope: []
         source_files: []
         children: []
@@ -18,8 +18,8 @@ modules:
         scope: []
         source_files: []
         children:
-            - decisions/bbf95725d582_bee858165e63
             - decisions/bbf95725d582_a0098f734f46
+            - decisions/bbf95725d582_bee858165e63
         depends_on: []
         related_to: []
     decisions/bbf95725d582_a0098f734f46:
@@ -41,8 +41,8 @@ modules:
         related_to:
             - path: distribution_copy
     distribution_copy:
-        dir_name: QNote Application Shell & UI Foundation
-        title: QNote Application Shell & UI Foundation
+        dir_name: Notes & Folders Management
+        title: Notes & Folders Management
         scope:
             - 应用分享/
         source_files: []
@@ -51,8 +51,8 @@ modules:
         related_to:
             - path: decisions/bbf95725d582_bee858165e63
     flutter_app:
-        dir_name: QNote Cross-Platform Personal Knowledge Manager
-        title: QNote Cross-Platform Personal Knowledge Manager
+        dir_name: QNote Flutter Application Orchestrator
+        title: QNote Flutter Application Orchestrator
         scope:
             - lib/
             - android/
@@ -61,12 +61,12 @@ modules:
             - test/
         source_files: []
         children:
-            - flutter_app/settings
             - flutter_app/shared_core
-            - flutter_app/statistics
-            - flutter_app/todo
-            - flutter_app/diary
             - flutter_app/notes
+            - flutter_app/todo
+            - flutter_app/statistics
+            - flutter_app/settings
+            - flutter_app/diary
             - flutter_app/ai
         depends_on: []
         related_to: []
@@ -100,8 +100,8 @@ modules:
             - path: flutter_app/notes
             - path: flutter_app/todo
     flutter_app/notes:
-        dir_name: Notes Management & Hierarchical Organization
-        title: Notes Management & Hierarchical Organization
+        dir_name: Notes Management & Organization
+        title: Notes Management & Organization
         scope:
             - lib/pages/notes_page.dart
             - lib/providers/note_provider.dart
@@ -113,8 +113,8 @@ modules:
             - path: flutter_app/ai
             - path: flutter_app/diary
     flutter_app/settings:
-        dir_name: Application Settings & User Preferences
-        title: Application Settings & User Preferences
+        dir_name: Application Settings & State Management
+        title: Application Settings & State Management
         scope:
             - lib/providers/user_profile_provider.dart
             - lib/providers/theme_provider.dart

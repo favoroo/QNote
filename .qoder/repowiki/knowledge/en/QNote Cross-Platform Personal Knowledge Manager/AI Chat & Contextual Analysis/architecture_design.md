@@ -1,4 +1,0 @@
-- **Presentation Layer**: `AiPage` implements a responsive chat UI with Markdown rendering (`flutter_markdown`), streaming message visualization, and dynamic context filter chips (Date, Notes, Mixed).
-- **State Management**: Uses Riverpod for reactive state. `CurrentChatNotifier` manages the active session lifecycle and orchestrates the AI request pipeline, while `AiConfigListNotifier` handles persistent model configurations.
-- **Context Engine**: The provider layer aggregates data from `DiaryRepository` and `NoteRepository` based on user-selected scopes (e.g., 'Today', 'Week', 'Selected Notes') to construct enriched prompts including system time and user profile metadata.
-- **Data Models**: Defines immutable structures for `ChatSession`, `ChatMessage`, and `AiConfig` with JSON/Map serialization support for local storage integration.

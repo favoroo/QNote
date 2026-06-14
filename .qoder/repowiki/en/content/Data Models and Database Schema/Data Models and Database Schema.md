@@ -32,6 +32,14 @@
 - [diary_record_test.dart](file://test/models/diary_record_test.dart)
 </cite>
 
+## Update Summary
+**Changes Made**
+- Enhanced FixedEventTemplate model documentation with new isTimePoint property for time point mode
+- Updated database schema documentation to reflect automatic migration support for FixedEventTemplate
+- Improved model immutability documentation with final properties
+- Added new tagFields property documentation for template-specific field customization
+- Updated migration strategy documentation to include automatic column detection
+
 ## Table of Contents
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
@@ -194,10 +202,10 @@ This section documents the core entities and their schema definitions, focusing 
   - Indexes: resource_type, status, occurred_at.
 
 - FixedEventTemplate
-  - Purpose: Reusable event templates for structured recurring events.
-  - Key fields: id (primary key), name, description, duration_minutes, repeat_cycle, color, created_at, updated_at.
-  - Constraints: Not null on name; repeat_cycle enum-like.
-  - Indexes: none.
+  - Purpose: Reusable event templates for structured recurring events with enhanced time point mode support.
+  - Key fields: id (primary key), name, start_time, end_time, is_time_point, content, tags, tag_fields, sort_order, is_enabled, created_at, updated_at.
+  - Constraints: Not null on name; start_time/end_time format "HH:mm"; is_time_point flag controls time representation mode.
+  - Indexes: sort_order.
 
 **Section sources**
 - [diary_record.dart](file://lib/models/diary_record.dart)
@@ -215,7 +223,7 @@ This section documents the core entities and their schema definitions, focusing 
 - [fixed_event_template.dart](file://lib/models/fixed_event_template.dart)
 
 ## Architecture Overview
-The database schema is initialized and migrated via a centralized helper that creates tables and indexes. Repositories encapsulate data access patterns, caching, and transaction boundaries. Platform-specific initialization files wire up the database engine for web and native targets.
+The database schema is initialized and migrated via a centralized helper that creates tables and indexes. Repositories encapsulate data access patterns, caching, and transaction boundaries. Platform-specific initialization files wire up the database engine for web and native targets. Automatic migration support ensures backward compatibility with existing installations.
 
 ```mermaid
 graph TB
@@ -223,9 +231,12 @@ DH["database_helper.dart<br/>Schema Creation & Migrations"]
 DB["SQLite Engine"]
 Repo["Repositories<br/>CRUD + Caching"]
 Models["Domain Models<br/>Entities"]
+AutoMigrate["Automatic Column Detection<br/>Backward Compatibility"]
 DH --> DB
+DH --> AutoMigrate
 Repo --> DH
 Models --> Repo
+AutoMigrate --> DH
 ```
 
 **Diagram sources**
@@ -237,7 +248,7 @@ Models --> Repo
 ## Detailed Component Analysis
 
 ### Database Schema Definition
-The schema is created and managed centrally. It defines tables for all core entities, indexes for performance, and constraints for data integrity. The helper also handles versioning and migrations.
+The schema is created and managed centrally. It defines tables for all core entities, indexes for performance, and constraints for data integrity. The helper also handles versioning and migrations with automatic column detection for backward compatibility.
 
 ```mermaid
 erDiagram
@@ -255,6 +266,7 @@ folders ||--o{ webdav_configs : "sync_to"
 folders ||--o{ chat_sessions : "used_in"
 folders ||--o{ sync_log : "audits"
 folders ||--o{ fixed_event_templates : "templates_for"
+fixed_event_templates ||--|| fixed_event_templates : "self-reference for inheritance"
 ```
 
 **Diagram sources**
@@ -329,7 +341,9 @@ folders ||--o{ fixed_event_templates : "templates_for"
 
 - FixedEventTemplate
   - Primary key: id
-  - Constraints: Not null on name; repeat_cycle enum-like
+  - Indexes: sort_order
+  - Constraints: Not null on name; time format "HH:mm" for start_time/end_time; is_time_point flag controls time representation mode
+  - **Updated**: Enhanced with tag_fields property for template-specific field customization
 
 **Section sources**
 - [diary_record.dart](file://lib/models/diary_record.dart)
@@ -350,14 +364,16 @@ folders ||--o{ fixed_event_templates : "templates_for"
 - Not null constraints enforce presence of critical fields across entities.
 - Enum-like constraints for status and priority in Todo ensure consistent values.
 - Self-referencing foreign keys maintain hierarchical relationships (Folder, Todo).
-- JSON fields (image_ids, tags) require valid serialization; repositories should validate before persistence.
+- JSON fields (image_ids, tags, tag_fields) require valid serialization; repositories should validate before persistence.
 - Composite uniqueness implied by date_key plus type in DailyScore prevents duplicates.
 - Lock flags (is_locked) enable soft-delete semantics and access control at the application level.
+- **Updated**: FixedEventTemplate now enforces time format validation ("HH:mm") and proper time point mode logic through is_time_point flag.
 
 **Section sources**
 - [database_helper.dart](file://lib/core/storage/database_helper.dart)
 - [todo.dart](file://lib/models/todo.dart)
 - [folder.dart](file://lib/models/folder.dart)
+- [fixed_event_template.dart](file://lib/models/fixed_event_template.dart)
 
 ### Data Access Patterns and Caching Strategies
 - Repositories encapsulate CRUD operations and expose async streams or futures for reactive UI updates.
@@ -367,12 +383,14 @@ folders ||--o{ fixed_event_templates : "templates_for"
   - Write-through caching for immutable metadata (e.g., Folders).
 - Transaction boundaries wrap batch operations (e.g., bulk insert of DiaryRecords) to ensure atomicity.
 - Pagination and sorting are applied at the repository level to limit memory footprint.
+- **Updated**: FixedEventRepository now supports automatic migration detection and seamless upgrades for existing installations.
 
 **Section sources**
 - [diary_repository.dart](file://lib/core/storage/diary_repository.dart)
 - [note_repository.dart](file://lib/core/storage/note_repository.dart)
 - [todo_repository.dart](file://lib/core/storage/todo_repository.dart)
 - [folder_repository.dart](file://lib/core/storage/folder_repository.dart)
+- [fixed_event_repository.dart](file://lib/core/storage/fixed_event_repository.dart)
 
 ### Performance Considerations
 - Indexes on frequently queried columns (date_key, folder_id, due_date, status) improve read performance.
@@ -380,6 +398,7 @@ folders ||--o{ fixed_event_templates : "templates_for"
 - Batch operations reduce round-trips; use transactions for multi-row inserts/updates.
 - Avoid SELECT *; fetch only required columns to minimize I/O.
 - Use LIMIT and OFFSET for paginated lists; prefer cursor-based pagination for large datasets.
+- **Updated**: Automatic column detection reduces migration overhead and improves startup performance.
 
 **Section sources**
 - [database_helper.dart](file://lib/core/storage/database_helper.dart)
@@ -389,16 +408,20 @@ folders ||--o{ fixed_event_templates : "templates_for"
   - Diary records: configurable retention (e.g., keep last N months).
   - Daily scores: rolling window (e.g., last 365 days).
   - Sync logs: short-term audit (e.g., last 30 days).
+  - Fixed event templates: persistent across app versions with automatic migration.
 - Archival:
   - Older entries can be moved to read-only archives; ensure referential integrity.
   - Soft-deleted records (is_locked) remain queryable but hidden by default.
+  - Template data persists through migrations with backward compatibility.
 - Cleanup jobs:
   - Scheduled tasks remove expired or archived data; log outcomes in SyncLog.
+  - Automatic migration processes handle schema evolution seamlessly.
 
 **Section sources**
 - [sync_log.dart](file://lib/models/sync_log.dart)
 - [daily_score.dart](file://lib/models/daily_score.dart)
 - [diary_record.dart](file://lib/models/diary_record.dart)
+- [database_helper.dart](file://lib/core/storage/database_helper.dart)
 
 ### Migration Paths and Version Management
 - Version increments in the database helper trigger ALTER TABLE or CREATE TABLE IF NOT EXISTS blocks.
@@ -406,9 +429,14 @@ folders ||--o{ fixed_event_templates : "templates_for"
   - Add columns with defaults; backfill data in batches.
   - Create new tables, copy data, drop old tables atomically.
   - Use PRAGMA foreign_keys=ON/OFF during schema changes requiring temporary violations.
+- **Updated**: Automatic migration support with column detection:
+  - _checkAndAddMissingColumns method automatically adds missing columns for existing installations.
+  - Backward compatibility maintained for older database versions.
+  - Seamless upgrade process without manual intervention required.
 - Backward compatibility:
   - Maintain old column names and types for older clients.
   - Provide upgrade scripts per major/minor version.
+  - Default values ensure existing data remains functional.
 
 **Section sources**
 - [database_helper.dart](file://lib/core/storage/database_helper.dart)
@@ -422,6 +450,7 @@ folders ||--o{ fixed_event_templates : "templates_for"
   - Exclude unnecessary fields from exports and backups.
 - Secure deletion:
   - Implement secure wipe routines for sensitive attachments.
+- **Updated**: Template data migration preserves user configurations securely across versions.
 
 **Section sources**
 - [webdav_config.dart](file://lib/models/webdav_config.dart)
@@ -434,15 +463,21 @@ folders ||--o{ fixed_event_templates : "templates_for"
 - Native (Android/iOS):
   - Uses sqflite with platform channels for native SQLite.
   - database_init.dart and database_init_io.dart handle platform differences and open the database.
+- **Updated**: Enhanced initialization with automatic migration detection for improved reliability.
 
 ```mermaid
 sequenceDiagram
 participant App as "App Startup"
 participant Init as "database_init.dart/io"
 participant Helper as "database_helper.dart"
+participant AutoMigrate as "Automatic Migration"
 participant DB as "SQLite"
 App->>Init : Initialize database
 Init->>Helper : Open/create tables and indexes
+Helper->>AutoMigrate : Check for missing columns
+AutoMigrate->>DB : Detect and add missing columns
+DB-->>AutoMigrate : Columns added successfully
+AutoMigrate-->>Helper : Migration complete
 Helper->>DB : CREATE TABLE / INDEX statements
 DB-->>Helper : Schema ready
 Helper-->>Init : Success
@@ -522,21 +557,25 @@ FER --> FET["fixed_event_template.dart"]
 - Use batch operations for inserts/updates; wrap in transactions.
 - Limit result sets with pagination and avoid SELECT *.
 - Cache hot paths (folders, recent notes/todos) in memory with invalidation on write.
+- **Updated**: Automatic migration detection reduces startup overhead and improves overall application performance.
 
 ## Troubleshooting Guide
 - Schema mismatch errors indicate missing migrations or incorrect version handling; verify CREATE TABLE statements and PRAGMA integrity checks.
 - JSON parsing failures suggest malformed image_ids/tags; validate before persisting.
 - Slow queries often lack proper indexes; add indexes on filter/sort columns.
 - Locked records (is_locked) should be excluded from default views; confirm repository filtering logic.
+- **Updated**: FixedEventTemplate migration issues: ensure is_time_point and tag_fields columns are properly detected and added during automatic migration process.
+- **Updated**: Automatic migration failures: check _checkAndAddMissingColumns method for proper column detection and addition logic.
 
 **Section sources**
 - [database_helper.dart](file://lib/core/storage/database_helper.dart)
 - [diary_repository.dart](file://lib/core/storage/diary_repository.dart)
 - [note_repository.dart](file://lib/core/storage/note_repository.dart)
 - [todo_repository.dart](file://lib/core/storage/todo_repository.dart)
+- [fixed_event_repository.dart](file://lib/core/storage/fixed_event_repository.dart)
 
 ## Conclusion
-QNote's data model centers on lightweight, flexible entities with strong indexing and foreign key constraints. Repositories abstract schema concerns and provide robust caching and transactional guarantees. Platform-specific initialization ensures consistent SQLite behavior across web and native environments. Adhering to the outlined validation rules, migration strategies, and performance practices will sustain reliability and scalability.
+QNote's data model centers on lightweight, flexible entities with strong indexing and foreign key constraints. Repositories abstract schema concerns and provide robust caching and transactional guarantees. Platform-specific initialization ensures consistent SQLite behavior across web and native environments. The enhanced FixedEventTemplate model with time point mode support and automatic migration capabilities significantly improves backward compatibility and user experience. Adhering to the outlined validation rules, migration strategies, and performance practices will sustain reliability and scalability.
 
 ## Appendices
 - Example repository responsibilities:
@@ -549,4 +588,9 @@ QNote's data model centers on lightweight, flexible entities with strong indexin
   - ColorMarkRepository: Date-based color overlays, conflict resolution.
   - ImageRepository: attachment storage, cleanup jobs, backup exclusion.
   - SyncLogRepository: audit trails, retry logic, deduplication.
-  - FixedEventRepository: template expansion, calendar sync.
+  - **Updated**: FixedEventRepository: template expansion, calendar sync, automatic migration support.
+- **Updated**: FixedEventTemplate enhanced features:
+  - Time point mode support via is_time_point property
+  - Template-specific field customization through tag_fields
+  - Improved model immutability with final properties
+  - Automatic migration compatibility for existing installations

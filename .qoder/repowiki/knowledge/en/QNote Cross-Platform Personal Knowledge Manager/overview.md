@@ -1,1 +1,0 @@
-Orchestrates a modular Flutter application for notes, diaries, and todos with unified state management, cross-platform database initialization, and native platform integration.

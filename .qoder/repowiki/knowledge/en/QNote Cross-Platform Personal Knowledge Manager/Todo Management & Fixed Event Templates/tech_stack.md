@@ -1,1 +1,0 @@
-Uses `flutter_riverpod` for state management, `flutter_local_notifications` with `timezone` for scheduled reminders, and `uuid` for unique todo identifiers.

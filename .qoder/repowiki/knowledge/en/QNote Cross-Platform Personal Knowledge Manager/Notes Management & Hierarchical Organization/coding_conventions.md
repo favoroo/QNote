@@ -1,3 +1,0 @@
-- Models implement `toMap` and `fromMap` factories for database serialization, using `jsonEncode`/`jsonDecode` for list fields like `images`.
-- State notifiers delegate all data mutations to repository classes and trigger a full list refresh via `refresh()` after each write operation.
-- Soft deletion is preferred over hard deletion, setting `is_deleted = 1` and updating the `updated_at` timestamp while logging the change for sync purposes.

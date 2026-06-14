@@ -1,4 +1,0 @@
-- Adopts a Provider-Model separation where `lib/providers/` (using `flutter_riverpod`) handle state management and business logic, while `lib/models/` define immutable data structures.
-- Persists lightweight UI preferences (theme mode, accent color) via `shared_preferences` in `theme_provider.dart`.
-- Delegates complex data persistence (user profiles, WebDAV configs, shortcuts) to a centralized `ConfigRepository` (SQLite), accessed by notifiers in `user_profile_provider.dart`, `sync_provider.dart`, and `shortcut_provider.dart`.
-- Models implement standard serialization (`toMap`/`fromMap`) and `copyWith` patterns for immutability and database interoperability.

@@ -1,4 +1,0 @@
-- Follows a Flutter MVVM pattern: `lib/pages/todo_page.dart` (View) consumes Riverpod providers in `lib/providers/` (ViewModel), which orchestrate `TodoRepository` and `FixedEventRepository` (Model/Data).
-- State management uses `flutter_riverpod` with `AsyncNotifier` for the main todo list (`todoListProvider`) and `StateNotifier` for fixed events (`fixedEventNotifierProvider`), ensuring reactive UI updates.
-- Data persistence is handled by singleton repositories (`TodoRepository`, `FixedEventRepository`) that interact with a local SQLite database via `DatabaseHelper`, using `toMap`/`fromMap` serializers in `lib/models/`.
-- Cross-cutting concerns like notifications are integrated directly into the provider layer (`NotificationService.instance.scheduleTodoReminder`), triggering system alerts on todo updates or reminder settings.

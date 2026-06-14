@@ -1,2 +1,0 @@
-- Domain models implement `toMap` and `fromMap` factory constructors for consistent database serialization and deserialization.
-- Global state is exposed via top-level Riverpod provider declarations (e.g., `StateProvider`, `StateNotifierProvider`) rather than being encapsulated within classes.

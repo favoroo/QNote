@@ -1,1 +1,0 @@
-Provides AI-driven daily health scoring, multi-dimensional statistical analysis, and historical trend visualization for user lifestyle data.

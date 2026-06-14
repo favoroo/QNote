@@ -1,1 +1,0 @@
-Manages daily and long-term todos with reminders, completion tracking, and reusable fixed-event templates for rapid logging.
