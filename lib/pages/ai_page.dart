@@ -10,7 +10,9 @@ import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/note.dart';
+import 'package:qnote_flutter/models/todo.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
+import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/config/defaults.dart';
@@ -33,6 +35,7 @@ class _AiPageState extends ConsumerState<AiPage> {
   bool _isTyping = false;
   String _activeScope = '全量';
   List<String> _selectedNoteIds = [];
+  List<String> _selectedTodoIds = [];
   List<String> _selectedTags = [];
   DateTime? _filterStartDate;
   DateTime? _filterEndDate;
@@ -40,13 +43,14 @@ class _AiPageState extends ConsumerState<AiPage> {
   List<String> _selectedSessionIds = [];
   String? _activeModelId;
 
-  static const _scopes = ['全量', '日期', '笔记', '混合', '无'];
+  static const _scopes = ['全量', '日期', '笔记', '待办', '混合', '无'];
 
   static String _scopeToProvider(String scope) {
     return const {
           '全量': 'all',
           '日期': 'date',
           '笔记': 'notes',
+          '待办': 'todos',
           '混合': 'mixed',
           '无': 'none',
         }[scope] ??
@@ -116,6 +120,7 @@ class _AiPageState extends ConsumerState<AiPage> {
       startDate: _filterStartDate,
       endDate: _filterEndDate,
       selectedNoteIds: _selectedNoteIds,
+      selectedTodoIds: _selectedTodoIds,
       selectedTags: _selectedTags,
     );
   }
@@ -127,6 +132,8 @@ class _AiPageState extends ConsumerState<AiPage> {
       _openDateRangePicker();
     } else if (scope == '笔记') {
       _openNoteSelector();
+    } else if (scope == '待办') {
+      _openTodoSelector();
     } else if (scope == '混合') {
       _openDateRangePicker();
     }
@@ -232,6 +239,25 @@ class _AiPageState extends ConsumerState<AiPage> {
     );
     if (result != null) {
       setState(() => _selectedNoteIds = result);
+      _syncContextFilter();
+      if (_activeScope == '混合') {
+        _openTodoSelector();
+      }
+    }
+  }
+
+  Future<void> _openTodoSelector() async {
+    final todos = await TodoRepository().getAll();
+    if (!mounted) return;
+    final result = await showDialog<List<String>>(
+      context: context,
+      builder: (ctx) => _MultiTodoSelectorDialog(
+        todos: todos.where((t) => !t.isDeleted).toList(),
+        initialSelected: _selectedTodoIds,
+      ),
+    );
+    if (result != null) {
+      setState(() => _selectedTodoIds = result);
       _syncContextFilter();
     }
   }
@@ -342,7 +368,7 @@ class _AiPageState extends ConsumerState<AiPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (_filterStartDate != null || _selectedNoteIds.isNotEmpty)
+          if (_filterStartDate != null || _selectedNoteIds.isNotEmpty || _selectedTodoIds.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
               child: Wrap(
@@ -411,6 +437,34 @@ class _AiPageState extends ConsumerState<AiPage> {
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       padding: EdgeInsets.zero,
                     ),
+                  if (_selectedTodoIds.isNotEmpty)
+                    Chip(
+                      avatar: Icon(
+                        Icons.check_box_outlined,
+                        size: 10,
+                        color: theme.colorScheme.primary,
+                      ),
+                      label: Text(
+                        '已选 ${_selectedTodoIds.length} 项待办',
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      deleteIcon: Icon(
+                        Icons.close,
+                        size: 10,
+                        color: theme.colorScheme.primary,
+                      ),
+                      onDeleted: () {
+                        setState(() => _selectedTodoIds = []);
+                        _syncContextFilter();
+                      },
+                      visualDensity: VisualDensity.compact,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      padding: EdgeInsets.zero,
+                    ),
                 ],
               ),
             ),
@@ -454,17 +508,8 @@ class _AiPageState extends ConsumerState<AiPage> {
                       final isSelected = _selectedTags.contains(tag);
                       return Padding(
                         padding: const EdgeInsets.only(right: 4),
-                        child: FilterChip(
-                          showCheckmark: false,
-                          label: Text(
-                            tag,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          selected: isSelected,
-                          onSelected: (val) {
+                        child: InkWell(
+                          onTap: () {
                             setState(() {
                               if (isSelected) {
                                 _selectedTags = _selectedTags
@@ -476,10 +521,31 @@ class _AiPageState extends ConsumerState<AiPage> {
                             });
                             _syncContextFilter();
                           },
-                          visualDensity: VisualDensity.compact,
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
-                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? theme.colorScheme.primary
+                                  : Colors.transparent,
+                              border: Border.all(
+                                color: isSelected
+                                    ? Colors.transparent
+                                    : theme.colorScheme.outlineVariant,
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Text(
+                              tag,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: isSelected
+                                    ? theme.colorScheme.onPrimary
+                                    : theme.colorScheme.onSurface,
+                              ),
+                            ),
+                          ),
                         ),
                       );
                     }),
@@ -525,6 +591,9 @@ class _AiPageState extends ConsumerState<AiPage> {
     if (scope == '笔记' && _selectedNoteIds.isNotEmpty) {
       suffix = ' (${_selectedNoteIds.length})';
     }
+    if (scope == '待办' && _selectedTodoIds.isNotEmpty) {
+      suffix = ' (${_selectedTodoIds.length})';
+    }
     if (scope == '日期' && _filterStartDate != null) {
       suffix = ' (${DateFormat('MM/dd').format(_filterStartDate!)})';
     }
@@ -534,10 +603,11 @@ class _AiPageState extends ConsumerState<AiPage> {
         parts.add(DateFormat('MM/dd').format(_filterStartDate!));
       }
       if (_selectedNoteIds.isNotEmpty) parts.add('${_selectedNoteIds.length}篇');
+      if (_selectedTodoIds.isNotEmpty) parts.add('${_selectedTodoIds.length}项');
       if (parts.isNotEmpty) suffix = ' (${parts.join('+')})';
     }
     final showArrow =
-        isActive && (scope == '日期' || scope == '笔记' || scope == '混合');
+        isActive && (scope == '日期' || scope == '笔记' || scope == '待办' || scope == '混合');
 
     return Padding(
       padding: const EdgeInsets.only(right: 5),
@@ -1802,8 +1872,35 @@ class _MultiNoteSelectorDialogState extends State<_MultiNoteSelectorDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isAllSelected = _selected.length == widget.notes.length && widget.notes.isNotEmpty;
+
     return AlertDialog(
-      title: const Text('选择笔记'),
+      title: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text('选择笔记'),
+          if (widget.notes.isNotEmpty)
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  if (isAllSelected) {
+                    _selected.clear();
+                  } else {
+                    _selected = widget.notes.map((n) => n.id).toList();
+                  }
+                });
+              },
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+              ),
+              child: Text(
+                isAllSelected ? '取消全选' : '全选',
+                style: const TextStyle(fontSize: 14),
+              ),
+            ),
+        ],
+      ),
       content: SizedBox(
         width: double.maxFinite,
         child: widget.notes.isEmpty
@@ -1912,3 +2009,112 @@ class _ModelSelectorDialog extends StatelessWidget {
     );
   }
 }
+
+class _MultiTodoSelectorDialog extends StatefulWidget {
+  final List<Todo> todos;
+  final List<String> initialSelected;
+  const _MultiTodoSelectorDialog({
+    required this.todos,
+    required this.initialSelected,
+  });
+
+  @override
+  State<_MultiTodoSelectorDialog> createState() =>
+      _MultiTodoSelectorDialogState();
+}
+
+class _MultiTodoSelectorDialogState extends State<_MultiTodoSelectorDialog> {
+  late List<String> _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = List.from(widget.initialSelected);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isAllSelected = _selected.length == widget.todos.length && widget.todos.isNotEmpty;
+    
+    return AlertDialog(
+      title: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text('选择待办'),
+          if (widget.todos.isNotEmpty)
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  if (isAllSelected) {
+                    _selected.clear();
+                  } else {
+                    _selected = widget.todos.map((t) => t.id).toList();
+                  }
+                });
+              },
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+              ),
+              child: Text(
+                isAllSelected ? '取消全选' : '全选',
+                style: const TextStyle(fontSize: 14),
+              ),
+            ),
+        ],
+      ),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: widget.todos.isEmpty
+            ? const Center(child: Text('暂无待办'))
+            : ListView.builder(
+                shrinkWrap: true,
+                itemCount: widget.todos.length,
+                itemBuilder: (ctx, i) {
+                  final todo = widget.todos[i];
+                  final isSelected = _selected.contains(todo.id);
+                  return CheckboxListTile(
+                    value: isSelected,
+                    title: Text(
+                      todo.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        decoration: todo.isCompleted ? TextDecoration.lineThrough : null,
+                      ),
+                    ),
+                    subtitle: Text(
+                      todo.isCompleted ? '已完成' : '未完成',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    onChanged: (v) {
+                      setState(() {
+                        if (v == true) {
+                          _selected.add(todo.id);
+                        } else {
+                          _selected.remove(todo.id);
+                        }
+                      });
+                    },
+                  );
+                },
+              ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(_selected),
+          child: const Text('确定'),
+        ),
+      ],
+    );
+  }
+}
+

@@ -1159,16 +1159,18 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
             icon: const Icon(Icons.arrow_back),
             onPressed: _handleBack,
           ),
-          title: TextField(
-            controller: _titleController,
-            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-            textAlign: TextAlign.center,
-            decoration: const InputDecoration(
-              border: InputBorder.none,
-              hintText: '无标题',
-              filled: false,
+            title: TextField(
+              controller: _titleController,
+              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                hintText: '无标题',
+                filled: false,
+              ),
             ),
-          ),
           actions: [
             IconButton(icon: const Icon(Icons.copy), onPressed: _copyMarkdown, tooltip: '复制 Markdown'),
           ],

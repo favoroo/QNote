@@ -410,7 +410,7 @@ class _DiaryItemState extends State<DiaryItem> {
                                             .clamp(50.0, 70.0);
                                     return Padding(
                                       padding: const EdgeInsets.only(
-                                        left: 4,
+                                        left: 0,
                                         top: 4,
                                       ),
                                       child: Wrap(
@@ -866,7 +866,7 @@ class _DiaryItemState extends State<DiaryItem> {
       text: record.content,
       bodyState: record.bodyState,
       tag: record.displayTag,
-      leftPadding: 4,
+      leftPadding: 0,
       isMultiTag: true,
     );
     if (richContent != null) {
@@ -912,7 +912,7 @@ class _DiaryItemState extends State<DiaryItem> {
     String? text,
     Map<String, dynamic>? bodyState,
     String? tag,
-    double leftPadding = 12,
+    double leftPadding = 0,
     bool isMultiTag = false,
   }) {
     String cleanText = text ?? '';
@@ -1114,7 +1114,7 @@ class _DiaryItemState extends State<DiaryItem> {
     if (elements.isEmpty) return null;
 
     return Padding(
-      padding: const EdgeInsets.only(left: 12, top: 4, bottom: 8),
+      padding: EdgeInsets.only(left: leftPadding, top: 4, bottom: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: elements,

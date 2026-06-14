@@ -8,6 +8,9 @@
 
 ## 2026-06-14
 
+- **[22:55]**
+  - **Fixed**: 修复固定事件编辑对话框中"时长(小时)"等非 select 文本字段无法正常连续输入的问题（输入"12"变成"21"）。根因是每次 build 都 `new TextEditingController` 重建控制器并 setDialogState 推算结束时间，导致光标归零、字符反向插入。改为在 State 字段按 `'$tagId#${field.id}'` 缓存 controller / focusNode，仅在 controller 未获焦时单向同步外部值；onFieldChanged 中修改 endHour/endMinute 的 setDialogState 推迟到下一帧 (`lib/pages/settings/fixed_events_page.dart`)。
+
 - **[22:10]**
   - **Fixed**: 修复 AI 配置中默认 agnes 模型的 `baseUrl` 为空的问题，修正默认值并在编辑对话框中增加空 URL 兜底填充逻辑 (`lib/config/defaults.dart`, `lib/pages/settings/ai_config_page.dart`)。
 
