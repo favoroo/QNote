@@ -1164,7 +1164,13 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               final icon = tagIcons[config.name] ?? Icons.label;
 
               return ChoiceChip(
-                label: Text(config.name),
+                label: AnimatedSize(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeInOut,
+                  child: isSelected ? Text(config.name) : const SizedBox.shrink(),
+                ),
+                labelPadding: isSelected ? null : EdgeInsets.zero,
+                padding: isSelected ? null : const EdgeInsets.all(8),
                 avatar: Icon(
                   icon,
                   size: 14,
