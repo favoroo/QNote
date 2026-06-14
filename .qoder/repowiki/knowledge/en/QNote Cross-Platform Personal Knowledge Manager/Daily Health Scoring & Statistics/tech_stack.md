@@ -1,0 +1,3 @@
+- **fl_chart**: Used for rendering historical score trends in `_ScoreHistoryChart`.
+- **flutter_markdown**: Renders AI-generated summaries and suggestions in `_AiSuggestionCard`.
+- **flutter_riverpod**: Manages asynchronous state for scoring operations and history fetching.

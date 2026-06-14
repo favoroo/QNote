@@ -1,3 +1,0 @@
-- **State Management**: `flutter_riverpod` (AsyncNotifier, StateProvider, FutureProvider).
-- **Persistence**: SQLite via `sqflite` (abstracted in `DiaryRepository`).
-- **Navigation**: `go_router` for deep linking to editors and batch views.

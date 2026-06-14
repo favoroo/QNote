@@ -1,0 +1,4 @@
+- **Unified State & Navigation Shell**: Uses `flutter_riverpod` for global state management and `go_router` with `StatefulShellRoute` to maintain persistent navigation across five primary feature branches (Diary, Notes, Todo, AI, Statistics).
+- **Cross-Platform Database Initialization**: Leverages Dart conditional imports to configure platform-specific SQLite factories (WebAssembly for web, native FFI for desktop/mobile) ensuring consistent data access logic.
+- **Native Platform Bridging**: Establishes `MethodChannel` bridges to handle deep-linking and UI interactions from native Android widgets (Quick Record, Todo), seamlessly transitioning users into the Flutter application context.
+- **Centralized Service Bootstrapping**: Coordinates the initialization of logging, notifications, and background sync schedulers in `main.dart` before launching the `ProviderScope`, ensuring all child modules operate on a ready infrastructure.

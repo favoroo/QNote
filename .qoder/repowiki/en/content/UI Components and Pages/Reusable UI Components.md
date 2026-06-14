@@ -44,6 +44,7 @@
 - [diary_streaming_bubble.dart](file://lib/widgets/diary/diary_streaming_bubble.dart)
 - [diary_blinking_cursor.dart](file://lib/widgets/diary/diary_blinking_cursor.dart)
 - [diary_typing_dots.dart](file://lib/widgets/diary/diary_typing_dots.dart)
+- [edit_tag_time_sheet.dart](file://lib/widgets/diary/edit_tag_time_sheet.dart)
 </cite>
 
 ## Table of Contents
@@ -98,7 +99,7 @@ BDAY["BirthdayPicker<br/>lib/widgets/birthday_picker.dart"]
 DEBUG["DebugConsole<br/>lib/widgets/debug_console.dart"]
 TIME_RANGE["TimeRangeSelector<br/>lib/widgets/time_range_selector.dart"]
 STATS_WIDGETS["Stats Widgets<br/>sleep/diet/finance/mood"]
-end
+END
 APP --> ROUTER
 ROUTER --> AI
 ROUTER --> DIARY
@@ -159,7 +160,7 @@ This section catalogs reusable UI components and their primary roles:
 - TimeRangeSelector: Date range selection for analytics.
 - Stats widgets: Sleep, diet, finance, mood visualizations.
 - BottomNavBar: Application navigation rail.
-- Diary widgets: Editor, batch manage, item, input bar, date picker, AI extract helper, timeline dialogs/items, multi-note selector, model selector, export dialog, typing bubbles, chat bubbles, streaming bubble, blinking cursor, typing dots.
+- Diary widgets: Editor, batch manage, item, input bar, date picker, AI extract helper, timeline dialogs/items, multi-note selector, model selector, export dialog, typing bubbles, chat bubbles, streaming bubble, blinking cursor, typing dots, edit tag time sheet.
 
 These components are imported and composed by page widgets to deliver feature-specific experiences.
 
@@ -194,6 +195,7 @@ These components are imported and composed by page widgets to deliver feature-sp
 - [diary_streaming_bubble.dart](file://lib/widgets/diary/diary_streaming_bubble.dart)
 - [diary_blinking_cursor.dart](file://lib/widgets/diary/diary_blinking_cursor.dart)
 - [diary_typing_dots.dart](file://lib/widgets/diary/diary_typing_dots.dart)
+- [edit_tag_time_sheet.dart](file://lib/widgets/diary/edit_tag_time_sheet.dart)
 
 ## Architecture Overview
 The UI architecture follows a layered pattern:
@@ -338,6 +340,7 @@ Page-->>User : Render updated UI
 - Timeline dialogs/items: Model-driven timeline UI.
 - Multi-note selector dialog, model selector dialog, export dialog.
 - Typing bubbles, chat bubbles, streaming bubble, blinking cursor, typing dots.
+- EditTagTimeSheet: Tag management with animated size transitions.
 
 ```mermaid
 classDiagram
@@ -358,6 +361,7 @@ class DiaryChatBubble
 class DiaryStreamingBubble
 class DiaryBlinkingCursor
 class DiaryTypingDots
+class EditTagTimeSheet
 DiaryItem --> DiaryInputBar : "contextual actions"
 DiaryEditorView --> DiaryInputBar : "composition"
 DiaryBatchManageView --> DiaryItem : "renders list"
@@ -371,6 +375,7 @@ DiaryTypingBubbles --> DiaryChatBubble : "typing UX"
 DiaryStreamingBubble --> DiaryChatBubble : "streaming UX"
 DiaryBlinkingCursor --> DiaryChatBubble : "cursor UX"
 DiaryTypingDots --> DiaryTypingBubbles : "dots UX"
+EditTagTimeSheet --> DiaryEditorView : "tag management"
 ```
 
 **Diagram sources**
@@ -391,6 +396,7 @@ DiaryTypingDots --> DiaryTypingBubbles : "dots UX"
 - [diary_streaming_bubble.dart](file://lib/widgets/diary/diary_streaming_bubble.dart)
 - [diary_blinking_cursor.dart](file://lib/widgets/diary/diary_blinking_cursor.dart)
 - [diary_typing_dots.dart](file://lib/widgets/diary/diary_typing_dots.dart)
+- [edit_tag_time_sheet.dart](file://lib/widgets/diary/edit_tag_time_sheet.dart)
 
 **Section sources**
 - [diary_page.dart](file://lib/pages/diary_page.dart)
@@ -411,6 +417,7 @@ DiaryTypingDots --> DiaryTypingBubbles : "dots UX"
 - [diary_streaming_bubble.dart](file://lib/widgets/diary/diary_streaming_bubble.dart)
 - [diary_blinking_cursor.dart](file://lib/widgets/diary/diary_blinking_cursor.dart)
 - [diary_typing_dots.dart](file://lib/widgets/diary/diary_typing_dots.dart)
+- [edit_tag_time_sheet.dart](file://lib/widgets/diary/edit_tag_time_sheet.dart)
 
 ### Notes Widgets
 - NoteEditorView: Editor for note content.
@@ -438,11 +445,30 @@ DiaryTypingDots --> DiaryTypingBubbles : "dots UX"
 - [diary_typing_dots.dart](file://lib/widgets/diary/diary_typing_dots.dart)
 - [diary_blinking_cursor.dart](file://lib/widgets/diary/diary_blinking_cursor.dart)
 
+### Tag Selection Components with Animated Size Transitions
+**Updated** Enhanced tag selection components now feature animated size transitions for improved user experience.
+
+- ChoiceChip: Enhanced tag selection with animated size transitions in both diary editor view and edit tag time sheet components.
+- DiaryInputBar: Tag display area with animated size transitions for dynamic tag management.
+- EditTagTimeSheet: Comprehensive tag management interface with animated transitions for tag addition/removal.
+
+Key enhancements:
+- AnimatedSize widgets wrap ChoiceChip components to provide smooth size transitions when tags are added or removed.
+- Tags expand and contract smoothly during user interactions.
+- Improved visual feedback for tag selection and deselection states.
+- Consistent animation timing and curve for all tag-related interactions.
+
+**Section sources**
+- [diary_editor_view.dart](file://lib/widgets/diary/diary_editor_view.dart)
+- [diary_input_bar.dart](file://lib/widgets/diary/diary_input_bar.dart)
+- [edit_tag_time_sheet.dart](file://lib/widgets/diary/edit_tag_time_sheet.dart)
+
 ## Dependency Analysis
 - Router depends on page widgets; pages depend on reusable widgets.
 - Many pages import shared widgets (EmptyState, SearchView, ActionMenu).
 - Diary and Notes share similar patterns: editor + list + actions.
 - Statistics page composes multiple specialized widgets.
+- Tag selection components depend on ChoiceChip and AnimatedSize widgets.
 
 ```mermaid
 graph LR
@@ -462,6 +488,7 @@ DIARY_PAGE --> CUSTOM_DATE_PICKER["CustomDatePicker"]
 DIARY_PAGE --> AI_EXTRACT["AIExtractHelper"]
 DIARY_PAGE --> TIMELINE_WRAPPER["TimelineItemWrapper"]
 DIARY_PAGE --> EXPORT_DIALOG["DiaryExportDialog"]
+DIARY_PAGE --> EDIT_TAG_SHEET["EditTagTimeSheet"]
 STATS_PAGE --> EMPTY_STATE
 STATS_PAGE --> TIME_RANGE_SELECTOR["TimeRangeSelector"]
 STATS_PAGE --> STATS_WIDGETS["Sleep/Diet/Finance/Mood"]
@@ -482,6 +509,7 @@ STATS_PAGE --> STATS_WIDGETS["Sleep/Diet/Finance/Mood"]
 - [ai_extract_helper.dart](file://lib/widgets/diary/ai_extract_helper.dart)
 - [timeline_item_wrapper.dart](file://lib/widgets/diary/timeline_item_wrapper.dart)
 - [diary_export_dialog.dart](file://lib/widgets/diary/diary_export_dialog.dart)
+- [edit_tag_time_sheet.dart](file://lib/widgets/diary/edit_tag_time_sheet.dart)
 - [time_range_selector.dart](file://lib/widgets/time_range_selector.dart)
 - [sleep_stats.dart](file://lib/widgets/statistics/sleep_stats.dart)
 - [diet_stats.dart](file://lib/widgets/statistics/diet_stats.dart)
@@ -501,6 +529,7 @@ STATS_PAGE --> STATS_WIDGETS["Sleep/Diet/Finance/Mood"]
 - Cache frequently accessed data and avoid unnecessary widget tree growth.
 - Use IndexedStack or similar for tabbed views to preserve state efficiently.
 - Keep animations subtle and configurable to reduce CPU/GPU load.
+- AnimatedSize transitions should use appropriate duration and curve settings to balance responsiveness with visual appeal.
 
 ## Accessibility and Responsive Design
 - Accessibility:
@@ -512,12 +541,14 @@ STATS_PAGE --> STATS_WIDGETS["Sleep/Diet/Finance/Mood"]
   - Use Flexible, Expanded, and LayoutBuilder for adaptive layouts.
   - Guard against overflow with SingleChildScrollView and clipping.
   - Test on various screen sizes and orientations.
+  - Animated transitions should respect user motion preferences.
 
 ## Cross-Platform Compatibility
 - The app targets Android, iOS, Web, and Windows. Ensure:
   - Platform-specific assets and resources are handled gracefully.
   - Platform channels are used sparingly and defensively.
   - UI does not rely on platform-specific APIs unless wrapped.
+  - AnimatedSize widgets work consistently across platforms.
 
 ## Extending and Creating New Components
 Guidelines:
@@ -528,24 +559,31 @@ Guidelines:
 - Provide sensible defaults and allow easy overrides.
 - Document props, events, and customization points.
 - Test on multiple platforms and screen sizes.
+- When implementing animated transitions, use AnimatedSize with appropriate duration and curve parameters.
 
 ## Styling Consistency and Theme Integration
 - Centralize colors, typography, and spacing in theme or constants.
 - Use Material/Adaptive widgets to inherit platform-appropriate styles.
 - Apply consistent padding/margins and rounded corners.
 - Respect dark/light mode by reading theme data.
+- Tag selection components should maintain consistent visual hierarchy and spacing.
 
 ## Animation Patterns
 - Subtle entrance/exit transitions for dialogs and overlays.
 - Indicators for loading and streaming (dots, pulse).
 - Smooth scrolling and page transitions.
+- AnimatedSize transitions for dynamic content sizing.
+- ChoiceChip components now feature smooth size transitions during tag selection.
 - Avoid excessive motion; provide reduced-motion alternatives.
+- Animation duration and curve should be configurable for different interaction types.
 
 ## User Interaction Handling
 - Debounce search inputs to reduce recomputation.
 - Validate inputs incrementally; show inline feedback.
 - Provide undo actions for destructive operations.
 - Persist user preferences (e.g., last selected tab) across sessions.
+- Tag selection should provide immediate visual feedback with smooth transitions.
+- Animated transitions should not interfere with user interaction responsiveness.
 
 ## Troubleshooting Guide
 Common issues and remedies:
@@ -559,10 +597,13 @@ Common issues and remedies:
   - Wrap with AutomaticKeepAliveClientMixin or use keys.
 - Performance regressions:
   - Profile with DevTools; isolate heavy computations.
+- Animated transitions not working:
+  - Verify AnimatedSize widgets are properly configured with vsync and duration.
+  - Ensure child widgets have consistent constraints and sizing behavior.
 
 **Section sources**
 - [toast_utils.dart](file://lib/core/utils/toast_utils.dart)
 - [widget_utils.dart](file://lib/core/utils/widget_utils.dart)
 
 ## Conclusion
-QNote Flutter’s UI system emphasizes composability and reusability through small, focused widgets and consistent patterns across pages. By following the guidelines here—on props/events, theme integration, accessibility, responsiveness, cross-platform support, and maintainability—you can extend the existing components and introduce new ones that fit seamlessly into the design system.
+QNote Flutter's UI system emphasizes composability and reusability through small, focused widgets and consistent patterns across pages. Recent enhancements to tag selection components with animated size transitions improve user experience while maintaining performance and accessibility standards. By following the guidelines here—on props/events, theme integration, accessibility, responsiveness, cross-platform support, animation patterns, and maintainability—you can extend the existing components and introduce new ones that fit seamlessly into the design system.

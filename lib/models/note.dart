@@ -2,16 +2,16 @@ import 'dart:convert';
 
 class Note {
   final String id;
-  String title;
-  String content;
-  String? folderId;
-  String tags;
-  bool isPinned;
-  List<String> images;
-  int sortOrder;
-  DateTime createdAt;
-  DateTime updatedAt;
-  bool isDeleted;
+  final String title;
+  final String content;
+  final String? folderId;
+  final String tags;
+  final bool isPinned;
+  final List<String> images;
+  final int sortOrder;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final bool isDeleted;
 
   Note({
     required this.id,

@@ -161,16 +161,17 @@ class AppTheme {
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return accentColor;
+            return Colors.white;
           }
           return const Color(0xFFC2C6D6);
         }),
         trackColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return accentColor.withValues(alpha: 0.4);
+            return accentColor;
           }
           return const Color(0xFFECEDEF);
         }),
+        trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
       ),
       checkboxTheme: CheckboxThemeData(
         fillColor: WidgetStateProperty.resolveWith((states) {
@@ -351,16 +352,17 @@ class AppTheme {
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return accentColor;
+            return Colors.white;
           }
-          return const Color(0xFF525766);
+          return const Color(0xFF8E94A3);
         }),
         trackColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return accentColor.withValues(alpha: 0.35);
+            return accentColor;
           }
           return const Color(0xFF383C47);
         }),
+        trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
       ),
       checkboxTheme: CheckboxThemeData(
         fillColor: WidgetStateProperty.resolveWith((states) {

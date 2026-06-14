@@ -1,14 +1,14 @@
 class AiConfig {
   final String id;
-  String name;
-  String provider;
-  String modelName;
-  String apiKey;
-  String baseUrl;
-  bool isDefault;
-  String? vendorId;
-  DateTime createdAt;
-  DateTime updatedAt;
+  final String name;
+  final String provider;
+  final String modelName;
+  final String apiKey;
+  final String baseUrl;
+  final bool isDefault;
+  final String? vendorId;
+  final DateTime createdAt;
+  final DateTime updatedAt;
 
   AiConfig({
     required this.id,

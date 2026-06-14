@@ -1,0 +1,1 @@
+State management via `flutter_riverpod` (StateNotifierProvider, AsyncNotifierProvider); Persistence via `shared_preferences` for UI settings and `sqflite` (via `ConfigRepository`) for structured app data.

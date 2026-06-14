@@ -1,12 +1,12 @@
 class Folder {
   final String id;
-  String name;
-  String? parentId;
-  String type;
-  int sortOrder;
-  bool isExpanded;
-  DateTime createdAt;
-  DateTime updatedAt;
+  final String name;
+  final String? parentId;
+  final String type;
+  final int sortOrder;
+  final bool isExpanded;
+  final DateTime createdAt;
+  final DateTime updatedAt;
 
   Folder({
     required this.id,

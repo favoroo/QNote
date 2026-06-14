@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: distribution_copy
+title: QNote Application Shell & UI Foundation
+scope:
+    - 应用分享/
+source_files: []
+depends_on: []
+related_to:
+    - path: decisions/bbf95725d582_bee858165e63

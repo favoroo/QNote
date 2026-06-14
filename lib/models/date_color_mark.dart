@@ -1,7 +1,7 @@
 class DateColorMark {
   final String id;
-  DateTime date;
-  String color;
+  final DateTime date;
+  final String color;
 
   DateColorMark({
     required this.id,

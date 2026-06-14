@@ -1,0 +1,1 @@
+Uses Flutter Riverpod for state management and flutter_markdown for rendering AI responses.

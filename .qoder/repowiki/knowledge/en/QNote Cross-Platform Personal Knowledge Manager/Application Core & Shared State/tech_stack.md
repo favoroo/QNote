@@ -1,0 +1,1 @@
+Uses `flutter_riverpod` for state management and `sqflite_common_ffi_web` for cross-platform SQLite support via conditional imports.

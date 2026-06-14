@@ -6,7 +6,8 @@ class FixedEventTemplate {
   final String id;
   String name;           // 事件名称，如"上班"
   String startTime;      // 开始时间，格式 "HH:mm"，如 "08:00"
-  String endTime;        // 结束时间，格式 "HH:mm"，如 "12:00"
+  String endTime;        // 结束时间，格式 "HH:mm"；时间点模式下为空串 ""
+  bool isTimePoint;      // 是否为时间点模式（true：只有单个时间点，无结束时间）
   String? content;       // 默认备注内容
   List<String> tags;     // 关联标签 ID 列表
   /// 每个标签下预设的字段值：key = tagId, value = {fieldKey: fieldValue}
@@ -21,6 +22,7 @@ class FixedEventTemplate {
     required this.name,
     required this.startTime,
     required this.endTime,
+    this.isTimePoint = false,
     this.content,
     this.tags = const [],
     this.tagFields = const {},
@@ -36,6 +38,7 @@ class FixedEventTemplate {
       'name': name,
       'start_time': startTime,
       'end_time': endTime,
+      'is_time_point': isTimePoint ? 1 : 0,
       'content': content ?? '',
       'tags': jsonEncode(tags),
       'tag_fields': jsonEncode(tagFields),
@@ -60,7 +63,8 @@ class FixedEventTemplate {
       id: map['id'] as String,
       name: map['name'] as String,
       startTime: map['start_time'] as String,
-      endTime: map['end_time'] as String,
+      endTime: map['end_time'] as String? ?? '',
+      isTimePoint: (map['is_time_point'] as int?) == 1,
       content: map['content'] as String?,
       tags: tags,
       tagFields: tagFields.map((k, v) => MapEntry(k, v is Map<String, dynamic> ? v : {})),
@@ -76,6 +80,7 @@ class FixedEventTemplate {
     String? name,
     String? startTime,
     String? endTime,
+    bool? isTimePoint,
     String? content,
     List<String>? tags,
     Map<String, Map<String, dynamic>>? tagFields,
@@ -89,6 +94,7 @@ class FixedEventTemplate {
       name: name ?? this.name,
       startTime: startTime ?? this.startTime,
       endTime: endTime ?? this.endTime,
+      isTimePoint: isTimePoint ?? this.isTimePoint,
       content: content ?? this.content,
       tags: tags ?? this.tags,
       tagFields: tagFields ?? this.tagFields,
@@ -121,8 +127,9 @@ class FixedEventTemplate {
     return parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
   }
 
-  /// 格式化显示时间段，如 "08:00 - 12:00"
+  /// 格式化显示时间：时间点模式返回 "08:00"，时间段返回 "08:00 - 12:00"
   String get formattedTimeRange {
+    if (isTimePoint) return startTime;
     return '$startTime - $endTime';
   }
 }

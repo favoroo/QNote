@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: flutter_app
+title: QNote Cross-Platform Personal Knowledge Manager
+scope:
+    - lib/
+    - android/
+    - web/
+    - windows/
+    - test/
+source_files: []
+depends_on: []
+related_to: []

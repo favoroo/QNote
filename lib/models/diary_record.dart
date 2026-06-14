@@ -3,23 +3,23 @@ import 'package:qnote_flutter/models/tag_entry.dart';
 
 class DiaryRecord {
   final String id;
-  String title;
-  DateTime time;
-  DateTime? startTime;
-  DateTime? endTime;
-  List<String> tags;
-  String displayTag;
-  String content;
-  Map<String, dynamic>? bodyState;
-  List<TagEntry> tagEntries;
-  List<String> photos;
-  String colorMark;
-  int mood;
-  String weather;
-  String? folderId;
-  DateTime createdAt;
-  DateTime updatedAt;
-  bool isDeleted;
+  final String title;
+  final DateTime time;
+  final DateTime? startTime;
+  final DateTime? endTime;
+  final List<String> tags;
+  final String displayTag;
+  final String content;
+  final Map<String, dynamic>? bodyState;
+  final List<TagEntry> tagEntries;
+  final List<String> photos;
+  final String colorMark;
+  final int mood;
+  final String weather;
+  final String? folderId;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final bool isDeleted;
 
   DiaryRecord({
     required this.id,

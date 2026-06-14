@@ -106,6 +106,8 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
 
   late _Draft _draft;
   String? _activeFormTagId;
+  // 支持多选：按选中顺序保存固定事件模板 ID（用于备注换行拼接）
+  final Set<String> _selectedFixedEventIds = <String>{};
 
   _Draft? _preExtractDraft;
   String? _preExtractText;
@@ -294,6 +296,30 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         }).toList();
       }
 
+      // activity 联动：外部时间变化时（如改时间选择器、点固定事件），反算 duration 回写 fields
+      final activityEntry = nextTagEntries.where((e) => e.id == 'activity').firstOrNull;
+      if (activityEntry != null) {
+        var activityFields = Map<String, dynamic>.from(activityEntry.fields);
+        if (nextEndTime != null) {
+          final startMin = nextStartTime.hour * 60 + nextStartTime.minute;
+          final endMin = nextEndTime.hour * 60 + nextEndTime.minute;
+          var diffMin = endMin - startMin;
+          if (diffMin < 0) diffMin += 1440;
+          // 跨天时用 endOffset 修正：负的 endOffset 表示前一天，需补足时长
+          final offDiff = (nextEndOffset ?? nextStartOffset ?? 0) - (nextStartOffset ?? 0);
+          diffMin += offDiff * 1440;
+          if (diffMin >= 0) {
+            activityFields['duration'] = (diffMin / 60.0).toStringAsFixed(1);
+          }
+        } else {
+          activityFields.remove('duration');
+        }
+        nextTagEntries = nextTagEntries.map((e) {
+          if (e.id == 'activity') return e.copyWith(fields: activityFields);
+          return e;
+        }).toList();
+      }
+
       _draft = active.copyWith(
         inputText: inputText,
         tagEntries: nextTagEntries,
@@ -384,6 +410,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       _preExtractDraft = null;
       _preExtractText = null;
       _activeFormTagId = null;
+      _selectedFixedEventIds.clear();
     });
   }
 
@@ -563,22 +590,40 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
   }
 
   /// 选择固定事件模板，自动填充时间、内容和标签（含字段值）
+  /// 支持多选：再次点击已选中模板则取消；多个模板的备注换行拼接显示
   void _selectFixedEvent(FixedEventTemplate template) {
-    // 使用模板的开始时间和结束时间
-    final startTime = TimeOfDay(hour: template.startHour, minute: template.startMinute);
-    final endTime = TimeOfDay(hour: template.endHour, minute: template.endMinute);
+    final isDeselecting = _selectedFixedEventIds.contains(template.id);
 
-    // 处理关联标签：将模板中的 tagId 转换为 TagEntry 添加到 draft，并填充预设字段值
+    setState(() {
+      if (isDeselecting) {
+        _selectedFixedEventIds.remove(template.id);
+      } else {
+        _selectedFixedEventIds.add(template.id);
+      }
+    });
+
+    // 取出当前所有可用的固定事件模板，用于按选中顺序拼接备注与时间
+    final allTemplates = ref.read(fixedEventListProvider).valueOrNull ?? [];
+
+    // 取消选中：移除该模板关联的标签
+    if (isDeselecting) {
+      final currentEntries = List<TagEntry>.from(_activeDraft.tagEntries);
+      if (template.tags.isNotEmpty) {
+        currentEntries.removeWhere((e) => template.tags.contains(e.id));
+      }
+      _applyFixedEventsSelection(allTemplates, currentEntries);
+      Toast.success(context, '已取消：${template.name}', duration: const Duration(seconds: 1));
+      return;
+    }
+
+    // 选中：把该模板关联的标签加入草稿（去重）
+    final currentEntries = List<TagEntry>.from(_activeDraft.tagEntries);
     if (template.tags.isNotEmpty) {
       final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
-      final currentEntries = List<TagEntry>.from(_activeDraft.tagEntries);
-
       for (final tagId in template.tags) {
         try {
           final config = shortcuts.firstWhere((s) => s.id == tagId);
-          // 避免重复添加已存在的标签
           if (!currentEntries.any((e) => e.id == config.id)) {
-            // 取出该标签的预设字段值
             final presetFields = template.tagFields[tagId] ?? {};
             currentEntries.add(
               TagEntry(id: config.id, name: config.name, fields: Map<String, dynamic>.from(presetFields)),
@@ -586,20 +631,55 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           }
         } catch (_) {}
       }
-
-      _updateActiveDraft(
-        startTime: startTime,
-        endTime: endTime,
-        inputText: template.content ?? _textController.text,
-        tagEntries: currentEntries,
-      );
-    } else {
-      _updateActiveDraft(
-        startTime: startTime,
-        endTime: endTime,
-        inputText: template.content ?? _textController.text,
-      );
     }
+    _applyFixedEventsSelection(allTemplates, currentEntries);
+
+    // 显示提示
+    Toast.success(context, '已填充：${template.name} (${template.formattedTimeRange})', duration: const Duration(seconds: 1));
+  }
+
+  /// 根据当前选中的固定事件集合，统一刷新草稿的时间与备注
+  /// - 时间：用"最后选中"的模板时间（时间点模式无结束时间）
+  /// - 备注：所有选中模板的备注按选中顺序换行拼接
+  void _applyFixedEventsSelection(List<FixedEventTemplate> allTemplates, List<TagEntry> tagEntries) {
+    if (_selectedFixedEventIds.isEmpty) {
+      _updateActiveDraft(
+        inputText: '',
+        tagEntries: tagEntries,
+        clearEndTime: true,
+      );
+      ref.read(diaryInputTimeProvider.notifier).state = null;
+      return;
+    }
+
+    // 按选中顺序找到对应的模板
+    final selectedTemplates = <FixedEventTemplate>[];
+    for (final t in allTemplates) {
+      if (_selectedFixedEventIds.contains(t.id)) {
+        selectedTemplates.add(t);
+      }
+    }
+    // 时间用最后选中模板的时间
+    final last = selectedTemplates.last;
+    final startTime = TimeOfDay(hour: last.startHour, minute: last.startMinute);
+    final TimeOfDay? endTime = last.isTimePoint
+        ? null
+        : TimeOfDay(hour: last.endHour, minute: last.endMinute);
+
+    // 备注换行拼接（过滤掉空备注）
+    final contents = selectedTemplates
+        .map((t) => t.content?.trim() ?? '')
+        .where((c) => c.isNotEmpty)
+        .toList();
+    final mergedText = contents.join('\n');
+
+    _updateActiveDraft(
+      startTime: startTime,
+      endTime: endTime,
+      clearEndTime: last.isTimePoint,
+      inputText: mergedText.isEmpty ? _textController.text : mergedText,
+      tagEntries: tagEntries,
+    );
 
     // 更新时间选择 Provider
     final selectedDate = ref.read(selectedDateProvider);
@@ -610,22 +690,21 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       startTime.hour,
       startTime.minute,
     );
-    final endDateTime = DateTime(
-      selectedDate.year,
-      selectedDate.month,
-      selectedDate.day,
-      endTime.hour,
-      endTime.minute,
-    );
+    final endDateTime = endTime == null
+        ? null
+        : DateTime(
+            selectedDate.year,
+            selectedDate.month,
+            selectedDate.day,
+            endTime.hour,
+            endTime.minute,
+          );
     ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
       startTime,
       endTime: endTime,
       date: startDateTime,
       endDate: endDateTime,
     );
-
-    // 显示提示
-    Toast.success(context, '已填充：${template.name} (${template.formattedTimeRange})', duration: const Duration(seconds: 1));
   }
 
   void _updateFormValue(String key, dynamic value, {String? tagId}) {
@@ -679,6 +758,28 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         }
       }
 
+      if (key == 'duration' && value != null) {
+        final double? durationHours = double.tryParse(value.toString());
+        if (durationHours != null) {
+          final startTime = _activeDraft.startTime;
+          final startMinutes = startTime.hour * 60 + startTime.minute;
+          final durationMinutes = (durationHours * 60).toInt();
+          final totalMinutes = startMinutes + durationMinutes;
+          final endHour = (totalMinutes ~/ 60) % 24;
+          final endMinute = totalMinutes % 60;
+          final daysOffset = totalMinutes ~/ 1440;
+
+          _updateActiveDraft(
+            tagEntries: newTagEntries,
+            endTime: TimeOfDay(hour: endHour, minute: endMinute),
+            endOffset: (_activeDraft.startOffset ?? 0) + daysOffset,
+          );
+          return;
+        }
+      }
+    }
+
+    if (effectiveTagId == 'activity') {
       if (key == 'duration' && value != null) {
         final double? durationHours = double.tryParse(value.toString());
         if (durationHours != null) {
@@ -876,6 +977,10 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     // Do NOT call _updateActiveDraft first, as it would schedule a
     // postFrameCallback that restores the provider to non-null.
     ref.read(diaryInputTimeProvider.notifier).state = null;
+    // 同时清除固定事件的选中状态
+    setState(() {
+      _selectedFixedEventIds.clear();
+    });
   }
 
   Future<void> _handleAiExtract() async {
@@ -1657,6 +1762,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       _preExtractDraft = null;
       _preExtractText = null;
       _activeFormTagId = null;
+      _selectedFixedEventIds.clear();
     });
 
     if (mounted) {
@@ -1983,17 +2089,24 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: templates.map((template) {
+                      final isSelected = _selectedFixedEventIds.contains(template.id);
                       return Padding(
                         padding: const EdgeInsets.only(right: 6),
                         child: GestureDetector(
                           onTap: () => _selectFixedEvent(template),
-                          child: Container(
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            curve: Curves.easeInOut,
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                             decoration: BoxDecoration(
-                              color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
+                              color: isSelected
+                                  ? theme.colorScheme.primary
+                                  : Colors.transparent,
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                                color: isSelected
+                                    ? Colors.transparent
+                                    : theme.colorScheme.outlineVariant,
                                 width: 1,
                               ),
                             ),
@@ -2001,16 +2114,20 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
-                                  Icons.schedule,
+                                  isSelected ? Icons.check_circle : Icons.schedule,
                                   size: 12,
-                                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                                  color: isSelected
+                                      ? theme.colorScheme.onPrimary
+                                      : theme.colorScheme.onSurface,
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
                                   template.name,
                                   style: theme.textTheme.labelSmall?.copyWith(
                                     fontWeight: FontWeight.w600,
-                                    color: theme.colorScheme.onSurfaceVariant,
+                                    color: isSelected
+                                        ? theme.colorScheme.onPrimary
+                                        : theme.colorScheme.onSurface,
                                   ),
                                 ),
                               ],
@@ -2864,34 +2981,19 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
               widget.onClose?.call();
             },
             child: Container(
-              width: 24,
-              height: 24,
-              margin: const EdgeInsets.only(left: 2),
+              width: 28, // Slightly larger to match standard icon touch targets, was 24
+              height: 28,
+              margin: const EdgeInsets.only(left: 4, right: 4),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    theme.colorScheme.primaryContainer,
-                    theme.colorScheme.surfaceContainerHighest,
-                  ],
-                ),
+                color: Colors.transparent,
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: theme.colorScheme.outlineVariant.withValues(
-                    alpha: 0.3,
-                  ),
+                  color: theme.colorScheme.outlineVariant,
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 4,
-                  ),
-                ],
               ),
               child: Icon(
                 Icons.keyboard_arrow_down,
-                size: 12,
+                size: 16,
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
@@ -3370,12 +3472,14 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                         if (!isDisabled) _handleSend();
                       },
                     ),
-                    Positioned(
-                      right: 6,
-                      bottom: 6,
-                      child: ValueListenableBuilder<TextEditingValue>(
-                        valueListenable: _textController,
-                        builder: (context, value, _) {
+                      Positioned(
+                        right: 0,
+                        top: 0,
+                        bottom: 0,
+                        child: Center(
+                          child: ValueListenableBuilder<TextEditingValue>(
+                            valueListenable: _textController,
+                            builder: (context, value, _) {
                           final hasText = value.text.isNotEmpty;
                           final hasTags = draft.tagEntries.isNotEmpty;
                           final hasPhotos = draft.selectedPhotos.isNotEmpty;
@@ -3392,37 +3496,38 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                             child: GestureDetector(
                               onTap: _clearCurrentDraft,
                               behavior: HitTestBehavior.opaque,
-                              child: Padding(
-                                padding: const EdgeInsets.all(10),
-                                child: Container(
-                                  width: 20,
-                                  height: 20,
-                                  decoration: BoxDecoration(
-                                    color: Colors.red.withValues(alpha: 0.85),
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.red.withValues(
-                                          alpha: 0.25,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(10),
+                                  child: Container(
+                                    width: 26,
+                                    height: 26,
+                                    decoration: BoxDecoration(
+                                      color: Colors.red.withValues(alpha: 0.85),
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.red.withValues(
+                                            alpha: 0.25,
+                                          ),
+                                          blurRadius: 4,
+                                          offset: const Offset(0, 2),
                                         ),
-                                        blurRadius: 4,
-                                        offset: const Offset(0, 2),
+                                      ],
+                                    ),
+                                    child: const Center(
+                                      child: Icon(
+                                        Icons.close,
+                                        size: 16,
+                                        color: Colors.white,
                                       ),
-                                    ],
-                                  ),
-                                  child: const Center(
-                                    child: Icon(
-                                      Icons.close,
-                                      size: 12,
-                                      color: Colors.white,
                                     ),
                                   ),
                                 ),
-                              ),
                             ),
                           );
                         },
                       ),
+                        ),
                     ),
                   ],
                 ),

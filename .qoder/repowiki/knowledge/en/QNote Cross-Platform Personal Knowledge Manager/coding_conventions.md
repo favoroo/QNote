@@ -1,0 +1,3 @@
+- Feature modules are organized under `lib/` with dedicated `pages/`, `providers/`, and `widgets/` directories.
+- Global application state and business logic are managed exclusively through Riverpod providers.
+- Navigation routes are centrally defined in `core/router/app_router.dart` using a declarative `GoRouter` configuration.

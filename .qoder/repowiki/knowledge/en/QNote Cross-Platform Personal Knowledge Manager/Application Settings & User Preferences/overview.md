@@ -1,0 +1,1 @@
+Manages user profile data, UI theme customization, WebDAV synchronization configuration, and shortcut preferences using a provider-driven architecture.

@@ -1,0 +1,4 @@
+- **Data Layer**: Defines `DailyScore` and `WeightRecord` models with JSON serialization support. Uses `DailyScoreRepository` (singleton) for SQLite persistence and sync logging.
+- **State Management**: Implements `DailyScoreNotifier` (Riverpod `AsyncNotifier`) to manage scoring state, bridging diary records, user profile data, and AI services. Exposes `dailyScoreProvider` and `dailyScoreHistoryProvider`.
+- **Presentation Layer**: `StatisticsPage` serves as the main container with tabbed navigation for various stats categories. `DailyScoreStats` widget handles the specific UI for daily scoring, including date selection, score visualization (`_ScoreCircle`, `_DimensionScoreBar`), and AI-generated markdown suggestions.
+- **Integration**: Orchestrates AI scoring via `AiRoleService` and `AiServiceProvider`, requiring a minimum of 3 diary records to trigger analysis.

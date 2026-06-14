@@ -32,12 +32,12 @@ class ChatMessage {
 
 class ChatSession {
   final String id;
-  String title;
-  List<ChatMessage> messages;
-  String? aiConfigId;
-  DateTime createdAt;
-  DateTime updatedAt;
-  bool isDeleted;
+  final String title;
+  final List<ChatMessage> messages;
+  final String? aiConfigId;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final bool isDeleted;
 
   ChatSession({
     required this.id,

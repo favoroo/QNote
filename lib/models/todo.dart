@@ -1,19 +1,19 @@
 class Todo {
   final String id;
-  String title;
-  String description;
-  bool isCompleted;
-  String priority;
-  DateTime? dueDate;
-  String tags;
-  String? folderId;
-  bool isLongTerm;
-  String? reminderTime;
-  DateTime? deadline;
+  final String title;
+  final String description;
+  final bool isCompleted;
+  final String priority;
+  final DateTime? dueDate;
+  final String tags;
+  final String? folderId;
+  final bool isLongTerm;
+  final String? reminderTime;
+  final DateTime? deadline;
   final int sortOrder;
-  DateTime createdAt;
-  DateTime updatedAt;
-  bool isDeleted;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final bool isDeleted;
 
   Todo({
     required this.id,

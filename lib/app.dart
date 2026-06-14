@@ -43,7 +43,9 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
     try {
       ref.read(diaryListProvider.notifier).refresh();
       ref.read(todoListProvider.notifier).refresh();
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('刷新 Provider 失败: $e');
+    }
   }
 
   void _initNavigationListener() {
@@ -63,7 +65,9 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
         if (pending != null) {
           _navigateToRoute(pending);
         }
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('获取挂起路由失败: $e');
+      }
     });
   }
 
@@ -71,7 +75,9 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
     try {
       final router = ref.read(routerProvider);
       router.go(route);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('路由导航失败: $e');
+    }
   }
 
   @override

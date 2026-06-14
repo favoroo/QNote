@@ -1,0 +1,5 @@
+- Centralized orchestration via `lib/main.dart` initializes shared services (logging, notifications, database) and boots the `ProviderScope`.
+- Unified navigation using `go_router` with `StatefulShellRoute` to manage bottom-tab persistence across Diary, Notes, Todo, AI, and Statistics modules.
+- Cross-platform database abstraction using conditional imports (`database_init.dart` vs `database_init_io.dart`) to support Web (WASM) and Native (SQLite) environments.
+- Native-to-Flutter communication established via `MethodChannel` in `app.dart` to handle deep linking from Android home screen widgets.
+- Shared state management using `flutter_riverpod` for theme, navigation, and data providers, ensuring consistent UI updates across all feature modules.

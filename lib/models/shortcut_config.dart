@@ -4,14 +4,14 @@ import 'package:qnote_flutter/models/shortcut_category.dart';
 
 class ShortcutConfig {
   final String id;
-  String name;
-  bool hasPopup;
-  List<ShortcutField> fields;
-  List<ShortcutCategory>? categories;
-  int sortOrder;
-  bool isVisible;
-  DateTime createdAt;
-  DateTime updatedAt;
+  final String name;
+  final bool hasPopup;
+  final List<ShortcutField> fields;
+  final List<ShortcutCategory>? categories;
+  final int sortOrder;
+  final bool isVisible;
+  final DateTime createdAt;
+  final DateTime updatedAt;
 
   ShortcutConfig({
     required this.id,

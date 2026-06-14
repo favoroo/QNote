@@ -12,6 +12,9 @@
 - [todo_repository.dart](file://lib/core/storage/todo_repository.dart)
 - [folder_repository.dart](file://lib/core/storage/folder_repository.dart)
 - [sync_log_repository.dart](file://lib/core/storage/sync_log_repository.dart)
+- [fixed_event_repository.dart](file://lib/core/storage/fixed_event_repository.dart)
+- [color_mark_repository.dart](file://lib/core/storage/color_mark_repository.dart)
+- [daily_score_repository.dart](file://lib/core/storage/daily_score_repository.dart)
 - [folder.dart](file://lib/models/folder.dart)
 - [note_repository.dart](file://应用分享/lib/core/storage/note_repository.dart)
 - [folder_repository.dart](file://应用分享/lib/core/storage/folder_repository.dart)
@@ -51,6 +54,9 @@ R3["NoteRepository"]
 R4["TodoRepository"]
 R5["FolderRepository"]
 R6["SyncLogRepository"]
+R7["FixedEventRepository"]
+R8["ColorMarkRepository"]
+R9["DailyScoreRepository"]
 end
 subgraph "Infrastructure"
 D1["DatabaseHelper"]
@@ -65,6 +71,9 @@ R3 --> D1
 R4 --> D1
 R5 --> D1
 R6 --> D1
+R7 --> D1
+R8 --> D1
+R9 --> D1
 DI1 --> D1
 DI2 --> D1
 ```
@@ -79,6 +88,9 @@ DI2 --> D1
 - [todo_repository.dart](file://lib/core/storage/todo_repository.dart)
 - [folder_repository.dart](file://lib/core/storage/folder_repository.dart)
 - [sync_log_repository.dart](file://lib/core/storage/sync_log_repository.dart)
+- [fixed_event_repository.dart](file://lib/core/storage/fixed_event_repository.dart)
+- [color_mark_repository.dart](file://lib/core/storage/color_mark_repository.dart)
+- [daily_score_repository.dart](file://lib/core/storage/daily_score_repository.dart)
 - [folder.dart](file://lib/models/folder.dart)
 
 **Section sources**
@@ -92,6 +104,9 @@ This section outlines the foundational components and their roles in the data ac
 - ConfigRepository: Manages application settings and user preferences.
 - ImageRepository: Handles photo attachments and media-related operations.
 - Entity Repositories (NoteRepository, TodoRepository, FolderRepository): Encapsulate CRUD and query operations for each domain entity.
+- **New**: FixedEventRepository: Manages fixed event templates for recurring calendar events.
+- **New**: ColorMarkRepository: Handles color marking operations for categorization and visual organization.
+- **New**: DailyScoreRepository: Implements scoring systems for daily tracking and progress monitoring.
 
 Key conventions observed:
 - Singleton repositories via factory constructors.
@@ -109,6 +124,9 @@ Key conventions observed:
 - [note_repository.dart](file://lib/core/storage/note_repository.dart)
 - [todo_repository.dart](file://lib/core/storage/todo_repository.dart)
 - [folder_repository.dart](file://lib/core/storage/folder_repository.dart)
+- [fixed_event_repository.dart](file://lib/core/storage/fixed_event_repository.dart)
+- [color_mark_repository.dart](file://lib/core/storage/color_mark_repository.dart)
+- [daily_score_repository.dart](file://lib/core/storage/daily_score_repository.dart)
 
 ## Architecture Overview
 The data access architecture follows a repository pattern with explicit separation of concerns:
@@ -158,6 +176,27 @@ class FolderRepository {
 +getByType()
 +getSubFolders()
 }
+class FixedEventRepository {
++getAll()
++getById()
++insert()
++update()
++delete()
+}
+class ColorMarkRepository {
++getAll()
++getById()
++insert()
++update()
++delete()
+}
+class DailyScoreRepository {
++getAll()
++getById()
++insert()
++update()
++delete()
+}
 class Folder {
 +toMap()
 +fromMap()
@@ -168,9 +207,15 @@ ImageRepository --> DatabaseHelper : "uses"
 NoteRepository --> DatabaseHelper : "uses"
 TodoRepository --> DatabaseHelper : "uses"
 FolderRepository --> DatabaseHelper : "uses"
+FixedEventRepository --> DatabaseHelper : "uses"
+ColorMarkRepository --> DatabaseHelper : "uses"
+DailyScoreRepository --> DatabaseHelper : "uses"
 NoteRepository --> SyncLogRepository : "logs changes"
 TodoRepository --> SyncLogRepository : "logs changes"
 FolderRepository --> SyncLogRepository : "logs changes"
+FixedEventRepository --> SyncLogRepository : "logs changes"
+ColorMarkRepository --> SyncLogRepository : "logs changes"
+DailyScoreRepository --> SyncLogRepository : "logs changes"
 FolderRepository --> Folder : "creates"
 ```
 
@@ -182,6 +227,9 @@ FolderRepository --> Folder : "creates"
 - [note_repository.dart](file://lib/core/storage/note_repository.dart)
 - [todo_repository.dart](file://lib/core/storage/todo_repository.dart)
 - [folder_repository.dart](file://lib/core/storage/folder_repository.dart)
+- [fixed_event_repository.dart](file://lib/core/storage/fixed_event_repository.dart)
+- [color_mark_repository.dart](file://lib/core/storage/color_mark_repository.dart)
+- [daily_score_repository.dart](file://lib/core/storage/daily_score_repository.dart)
 - [folder.dart](file://lib/models/folder.dart)
 
 ## Detailed Component Analysis
@@ -242,7 +290,7 @@ FolderRepository --> Folder : "creates"
   - update(note): Update an existing note (updates timestamps via copyWith), then persist and log.
   - softDelete(id): Mark a note as deleted with updated timestamps and log the change.
 - Data transformation:
-  - Uses Note model’s toMap(), fromMap(), and copyWith() for serialization and immutability.
+  - Uses Note model's toMap(), fromMap(), and copyWith() for serialization and immutability.
 - Business rules:
   - Soft deletion sets an is_deleted flag and updates timestamps.
   - Queries exclude deleted records by default.
@@ -313,6 +361,60 @@ ReturnList --> End(["Done"])
 - [folder.dart](file://lib/models/folder.dart)
 - [AGENTS.md:82-91](file://AGENTS.md#L82-L91)
 
+### FixedEventRepository
+- **New**: Manages fixed event templates for recurring calendar events.
+- Operations:
+  - getAll(): Fetch all fixed event templates with default filtering.
+  - getById(id): Retrieve a specific template by id.
+  - insert(template): Persist a new template and log the change.
+  - update(template): Update an existing template and log the change.
+  - delete(id): Remove a template and log the change.
+- Data transformation:
+  - Uses FixedEvent model for serialization and deserialization.
+- Business rules:
+  - Follows standard repository pattern with soft delete semantics.
+  - Templates support recurrence patterns and scheduling configurations.
+
+**Section sources**
+- [fixed_event_repository.dart](file://lib/core/storage/fixed_event_repository.dart)
+- [AGENTS.md:82-91](file://AGENTS.md#L82-L91)
+
+### ColorMarkRepository
+- **New**: Handles color marking operations for categorization and visual organization.
+- Operations:
+  - getAll(): Fetch all color marking entries with default filtering.
+  - getById(id): Retrieve a specific color mark by id.
+  - insert(mark): Persist a new color mark and log the change.
+  - update(mark): Update an existing color mark and log the change.
+  - delete(id): Remove a color mark and log the change.
+- Data transformation:
+  - Uses ColorMark model for color-based categorization.
+- Business rules:
+  - Supports color-based tagging for notes and other entities.
+  - Enables visual organization and filtering capabilities.
+
+**Section sources**
+- [color_mark_repository.dart](file://lib/core/storage/color_mark_repository.dart)
+- [AGENTS.md:82-91](file://AGENTS.md#L82-L91)
+
+### DailyScoreRepository
+- **New**: Implements scoring systems for daily tracking and progress monitoring.
+- Operations:
+  - getAll(): Fetch all daily scores with date-based filtering.
+  - getById(id): Retrieve a specific score entry by id.
+  - insert(score): Persist a new score and log the change.
+  - update(score): Update an existing score and log the change.
+  - delete(id): Remove a score entry and log the change.
+- Data transformation:
+  - Uses DailyScore model for numerical tracking and statistics.
+- Business rules:
+  - Supports daily quantification metrics and progress tracking.
+  - Enables historical trend analysis and reporting.
+
+**Section sources**
+- [daily_score_repository.dart](file://lib/core/storage/daily_score_repository.dart)
+- [AGENTS.md:82-91](file://AGENTS.md#L82-L91)
+
 ### Model Transformation and Validation
 - All models implement:
   - toMap(): Serializes the instance to a map suitable for database insertion/update.
@@ -338,9 +440,15 @@ DH --> IR["ImageRepository"]
 DH --> NR["NoteRepository"]
 DH --> TR["TodoRepository"]
 DH --> FR["FolderRepository"]
+DH --> Fer["FixedEventRepository"]
+DH --> CMR["ColorMarkRepository"]
+DH --> DSR["DailyScoreRepository"]
 SLR["SyncLogRepository"] --> NR
 SLR --> TR
 SLR --> FR
+SLR --> Fer
+SLR --> CMR
+SLR --> DSR
 ```
 
 **Diagram sources**
@@ -351,6 +459,9 @@ SLR --> FR
 - [note_repository.dart](file://lib/core/storage/note_repository.dart)
 - [todo_repository.dart](file://lib/core/storage/todo_repository.dart)
 - [folder_repository.dart](file://lib/core/storage/folder_repository.dart)
+- [fixed_event_repository.dart](file://lib/core/storage/fixed_event_repository.dart)
+- [color_mark_repository.dart](file://lib/core/storage/color_mark_repository.dart)
+- [daily_score_repository.dart](file://lib/core/storage/daily_score_repository.dart)
 
 **Section sources**
 - [AGENTS.md:82-91](file://AGENTS.md#L82-L91)
@@ -361,8 +472,7 @@ SLR --> FR
 - Logging overhead: SyncLogRepository.logChange() adds minimal overhead but is essential for auditability; batch operations can reduce redundant logs if needed.
 - Data transformation cost: Prefer copyWith() for immutable updates to avoid unnecessary allocations; reuse transformed lists when possible.
 - Caching: While not explicitly implemented in the shown code, consider caching frequently accessed entities (e.g., folders) in memory and invalidating via provider invalidation on changes.
-
-[No sources needed since this section provides general guidance]
+- **New**: Specialized repositories (FixedEvent, ColorMark, DailyScore) should implement appropriate indexing strategies for their specific query patterns and data volume.
 
 ## Troubleshooting Guide
 Common issues and remedies:
@@ -370,6 +480,10 @@ Common issues and remedies:
 - Missing records: Verify soft-delete filters and is_deleted semantics; queries should exclude deleted items by default.
 - Change logging failures: Confirm SyncLogRepository.logChange() is invoked after each write operation.
 - Thread safety: Use Riverpod providers to manage state and invalidate on changes; avoid direct synchronous IO on the UI thread.
+- **New**: Repository-specific issues:
+  - FixedEventRepository: Verify template recurrence patterns and scheduling configurations.
+  - ColorMarkRepository: Ensure color values are properly validated and stored.
+  - DailyScoreRepository: Check numerical ranges and data type consistency for score values.
 
 **Section sources**
 - [AGENTS.md:94-99](file://AGENTS.md#L94-L99)
@@ -377,4 +491,4 @@ Common issues and remedies:
 - [sync_log_repository.dart](file://lib/core/storage/sync_log_repository.dart)
 
 ## Conclusion
-QNote Flutter employs a clean repository pattern with consistent method signatures, robust data transformation via models, and mandatory change logging for auditability. The architecture supports asynchronous operations, soft deletes, and clear separation of concerns. By adhering to the documented conventions and leveraging Riverpod for state management, developers can extend repositories for new entities while maintaining performance, thread safety, and data consistency.
+QNote Flutter employs a clean repository pattern with consistent method signatures, robust data transformation via models, and mandatory change logging for auditability. The architecture supports asynchronous operations, soft deletes, and clear separation of concerns. With the addition of specialized repositories for fixed event templates, color marking operations, and daily scoring systems, the platform now provides comprehensive support for advanced organizational and tracking capabilities. By adhering to the documented conventions and leveraging Riverpod for state management, developers can extend repositories for new entities while maintaining performance, thread safety, and data consistency.

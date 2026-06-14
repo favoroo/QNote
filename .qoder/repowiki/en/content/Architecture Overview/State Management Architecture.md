@@ -2,9 +2,9 @@
 
 <cite>
 **Referenced Files in This Document**
-- [AGENTS.md](file://AGENTS.md)
-- [app.dart](file://lib/app.dart)
 - [main.dart](file://lib/main.dart)
+- [app.dart](file://lib/app.dart)
+- [fixed_event_provider.dart](file://lib/providers/fixed_event_provider.dart)
 - [user_profile_provider.dart](file://lib/providers/user_profile_provider.dart)
 - [note_provider.dart](file://lib/providers/note_provider.dart)
 - [diary_provider.dart](file://lib/providers/diary_provider.dart)
@@ -17,16 +17,24 @@
 - [models.dart](file://lib/config/models.dart)
 </cite>
 
+## Update Summary
+**Changes Made**
+- Added new Fixed Event Provider section documenting the fixed_event_provider.dart implementation
+- Updated architecture overview to include fixed event template state management
+- Enhanced provider dependency analysis with fixed event template integration
+- Updated performance considerations to include fixed event template caching strategies
+
 ## Table of Contents
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
 4. [Architecture Overview](#architecture-overview)
 5. [Detailed Component Analysis](#detailed-component-analysis)
-6. [Dependency Analysis](#dependency-analysis)
-7. [Performance Considerations](#performance-considerations)
-8. [Troubleshooting Guide](#troubleshooting-guide)
-9. [Conclusion](#conclusion)
+6. [Fixed Event Template Provider](#fixed-event-template-provider)
+7. [Dependency Analysis](#dependency-analysis)
+8. [Performance Considerations](#performance-considerations)
+9. [Troubleshooting Guide](#troubleshooting-guide)
+10. [Conclusion](#conclusion)
 
 ## Introduction
 This document explains QNote Flutter's Riverpod-based state management architecture. It covers the provider pattern implementation, reactive updates, and how Riverpod manages state across different scopes. It documents the separation between state providers, future providers, and stream providers, and demonstrates practical patterns for loading states, error handling, and asynchronous state management. Guidance on performance, memory management, and best practices for organizing providers in large applications is also included.
@@ -40,19 +48,22 @@ subgraph "App Bootstrap"
 MAIN["lib/main.dart"]
 APP["lib/app.dart"]
 end
-subgraph "Providers"
+subgraph "Core Providers"
 THEME["theme_provider.dart"]
 NAV["navigation_provider.dart"]
 DATE["selected_date_provider.dart"]
 SYNC["sync_provider.dart"]
+END
+subgraph "Domain Providers"
 NOTE["note_provider.dart"]
 DIARY["diary_provider.dart"]
 TODO["todo_provider.dart"]
 USER["user_profile_provider.dart"]
+FIXED_EVENT["fixed_event_provider.dart"]
 end
-subgraph "Domain Providers"
+subgraph "Model Definitions"
 MODELS["config/models.dart"]
-end
+END
 MAIN --> APP
 APP --> THEME
 APP --> NAV
@@ -62,10 +73,12 @@ APP --> NOTE
 APP --> DIARY
 APP --> TODO
 APP --> USER
+APP --> FIXED_EVENT
 NOTE --> MODELS
 DIARY --> MODELS
 TODO --> MODELS
 USER --> MODELS
+FIXED_EVENT --> MODELS
 ```
 
 **Diagram sources**
@@ -79,6 +92,7 @@ USER --> MODELS
 - [diary_provider.dart](file://lib/providers/diary_provider.dart)
 - [todo_provider.dart](file://lib/providers/todo_provider.dart)
 - [user_profile_provider.dart](file://lib/providers/user_profile_provider.dart)
+- [fixed_event_provider.dart](file://lib/providers/fixed_event_provider.dart)
 - [models.dart](file://lib/config/models.dart)
 
 **Section sources**
@@ -86,11 +100,11 @@ USER --> MODELS
 - [app.dart](file://lib/app.dart)
 
 ## Core Components
-QNote leverages Riverpod’s provider ecosystem to separate concerns and enable reactive updates:
+QNote leverages Riverpod's provider ecosystem to separate concerns and enable reactive updates:
 
 - StateProvider: for simple, local state values (e.g., theme mode, selected date).
-- FutureProvider: for asynchronous initialization and one-time reads (e.g., user profile).
-- StateNotifierProvider: for complex mutable state with methods to mutate state (e.g., note list operations).
+- FutureProvider: for asynchronous initialization and one-time reads (e.g., user profile, fixed event templates).
+- StateNotifierProvider: for complex mutable state with methods to mutate state (e.g., note list operations, fixed event template management).
 - Provider: for service instances and derived state (e.g., router, repositories).
 - AsyncNotifierProvider/AsyncNotifier: recommended for async state with refresh semantics.
 
@@ -105,31 +119,35 @@ The project guidelines emphasize:
 - [AGENTS.md](file://AGENTS.md)
 
 ## Architecture Overview
-The app initializes Riverpod at the top level and exposes providers globally. UI components watch providers to reactively rebuild when state changes. Domain-specific providers encapsulate CRUD operations and maintain lists or single items. The router provider coordinates navigation state.
+The app initializes Riverpod at the top level and exposes providers globally. UI components watch providers to reactively rebuild when state changes. Domain-specific providers encapsulate CRUD operations and maintain lists or single items. The router provider coordinates navigation state. The newly added fixed event template provider manages reusable event templates with both enabled-only and comprehensive listing capabilities.
 
 ```mermaid
 graph TB
 subgraph "Global Scope"
 PS["ProviderScope"]
 ROUTER["routerProvider (Provider)"]
-end
+END
 subgraph "Theme & UI"
 THEME_MODE["themeModeProvider (StateProvider)"]
 ACCENT["accentColorProvider (StateProvider)"]
-end
+END
 subgraph "Navigation"
 NAV_SHELL["navigationShellProvider (StateProvider)"]
-end
+END
 subgraph "Date & Sync"
 SELECTED_DATE["selectedDateProvider (StateProvider)"]
 SYNC_STATE["syncProvider (AsyncNotifierProvider)"]
-end
+END
 subgraph "Domain State"
 NOTES["notesListProvider (AsyncNotifierProvider)"]
 DIARY["diaryEntriesProvider (AsyncNotifierProvider)"]
 TODO["todoListProvider (AsyncNotifierProvider)"]
 USER_PROFILE["userProfileProvider (FutureProvider)"]
-end
+FIXED_EVENTS["fixedEventListProvider (FutureProvider)"]
+END
+subgraph "Template Management"
+FIXED_EVENT_NOTIFIER["fixedEventNotifierProvider (StateNotifierProvider)"]
+END
 PS --> ROUTER
 PS --> THEME_MODE
 PS --> ACCENT
@@ -140,6 +158,8 @@ PS --> NOTES
 PS --> DIARY
 PS --> TODO
 PS --> USER_PROFILE
+PS --> FIXED_EVENTS
+PS --> FIXED_EVENT_NOTIFIER
 ```
 
 **Diagram sources**
@@ -153,6 +173,7 @@ PS --> USER_PROFILE
 - [diary_provider.dart](file://lib/providers/diary_provider.dart)
 - [todo_provider.dart](file://lib/providers/todo_provider.dart)
 - [user_profile_provider.dart](file://lib/providers/user_profile_provider.dart)
+- [fixed_event_provider.dart](file://lib/providers/fixed_event_provider.dart)
 
 ## Detailed Component Analysis
 
@@ -292,8 +313,56 @@ userProfileNotifierProvider --> userProfileProvider : "wraps"
 **Section sources**
 - [models.dart](file://lib/config/models.dart)
 
+## Fixed Event Template Provider
+
+**Updated** Added comprehensive documentation for the new fixed event template provider system
+
+The fixed event template provider manages reusable event templates that users can create, customize, and apply to their scheduling. This provider enhances the application's state management architecture by introducing specialized template management capabilities.
+
+### Fixed Event Template List Provider
+- fixedEventListProvider is a FutureProvider that retrieves only enabled fixed event templates
+- Optimized for scenarios where disabled templates should not be displayed
+- Returns a List<FixedEventTemplate> for immediate consumption
+
+### Fixed Event Template Manager Notifier
+- FixedEventNotifier extends StateNotifier<List<FixedEventTemplate>>
+- Manages the complete lifecycle of fixed event templates
+- Provides comprehensive CRUD operations with automatic state invalidation
+
+#### Key Operations:
+- **loadAll()**: Loads all templates (enabled and disabled) and refreshes dependent providers
+- **add()**: Creates new templates with proper validation and persistence
+- **update()**: Modifies existing templates with atomic operations
+- **delete()**: Removes templates with cascading cleanup
+- **reorder()**: Handles complex sorting with database updates and state synchronization
+
+### Template Management Architecture
+The fixed event template system follows Riverpod best practices with clear separation between data retrieval and manipulation:
+
+```mermaid
+sequenceDiagram
+participant UI as "Template UI"
+participant Notifier as "FixedEventNotifier"
+participant Repo as "FixedEventRepository"
+participant ListProvider as "fixedEventListProvider"
+UI->>Notifier : "add(template)"
+Notifier->>Repo : "insert(template)"
+Repo-->>Notifier : "success"
+Notifier->>Notifier : "loadAll()"
+Notifier->>Repo : "getAll()"
+Repo-->>Notifier : "updated list"
+Notifier->>ListProvider : "invalidate()"
+ListProvider-->>UI : "refreshed template list"
+```
+
+**Diagram sources**
+- [fixed_event_provider.dart](file://lib/providers/fixed_event_provider.dart)
+
+**Section sources**
+- [fixed_event_provider.dart](file://lib/providers/fixed_event_provider.dart)
+
 ## Dependency Analysis
-Providers depend on repositories and services injected via Provider. The app’s global scope ensures all providers share the same Riverpod instance. UI components consume providers through Consumer widgets, enabling fine-grained rebuilds.
+Providers depend on repositories and services injected via Provider. The app's global scope ensures all providers share the same Riverpod instance. UI components consume providers through Consumer widgets, enabling fine-grained rebuilds.
 
 ```mermaid
 graph LR
@@ -305,10 +374,14 @@ UI --> NOTES["notesListProvider"]
 UI --> DIARY["diaryEntriesProvider"]
 UI --> TODO["todoListProvider"]
 UI --> USER["userProfileProvider"]
+UI --> FIXED_EVENTS["fixedEventListProvider"]
+UI --> FIXED_NOTIFIER["fixedEventNotifierProvider"]
 NOTES --> REPO_NOTES["NoteRepository"]
 DIARY --> REPO_DIARY["DiaryRepository"]
 TODO --> REPO_TODO["TodoRepository"]
 USER --> REPO_CONFIG["ConfigRepository"]
+FIXED_EVENTS --> REPO_FIXED["FixedEventRepository"]
+FIXED_NOTIFIER --> REPO_FIXED
 ```
 
 **Diagram sources**
@@ -317,6 +390,7 @@ USER --> REPO_CONFIG["ConfigRepository"]
 - [diary_provider.dart](file://lib/providers/diary_provider.dart)
 - [todo_provider.dart](file://lib/providers/todo_provider.dart)
 - [user_profile_provider.dart](file://lib/providers/user_profile_provider.dart)
+- [fixed_event_provider.dart](file://lib/providers/fixed_event_provider.dart)
 
 **Section sources**
 - [app.dart](file://lib/app.dart)
@@ -329,6 +403,7 @@ USER --> REPO_CONFIG["ConfigRepository"]
 - Use refresh() strategically after writes to avoid stale UI.
 - Cache frequently accessed data in memory-backed providers to reduce IO.
 - Leverage Provider for singleton services to prevent redundant instances.
+- **Fixed Event Templates**: Implement intelligent caching for template lists, especially for frequently accessed templates. Consider lazy loading for large template collections to improve initial app startup performance.
 
 ## Troubleshooting Guide
 Common issues and remedies:
@@ -337,11 +412,13 @@ Common issues and remedies:
 - Async errors: handle AsyncValue.error in UI using AsyncValue.when(error: ...) and show user-friendly messages.
 - Memory leaks: dispose of long-lived subscriptions and timers inside Notifiers; avoid holding large collections unnecessarily.
 - Router state inconsistencies: verify routerProvider is initialized in ProviderScope and navigationShellProvider is updated consistently.
+- **Fixed Event Templates**: Monitor template loading performance for large collections; implement pagination or virtualization for template lists exceeding 100 items.
 
 **Section sources**
 - [AGENTS.md](file://AGENTS.md)
 - [note_provider.dart](file://lib/providers/note_provider.dart)
 - [app.dart](file://lib/app.dart)
+- [fixed_event_provider.dart](file://lib/providers/fixed_event_provider.dart)
 
 ## Conclusion
-QNote’s Riverpod architecture cleanly separates state, logic, and UI. By using StateProvider for simple values, FutureProvider for async initialization, and AsyncNotifierProvider for complex async state with refresh semantics, the app achieves predictable, reactive updates. Following the documented patterns—avoiding StateNotifierProvider when possible, composing providers, and handling loading/error states—ensures scalability and maintainability in larger applications.
+QNote's Riverpod architecture cleanly separates state, logic, and UI. By using StateProvider for simple values, FutureProvider for async initialization, and AsyncNotifierProvider for complex async state with refresh semantics, the app achieves predictable, reactive updates. The addition of the fixed event template provider demonstrates the framework's flexibility in handling specialized domain requirements while maintaining architectural consistency. Following the documented patterns—avoiding StateNotifierProvider when possible, composing providers, and handling loading/error states—ensures scalability and maintainability in larger applications.

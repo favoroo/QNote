@@ -1,0 +1,5 @@
+- Flutter SDK ^3.11.5 with Material 3 design.
+- State Management: `flutter_riverpod` ^2.6.1.
+- Navigation: `go_router` ^14.8.1 with `StatefulShellRoute`.
+- Persistence: `sqflite` ^2.4.1 for local database, `shared_preferences` ^2.3.4 for simple key-value storage.
+- Fonts: Custom 'Inter' font family configured in `pubspec.yaml`.

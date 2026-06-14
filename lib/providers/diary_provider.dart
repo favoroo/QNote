@@ -174,32 +174,39 @@ final diaryDetailProvider = FutureProvider.family<DiaryRecord?, String>((
   return repo.getById(id);
 });
 
-class DiaryColorMarkNotifier extends StateNotifier<List<DateColorMark>> {
-  final ColorMarkRepository _repo;
+/// 日期颜色标记的异步通知器
+class DiaryColorMarkNotifier extends AsyncNotifier<List<DateColorMark>> {
+  @override
+  Future<List<DateColorMark>> build() async {
+    final repo = ref.read(colorMarkRepositoryProvider);
+    return repo.getAll();
+  }
 
-  DiaryColorMarkNotifier(this._repo) : super([]);
-
-  Future<void> loadAll() async {
-    state = await _repo.getAll();
+  Future<void> refresh() async {
+    final repo = ref.read(colorMarkRepositoryProvider);
+    state = AsyncData(await repo.getAll());
   }
 
   Future<void> setMark(DateColorMark mark) async {
-    await _repo.insert(mark);
-    await loadAll();
+    final repo = ref.read(colorMarkRepositoryProvider);
+    await repo.insert(mark);
+    await refresh();
   }
 
   Future<void> removeMark(String id) async {
-    await _repo.delete(id);
-    await loadAll();
+    final repo = ref.read(colorMarkRepositoryProvider);
+    await repo.delete(id);
+    await refresh();
   }
 
   Future<void> removeMarkByDate(DateTime date) async {
-    await _repo.deleteByDate(date);
-    await loadAll();
+    final repo = ref.read(colorMarkRepositoryProvider);
+    await repo.deleteByDate(date);
+    await refresh();
   }
 }
 
 final diaryColorMarkProvider =
-    StateNotifierProvider<DiaryColorMarkNotifier, List<DateColorMark>>((ref) {
-      return DiaryColorMarkNotifier(ref.read(colorMarkRepositoryProvider));
+    AsyncNotifierProvider<DiaryColorMarkNotifier, List<DateColorMark>>(() {
+      return DiaryColorMarkNotifier();
     });

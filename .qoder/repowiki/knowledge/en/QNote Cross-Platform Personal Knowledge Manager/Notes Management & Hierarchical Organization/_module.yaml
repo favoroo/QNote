@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: flutter_app/notes
+title: Notes Management & Hierarchical Organization
+scope:
+    - lib/pages/notes_page.dart
+    - lib/providers/note_provider.dart
+    - lib/models/note.dart
+source_files: []
+depends_on: []
+related_to:
+    - path: flutter_app/ai
+    - path: flutter_app/diary

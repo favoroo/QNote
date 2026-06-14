@@ -1,0 +1,4 @@
+- **State Management**: Uses `flutter_riverpod` with `AsyncNotifier` (`DiaryListNotifier`) for asynchronous data fetching and `StateProvider` for UI state like drafts and scroll triggers.
+- **Data Layer**: Interacts with a local SQLite database via `DiaryRepository`, which handles CRUD operations and sync logging.
+- **UI Architecture**: Implements a custom infinite-scrolling timeline in `DiaryPage` using a `ListView.builder` with dynamic item heights and windowed date rendering.
+- **AI Integration**: Features batch and single-record AI extraction workflows that update record metadata (tags, time, content) via `AiRoleService`.

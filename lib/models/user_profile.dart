@@ -3,16 +3,16 @@ import 'package:qnote_flutter/models/weight_record.dart';
 
 class UserProfile {
   final String id;
-  String? name;
-  String? nickname;
-  String? birthday;
-  double? height;
-  List<WeightRecord> weightHistory;
-  String? gender;
-  String? otherInfo;
-  String avatarPath;
-  DateTime createdAt;
-  DateTime updatedAt;
+  final String? name;
+  final String? nickname;
+  final String? birthday;
+  final double? height;
+  final List<WeightRecord> weightHistory;
+  final String? gender;
+  final String? otherInfo;
+  final String avatarPath;
+  final DateTime createdAt;
+  final DateTime updatedAt;
 
   UserProfile({
     required this.id,

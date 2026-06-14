@@ -1,0 +1,1 @@
+Provides the application entry point, database initialization, core data models, and shared Riverpod state providers for navigation and date selection.

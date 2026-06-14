@@ -1,3 +1,0 @@
-- Models implement a consistent trio of serialization methods: `toMap()` for database/storage mapping, `fromMap()` for reconstruction, and `copyWith()` for immutable updates.
-- Providers are paired with dedicated Notifier classes (extending `StateNotifier` or `AsyncNotifier`) that encapsulate business logic and side effects, such as loading from or saving to the `ConfigRepository`.
-- Boolean flags in models are serialized as integers (1/0) in `toMap()` and cast back to booleans in `fromMap()` to align with SQLite storage constraints.

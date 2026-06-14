@@ -54,12 +54,16 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                   const SizedBox(height: 16),
                   Text(
                     '暂无固定事件模板',
-                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.disabledColor),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.disabledColor,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     '点击右上角 + 添加每日固定事件',
-                    style: theme.textTheme.bodySmall?.copyWith(color: theme.disabledColor),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.disabledColor,
+                    ),
                   ),
                 ],
               ),
@@ -68,17 +72,27 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
               padding: const EdgeInsets.all(16),
               itemCount: templates.length,
               onReorder: (oldIndex, newIndex) {
-                ref.read(fixedEventNotifierProvider.notifier).reorder(oldIndex, newIndex);
+                ref
+                    .read(fixedEventNotifierProvider.notifier)
+                    .reorder(oldIndex, newIndex);
               },
               itemBuilder: (context, index) {
                 final template = templates[index];
-                return _buildTemplateCard(context, template, key: ValueKey(template.id));
+                return _buildTemplateCard(
+                  context,
+                  template,
+                  key: ValueKey(template.id),
+                );
               },
             ),
     );
   }
 
-  Widget _buildTemplateCard(BuildContext context, FixedEventTemplate template, {required Key key}) {
+  Widget _buildTemplateCard(
+    BuildContext context,
+    FixedEventTemplate template, {
+    required Key key,
+  }) {
     final theme = Theme.of(context);
 
     return Card(
@@ -93,13 +107,17 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
           children: [
             Text(
               template.name,
-              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
+                color: theme.colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.7,
+                ),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
@@ -127,7 +145,9 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
               value: template.isEnabled,
               onChanged: (value) async {
                 final updated = template.copyWith(isEnabled: value);
-                await ref.read(fixedEventNotifierProvider.notifier).update(updated);
+                await ref
+                    .read(fixedEventNotifierProvider.notifier)
+                    .update(updated);
               },
             ),
             const SizedBox(width: 8),
@@ -147,21 +167,31 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
     return templates.indexWhere((t) => t.id == template.id);
   }
 
-  void _showEditDialog(BuildContext context, FixedEventTemplate? existingTemplate) {
+  void _showEditDialog(
+    BuildContext context,
+    FixedEventTemplate? existingTemplate,
+  ) {
     final isEditing = existingTemplate != null;
     final nameCtl = TextEditingController(text: existingTemplate?.name ?? '');
-    final contentCtl = TextEditingController(text: existingTemplate?.content ?? '');
+    final contentCtl = TextEditingController(
+      text: existingTemplate?.content ?? '',
+    );
 
     int startHour = existingTemplate?.startHour ?? 8;
     int startMinute = existingTemplate?.startMinute ?? 0;
     int endHour = existingTemplate?.endHour ?? 12;
     int endMinute = existingTemplate?.endMinute ?? 0;
+    // 时间点模式：true 只选一个时间点，false 选时间段
+    bool isTimePoint = existingTemplate?.isTimePoint ?? false;
 
     // 已选择的标签 ID 列表
     List<String> selectedTagIds = List.from(existingTemplate?.tags ?? []);
     // 每个标签下预设的字段值：tagId -> {fieldKey: fieldValue}
     Map<String, Map<String, dynamic>> selectedTagFields =
-        existingTemplate?.tagFields.map((k, v) => MapEntry(k, Map<String, dynamic>.from(v))) ?? {};
+        existingTemplate?.tagFields.map(
+          (k, v) => MapEntry(k, Map<String, dynamic>.from(v)),
+        ) ??
+        {};
 
     showDialog(
       context: context,
@@ -183,17 +213,64 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // 名称
-                        Text('事件名称', style: Theme.of(context).textTheme.labelSmall),
+                        Text(
+                          '事件名称',
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
                         TextField(
                           controller: nameCtl,
                           decoration: const InputDecoration(hintText: '例如：上班'),
                         ),
                         const SizedBox(height: 16),
 
-                        // 开始时间
+                        // 时间点 / 时间段 切换
+                        Text(
+                          '时间类型',
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
+                        const SizedBox(height: 6),
+                        SegmentedButton<bool>(
+                          segments: const [
+                            ButtonSegment(
+                              value: false,
+                              label: Text('时间段'),
+                              icon: Icon(Icons.arrow_right_alt, size: 18),
+                            ),
+                            ButtonSegment(
+                              value: true,
+                              label: Text('时间点'),
+                              icon: Icon(Icons.schedule, size: 18),
+                            ),
+                          ],
+                          selected: {isTimePoint},
+                          onSelectionChanged: (value) {
+                            final next = value.first;
+                            setDialogState(() {
+                              isTimePoint = next;
+                              // 切换为时间点模式时，清掉因时段推算出的 sleep duration
+                              if (next &&
+                                  selectedTagFields.containsKey('sleep')) {
+                                selectedTagFields['sleep']!.remove('duration');
+                              }
+                              // 重新联动 sleep/activity 标签字段
+                              _syncTagFieldsFromTime(
+                                selectedTagFields,
+                                startHour,
+                                startMinute,
+                                isTimePoint ? null : (endHour, endMinute),
+                              );
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 16),
+
+                        // 开始时间 / 时间点
                         Row(
                           children: [
-                            Text('开始时间', style: Theme.of(context).textTheme.labelSmall),
+                            Text(
+                              isTimePoint ? '时间' : '开始时间',
+                              style: Theme.of(context).textTheme.labelSmall,
+                            ),
                             const Spacer(),
                             GestureDetector(
                               onTap: () async {
@@ -206,20 +283,30 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                                   setDialogState(() {
                                     startHour = result.hour;
                                     startMinute = result.minute;
+                                    _syncTagFieldsFromTime(
+                                      selectedTagFields,
+                                      startHour,
+                                      startMinute,
+                                      isTimePoint ? null : (endHour, endMinute),
+                                    );
                                   });
                                 }
                               },
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.surfaceContainerHighest,
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Text(
                                   '${startHour.toString().padLeft(2, '0')}:${startMinute.toString().padLeft(2, '0')}',
-                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                  style: Theme.of(context).textTheme.bodyMedium
+                                      ?.copyWith(fontWeight: FontWeight.bold),
                                 ),
                               ),
                             ),
@@ -227,54 +314,74 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                         ),
                         const SizedBox(height: 12),
 
-                        // 结束时间
-                        Row(
-                          children: [
-                            Text('结束时间', style: Theme.of(context).textTheme.labelSmall),
-                            const Spacer(),
-                            GestureDetector(
-                              onTap: () async {
-                                final result = await showTimeScrollPicker(
-                                  context: context,
-                                  initialHour: endHour,
-                                  initialMinute: endMinute,
-                                );
-                                if (result != null) {
-                                  setDialogState(() {
-                                    endHour = result.hour;
-                                    endMinute = result.minute;
-                                  });
-                                }
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  '${endHour.toString().padLeft(2, '0')}:${endMinute.toString().padLeft(2, '0')}',
-                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.bold,
+                        // 结束时间（仅时间段模式显示）
+                        if (!isTimePoint)
+                          Row(
+                            children: [
+                              Text(
+                                '结束时间',
+                                style: Theme.of(context).textTheme.labelSmall,
+                              ),
+                              const Spacer(),
+                              GestureDetector(
+                                onTap: () async {
+                                  final result = await showTimeScrollPicker(
+                                    context: context,
+                                    initialHour: endHour,
+                                    initialMinute: endMinute,
+                                  );
+                                  if (result != null) {
+                                    setDialogState(() {
+                                      endHour = result.hour;
+                                      endMinute = result.minute;
+                                      _syncTagFieldsFromTime(
+                                        selectedTagFields,
+                                        startHour,
+                                        startMinute,
+                                        (endHour, endMinute),
+                                      );
+                                    });
+                                  }
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.surfaceContainerHighest,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    '${endHour.toString().padLeft(2, '0')}:${endMinute.toString().padLeft(2, '0')}',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(fontWeight: FontWeight.bold),
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
+                            ],
+                          ),
                         const SizedBox(height: 16),
 
                         // 关联标签（可选）
-                        Text('关联标签（可选）', style: Theme.of(context).textTheme.labelSmall),
+                        Text(
+                          '关联标签（可选）',
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
                         const SizedBox(height: 6),
                         if (shortcuts.isEmpty)
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 4),
                             child: Text(
                               '暂无可用标签，请先在"快捷按钮管理"中创建',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).disabledColor,
-                              ),
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: Theme.of(context).disabledColor,
+                                  ),
                             ),
                           )
                         else
@@ -282,7 +389,9 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                             spacing: 6,
                             runSpacing: 6,
                             children: shortcuts.map((config) {
-                              final isSelected = selectedTagIds.contains(config.id);
+                              final isSelected = selectedTagIds.contains(
+                                config.id,
+                              );
                               return GestureDetector(
                                 onTap: () {
                                   setDialogState(() {
@@ -292,22 +401,42 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                                     } else {
                                       selectedTagIds.add(config.id);
                                       // 初始化该标签的字段值为空
-                                      selectedTagFields.putIfAbsent(config.id, () => {});
+                                      selectedTagFields.putIfAbsent(
+                                        config.id,
+                                        () => {},
+                                      );
+                                      // 选中 sleep/activity 时，用当前事件时间预填联动字段
+                                      _syncTagFieldsFromTime(
+                                        selectedTagFields,
+                                        startHour,
+                                        startMinute,
+                                        isTimePoint
+                                            ? null
+                                            : (endHour, endMinute),
+                                      );
                                     }
                                   });
                                 },
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 200),
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 5,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: isSelected
                                         ? Theme.of(context).colorScheme.primary
-                                        : Theme.of(context).colorScheme.surfaceContainerHighest,
+                                        : Theme.of(
+                                            context,
+                                          ).colorScheme.surfaceContainerHighest,
                                     borderRadius: BorderRadius.circular(16),
                                     border: Border.all(
                                       color: isSelected
                                           ? Colors.transparent
-                                          : Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.3),
+                                          : Theme.of(context)
+                                                .colorScheme
+                                                .outlineVariant
+                                                .withValues(alpha: 0.3),
                                     ),
                                   ),
                                   child: Row(
@@ -317,18 +446,29 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                                         Icons.apps,
                                         size: 12,
                                         color: isSelected
-                                            ? Theme.of(context).colorScheme.onPrimary
-                                            : Theme.of(context).colorScheme.onSurfaceVariant,
+                                            ? Theme.of(
+                                                context,
+                                              ).colorScheme.onPrimary
+                                            : Theme.of(
+                                                context,
+                                              ).colorScheme.onSurfaceVariant,
                                       ),
                                       const SizedBox(width: 4),
                                       Text(
                                         config.name,
-                                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                          fontWeight: FontWeight.w600,
-                                          color: isSelected
-                                              ? Theme.of(context).colorScheme.onPrimary
-                                              : Theme.of(context).colorScheme.onSurface,
-                                        ),
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .labelSmall
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w600,
+                                              color: isSelected
+                                                  ? Theme.of(
+                                                      context,
+                                                    ).colorScheme.onPrimary
+                                                  : Theme.of(
+                                                      context,
+                                                    ).colorScheme.onSurface,
+                                            ),
                                       ),
                                     ],
                                   ),
@@ -344,15 +484,36 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                           selectedTagIds,
                           selectedTagFields,
                           setDialogState,
+                          // 标签字段变化时的回调：用于 sleep/activity duration 反向推算事件结束时间
+                          onFieldChanged: (tagId, fieldId, value) {
+                            if (fieldId != 'duration') return;
+                            final hours = double.tryParse(value);
+                            if (hours == null) return;
+                            final startMin = startHour * 60 + startMinute;
+                            final totalMin = startMin + (hours * 60).toInt();
+                            final eh = (totalMin ~/ 60) % 24;
+                            final em = totalMin % 60;
+                            setDialogState(() {
+                              // 时长有效时自动切回时间段模式并推算结束时间
+                              isTimePoint = false;
+                              endHour = eh;
+                              endMinute = em;
+                            });
+                          },
                         ),
 
                         const SizedBox(height: 16),
 
                         // 备注内容
-                        Text('备注内容（可选）', style: Theme.of(context).textTheme.labelSmall),
+                        Text(
+                          '备注内容（可选）',
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
                         TextField(
                           controller: contentCtl,
-                          decoration: const InputDecoration(hintText: '例如：上午工作'),
+                          decoration: const InputDecoration(
+                            hintText: '例如：上午工作',
+                          ),
                           maxLines: 2,
                         ),
                       ],
@@ -369,16 +530,22 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                                 context: context,
                                 builder: (ctx2) => AlertDialog(
                                   title: const Text('确认删除'),
-                                  content: Text('确定要删除 "${existingTemplate.name}" 吗？'),
+                                  content: Text(
+                                    '确定要删除 "${existingTemplate.name}" 吗？',
+                                  ),
                                   actions: [
                                     TextButton(
-                                      onPressed: () => Navigator.pop(ctx2, false),
+                                      onPressed: () =>
+                                          Navigator.pop(ctx2, false),
                                       child: const Text('取消'),
                                     ),
                                     TextButton(
-                                      onPressed: () => Navigator.pop(ctx2, true),
+                                      onPressed: () =>
+                                          Navigator.pop(ctx2, true),
                                       style: TextButton.styleFrom(
-                                        foregroundColor: Theme.of(context).colorScheme.error,
+                                        foregroundColor: Theme.of(
+                                          context,
+                                        ).colorScheme.error,
                                       ),
                                       child: const Text('删除'),
                                     ),
@@ -387,14 +554,18 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                               );
                               if (confirmed == true && context.mounted) {
                                 Navigator.pop(ctx);
-                                await ref.read(fixedEventNotifierProvider.notifier).delete(existingTemplate.id);
+                                await ref
+                                    .read(fixedEventNotifierProvider.notifier)
+                                    .delete(existingTemplate.id);
                                 if (context.mounted) {
                                   Toast.success(context, '已删除');
                                 }
                               }
                             },
                             style: TextButton.styleFrom(
-                              foregroundColor: Theme.of(context).colorScheme.error,
+                              foregroundColor: Theme.of(
+                                context,
+                              ).colorScheme.error,
                             ),
                             child: const Text('删除'),
                           )
@@ -420,21 +591,33 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                                   name: nameCtl.text,
                                   startTime:
                                       '${startHour.toString().padLeft(2, '0')}:${startMinute.toString().padLeft(2, '0')}',
-                                  endTime:
-                                      '${endHour.toString().padLeft(2, '0')}:${endMinute.toString().padLeft(2, '0')}',
-                                  content: contentCtl.text.isEmpty ? null : contentCtl.text,
+                                  endTime: isTimePoint
+                                      ? ''
+                                      : '${endHour.toString().padLeft(2, '0')}:${endMinute.toString().padLeft(2, '0')}',
+                                  isTimePoint: isTimePoint,
+                                  content: contentCtl.text.isEmpty
+                                      ? null
+                                      : contentCtl.text,
                                   tags: selectedTagIds,
                                   tagFields: selectedTagFields,
                                   sortOrder:
-                                      existingTemplate?.sortOrder ?? ref.read(fixedEventNotifierProvider).length,
-                                  isEnabled: existingTemplate?.isEnabled ?? true,
+                                      existingTemplate?.sortOrder ??
+                                      ref
+                                          .read(fixedEventNotifierProvider)
+                                          .length,
+                                  isEnabled:
+                                      existingTemplate?.isEnabled ?? true,
                                   createdAt: existingTemplate?.createdAt ?? now,
                                   updatedAt: now,
                                 );
                                 if (isEditing) {
-                                  await ref.read(fixedEventNotifierProvider.notifier).update(template);
+                                  await ref
+                                      .read(fixedEventNotifierProvider.notifier)
+                                      .update(template);
                                 } else {
-                                  await ref.read(fixedEventNotifierProvider.notifier).add(template);
+                                  await ref
+                                      .read(fixedEventNotifierProvider.notifier)
+                                      .add(template);
                                 }
                                 if (ctx.mounted) Navigator.pop(ctx);
                               },
@@ -456,14 +639,64 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
     );
   }
 
+  /// 根据固定事件的开始/结束时间，同步推算关联标签的字段值
+  /// - sleep 标签：fallAsleepTime = 开始时间；有结束时间时 duration = (end-start)/60
+  /// - activity 标签：有结束时间时 duration = (end-start)/60
+  /// 跨天时（end < start）按 +24h 处理
+  void _syncTagFieldsFromTime(
+    Map<String, Map<String, dynamic>> selectedTagFields,
+    int startHour,
+    int startMinute,
+    (int, int)? endHM,
+  ) {
+    // sleep 联动
+    if (selectedTagFields.containsKey('sleep')) {
+      final sleepFields = Map<String, dynamic>.from(
+        selectedTagFields['sleep']!,
+      );
+      sleepFields['fallAsleepTime'] =
+          '${startHour.toString().padLeft(2, '0')}:${startMinute.toString().padLeft(2, '0')}';
+      if (endHM != null) {
+        final (eh, em) = endHM;
+        final startMin = startHour * 60 + startMinute;
+        final endMin = eh * 60 + em;
+        var diffMin = endMin - startMin;
+        if (diffMin < 0) diffMin += 1440;
+        sleepFields['duration'] = (diffMin / 60.0).toStringAsFixed(1);
+      } else {
+        sleepFields.remove('duration');
+      }
+      selectedTagFields['sleep'] = sleepFields;
+    }
+
+    // activity 联动
+    if (selectedTagFields.containsKey('activity')) {
+      final activityFields = Map<String, dynamic>.from(
+        selectedTagFields['activity']!,
+      );
+      if (endHM != null) {
+        final (eh, em) = endHM;
+        final startMin = startHour * 60 + startMinute;
+        final endMin = eh * 60 + em;
+        var diffMin = endMin - startMin;
+        if (diffMin < 0) diffMin += 1440;
+        activityFields['duration'] = (diffMin / 60.0).toStringAsFixed(1);
+      } else {
+        activityFields.remove('duration');
+      }
+      selectedTagFields['activity'] = activityFields;
+    }
+  }
+
   /// 构建已选中标签的字段编辑区域
   List<Widget> _buildSelectedTagFields(
     BuildContext context,
     List<ShortcutConfig> shortcuts,
     List<String> selectedTagIds,
     Map<String, Map<String, dynamic>> selectedTagFields,
-    void Function(void Function()) setDialogState,
-  ) {
+    void Function(void Function()) setDialogState, {
+    void Function(String tagId, String fieldId, String value)? onFieldChanged,
+  }) {
     if (selectedTagIds.isEmpty) return [];
 
     final List<Widget> fields = [];
@@ -478,15 +711,20 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
 
       // 确定要展示的字段列表：优先使用分类下的字段，其次用 config.fields
       List<ShortcutField> fieldsToProcess;
-      bool hasCategories = config.categories != null && config.categories!.isNotEmpty;
+      bool hasCategories =
+          config.categories != null && config.categories!.isNotEmpty;
 
       if (hasCategories) {
         // 有分类时，先确定当前选中的分类，再用该分类的字段
-        final currentCategoryId = currentFieldValues['_category'] as String? ?? '';
+        final currentCategoryId =
+            currentFieldValues['_category'] as String? ?? '';
         ShortcutCategory currentCategory;
         if (currentCategoryId.isNotEmpty) {
-          currentCategory = config.categories!.where((c) => c.id == currentCategoryId).firstOrNull
-              ?? config.categories!.first;
+          currentCategory =
+              config.categories!
+                  .where((c) => c.id == currentCategoryId)
+                  .firstOrNull ??
+              config.categories!.first;
         } else {
           currentCategory = config.categories!.first;
         }
@@ -528,7 +766,8 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
 
       // 如果有分类，先展示分类选择器
       if (hasCategories) {
-        final currentCategoryId = currentFieldValues['_category'] as String? ?? '';
+        final currentCategoryId =
+            currentFieldValues['_category'] as String? ?? '';
         fields.add(
           Padding(
             padding: const EdgeInsets.only(left: 8, bottom: 6),
@@ -541,8 +780,10 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                   spacing: 6,
                   runSpacing: 4,
                   children: config.categories!.map((cat) {
-                    final isCatSelected = cat.id == currentCategoryId ||
-                        (currentCategoryId.isEmpty && cat == config.categories!.first);
+                    final isCatSelected =
+                        cat.id == currentCategoryId ||
+                        (currentCategoryId.isEmpty &&
+                            cat == config.categories!.first);
                     return GestureDetector(
                       onTap: () {
                         setDialogState(() {
@@ -553,7 +794,10 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                       },
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 150),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
                         decoration: BoxDecoration(
                           color: isCatSelected
                               ? theme.colorScheme.primary
@@ -562,7 +806,9 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                           border: Border.all(
                             color: isCatSelected
                                 ? Colors.transparent
-                                : theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                                : theme.colorScheme.outlineVariant.withValues(
+                                    alpha: 0.3,
+                                  ),
                           ),
                         ),
                         child: Text(
@@ -600,12 +846,19 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                 // 根据字段类型渲染不同输入控件
                 if (field.type == 'select' && field.options.isNotEmpty)
                   DropdownButtonFormField<String>(
-                    value: field.options.contains(currentValue as String?) ? currentValue : null,
+                    value: field.options.contains(currentValue as String?)
+                        ? currentValue
+                        : null,
                     decoration: InputDecoration(
                       hintText: '选择${field.label}',
                       isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                     items: field.options.map((opt) {
                       return DropdownMenuItem(value: opt, child: Text(opt));
@@ -621,7 +874,8 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                       });
                     },
                   )
-                else if (field.type == 'multiselect' && field.options.isNotEmpty)
+                else if (field.type == 'multiselect' &&
+                    field.options.isNotEmpty)
                   Wrap(
                     spacing: 6,
                     runSpacing: 4,
@@ -634,7 +888,9 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                         onTap: () {
                           setDialogState(() {
                             selectedTagFields.putIfAbsent(tagId, () => {});
-                            final vals = List<String>.from(selectedTagFields[tagId]?[field.id] ?? <String>[]);
+                            final vals = List<String>.from(
+                              selectedTagFields[tagId]?[field.id] ?? <String>[],
+                            );
                             if (isSelected) {
                               vals.remove(opt);
                             } else {
@@ -645,7 +901,10 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                         },
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 150),
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: isSelected
                                 ? theme.colorScheme.primaryContainer
@@ -654,7 +913,9 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                             border: Border.all(
                               color: isSelected
                                   ? Colors.transparent
-                                  : theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                                  : theme.colorScheme.outlineVariant.withValues(
+                                      alpha: 0.3,
+                                    ),
                             ),
                           ),
                           child: Text(
@@ -671,7 +932,9 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                   )
                 else
                   TextField(
-                    controller: TextEditingController(text: currentValue?.toString() ?? ''),
+                    controller: TextEditingController(
+                      text: currentValue?.toString() ?? '',
+                    ),
                     onChanged: (val) {
                       setDialogState(() {
                         selectedTagFields.putIfAbsent(tagId, () => {});
@@ -681,12 +944,21 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                           selectedTagFields[tagId]![field.id] = val;
                         }
                       });
+                      // sleep/activity 的 duration 字段变化时反向推算事件结束时间
+                      if (onFieldChanged != null && val.isNotEmpty) {
+                        onFieldChanged(tagId, field.id, val);
+                      }
                     },
                     decoration: InputDecoration(
                       hintText: '输入${field.label}',
                       isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
               ],
