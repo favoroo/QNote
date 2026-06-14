@@ -455,6 +455,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                       return Padding(
                         padding: const EdgeInsets.only(right: 4),
                         child: FilterChip(
+                          showCheckmark: false,
                           label: Text(
                             tag,
                             style: const TextStyle(

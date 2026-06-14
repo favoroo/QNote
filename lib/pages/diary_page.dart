@@ -23,6 +23,7 @@ import 'package:qnote_flutter/widgets/diary/diary_item.dart';
 import 'package:qnote_flutter/widgets/diary/diary_input_bar.dart';
 import 'package:qnote_flutter/widgets/diary/custom_date_picker.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
+import 'package:qnote_flutter/widgets/animated_gradient_border.dart';
 
 class DiaryPage extends ConsumerStatefulWidget {
   const DiaryPage({super.key});
@@ -1423,67 +1424,62 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       key: _smartExtractFabKey,
       onTap: _handleSmartExtractTap,
       onLongPress: _handleSmartExtractLongPress,
-      child: AnimatedContainer(
-        duration: AppDurations.medium,
-        curve: Curves.easeOutCubic,
-        width: _isBatchExtracting ? 52 : 44,
-        height: _isBatchExtracting ? 52 : 44,
-        decoration: BoxDecoration(
-          gradient: _isBatchExtracting
-              ? LinearGradient(
-                  colors: [
-                    theme.colorScheme.primary,
-                    theme.colorScheme.tertiary,
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                )
-              : null,
-          color: _isBatchExtracting
-              ? null
-              : theme.colorScheme.primary.withValues(alpha: 0.1),
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: _isBatchExtracting
-                  ? theme.colorScheme.primary.withValues(alpha: 0.3)
-                  : theme.colorScheme.shadow.withValues(alpha: 0.06),
-              blurRadius: _isBatchExtracting ? 12 : 6,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: _isBatchExtracting
-            ? Stack(
-                alignment: Alignment.center,
-                children: [
-                  SizedBox(
-                    width: 36,
-                    height: 36,
-                    child: CircularProgressIndicator(
-                      value: _batchExtractTotal > 0
-                          ? _batchExtractCompleted / _batchExtractTotal
-                          : null,
-                      strokeWidth: 2.5,
-                      color: theme.colorScheme.surface.withValues(alpha: 0.9),
-                      backgroundColor: theme.colorScheme.surface.withValues(alpha: 0.2),
-                    ),
-                  ),
-                  Text(
-                    '$_batchExtractCompleted',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.onPrimary,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
-              )
-            : Icon(
-                Icons.auto_fix_high,
-                size: 20,
-                color: theme.colorScheme.primary,
+      child: AnimatedGradientBorder(
+        isAnimating: _isBatchExtracting,
+        borderRadius: 26, // For width 52, radius is 26
+        strokeWidth: 2,
+        child: AnimatedContainer(
+          duration: AppDurations.medium,
+          curve: Curves.easeOutCubic,
+          width: _isBatchExtracting ? 52 : 44,
+          height: _isBatchExtracting ? 52 : 44,
+          decoration: BoxDecoration(
+            color: _isBatchExtracting
+                ? theme.colorScheme.surface
+                : theme.colorScheme.primary.withValues(alpha: 0.1),
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: _isBatchExtracting
+                    ? theme.colorScheme.primary.withValues(alpha: 0.25)
+                    : theme.colorScheme.shadow.withValues(alpha: 0.06),
+                blurRadius: _isBatchExtracting ? 12 : 6,
+                offset: const Offset(0, 3),
               ),
+            ],
+          ),
+          child: _isBatchExtracting
+              ? Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: 36,
+                      height: 36,
+                      child: CircularProgressIndicator(
+                        value: _batchExtractTotal > 0
+                            ? _batchExtractCompleted / _batchExtractTotal
+                            : null,
+                        strokeWidth: 2.5,
+                        color: theme.colorScheme.primary,
+                        backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
+                      ),
+                    ),
+                    Text(
+                      '$_batchExtractCompleted',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                )
+              : Icon(
+                  Icons.auto_fix_high,
+                  size: 20,
+                  color: theme.colorScheme.primary,
+                ),
+        ),
       ),
     );
   }

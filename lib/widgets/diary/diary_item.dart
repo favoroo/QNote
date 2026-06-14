@@ -486,8 +486,8 @@ class _DiaryItemState extends State<DiaryItem> {
                         ),
                         if (onAiExtract != null)
                           Positioned(
-                            bottom: -20,
-                            right: -22,
+                            bottom: -22,
+                            right: -24,
                             child: GestureDetector(
                               behavior: HitTestBehavior.opaque,
                               onTap: isUndoable ? onUndo : onAiExtract,
@@ -499,17 +499,21 @@ class _DiaryItemState extends State<DiaryItem> {
                               child: Padding(
                                 padding: const EdgeInsets.all(16),
                                 child: Container(
-                                  width: 28,
-                                  height: 28,
+                                  width: 32,
+                                  height: 32,
                                   decoration: BoxDecoration(
-                                    color: isUndoable
-                                        ? theme.colorScheme.error.withValues(
-                                            alpha: 0.08,
-                                          )
-                                        : theme.colorScheme.primary.withValues(
-                                            alpha: 0.08,
-                                          ),
+                                    color: theme.colorScheme.surface,
                                     shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: (isUndoable
+                                                ? theme.colorScheme.error
+                                                : tagColor)
+                                            .withValues(alpha: 0.2),
+                                        blurRadius: 6,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
                                   ),
                                   child: isUndoable
                                       ? (undoAnimation != null
@@ -520,8 +524,8 @@ class _DiaryItemState extends State<DiaryItem> {
                                                     alignment: Alignment.center,
                                                     children: [
                                                       SizedBox(
-                                                        width: 24,
-                                                        height: 24,
+                                                        width: 28,
+                                                        height: 28,
                                                         child: CustomPaint(
                                                           painter:
                                                               _UndoCountdownPainter(
@@ -540,32 +544,31 @@ class _DiaryItemState extends State<DiaryItem> {
                                                 },
                                                 child: Icon(
                                                   Icons.undo,
-                                                  size: 12,
+                                                  size: 14,
                                                   color:
                                                       theme.colorScheme.error,
                                                 ),
                                               )
                                             : Icon(
                                                 Icons.undo,
-                                                size: 12,
+                                                size: 14,
                                                 color: theme.colorScheme.error,
                                               ))
                                       : isExtracting
                                       ? Center(
                                           child: SizedBox(
-                                            width: 14,
-                                            height: 14,
+                                            width: 16,
+                                            height: 16,
                                             child: CircularProgressIndicator(
-                                              strokeWidth: 1.8,
-                                              color: theme.colorScheme.primary,
+                                              strokeWidth: 2.0,
+                                              color: tagColor,
                                             ),
                                           ),
                                         )
                                       : Icon(
                                           Icons.auto_awesome,
-                                          size: 14,
-                                          color: theme.colorScheme.primary
-                                              .withValues(alpha: 0.8),
+                                          size: 16,
+                                          color: tagColor,
                                         ),
                                 ),
                               ),

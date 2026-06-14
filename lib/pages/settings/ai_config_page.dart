@@ -99,10 +99,12 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         _fetchMessage = '获取失败: 请先填写 API Key 后尝试';
         _fetchMessageIsError = true;
       });
-      setState(() {
-        _fetchMessage = '获取失败: 请先填写 API Key 后尝试';
-        _fetchMessageIsError = true;
-      });
+      if (mounted) {
+        setState(() {
+          _fetchMessage = '获取失败: 请先填写 API Key 后尝试';
+          _fetchMessageIsError = true;
+        });
+      }
       return;
     }
 
@@ -110,10 +112,12 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       _isFetchingModels = true;
       _fetchMessage = null;
     });
-    setState(() {
-      _isFetchingModels = true;
-      _fetchMessage = null;
-    });
+    if (mounted) {
+      setState(() {
+        _isFetchingModels = true;
+        _fetchMessage = null;
+      });
+    }
 
     try {
       final service = ModelFetchService();
@@ -163,10 +167,14 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           errorMsg = errorMsg.substring('Exception: '.length);
         }
 
-        setDialogState(() {
-          _fetchMessage = '获取失败: $errorMsg';
-          _fetchMessageIsError = true;
-        });
+        try {
+          setDialogState(() {
+            _fetchMessage = '获取失败: $errorMsg';
+            _fetchMessageIsError = true;
+          });
+        } catch (_) {
+          // 对话框已关闭，忽略 setDialogState 调用
+        }
         setState(() {
           _fetchMessage = '获取失败: $errorMsg';
           _fetchMessageIsError = true;
@@ -174,9 +182,13 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       }
     } finally {
       if (mounted) {
-        setDialogState(() {
-          _isFetchingModels = false;
-        });
+        try {
+          setDialogState(() {
+            _isFetchingModels = false;
+          });
+        } catch (_) {
+          // 对话框已关闭，忽略 setDialogState 调用
+        }
         setState(() {
           _isFetchingModels = false;
         });
@@ -274,7 +286,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     if (_isBatchTestingModels || models.isEmpty) return;
 
     setDialogState(() => _isBatchTestingModels = true);
-    setState(() => _isBatchTestingModels = true);
+    if (mounted) setState(() => _isBatchTestingModels = true);
 
     try {
       // 使用并发池，限制并发数为 5，兼顾速度与准确性
@@ -330,7 +342,11 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       await Future.wait(tasks);
     } finally {
       if (mounted) {
-        setDialogState(() => _isBatchTestingModels = false);
+        try {
+          setDialogState(() => _isBatchTestingModels = false);
+        } catch (_) {
+          // 对话框已关闭，忽略 setDialogState 调用
+        }
         setState(() => _isBatchTestingModels = false);
       }
     }
@@ -436,38 +452,46 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
 
     final config = configs.firstWhere((c) => c.id == currentId, orElse: () => configs.first);
     
-    setState(() {
-      _testingImageRecognition = true;
-      _imageTestResult = null;
-    });
+    if (mounted) {
+      setState(() {
+        _testingImageRecognition = true;
+        _imageTestResult = null;
+      });
+    }
 
     try {
       final imgBase64 = await _generateTestImageBase64();
       final service = AiService();
       final success = await service.checkImageRecognition(config, imgBase64);
       
-      setState(() {
-        if (success) {
-          _imageTestResult = '支持识别';
-        } else {
-          _imageTestResult = '不支持图片识别';
-        }
-      });
+      if (mounted) {
+        setState(() {
+          if (success) {
+            _imageTestResult = '支持识别';
+          } else {
+            _imageTestResult = '不支持图片识别';
+          }
+        });
+      }
     } catch (e) {
       final errMsg = _formatTestError(e);
-      setState(() {
-        _imageTestResult = '测试失败: $errMsg';
-      });
+      if (mounted) {
+        setState(() {
+          _imageTestResult = '测试失败: $errMsg';
+        });
+      }
     } finally {
-      setState(() {
-        _testingImageRecognition = false;
-      });
+      if (mounted) {
+        setState(() {
+          _testingImageRecognition = false;
+        });
+      }
     }
   }
 
   Future<void> _testSingleConfig(AiConfig config) async {
     if (_testingMap[config.id] == true) return;
-    setState(() => _testingMap[config.id] = true);
+    if (mounted) setState(() => _testingMap[config.id] = true);
     try {
       final service = AiService();
       service.updateConfig(config);
@@ -486,7 +510,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
 
   Future<void> _testAllConfigs(List<AiConfig> configs) async {
     if (_batchTesting || configs.isEmpty) return;
-    setState(() => _batchTesting = true);
+    if (mounted) setState(() => _batchTesting = true);
     try {
       // Limit concurrency to 3 to prevent network/CPU congestion
       const int maxConcurrency = 3;
@@ -636,7 +660,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       },
       onDismissed: (_) {
         ref.read(aiConfigListProvider.notifier).deleteConfig(config.id);
-        setState(() => _latencyMap.remove(config.id));
+        if (mounted) setState(() => _latencyMap.remove(config.id));
       },
       background: Container(
         alignment: Alignment.centerRight,
@@ -671,7 +695,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                           ),
                         ),
                         const SizedBox(width: 4),
-                        _buildLatencyText(config.id, theme),
+                        Flexible(child: _buildLatencyText(config.id, theme)),
                       ],
                     ),
                     const SizedBox(height: 2),
@@ -723,7 +747,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                   );
                   if (confirmed == true) {
                     ref.read(aiConfigListProvider.notifier).deleteConfig(config.id);
-                    setState(() => _latencyMap.remove(config.id));
+                    if (mounted) setState(() => _latencyMap.remove(config.id));
                   }
                 },
               ),
@@ -888,7 +912,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                 max: 2.0,
                 divisions: 20,
                 onChanged: (v) {
-                  setState(() => tempValue = v);
+                  if (mounted) setState(() => tempValue = v);
                   _updateRoleSettings(roleKey, settings.copyWith(temperature: v));
                 },
               ),
@@ -1060,7 +1084,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
               onTap: () => FocusScope.of(ctx).unfocus(),
               behavior: HitTestBehavior.opaque,
               child: AlertDialog(
-                contentPadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+                title: Text(isEditing ? '编辑配置' : '添加模型', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
                 content: SingleChildScrollView(
                   child: SizedBox(
                   width: MediaQuery.of(context).size.width * 0.85,
@@ -1069,65 +1095,96 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text('供应商选择', style: Theme.of(context).textTheme.labelSmall),
-                      DropdownButton<String>(
-                        value: selectedVendorId,
-                        isExpanded: true,
-                        items: aiProviders.map((p) => DropdownMenuItem(
-                          value: p.id,
-                          child: Text(p.name, overflow: TextOverflow.ellipsis),
-                        )).toList(),
-                        onChanged: (value) {
-                          if (value == null) return;
-                          final provider = getProviderById(value);
-                          setDialogState(() {
-                            // Remember the current API key input for this vendor in the temporary map
-                            tempSavedApiKeys[selectedVendorId] = apiKeyCtl.text;
+                      const SizedBox(height: 4),
+                      InputDecorator(
+                        decoration: const InputDecoration(
+                          contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: selectedVendorId,
+                            isExpanded: true,
+                            isDense: true,
+                            items: aiProviders.map((p) => DropdownMenuItem(
+                              value: p.id,
+                              child: Text(p.name, overflow: TextOverflow.ellipsis),
+                            )).toList(),
+                            onChanged: (value) {
+                              if (value == null) return;
+                              final provider = getProviderById(value);
+                              setDialogState(() {
+                                // Remember the current API key input for this vendor in the temporary map
+                                tempSavedApiKeys[selectedVendorId] = apiKeyCtl.text;
 
-                            selectedVendorId = value;
-                            _fetchMessage = null;
-                            _fetchMessageIsError = false;
-                            
-                            // Load the API key of the newly selected vendor
-                            apiKeyCtl.text = tempSavedApiKeys[value] ?? '';
+                                selectedVendorId = value;
+                                _fetchMessage = null;
+                                _fetchMessageIsError = false;
+                                
+                                // Load the API key of the newly selected vendor
+                                apiKeyCtl.text = tempSavedApiKeys[value] ?? '';
 
-                            if (provider != null) {
-                              selectedProvider = provider.provider;
-                              baseUrlCtl.text = provider.defaultBaseUrl;
-                              if (provider.models.isNotEmpty) {
-                                modelCtl.text = provider.models.first;
-                              } else {
-                                modelCtl.text = '';
-                              }
-                              // Always update name when vendor/model changes as per user request
-                              nameCtl.text = getCleanModelName(modelCtl.text);
-                              isNameManuallyEdited = false;
-                            }
-                          });
-                        },
+                                if (provider != null) {
+                                  selectedProvider = provider.provider;
+                                  baseUrlCtl.text = provider.defaultBaseUrl;
+                                  if (provider.models.isNotEmpty) {
+                                    modelCtl.text = provider.models.first;
+                                  } else {
+                                    modelCtl.text = '';
+                                  }
+                                  // Always update name when vendor/model changes as per user request
+                                  nameCtl.text = getCleanModelName(modelCtl.text);
+                                  isNameManuallyEdited = false;
+                                }
+                              });
+                            },
+                          ),
+                        ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
                       if (selectedVendorId == 'custom') ...[
                         Text('接口类型', style: Theme.of(context).textTheme.labelSmall),
-                        DropdownButton<String>(
-                          value: selectedProvider,
-                          isExpanded: true,
-                          items: const [
-                            DropdownMenuItem(value: 'openai', child: Text('OpenAI 兼容')),
-                            DropdownMenuItem(value: 'gemini', child: Text('Google Gemini')),
-                          ],
-                          onChanged: (value) {
-                            if (value == null) return;
-                            setDialogState(() {
-                              selectedProvider = value;
-                            });
-                          },
+                        const SizedBox(height: 4),
+                        InputDecorator(
+                          decoration: const InputDecoration(
+                            contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: selectedProvider,
+                              isExpanded: true,
+                              isDense: true,
+                              items: const [
+                                DropdownMenuItem(value: 'openai', child: Text('OpenAI 兼容')),
+                                DropdownMenuItem(value: 'gemini', child: Text('Google Gemini')),
+                              ],
+                              onChanged: (value) {
+                                if (value == null) return;
+                                setDialogState(() {
+                                  selectedProvider = value;
+                                });
+                              },
+                            ),
+                          ),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 16),
                       ],
+                      Text('模型名称', style: Theme.of(context).textTheme.labelSmall),
+                      const SizedBox(height: 4),
+                      _buildModelSelector(
+                        ctx,
+                        selectedVendorId,
+                        modelCtl,
+                        setDialogState,
+                        (newModel) {
+                          // Always sync name when model changes, even if previously edited
+                          nameCtl.text = getCleanModelName(newModel);
+                          isNameManuallyEdited = false;
+                        },
+                      ),
+                      const SizedBox(height: 8),
                       Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          Text('模型名称', style: Theme.of(context).textTheme.labelSmall),
-                          const Spacer(),
                           Builder(
                             builder: (context) {
                               final providerConfig = getProviderById(selectedVendorId);
@@ -1145,19 +1202,19 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                                         ),
                                 icon: _isFetchingModels
                                     ? const SizedBox(
-                                        width: 12,
-                                        height: 12,
+                                        width: 14,
+                                        height: 14,
                                         child: CircularProgressIndicator(strokeWidth: 2),
                                       )
-                                    : const Icon(Icons.refresh, size: 14),
+                                    : const Icon(Icons.refresh, size: 16),
                                 label: Text(
                                   _isFetchingModels 
                                       ? '更新中...' 
                                       : (selectedVendorId == 'openrouter' ? '一键获取免费模型' : '一键获取模型列表'),
-                                  style: const TextStyle(fontSize: 11),
+                                  style: const TextStyle(fontSize: 12),
                                 ),
                                 style: TextButton.styleFrom(
-                                  padding: EdgeInsets.zero,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                   minimumSize: Size.zero,
                                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                 ),
@@ -1198,17 +1255,17 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                                     },
                               icon: _isBatchTestingModels
                                   ? const SizedBox(
-                                      width: 12,
-                                      height: 12,
+                                      width: 14,
+                                      height: 14,
                                       child: CircularProgressIndicator(strokeWidth: 2),
                                     )
-                                  : const Icon(Icons.bolt, size: 14),
+                                  : const Icon(Icons.bolt, size: 16),
                               label: Text(
                                 _isBatchTestingModels ? '测试中...' : '批量测试',
-                                style: const TextStyle(fontSize: 11),
+                                style: const TextStyle(fontSize: 12),
                               ),
                               style: TextButton.styleFrom(
-                                padding: EdgeInsets.zero,
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                 minimumSize: Size.zero,
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
@@ -1217,9 +1274,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                         ],
                       ),
                       if (selectedVendorId != 'custom' && _fetchMessage != null) ...[
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                           decoration: BoxDecoration(
                             color: _fetchMessageIsError 
                                 ? Colors.red.shade50.withValues(alpha: 0.8) 
@@ -1235,15 +1292,15 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                             children: [
                               Icon(
                                 _fetchMessageIsError ? Icons.error_outline : Icons.check_circle_outline,
-                                size: 14,
+                                size: 16,
                                 color: _fetchMessageIsError ? Colors.red.shade700 : Colors.green.shade700,
                               ),
-                              const SizedBox(width: 6),
+                              const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   _fetchMessage!,
                                   style: TextStyle(
-                                    fontSize: 11,
+                                    fontSize: 12,
                                     color: _fetchMessageIsError ? Colors.red.shade800 : Colors.green.shade800,
                                     fontWeight: FontWeight.w500,
                                   ),
@@ -1253,20 +1310,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                           ),
                         ),
                       ],
-                      const SizedBox(height: 4),
-                      _buildModelSelector(
-                        ctx,
-                        selectedVendorId,
-                        modelCtl,
-                        setDialogState,
-                        (newModel) {
-                          // Always sync name when model changes, even if previously edited
-                          nameCtl.text = getCleanModelName(newModel);
-                          isNameManuallyEdited = false;
-                        },
-                      ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
                       Text('显示名称', style: Theme.of(context).textTheme.labelSmall),
+                      const SizedBox(height: 4),
                       TextField(
                         controller: nameCtl,
                         decoration: const InputDecoration(hintText: '例如：我的模型'),
@@ -1276,8 +1322,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                           isNameManuallyEdited = val.isNotEmpty;
                         },
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
                       Text('API Key', style: Theme.of(context).textTheme.labelSmall),
+                      const SizedBox(height: 4),
                       TextField(
                         controller: apiKeyCtl,
                         obscureText: !showApiKey,
@@ -1289,7 +1336,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
                       if (selectedProvider != 'gemini') ...[
                         Row(
                           children: [
@@ -1347,13 +1394,13 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                             ],
                           ],
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 4),
                         TextField(controller: baseUrlCtl, decoration: const InputDecoration(hintText: 'https://api.openai.com')),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 20),
                       ],
                       SizedBox(
                         width: double.infinity,
-                        child: OutlinedButton(
+                        child: OutlinedButton.icon(
                           onPressed: isTesting
                               ? null
                               : () async {
@@ -1395,20 +1442,46 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                                     });
                                   }
                                 },
-                          child: isTesting
+                          icon: isTesting
                               ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                              : const Text('连接测试'),
+                              : const Icon(Icons.online_prediction, size: 18),
+                          label: Text(isTesting ? '测试中...' : '连接测试'),
                         ),
                       ),
                       if (testResult != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(
-                            testResult!,
-                            style: TextStyle(
-                              color: testResult!.startsWith('连接成功') ? Colors.green : Colors.red,
-                              fontSize: 12,
+                        Container(
+                          margin: const EdgeInsets.only(top: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: testResult!.startsWith('连接成功') 
+                                ? Colors.green.shade50.withValues(alpha: 0.8) 
+                                : Colors.red.shade50.withValues(alpha: 0.8),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: testResult!.startsWith('连接成功') 
+                                  ? Colors.green.shade200.withValues(alpha: 0.5) 
+                                  : Colors.red.shade200.withValues(alpha: 0.5),
                             ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                testResult!.startsWith('连接成功') ? Icons.check_circle_outline : Icons.error_outline,
+                                size: 16,
+                                color: testResult!.startsWith('连接成功') ? Colors.green.shade700 : Colors.red.shade700,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  testResult!,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: testResult!.startsWith('连接成功') ? Colors.green.shade800 : Colors.red.shade800,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                     ],
@@ -1498,15 +1571,15 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                 },
               );
             },
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(10),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(
-                    color: Theme.of(dialogContext).colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
-                    width: 1,
-                  ),
+                color: Theme.of(dialogContext).colorScheme.surface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: Theme.of(dialogContext).colorScheme.outline,
+                  width: 1,
                 ),
               ),
               child: Row(
