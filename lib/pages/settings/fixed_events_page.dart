@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
+
 import 'package:qnote_flutter/models/fixed_event_template.dart';
 import 'package:qnote_flutter/models/shortcut_category.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
@@ -18,12 +20,88 @@ class FixedEventsPage extends ConsumerStatefulWidget {
 }
 
 class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
+  /// 编辑对话框打开期间，按 `'$tagId#${field.id}'` 缓存的输入控制器。
+  /// 必须在 dialog 关闭时统一 dispose，避免泄漏。
+  final Map<String, TextEditingController> _fieldControllers = {};
+
+  /// 编辑对话框打开期间，按 `'$tagId#${field.id}'` 缓存的 FocusNode。
+  /// 用于判断用户是否正在编辑该字段，避免外部 setText 打断光标。
+  final Map<String, FocusNode> _fieldFocusNodes = {};
+
   @override
   void initState() {
     super.initState();
     Future.microtask(() {
       ref.read(fixedEventNotifierProvider.notifier).loadAll();
     });
+  }
+
+  @override
+  void dispose() {
+    // 兜底：正常路径在 dialog 关闭时就已释放；此处应对 widget 被销毁时仍存在的缓存。
+    for (final c in _fieldControllers.values) {
+      c.dispose();
+    }
+    for (final f in _fieldFocusNodes.values) {
+      f.dispose();
+    }
+    _fieldControllers.clear();
+    _fieldFocusNodes.clear();
+    super.dispose();
+  }
+
+  /// 释放并清空所有对话框用到的输入控制器/焦点。
+  void _disposeFieldControllers() {
+    for (final c in _fieldControllers.values) {
+      c.dispose();
+    }
+    for (final f in _fieldFocusNodes.values) {
+      f.dispose();
+    }
+    _fieldControllers.clear();
+    _fieldFocusNodes.clear();
+  }
+
+  /// 释放指定标签下的所有输入控件缓存。用于取消选中标签、切换分类等场景。
+  void _disposeFieldControllersForTag(String tagId) {
+    final prefix = '$tagId#';
+    final cKeys = _fieldControllers.keys
+        .where((k) => k.startsWith(prefix))
+        .toList();
+    for (final k in cKeys) {
+      _fieldControllers.remove(k)?.dispose();
+    }
+    final fKeys = _fieldFocusNodes.keys
+        .where((k) => k.startsWith(prefix))
+        .toList();
+    for (final k in fKeys) {
+      _fieldFocusNodes.remove(k)?.dispose();
+    }
+  }
+
+  /// 获取（必要时创建并缓存）指定 (tagId, fieldId) 的输入控制器。
+  /// 初始文本由 caller 提供，外部值与 controller 文本不同步覆盖。
+  TextEditingController _ensureFieldController(
+    String tagId,
+    String fieldId,
+    String initialText,
+  ) {
+    final key = '$tagId#$fieldId';
+    final existing = _fieldControllers[key];
+    if (existing != null) return existing;
+    final c = TextEditingController(text: initialText);
+    _fieldControllers[key] = c;
+    return c;
+  }
+
+  /// 获取（必要时创建并缓存）指定 (tagId, fieldId) 的 FocusNode。
+  FocusNode _ensureFieldFocusNode(String tagId, String fieldId) {
+    final key = '$tagId#$fieldId';
+    final existing = _fieldFocusNodes[key];
+    if (existing != null) return existing;
+    final f = FocusNode();
+    _fieldFocusNodes[key] = f;
+    return f;
   }
 
   @override
@@ -167,10 +245,10 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
     return templates.indexWhere((t) => t.id == template.id);
   }
 
-  void _showEditDialog(
+  Future<void> _showEditDialog(
     BuildContext context,
     FixedEventTemplate? existingTemplate,
-  ) {
+  ) async {
     final isEditing = existingTemplate != null;
     final nameCtl = TextEditingController(text: existingTemplate?.name ?? '');
     final contentCtl = TextEditingController(
@@ -185,15 +263,29 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
     bool isTimePoint = existingTemplate?.isTimePoint ?? false;
 
     // 已选择的标签 ID 列表
-    List<String> selectedTagIds = List.from(existingTemplate?.tags ?? []);
+    final List<String> selectedTagIds = List<String>.from(
+      existingTemplate?.tags ?? [],
+    );
     // 每个标签下预设的字段值：tagId -> {fieldKey: fieldValue}
-    Map<String, Map<String, dynamic>> selectedTagFields =
-        existingTemplate?.tagFields.map(
-          (k, v) => MapEntry(k, Map<String, dynamic>.from(v)),
-        ) ??
-        {};
+    // 用 `final` 但保留可变内容：外部引用不可变，但内部 List/Map 仍可增删。
+    final selectedTagFields = <String, Map<String, dynamic>>{
+      if (existingTemplate != null)
+        for (final entry in existingTemplate.tagFields.entries)
+          entry.key: Map<String, dynamic>.from(entry.value),
+    };
 
-    showDialog(
+    // 预创建当前已存字段的输入控件，确保编辑现有模板时也能正确回显。
+    for (final tagEntry in selectedTagFields.entries) {
+      final tagId = tagEntry.key;
+      for (final fieldEntry in tagEntry.value.entries) {
+        // 内部键（如 _category）不参与 TextField，controller 仍会创建但不会被用
+        _ensureFieldController(tagId, fieldEntry.key, fieldEntry.value?.toString() ?? '');
+        _ensureFieldFocusNode(tagId, fieldEntry.key);
+      }
+    }
+
+    try {
+      await showDialog<void>(
       context: context,
       builder: (ctx) {
         return StatefulBuilder(
@@ -398,6 +490,8 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                                     if (isSelected) {
                                       selectedTagIds.remove(config.id);
                                       selectedTagFields.remove(config.id);
+                                      // 取消选中时同步释放该标签下缓存的输入控件
+                                      _disposeFieldControllersForTag(config.id);
                                     } else {
                                       selectedTagIds.add(config.id);
                                       // 初始化该标签的字段值为空
@@ -484,7 +578,9 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                           selectedTagIds,
                           selectedTagFields,
                           setDialogState,
-                          // 标签字段变化时的回调：用于 sleep/activity duration 反向推算事件结束时间
+                          // 标签字段变化时的回调：用于 sleep/activity duration 反向推算事件结束时间。
+                          // 推迟到下一帧再 setDialogState，避免与外层 onChanged 的 setDialogState
+                          // 在同一帧内相互打断，导致 controller 反复重建、光标归零。
                           onFieldChanged: (tagId, fieldId, value) {
                             if (fieldId != 'duration') return;
                             final hours = double.tryParse(value);
@@ -493,11 +589,16 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                             final totalMin = startMin + (hours * 60).toInt();
                             final eh = (totalMin ~/ 60) % 24;
                             final em = totalMin % 60;
-                            setDialogState(() {
-                              // 时长有效时自动切回时间段模式并推算结束时间
-                              isTimePoint = false;
-                              endHour = eh;
-                              endMinute = em;
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              // 此时控件树已无正在处理的 onChanged。
+                              // 使用 mounted 守卫避免 dialog 已关闭后仍触发 setState。
+                              if (!ctx.mounted) return;
+                              setDialogState(() {
+                                // 时长有效时自动切回时间段模式并推算结束时间
+                                isTimePoint = false;
+                                endHour = eh;
+                                endMinute = em;
+                              });
                             });
                           },
                         ),
@@ -636,7 +737,14 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
           },
         );
       },
-    );
+      );
+    } finally {
+      // 无论 dialog 因何关闭（保存/取消/删除确认/外部 dismiss），都释放所有控制器，
+      // 避免 controller / focusNode 泄漏以及下次打开时的残留状态。
+      nameCtl.dispose();
+      contentCtl.dispose();
+      _disposeFieldControllers();
+    }
   }
 
   /// 根据固定事件的开始/结束时间，同步推算关联标签的字段值
@@ -790,6 +898,8 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                           selectedTagFields.putIfAbsent(tagId, () => {});
                           // 切换分类时清除该标签之前的字段值（避免残留旧分类的字段）
                           selectedTagFields[tagId] = {'_category': cat.id};
+                          // 同步释放旧分类的输入控件缓存
+                          _disposeFieldControllersForTag(tagId);
                         });
                       },
                       child: AnimatedContainer(
@@ -931,35 +1041,73 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                     }).toList(),
                   )
                 else
-                  TextField(
-                    controller: TextEditingController(
-                      text: currentValue?.toString() ?? '',
-                    ),
-                    onChanged: (val) {
-                      setDialogState(() {
-                        selectedTagFields.putIfAbsent(tagId, () => {});
-                        if (val.isEmpty) {
-                          selectedTagFields[tagId]?.remove(field.id);
-                        } else {
-                          selectedTagFields[tagId]![field.id] = val;
+                  Builder(
+                    builder: (context) {
+                      // 复用外层 state 缓存的 controller 与 focusNode，
+                      // 避免每次 build 重建 controller 导致光标归零、字符反向插入。
+                      final controller = _ensureFieldController(
+                        tagId,
+                        field.id,
+                        currentValue?.toString() ?? '',
+                      );
+                      final focusNode = _ensureFieldFocusNode(tagId, field.id);
+                      // 仅当 controller 未获焦（即用户没在编辑该字段）时，
+                      // 才把外部 currentValue 同步进来，避免覆盖用户正在输入的字符。
+                      if (!focusNode.hasFocus) {
+                        final next = currentValue?.toString() ?? '';
+                        if (controller.text != next) {
+                          controller.value = TextEditingValue(
+                            text: next,
+                            selection: TextSelection.collapsed(
+                              offset: next.length,
+                            ),
+                          );
                         }
-                      });
-                      // sleep/activity 的 duration 字段变化时反向推算事件结束时间
-                      if (onFieldChanged != null && val.isNotEmpty) {
-                        onFieldChanged(tagId, field.id, val);
                       }
+                      final isNumber = field.type == 'number';
+                      return TextField(
+                        key: ValueKey('$tagId#${field.id}'),
+                        controller: controller,
+                        focusNode: focusNode,
+                        keyboardType: isNumber
+                            ? const TextInputType.numberWithOptions(
+                                decimal: true,
+                              )
+                            : TextInputType.text,
+                        inputFormatters: isNumber
+                            ? [
+                                FilteringTextInputFormatter.allow(
+                                  RegExp(r'[0-9.]'),
+                                ),
+                              ]
+                            : null,
+                        onChanged: (val) {
+                          setDialogState(() {
+                            selectedTagFields.putIfAbsent(tagId, () => {});
+                            if (val.isEmpty) {
+                              selectedTagFields[tagId]?.remove(field.id);
+                            } else {
+                              selectedTagFields[tagId]![field.id] = val;
+                            }
+                          });
+                          // sleep/activity 的 duration 字段变化时反向推算事件结束时间
+                          if (onFieldChanged != null && val.isNotEmpty) {
+                            onFieldChanged(tagId, field.id, val);
+                          }
+                        },
+                        decoration: InputDecoration(
+                          hintText: '输入${field.label}',
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      );
                     },
-                    decoration: InputDecoration(
-                      hintText: '输入${field.label}',
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
                   ),
               ],
             ),

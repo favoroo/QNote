@@ -9,11 +9,13 @@ import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
+import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/note.dart';
+import 'package:qnote_flutter/models/todo.dart';
 import 'package:uuid/uuid.dart';
 
 class AiContextFilter {
@@ -21,6 +23,7 @@ class AiContextFilter {
   final DateTime? startDate;
   final DateTime? endDate;
   final List<String> selectedNoteIds;
+  final List<String> selectedTodoIds;
   final List<String> selectedTags;
 
   const AiContextFilter({
@@ -28,6 +31,7 @@ class AiContextFilter {
     this.startDate,
     this.endDate,
     this.selectedNoteIds = const [],
+    this.selectedTodoIds = const [],
     this.selectedTags = const [],
   });
 
@@ -36,6 +40,7 @@ class AiContextFilter {
     DateTime? startDate,
     DateTime? endDate,
     List<String>? selectedNoteIds,
+    List<String>? selectedTodoIds,
     List<String>? selectedTags,
   }) {
     return AiContextFilter(
@@ -43,6 +48,7 @@ class AiContextFilter {
       startDate: startDate ?? this.startDate,
       endDate: endDate ?? this.endDate,
       selectedNoteIds: selectedNoteIds ?? this.selectedNoteIds,
+      selectedTodoIds: selectedTodoIds ?? this.selectedTodoIds,
       selectedTags: selectedTags ?? this.selectedTags,
     );
   }
@@ -251,6 +257,19 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       }
     }
 
+    List<Todo> filteredTodos = [];
+    if (filter.scope == 'todos' || filter.scope == 'mixed') {
+      if (filter.selectedTodoIds.isNotEmpty) {
+        final todoRepo = TodoRepository();
+        for (final id in filter.selectedTodoIds) {
+          final todo = await todoRepo.getById(id);
+          if (todo != null) {
+            filteredTodos.add(todo);
+          }
+        }
+      }
+    }
+
     buffer.writeln('请基于以下数据回答我的问题：\n');
 
     if (filteredDiary.isNotEmpty) {
@@ -308,6 +327,21 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         if (n.content.isNotEmpty) {
           buffer.writeln('- **内容**: ${n.content}');
         }
+        buffer.writeln();
+      }
+    }
+
+    if (filteredTodos.isNotEmpty) {
+      buffer.writeln('### 相关待办\n');
+      for (int i = 0; i < filteredTodos.length; i++) {
+        final t = filteredTodos[i];
+        buffer.writeln('#### 待办 ${i + 1}');
+        buffer.writeln('- **内容**: ${t.title}');
+        if (t.description.isNotEmpty) buffer.writeln('- **描述**: ${t.description}');
+        buffer.writeln('- **状态**: ${t.isCompleted ? '已完成' : '未完成'}');
+        buffer.writeln('- **优先级**: ${t.priority == 'high' ? '高' : (t.priority == 'important' ? '重要' : '普通')}');
+        if (t.dueDate != null) buffer.writeln('- **到期日**: ${_formatDateTime(t.dueDate!)}');
+        if (t.tags.isNotEmpty) buffer.writeln('- **标签**: ${t.tags}');
         buffer.writeln();
       }
     }

@@ -32,7 +32,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   bool _batchTesting = false;
   bool _testingImageRecognition = false;
   String? _imageTestResult;
-  bool _isBatchTestingModels = false;
+  final ValueNotifier<bool> _isBatchTestingNotifier = ValueNotifier(false);
   final ValueNotifier<Map<String, String>> _modelLatencyNotifier = ValueNotifier({});
   final Map<String, List<String>> _fetchedModelsMap = {};
   bool _isFetchingModels = false;
@@ -202,6 +202,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     required String currentSelected,
     required String vendorId,
     required ValueChanged<String> onSelected,
+    VoidCallback? onBatchTest,
   }) {
     showModalBottomSheet(
       context: context,
@@ -214,12 +215,115 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           currentSelected: currentSelected,
           vendorId: vendorId,
           modelLatencyNotifier: _modelLatencyNotifier,
+          isBatchTestingNotifier: _isBatchTestingNotifier,
           onSelected: onSelected,
+          onBatchTest: onBatchTest,
         );
       },
     );
   }
 
+
+  void _showProviderPickerBottomSheet({
+    required BuildContext context,
+    required String currentSelected,
+    required ValueChanged<String> onSelected,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        return Container(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 20,
+                offset: const Offset(0, -5),
+              ),
+            ],
+          ),
+          padding: EdgeInsets.only(
+            top: 16,
+            left: 16,
+            right: 16,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+          ),
+          child: FractionallySizedBox(
+            heightFactor: 0.7,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '选择供应商',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      '共 ${aiProviders.length} 个选项',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: aiProviders.length,
+                    itemBuilder: (context, index) {
+                      final provider = aiProviders[index];
+                      final isSelected = provider.id == currentSelected;
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        title: Text(
+                          provider.name,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                          ),
+                        ),
+                        trailing: isSelected
+                            ? Icon(Icons.check_circle, color: theme.colorScheme.primary, size: 20)
+                            : null,
+                        selected: isSelected,
+                        selectedTileColor: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+                        onTap: () {
+                          Navigator.pop(context);
+                          onSelected(provider.id);
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   Future<void> _loadRoles() async {
     final roles = await AiRoleService.instance.getRoles();
@@ -281,12 +385,10 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     required String baseUrl,
     required String provider,
     required List<String> models,
-    required StateSetter setDialogState,
   }) async {
-    if (_isBatchTestingModels || models.isEmpty) return;
+    if (_isBatchTestingNotifier.value || models.isEmpty) return;
 
-    setDialogState(() => _isBatchTestingModels = true);
-    if (mounted) setState(() => _isBatchTestingModels = true);
+    _isBatchTestingNotifier.value = true;
 
     try {
       // 使用并发池，限制并发数为 5，兼顾速度与准确性
@@ -342,12 +444,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       await Future.wait(tasks);
     } finally {
       if (mounted) {
-        try {
-          setDialogState(() => _isBatchTestingModels = false);
-        } catch (_) {
-          // 对话框已关闭，忽略 setDialogState 调用
-        }
-        setState(() => _isBatchTestingModels = false);
+        _isBatchTestingNotifier.value = false;
       }
     }
   }
@@ -1096,21 +1193,12 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                     children: [
                       Text('供应商选择', style: Theme.of(context).textTheme.labelSmall),
                       const SizedBox(height: 4),
-                      InputDecorator(
-                        decoration: const InputDecoration(
-                          contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: selectedVendorId,
-                            isExpanded: true,
-                            isDense: true,
-                            items: aiProviders.map((p) => DropdownMenuItem(
-                              value: p.id,
-                              child: Text(p.name, overflow: TextOverflow.ellipsis),
-                            )).toList(),
-                            onChanged: (value) {
-                              if (value == null) return;
+                      InkWell(
+                        onTap: () {
+                          _showProviderPickerBottomSheet(
+                            context: ctx,
+                            currentSelected: selectedVendorId,
+                            onSelected: (value) {
                               final provider = getProviderById(value);
                               setDialogState(() {
                                 // Remember the current API key input for this vendor in the temporary map
@@ -1137,6 +1225,37 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                                 }
                               });
                             },
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(ctx).colorScheme.surface,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: Theme.of(ctx).colorScheme.outline,
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  getProviderById(selectedVendorId)?.name ?? selectedVendorId,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.normal,
+                                    color: Theme.of(ctx).colorScheme.onSurface,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Icon(
+                                Icons.arrow_drop_down,
+                                color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -1180,6 +1299,24 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                           nameCtl.text = getCleanModelName(newModel);
                           isNameManuallyEdited = false;
                         },
+                        selectedVendorId == 'custom' ? null : () {
+                          final providerConfig = getProviderById(selectedVendorId);
+                          List<String> modelsToTest = [];
+                          if (providerConfig != null) {
+                            final cached = _fetchedModelsMap[selectedVendorId];
+                            modelsToTest = (cached != null && cached.isNotEmpty)
+                                ? cached
+                                : providerConfig.models;
+                          }
+                          
+                          _batchTestModels(
+                            vendorId: selectedVendorId,
+                            apiKey: apiKeyCtl.text,
+                            baseUrl: baseUrlCtl.text,
+                            provider: selectedProvider,
+                            models: modelsToTest,
+                          );
+                        },
                       ),
                       const SizedBox(height: 8),
                       Row(
@@ -1221,56 +1358,6 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                               );
                             },
                           ),
-                          if (selectedVendorId != 'custom') ...[
-                            Builder(
-                              builder: (context) {
-                                final providerConfig = getProviderById(selectedVendorId);
-                                if (providerConfig != null && providerConfig.modelsEndpoint.isNotEmpty) {
-                                  return const SizedBox(width: 8);
-                                }
-                                return const SizedBox.shrink();
-                              },
-                            ),
-                            TextButton.icon(
-                              onPressed: _isBatchTestingModels
-                                  ? null
-                                  : () {
-                                      final providerConfig = getProviderById(selectedVendorId);
-                                      List<String> modelsToTest = [];
-                                      if (providerConfig != null) {
-                                        final cached = _fetchedModelsMap[selectedVendorId];
-                                        modelsToTest = (cached != null && cached.isNotEmpty)
-                                            ? cached
-                                            : providerConfig.models;
-                                      }
-                                      
-                                      _batchTestModels(
-                                        vendorId: selectedVendorId,
-                                        apiKey: apiKeyCtl.text,
-                                        baseUrl: baseUrlCtl.text,
-                                        provider: selectedProvider,
-                                        models: modelsToTest,
-                                        setDialogState: setDialogState,
-                                      );
-                                    },
-                              icon: _isBatchTestingModels
-                                  ? const SizedBox(
-                                      width: 14,
-                                      height: 14,
-                                      child: CircularProgressIndicator(strokeWidth: 2),
-                                    )
-                                  : const Icon(Icons.bolt, size: 16),
-                              label: Text(
-                                _isBatchTestingModels ? '测试中...' : '批量测试',
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                              style: TextButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                minimumSize: Size.zero,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                            ),
-                          ],
                         ],
                       ),
                       if (selectedVendorId != 'custom' && _fetchMessage != null) ...[
@@ -1537,6 +1624,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     TextEditingController modelCtl,
     StateSetter setDialogState,
     ValueChanged<String> onModelChanged,
+    VoidCallback? onBatchTest,
   ) {
     final providerConfig = getProviderById(vendorId);
     
@@ -1569,6 +1657,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                     onModelChanged(selectedVal);
                   }
                 },
+                onBatchTest: onBatchTest,
               );
             },
             borderRadius: BorderRadius.circular(10),
@@ -1655,14 +1744,18 @@ class _ModelPickerBottomSheet extends StatefulWidget {
   final String currentSelected;
   final String vendorId;
   final ValueNotifier<Map<String, String>> modelLatencyNotifier;
+  final ValueNotifier<bool> isBatchTestingNotifier;
   final ValueChanged<String> onSelected;
+  final VoidCallback? onBatchTest;
 
   const _ModelPickerBottomSheet({
     required this.models,
     required this.currentSelected,
     required this.vendorId,
     required this.modelLatencyNotifier,
+    required this.isBatchTestingNotifier,
     required this.onSelected,
+    this.onBatchTest,
   });
 
   @override
@@ -1832,11 +1925,35 @@ class _ModelPickerBottomSheetState extends State<_ModelPickerBottomSheet> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                Text(
-                  '共 ${widget.models.length} 个模型',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (widget.onBatchTest != null)
+                      ValueListenableBuilder<bool>(
+                        valueListenable: widget.isBatchTestingNotifier,
+                        builder: (context, isTesting, child) {
+                          return TextButton.icon(
+                            onPressed: isTesting ? null : widget.onBatchTest,
+                            icon: isTesting
+                                ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                                : const Icon(Icons.bolt, size: 16),
+                            label: Text(isTesting ? '测试中...' : '批量测试', style: const TextStyle(fontSize: 12)),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                          );
+                        },
+                      ),
+                    if (widget.onBatchTest != null) const SizedBox(width: 12),
+                    Text(
+                      '共 ${widget.models.length} 个模型',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
