@@ -2811,27 +2811,30 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                                   : theme.colorScheme.outlineVariant,
                             ),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                _getShortcutIcon(config.name),
-                                size: 14,
-                                color: isSelected
-                                    ? theme.colorScheme.onPrimary
-                                    : theme.colorScheme.onSurface,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                config.name,
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  fontWeight: FontWeight.bold,
+                            child: AnimatedSize(
+                            duration: const Duration(milliseconds: 200),
+                            curve: Curves.easeInOut,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  _getShortcutIcon(config.name),
+                                  size: 14,
                                   color: isSelected
                                       ? theme.colorScheme.onPrimary
                                       : theme.colorScheme.onSurface,
                                 ),
-                              ),
-                            ],
+                                if (isSelected) const SizedBox(width: 4),
+                                if (isSelected)
+                                  Text(
+                                    config.name,
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: theme.colorScheme.onPrimary,
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
