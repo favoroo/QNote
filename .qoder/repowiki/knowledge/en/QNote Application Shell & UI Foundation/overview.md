@@ -1,0 +1,1 @@
+Provides the core application shell, routing, theming, and state management foundation for the QNote personal knowledge management app.

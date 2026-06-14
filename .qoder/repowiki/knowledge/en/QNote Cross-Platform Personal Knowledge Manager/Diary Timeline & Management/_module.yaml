@@ -1,0 +1,13 @@
+schema_version: 1
+module_path: flutter_app/diary
+title: Diary Timeline & Management
+scope:
+    - lib/pages/diary_page.dart
+    - lib/providers/diary_provider.dart
+    - lib/models/diary_record.dart
+source_files: []
+depends_on: []
+related_to:
+    - path: flutter_app/ai
+    - path: flutter_app/notes
+    - path: flutter_app/todo

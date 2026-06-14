@@ -157,6 +157,34 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             }
           }
 
+          // activity 联动：填时长时推算结束时间（与 sleep 的 duration 处理一致）
+          if (tagId == 'activity') {
+            if (fieldKey == 'duration' && value != null) {
+              final double? durationHours = double.tryParse(value.toString());
+              if (durationHours != null) {
+                final currentStart = _startTime ?? _time;
+                final newEnd = currentStart.add(
+                  Duration(minutes: (durationHours * 60).toInt()),
+                );
+                _endTime = newEnd;
+
+                final baseDate = DateTime(_time.year, _time.month, _time.day);
+                final startOffset = DateTime(currentStart.year, currentStart.month, currentStart.day).difference(baseDate).inDays;
+                final endOffset = DateTime(newEnd.year, newEnd.month, newEnd.day).difference(baseDate).inDays;
+
+                entry = entry.copyWith(
+                  startHour: currentStart.hour,
+                  startMinute: currentStart.minute,
+                  startOffset: startOffset,
+                  endHour: newEnd.hour,
+                  endMinute: newEnd.minute,
+                  endOffset: endOffset,
+                );
+                entry = entry.copyWith(time: entry.formattedTime);
+              }
+            }
+          }
+
           return entry.copyWith(fields: newFields);
         }
         return entry;
@@ -267,6 +295,31 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               endOffset: endOffset,
             );
           }
+          // activity：改开始时间时，若有结束时间则反算时长
+          if (entry.id == 'activity' || entry.name == '活动') {
+            final newFields = Map<String, dynamic>.from(entry.fields);
+            final baseDate = DateTime(_time.year, _time.month, _time.day);
+            final aStartOffset = DateTime(result.year, result.month, result.day).difference(baseDate).inDays;
+            int? aEndHour;
+            int? aEndMinute;
+            int? aEndOffset;
+            if (_endTime != null) {
+              final diffMin = _endTime!.difference(result).inMinutes;
+              newFields['duration'] = (diffMin / 60.0).toStringAsFixed(1);
+              aEndHour = _endTime!.hour;
+              aEndMinute = _endTime!.minute;
+              aEndOffset = DateTime(_endTime!.year, _endTime!.month, _endTime!.day).difference(baseDate).inDays;
+            }
+            return entry.copyWith(
+              fields: newFields,
+              startHour: result.hour,
+              startMinute: result.minute,
+              startOffset: aStartOffset,
+              endHour: aEndHour,
+              endMinute: aEndMinute,
+              endOffset: aEndOffset,
+            );
+          }
           return entry;
         }).toList();
       });
@@ -304,6 +357,27 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               endOffset: endOffset,
             );
           }
+          // activity：改结束时间时反算时长
+          if (entry.id == 'activity' || entry.name == '活动') {
+            final newFields = Map<String, dynamic>.from(entry.fields);
+            final aStart = _startTime ?? _time;
+            final diffMin = result.difference(aStart).inMinutes;
+            newFields['duration'] = (diffMin / 60.0).toStringAsFixed(1);
+
+            final baseDate = DateTime(_time.year, _time.month, _time.day);
+            final aStartOffset = DateTime(aStart.year, aStart.month, aStart.day).difference(baseDate).inDays;
+            final aEndOffset = DateTime(result.year, result.month, result.day).difference(baseDate).inDays;
+
+            return entry.copyWith(
+              fields: newFields,
+              startHour: aStart.hour,
+              startMinute: aStart.minute,
+              startOffset: aStartOffset,
+              endHour: result.hour,
+              endMinute: result.minute,
+              endOffset: aEndOffset,
+            );
+          }
           return entry;
         }).toList();
       });
@@ -329,6 +403,9 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                 updatedFields.remove('duration');
                 _startTime = null;
                 _endTime = null;
+              }
+              if (e.id == 'activity' || e.name == '活动') {
+                updatedFields.remove('duration');
               }
               return e.copyWith(
                 clearStartTime: true,
@@ -381,6 +458,40 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                   final newDuration = (diffMin / 60.0 * 10).round() / 10.0;
                   updatedFields['duration'] = newDuration.toStringAsFixed(1);
                   
+                  _startTime = startDt;
+                  _endTime = endDt;
+                } else {
+                  updatedFields.remove('duration');
+                  _startTime = startDt;
+                  _endTime = null;
+                }
+              }
+            }
+
+            // activity：通过标签时间 sheet 改时间时，若同时有结束时间则反算时长
+            if (e.id == 'activity' || e.name == '活动') {
+              if (startHour != null && startMinute != null) {
+                final baseDate = DateTime(_time.year, _time.month, _time.day);
+                final startDate = baseDate.add(Duration(days: startOffset ?? 0));
+                final startDt = DateTime(
+                  startDate.year,
+                  startDate.month,
+                  startDate.day,
+                  startHour,
+                  startMinute,
+                );
+                if (endHour != null && endMinute != null) {
+                  final endDate = baseDate.add(Duration(days: endOffset ?? 0));
+                  final endDt = DateTime(
+                    endDate.year,
+                    endDate.month,
+                    endDate.day,
+                    endHour,
+                    endMinute,
+                  );
+                  final diffMin = endDt.difference(startDt).inMinutes;
+                  final newDuration = (diffMin / 60.0 * 10).round() / 10.0;
+                  updatedFields['duration'] = newDuration.toStringAsFixed(1);
                   _startTime = startDt;
                   _endTime = endDt;
                 } else {

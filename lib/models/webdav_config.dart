@@ -1,14 +1,14 @@
 class WebdavConfig {
   final String id;
-  String serverUrl;
-  String username;
-  String password;
-  String remotePath;
-  bool autoSync;
-  int syncInterval;
-  DateTime? lastSyncTime;
-  DateTime createdAt;
-  DateTime updatedAt;
+  final String serverUrl;
+  final String username;
+  final String password;
+  final String remotePath;
+  final bool autoSync;
+  final int syncInterval;
+  final DateTime? lastSyncTime;
+  final DateTime createdAt;
+  final DateTime updatedAt;
 
   WebdavConfig({
     required this.id,

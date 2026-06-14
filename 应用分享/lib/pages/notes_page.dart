@@ -661,16 +661,6 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                       }
                     });
                   },
-                  onEnterSelectionMode: () {
-                    setState(() {
-                      _isSelectionMode = true;
-                      if (item.isFolder) {
-                        _selectedFolderIds.add(item.id);
-                      } else {
-                        _selectedNoteIds.add(item.id);
-                      }
-                    });
-                  },
                   onEditNote: _editNote,
                   onShowNoteMenu: _showNoteMenu,
                   onToggleFolder: _toggleFolder,
@@ -862,6 +852,16 @@ class _NotesPageState extends ConsumerState<NotesPage> {
         ),
         ActionMenuItem(icon: Icons.share_outlined, label: '分享笔记', onTap: () {}),
         ActionMenuItem(
+          icon: Icons.select_all_outlined,
+          label: '批量编辑',
+          onTap: () {
+            setState(() {
+              _isSelectionMode = true;
+              _selectedNoteIds.add(note.id);
+            });
+          },
+        ),
+        ActionMenuItem(
           icon: Icons.delete_outline,
           label: '删除笔记',
           isDestructive: true,
@@ -895,6 +895,16 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           icon: Icons.drive_file_move_outlined,
           label: '移动文件夹',
           onTap: () => _showMoveToFolderDialog(context, folder: folder),
+        ),
+        ActionMenuItem(
+          icon: Icons.select_all_outlined,
+          label: '批量编辑',
+          onTap: () {
+            setState(() {
+              _isSelectionMode = true;
+              _selectedFolderIds.add(folder.id);
+            });
+          },
         ),
         ActionMenuItem(
           icon: Icons.delete_outline,
@@ -966,7 +976,6 @@ class _FlattenedTile extends ConsumerStatefulWidget {
   final bool isSelectionMode;
   final bool isSelected;
   final VoidCallback onToggleSelection;
-  final VoidCallback onEnterSelectionMode;
   final void Function(Note) onEditNote;
   final void Function(Note, GlobalKey) onShowNoteMenu;
   final void Function(Folder) onToggleFolder;
@@ -986,7 +995,6 @@ class _FlattenedTile extends ConsumerStatefulWidget {
     required this.isSelectionMode,
     required this.isSelected,
     required this.onToggleSelection,
-    required this.onEnterSelectionMode,
     required this.onEditNote,
     required this.onShowNoteMenu,
     required this.onToggleFolder,
@@ -1047,16 +1055,7 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
               ),
             )
           else
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Icon(
-                Icons.drag_indicator,
-                size: 16,
-                color: theme.colorScheme.onSurfaceVariant.withValues(
-                  alpha: widget.item.isPinned ? 0.1 : 0.35,
-                ),
-              ),
-            ),
+            const SizedBox(width: 8),
 
           if (isFolder)
             GestureDetector(
@@ -1112,7 +1111,6 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
                   : (isFolder
                       ? () => widget.onToggleFolder(widget.item.folder!)
                       : () => widget.onEditNote(widget.item.note!)),
-              onLongPress: widget.isSelectionMode ? null : widget.onEnterSelectionMode,
               behavior: HitTestBehavior.opaque,
               child: Text(
                 isFolder ? widget.item.folder!.name : widget.item.note!.title,
@@ -1151,6 +1149,7 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
       ),
     );
 
+    // 长按触发拖动排序；选择模式下禁用拖动
     Widget tileWithDraggable = LongPressDraggable<FlattenedItem>(
       data: widget.item,
       maxSimultaneousDrags: widget.isSelectionMode ? 0 : 1,

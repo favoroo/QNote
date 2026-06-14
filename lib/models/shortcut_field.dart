@@ -2,10 +2,10 @@ import 'dart:convert';
 
 class ShortcutField {
   final String id;
-  String label;
-  String type;
-  List<String> options;
-  bool allowCustom;
+  final String label;
+  final String type;
+  final List<String> options;
+  final bool allowCustom;
 
   ShortcutField({
     required this.id,

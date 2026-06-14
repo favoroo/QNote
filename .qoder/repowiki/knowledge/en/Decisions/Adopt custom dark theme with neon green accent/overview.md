@@ -1,0 +1,1 @@
+Adopt custom dark theme with neon green accent — Implement a custom dark theme defined in `lib/core/theme/app_colors.

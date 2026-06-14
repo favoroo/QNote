@@ -3,8 +3,8 @@ import 'package:qnote_flutter/models/shortcut_field.dart';
 
 class ShortcutCategory {
   final String id;
-  String name;
-  List<ShortcutField> fields;
+  final String name;
+  final List<ShortcutField> fields;
 
   ShortcutCategory({
     required this.id,

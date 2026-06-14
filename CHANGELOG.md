@@ -8,6 +8,34 @@
 
 ## 2026-06-14
 
+- **[15:30]**
+  - **Fixed**: 修复 `app.dart` 中 3 处空 catch 块，补充 `debugPrint` 日志记录 (`lib/app.dart`)。
+  - **Changed**: 增强 `analysis_options.yaml` lint 规则，启用 `prefer_single_quotes`、`prefer_const_constructors`、`prefer_final_fields` 等 12 条规则 (`analysis_options.yaml`)。
+  - **Changed**: 将所有 16 个模型类的非 id 字段改为 `final`，确保不可变性 (`lib/models/*.dart`)。
+  - **Changed**: 将 `DiaryColorMarkNotifier` 从 `StateNotifier` 迁移为 `AsyncNotifier`，符合项目状态管理规范 (`lib/providers/diary_provider.dart`, `lib/pages/diary_page.dart`)。
+  - **Added**: 补充 `DiaryRecord` 和 `Todo` 模型的单元测试（toMap/fromMap 往返、copyWith、getEffectiveDate、belongsToDate），共 22 个测试用例 (`test/models/diary_record_test.dart`, `test/models/todo_test.dart`)。
+
+- **[11:05]**
+  - **Added**: 固定事件支持多选，选中多个模板时各自的备注按选中顺序换行拼接显示在输入栏；时间用最后选中模板的时间；取消选中时自动移除对应模板的标签与备注 (lib/widgets/diary/diary_input_bar.dart)。
+
+- **[10:50]**
+  - **Changed**: 优化了日记快捷记录栏中的“固定事件”模板按钮颜色（`lib/widgets/diary/diary_input_bar.dart`）。移除了未选中状态下突兀的浅灰色不透明背景，统一改为和下方快捷类别标签一样的“透明背景 + 细边框（`outlineVariant`）”极简风格，同时将未选中状态的图标和文字颜色加深为 `onSurface`，确保整个输入框区域的各类气泡按钮在视觉上保持极度协调与清爽。
+
+- **[10:45]**
+  - **Added**: 固定事件支持「时间点」模式（顶部 SegmentedButton 切换时间点/时间段）；时间点模式下只选单个时间，无结束时间 (`lib/models/fixed_event_template.dart`, `lib/pages/settings/fixed_events_page.dart`)。
+  - **Added**: 固定事件配置页中，关联的「睡眠」「活动」标签字段与事件开始/结束时间双向联动——改时间自动推算入睡时间/时长，改时长自动反推结束时间 (`lib/pages/settings/fixed_events_page.dart`)。
+  - **Added**: 日记输入/编辑页中，活动标签的「时长」与开始/结束时间双向联动（与睡眠一致）；固定事件时间点模式填充草稿时不再强制设置结束时间 (`lib/widgets/diary/diary_input_bar.dart`, `lib/widgets/diary/diary_editor_view.dart`)。
+  - **Changed**: 数据库升级至 v16，`fixed_event_templates` 表新增 `is_time_point` 列（含迁移与兜底补列）(`lib/core/storage/database_helper.dart`)。
+
+- **[09:48]**
+  - **Changed**: 优化了日记快捷记录输入栏（`lib/widgets/diary/diary_input_bar.dart`）最右侧的“向下收起”按钮颜色与样式。移除了原先突兀的蓝色渐变背景与微阴影，改为透明背景加轮廓线（`outlineVariant`）的极简样式，并稍微增大了点击热区，使其与同排的各种快捷分类按钮风格保持完美统一，视觉过渡更自然。
+
+- **[时间]**
+  - **Changed**: 调整笔记列表交互逻辑：长按触发拖动排序，三点菜单中新增「批量编辑」入口进入多选模式，移除了原本的长按进入选择模式 (`lib/pages/notes_page.dart`)。
+
+- **[09:44]**
+  - **Changed**: 优化了全局 Switch 开关组件在深浅色模式下的色彩显示 (`lib/core/theme/app_theme.dart`)。针对之前选中状态“轨道颜色与滑块颜色都是同种深色”导致视觉上显得过于厚重的问题，将选中状态重构为标准且更现代清爽的样式：轨道颜色保持为主品牌色（`accentColor`），滑块颜色（Thumb）统一替换为纯白色，同时移除了 Material 3 默认自带的不协调边框（`trackOutlineColor`），极大地提升了全局开关操作时的轻量感与视觉清晰度。
+
 - **[09:42]**
   - **Changed**: 精简并统一了个性化设置中的主题色选项 (`lib/providers/theme_provider.dart`)。将原本的 12 种主题色删减并修改为 4 种特定的色彩：系统默认经典蓝 (`#005BCB`)、荧光黄绿 (`#C5E803`)、玫瑰粉红 (`#E91E8C`) 和春天亮绿 (`#00E676`)。
 

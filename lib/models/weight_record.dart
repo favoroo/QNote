@@ -1,7 +1,7 @@
 class WeightRecord {
   final String id;
-  double weight;
-  DateTime time;
+  final double weight;
+  final DateTime time;
 
   WeightRecord({
     required this.id,

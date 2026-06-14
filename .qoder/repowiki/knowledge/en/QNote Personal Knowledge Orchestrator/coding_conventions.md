@@ -1,0 +1,2 @@
+- Adopts a custom dark theme with neon green accent colors applied globally via a centralized `AppTheme` provider.
+- Utilizes a shared custom UI component library to ensure visual consistency and reduce code duplication across feature modules.

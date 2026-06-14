@@ -851,7 +851,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
   void _showColorMarkDialog() {
     final selectedDate = ref.read(selectedDateProvider);
-    final colorMarks = ref.read(diaryColorMarkProvider);
+    final colorMarks = ref.read(diaryColorMarkProvider).valueOrNull ?? [];
     final dateStr = DateFormat('yyyy-MM-dd').format(selectedDate);
     final currentMark = colorMarks.where((m) {
       final markDateStr = DateFormat('yyyy-MM-dd').format(m.date);
@@ -952,7 +952,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
   void _showDatePicker() async {
     final selectedDate = ref.read(selectedDateProvider);
-    final colorMarks = ref.read(diaryColorMarkProvider);
+    final colorMarks = ref.read(diaryColorMarkProvider).valueOrNull ?? [];
     final result = await showDialog<DateTime>(
       context: context,
       builder: (context) => CustomDatePickerDialog(
@@ -1616,7 +1616,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     final theme = Theme.of(context);
     final selectedDate = ref.watch(selectedDateProvider);
     final diaryListAsync = ref.watch(diaryListProvider);
-    final colorMarks = ref.watch(diaryColorMarkProvider);
+    final colorMarks = ref.watch(diaryColorMarkProvider).valueOrNull ?? [];
     final selectEvent = ref.watch(diaryInputTimeProvider);
     final currentInputTime = ref.watch(currentInputTimeProvider);
 

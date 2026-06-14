@@ -45,7 +45,7 @@
 10. [Appendices](#appendices)
 
 ## Introduction
-This document provides comprehensive data model documentation for QNote Flutter’s local database schema and entity relationships. It focuses on core entities such as DiaryRecord, Note, Todo, and configuration models, detailing field definitions, data types, primary/foreign keys, indexes, and constraints. It also explains entity relationships, data validation and business rules enforced at the data layer, data access patterns, caching strategies, performance considerations, data lifecycle and retention, migration paths, and SQLite implementation specifics for cross-platform initialization.
+This document provides comprehensive data model documentation for QNote Flutter's local database schema and entity relationships. It focuses on core entities such as DiaryRecord, Note, Todo, and configuration models, detailing field definitions, data types, primary/foreign keys, indexes, and constraints. It also explains entity relationships, data validation and business rules enforced at the data layer, data access patterns, caching strategies, performance considerations, data lifecycle and retention, migration paths, and SQLite implementation specifics for cross-platform initialization.
 
 ## Project Structure
 QNote organizes data models under a dedicated models directory and database schema creation and migrations under core storage. Repositories encapsulate CRUD operations and caching strategies. Platform-specific initialization is handled via separate files for web and native platforms.
@@ -194,7 +194,7 @@ This section documents the core entities and their schema definitions, focusing 
   - Indexes: resource_type, status, occurred_at.
 
 - FixedEventTemplate
-  - Purpose: Reusable event templates.
+  - Purpose: Reusable event templates for structured recurring events.
   - Key fields: id (primary key), name, description, duration_minutes, repeat_cycle, color, created_at, updated_at.
   - Constraints: Not null on name; repeat_cycle enum-like.
   - Indexes: none.
@@ -536,7 +536,7 @@ FER --> FET["fixed_event_template.dart"]
 - [todo_repository.dart](file://lib/core/storage/todo_repository.dart)
 
 ## Conclusion
-QNote’s data model centers on lightweight, flexible entities with strong indexing and foreign key constraints. Repositories abstract schema concerns and provide robust caching and transactional guarantees. Platform-specific initialization ensures consistent SQLite behavior across web and native environments. Adhering to the outlined validation rules, migration strategies, and performance practices will sustain reliability and scalability.
+QNote's data model centers on lightweight, flexible entities with strong indexing and foreign key constraints. Repositories abstract schema concerns and provide robust caching and transactional guarantees. Platform-specific initialization ensures consistent SQLite behavior across web and native environments. Adhering to the outlined validation rules, migration strategies, and performance practices will sustain reliability and scalability.
 
 ## Appendices
 - Example repository responsibilities:
@@ -547,6 +547,6 @@ QNote’s data model centers on lightweight, flexible entities with strong index
   - DailyScoreRepository: Rolling window aggregation, date_key partitioning.
   - FolderRepository: Tree traversal, permission scoping, hierarchy validation.
   - ColorMarkRepository: Date-based color overlays, conflict resolution.
-  - ImageRepository: Attachment storage, cleanup jobs, backup exclusion.
-  - SyncLogRepository: Audit trails, retry logic, deduplication.
-  - FixedEventRepository: Template expansion, calendar sync.
+  - ImageRepository: attachment storage, cleanup jobs, backup exclusion.
+  - SyncLogRepository: audit trails, retry logic, deduplication.
+  - FixedEventRepository: template expansion, calendar sync.

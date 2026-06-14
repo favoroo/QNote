@@ -1,0 +1,4 @@
+- Models implement `toMap()`, `fromMap()`, and `copyWith()` methods for consistent serialization and immutability-friendly updates.
+- Repositories follow a singleton pattern with private constructors (e.g., `DailyScoreRepository._internal()`).
+- UI components use `ConsumerStatefulWidget` or `ConsumerWidget` to integrate Riverpod state watching directly in the build method.
+- Statistical widgets are encapsulated in dedicated files under `lib/widgets/statistics/` and accept strongly-typed stats objects as parameters.

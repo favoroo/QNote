@@ -1,0 +1,4 @@
+- Models implement `toMap()` and `fromMap()` for SQLite serialization, converting booleans to integers (1/0) and dates to ISO 8601 strings.
+- Models provide a `copyWith()` method for immutable-style updates, supporting selective field overrides and explicit clearing of nullable fields.
+- Providers invalidate dependent providers (e.g., `ref.invalidate(completedTodoListProvider)`) after mutations to ensure data consistency across different views.
+- Repositories use soft deletes (`is_deleted = 1`) for todos to enable history tracking and restoration, while fixed events use hard deletes.

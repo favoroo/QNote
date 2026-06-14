@@ -1,3 +1,0 @@
-- Domain models (`DiaryRecord`) implement `toMap`, `fromMap`, and `copyWith` for consistent serialization and immutable state updates.
-- Repository methods consistently handle soft deletes by filtering `is_deleted = 0` in queries and updating the flag instead of removing rows.
-- UI state changes that involve complex scroll positions or window shifts use `WidgetsBinding.instance.addPostFrameCallback` to ensure layout stability before execution.

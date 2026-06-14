@@ -4,7 +4,9 @@
 **Referenced Files in This Document**
 - [app.dart](file://lib/app.dart)
 - [app_theme.dart](file://lib/core/theme/app_theme.dart)
-- [app_colors.dart](file://lib/core/theme/app_colors.dart)
+- [app_durations.dart](file://lib/core/theme/app_durations.dart)
+- [app_radius.dart](file://lib/core/theme/app_radius.dart)
+- [tag_colors.dart](file://lib/core/theme/tag_colors.dart)
 - [theme_provider.dart](file://lib/providers/theme_provider.dart)
 - [personalization_page.dart](file://lib/pages/settings/personalization_page.dart)
 - [colors.xml](file://android/app/src/main/res/values/colors.xml)
@@ -12,6 +14,14 @@
 - [styles.xml](file://android/app/src/main/res/values/styles.xml)
 - [styles.xml](file://android/app/src/main/res/values-night/styles.xml)
 </cite>
+
+## Update Summary
+**Changes Made**
+- Added documentation for new theme infrastructure files (app_durations.dart, app_radius.dart, tag_colors.dart)
+- Updated theme provider section to reflect simplified color options with presetAccentColors
+- Enhanced design tokens section with unified color scheme and duration/radius constants
+- Updated architecture diagrams to show new theme infrastructure integration
+- Added new section on theme infrastructure files and their role in the system
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -23,28 +33,33 @@
 7. [Design Tokens](#design-tokens)
 8. [Light and Dark Mode Support](#light-and-dark-mode-support)
 9. [Dynamic Theming Capabilities](#dynamic-theming-capabilities)
-10. [Platform-Specific Adaptations](#platform-specific-adaptations)
-11. [Accessibility Compliance](#accessibility-compliance)
-12. [Performance Considerations](#performance-considerations)
-13. [Troubleshooting Guide](#troubleshooting-guide)
-14. [Conclusion](#conclusion)
+10. [Theme Infrastructure Files](#theme-infrastructure-files)
+11. [Platform-Specific Adaptations](#platform-specific-adaptations)
+12. [Accessibility Compliance](#accessibility-compliance)
+13. [Performance Considerations](#performance-considerations)
+14. [Troubleshooting Guide](#troubleshooting-guide)
+15. [Conclusion](#conclusion)
 
 ## Introduction
 
-QNote Flutter implements a comprehensive theming and styling system that provides consistent visual design across multiple platforms and devices. The system supports both light and dark modes, dynamic accent color selection, and platform-specific adaptations while maintaining brand consistency and accessibility compliance.
+QNote Flutter implements a comprehensive theming and styling system that provides consistent visual design across multiple platforms and devices. The system supports both light and dark modes, dynamic accent color selection from a curated palette, and platform-specific adaptations while maintaining brand consistency and accessibility compliance.
 
-The theming system is built around Flutter's Material Design principles with custom color schemes, typography hierarchy, and design tokens that ensure visual coherence throughout the application. The implementation leverages Provider pattern for state management and follows modern Flutter architecture best practices.
+The theming system is built around Flutter's Material Design principles with a unified color scheme, typography hierarchy, and design tokens that ensure visual coherence throughout the application. The implementation leverages Provider pattern for state management and follows modern Flutter architecture best practices with enhanced theme infrastructure files for better organization and maintainability.
 
 ## Project Structure
 
-The theming system is organized across several key directories and files:
+The theming system is organized across several key directories and files with enhanced infrastructure support:
 
 ```mermaid
 graph TB
 subgraph "Theme Core"
 AT[app_theme.dart]
-AC[app_colors.dart]
 TP[theme_provider.dart]
+end
+subgraph "Theme Infrastructure"
+AD[app_durations.dart]
+AR[app_radius.dart]
+TC[tag_colors.dart]
 end
 subgraph "Application Integration"
 APP[app.dart]
@@ -57,8 +72,10 @@ ASV[styles.xml]
 ASN[styles.xml (night)]
 end
 AT --> APP
-AC --> AT
 TP --> APP
+AD --> APP
+AR --> APP
+TC --> APP
 PP --> TP
 ACV --> APP
 ACN --> APP
@@ -69,34 +86,47 @@ ASN --> APP
 **Diagram sources**
 - [app.dart:78-87](file://lib/app.dart#L78-L87)
 - [app_theme.dart:6](file://lib/core/theme/app_theme.dart#L6)
-- [app_colors.dart:4](file://lib/core/theme/app_colors.dart#L4)
+- [app_durations.dart:1](file://lib/core/theme/app_durations.dart#L1)
+- [app_radius.dart:1](file://lib/core/theme/app_radius.dart#L1)
+- [tag_colors.dart:1](file://lib/core/theme/tag_colors.dart#L1)
 
 **Section sources**
 - [app.dart:78-87](file://lib/app.dart#L78-L87)
 - [app_theme.dart:6](file://lib/core/theme/app_theme.dart#L6)
-- [app_colors.dart:4](file://lib/core/theme/app_colors.dart#L4)
+- [app_durations.dart:1](file://lib/core/theme/app_durations.dart#L1)
+- [app_radius.dart:1](file://lib/core/theme/app_radius.dart#L1)
+- [tag_colors.dart:1](file://lib/core/theme/tag_colors.dart#L1)
 
 ## Core Components
 
-The theming system consists of three primary components working together to provide comprehensive styling capabilities:
+The theming system consists of four primary components working together to provide comprehensive styling capabilities:
 
 ### AppTheme Class
 The central theme configuration class that generates both light and dark theme instances based on accent color preferences. It defines comprehensive Material Design theme configurations including color schemes, typography, and component styling.
 
-### AppColors Interface
-A centralized color management system that provides consistent color values across the entire application. The interface defines base colors, semantic color roles, and accent variations used throughout the design system.
-
 ### ThemeProvider State Management
-A Provider-based state management solution that handles theme mode switching, accent color changes, and maintains theme state across the application lifecycle.
+A Provider-based state management solution that handles theme mode switching, accent color changes from a curated palette, and maintains theme state across the application lifecycle. The provider now uses a simplified approach with predefined accent color options.
+
+### Theme Infrastructure Files
+New dedicated files that provide centralized access to design tokens:
+- **app_durations.dart**: Animation and transition timing constants
+- **app_radius.dart**: Corner radius and border radius values
+- **tag_colors.dart**: Unified tag and category color definitions
+
+### Personalization Integration
+The personalization page provides user-facing controls for theme customization, featuring a curated selection of accent colors that maintain brand consistency while offering customization options.
 
 **Section sources**
 - [app_theme.dart:6](file://lib/core/theme/app_theme.dart#L6)
-- [app_colors.dart:4](file://lib/core/theme/app_colors.dart#L4)
 - [theme_provider.dart:5](file://lib/providers/theme_provider.dart#L5)
+- [app_durations.dart:1](file://lib/core/theme/app_durations.dart#L1)
+- [app_radius.dart:1](file://lib/core/theme/app_radius.dart#L1)
+- [tag_colors.dart:1](file://lib/core/theme/tag_colors.dart#L1)
+- [personalization_page.dart:10](file://lib/pages/settings/personalization_page.dart#L10)
 
 ## Architecture Overview
 
-The theming architecture follows a layered approach with clear separation of concerns:
+The theming architecture follows a layered approach with clear separation of concerns and enhanced infrastructure support:
 
 ```mermaid
 sequenceDiagram
@@ -104,10 +134,12 @@ participant User as User Interaction
 participant UI as Widget Layer
 participant Provider as ThemeProvider
 participant AppTheme as AppTheme Generator
+participant Infrastructure as Theme Infrastructure
 participant Flutter as Flutter Engine
 participant Platform as Platform Layer
-User->>UI : Select Theme Mode/Accent
+User->>UI : Select Theme Mode/Preset Accent
 UI->>Provider : Update Theme State
+Provider->>Infrastructure : Access Design Tokens
 Provider->>AppTheme : Generate New Theme
 AppTheme->>Flutter : Apply ThemeData
 Flutter->>Platform : Platform-Specific Rendering
@@ -120,8 +152,11 @@ UI-->>User : Visual Feedback
 - [app.dart:78-87](file://lib/app.dart#L78-L87)
 - [theme_provider.dart:5](file://lib/providers/theme_provider.dart#L5)
 - [app_theme.dart:6](file://lib/core/theme/app_theme.dart#L6)
+- [app_durations.dart:1](file://lib/core/theme/app_durations.dart#L1)
+- [app_radius.dart:1](file://lib/core/theme/app_radius.dart#L1)
+- [tag_colors.dart:1](file://lib/core/theme/tag_colors.dart#L1)
 
-The architecture ensures that theme changes propagate efficiently through the widget tree while maintaining performance and consistency across different platforms.
+The architecture ensures that theme changes propagate efficiently through the widget tree while maintaining performance and consistency across different platforms, with enhanced infrastructure support for design tokens.
 
 **Section sources**
 - [app.dart:78-87](file://lib/app.dart#L78-L87)
@@ -148,53 +183,56 @@ class AppTheme {
 -generateTextTheme()
 -generateMaterialTheme()
 }
-class AppColors {
-<<interface>>
-+Color bgBase
-+Color bgCard
-+Color bgElevated
-+Color bgInput
-+Color bgHover
-+Color accent
-+Color accentDim
-}
 class ThemeProvider {
 <<StateNotifier>>
 +ThemeMode themeMode
 +Color accentColor
 +setThemeMode(ThemeMode mode)
 +setAccentColor(Color color)
+-presetAccentColors[]
 }
-AppTheme --> AppColors : uses
+class ThemeInfrastructure {
+<<constants>>
++Durations durations
++Radius radius
++TagColors tagColors
+}
+AppTheme --> ThemeInfrastructure : uses
 ThemeProvider --> AppTheme : controls
 ```
 
 **Diagram sources**
 - [app_theme.dart:6](file://lib/core/theme/app_theme.dart#L6)
-- [app_colors.dart:4](file://lib/core/theme/app_colors.dart#L4)
 - [theme_provider.dart:5](file://lib/providers/theme_provider.dart#L5)
+- [app_durations.dart:1](file://lib/core/theme/app_durations.dart#L1)
+- [app_radius.dart:1](file://lib/core/theme/app_radius.dart#L1)
+- [tag_colors.dart:1](file://lib/core/theme/tag_colors.dart#L1)
 
 **Section sources**
 - [app_theme.dart:6](file://lib/core/theme/app_theme.dart#L6)
-- [app_colors.dart:4](file://lib/core/theme/app_colors.dart#L4)
 - [theme_provider.dart:5](file://lib/providers/theme_provider.dart#L5)
 
 ### ThemeProvider State Management
 
-The ThemeProvider implements a StateNotifier pattern to manage theme state throughout the application lifecycle. It provides reactive theme updates and maintains persistence of user preferences.
+The ThemeProvider implements a StateNotifier pattern to manage theme state throughout the application lifecycle. It provides reactive theme updates and maintains persistence of user preferences with a simplified approach using curated accent color options.
 
 Key responsibilities include:
 - Managing ThemeMode state (light, dark, system)
-- Tracking accent color preferences
+- Tracking accent color preferences from preset options
 - Handling theme change notifications
 - Integrating with Flutter's theme system
+- Maintaining curated color palette for consistency
+
+The provider now features a curated set of preset accent colors that maintain brand consistency while offering user customization options.
 
 **Section sources**
 - [theme_provider.dart:5](file://lib/providers/theme_provider.dart#L5)
+- [theme_provider.dart:49](file://lib/providers/theme_provider.dart#L49)
+- [theme_provider.dart:56](file://lib/providers/theme_provider.dart#L56)
 
 ### Personalization Integration
 
-The personalization page provides user-facing controls for theme customization, allowing users to select between light and dark modes and adjust accent colors dynamically.
+The personalization page provides user-facing controls for theme customization, featuring a curated selection of accent colors from the preset palette. Users can choose between light and dark modes and select from predefined accent colors that maintain visual consistency.
 
 **Section sources**
 - [personalization_page.dart:10](file://lib/pages/settings/personalization_page.dart#L10)
@@ -214,13 +252,14 @@ Typography characteristics include:
 
 ## Design Tokens
 
-The design token system provides a centralized approach to managing visual design attributes:
+The design token system provides a centralized approach to managing visual design attributes through dedicated infrastructure files:
 
 ### Color Tokens
 - Base background colors for different UI layers
 - Surface and elevated surface colors
 - Interactive element states (hover, focus, pressed)
 - Semantic color roles for branding and UI feedback
+- Tag and category colors unified in tag_colors.dart
 
 ### Spacing Tokens
 - Consistent margin and padding scales
@@ -232,8 +271,20 @@ The design token system provides a centralized approach to managing visual desig
 - Text size scales and line height ratios
 - Text alignment and transformation options
 
+### Duration Tokens
+- Animation and transition timing constants
+- Consistent timing across UI interactions
+- Performance-optimized timing values
+
+### Radius Tokens
+- Corner radius and border radius values
+- Consistent rounded corners across components
+- Scalable radius system for different component sizes
+
 **Section sources**
-- [app_colors.dart:4](file://lib/core/theme/app_colors.dart#L4)
+- [tag_colors.dart:1](file://lib/core/theme/tag_colors.dart#L1)
+- [app_durations.dart:1](file://lib/core/theme/app_durations.dart#L1)
+- [app_radius.dart:1](file://lib/core/theme/app_radius.dart#L1)
 
 ## Light and Dark Mode Support
 
@@ -260,8 +311,8 @@ Each platform receives theme adaptations optimized for native user expectations 
 
 ## Dynamic Theming Capabilities
 
-### Accent Color Customization
-Users can customize the primary accent color to match their preferences while maintaining proper contrast ratios and accessibility standards. The system automatically adjusts related color variants and component styling.
+### Curated Accent Color Customization
+Users can customize the primary accent color from a predefined palette of carefully selected colors that maintain brand consistency and accessibility standards. The system automatically adjusts related color variants and component styling.
 
 ### Real-Time Updates
 Theme changes are applied immediately across the entire application through Flutter's reactive widget system, ensuring consistent visual updates without performance degradation.
@@ -273,6 +324,28 @@ User theme preferences are maintained across application sessions, restoring pre
 - [app.dart:79](file://lib/app.dart#L79)
 - [app.dart:85](file://lib/app.dart#L85)
 - [app.dart:86](file://lib/app.dart#L86)
+- [theme_provider.dart:49](file://lib/providers/theme_provider.dart#L49)
+- [theme_provider.dart:56](file://lib/providers/theme_provider.dart#L56)
+
+## Theme Infrastructure Files
+
+The theming system now includes dedicated infrastructure files that provide centralized access to design tokens and improve maintainability:
+
+### app_durations.dart
+Provides animation and transition timing constants used throughout the application for consistent motion design. These durations ensure smooth, predictable animations that enhance user experience without being distracting.
+
+### app_radius.dart  
+Defines corner radius and border radius values used consistently across components. The radius system provides scalable corner rounding that works well for different component sizes and interaction states.
+
+### tag_colors.dart
+Unifies tag and category color definitions previously scattered across diary components. This centralized approach ensures consistent color usage for different categories while maintaining visual hierarchy and accessibility standards.
+
+These infrastructure files are imported across the application to provide consistent design token access and reduce duplication.
+
+**Section sources**
+- [app_durations.dart:1](file://lib/core/theme/app_durations.dart#L1)
+- [app_radius.dart:1](file://lib/core/theme/app_radius.dart#L1)
+- [tag_colors.dart:1](file://lib/core/theme/tag_colors.dart#L1)
 
 ## Platform-Specific Adaptations
 
@@ -319,7 +392,7 @@ AdjustColors --> Complete
 The theme system ensures minimum contrast ratios are maintained across all color combinations, meeting WCAG 2.1 guidelines for text and interactive elements. Automatic calculations verify accessibility compliance during theme generation.
 
 ### Color Blindness Considerations
-The system provides color variations that remain distinguishable for users with common forms of color vision deficiency, using shape and texture cues in addition to color differentiation.
+The system provides color variations that remain distinguishable for users with common forms of color vision deficiency, using shape and texture cues in addition to color differentiation. The curated color palette specifically considers color blindness accessibility.
 
 ### Responsive Text Scaling
 Text elements adapt appropriately to system font size preferences, ensuring readability across different user needs and device configurations.
@@ -337,6 +410,9 @@ Theme data is cached and reused across widget instances, reducing memory overhea
 
 ### Platform Rendering Optimization
 Platform-specific adaptations leverage native rendering capabilities where appropriate, ensuring optimal performance across all supported platforms.
+
+### Infrastructure Efficiency
+The new theme infrastructure files provide centralized access to design tokens, reducing code duplication and improving compilation performance.
 
 ## Troubleshooting Guide
 
@@ -357,6 +433,11 @@ Platform-specific adaptations leverage native rendering capabilities where appro
 - Verify iOS platform adaptations
 - Test theme behavior across different screen sizes
 
+#### Preset Color Issues
+- Verify preset accent colors array is properly configured
+- Check color serialization/deserialization
+- Ensure color values are within valid range
+
 ### Debugging Tools
 - Use Flutter DevTools to inspect widget tree themes
 - Monitor theme change events through provider state
@@ -365,11 +446,14 @@ Platform-specific adaptations leverage native rendering capabilities where appro
 **Section sources**
 - [app.dart:78-87](file://lib/app.dart#L78-L87)
 - [theme_provider.dart:5](file://lib/providers/theme_provider.dart#L5)
+- [theme_provider.dart:56](file://lib/providers/theme_provider.dart#L56)
 
 ## Conclusion
 
-QNote Flutter's theming and styling system provides a robust, scalable foundation for consistent visual design across multiple platforms. The system successfully balances flexibility with maintainability, offering users comprehensive customization options while preserving brand identity and accessibility standards.
+QNote Flutter's theming and styling system provides a robust, scalable foundation for consistent visual design across multiple platforms. The recent refactoring introduces enhanced infrastructure support through dedicated theme files while maintaining the core functionality of dynamic theming with curated color options.
+
+The system successfully balances flexibility with maintainability, offering users comprehensive customization options from a carefully selected palette while preserving brand identity and accessibility standards. The new infrastructure files improve code organization and provide better developer experience for future enhancements.
 
 The implementation demonstrates modern Flutter architecture principles with clear separation of concerns, efficient state management, and platform-specific optimizations. The result is a cohesive user experience that adapts seamlessly to user preferences and environmental conditions while maintaining technical excellence and accessibility compliance.
 
-Future enhancements could include expanded typography customization, additional color palette options, and advanced animation transitions for theme changes, building upon the solid foundation established in the current implementation.
+Future enhancements could include expanded color palette options, additional animation timing configurations, and advanced theme customization features, building upon the solid foundation established in the current implementation with enhanced infrastructure support.

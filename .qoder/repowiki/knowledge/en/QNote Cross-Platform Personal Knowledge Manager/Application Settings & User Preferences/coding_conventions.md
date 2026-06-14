@@ -1,0 +1,3 @@
+- Data models consistently implement `toMap()`, `fromMap()`, and `copyWith()` methods to support serialization and immutable state updates.
+- Riverpod providers are paired with dedicated Notifier classes (e.g., `ThemeModeNotifier`, `WebdavConfigNotifier`) to encapsulate state mutation logic and persistence side effects.
+- Boolean fields in data models are converted to integers (1/0) during SQLite serialization in `toMap()` and parsed back in `fromMap()`.

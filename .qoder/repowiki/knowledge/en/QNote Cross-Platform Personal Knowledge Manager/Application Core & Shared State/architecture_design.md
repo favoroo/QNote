@@ -1,0 +1,4 @@
+- Entry Point: `lib/main.dart` orchestrates asynchronous initialization of logging, date formatting, database factories, and background services (notifications, sync) before launching the `ProviderScope`.
+- Platform Abstraction: Uses conditional imports (`database_init.dart` vs `database_init_io.dart`) to configure `sqflite` factories for Web (`sqflite_common_ffi_web`) and native platforms.
+- State Management: Exposes global Riverpod providers for UI state, including `navigationIndexProvider` for bottom-nav tracking and `selectedDateProvider` for calendar-based filtering.
+- Data Modeling: Defines immutable domain models (`TagEntry`, `DateColorMark`) with serialization logic (`toMap`, `fromMap`) and utility methods for time parsing and display formatting.
