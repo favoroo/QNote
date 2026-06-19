@@ -6,6 +6,11 @@
 
 ---
 
+## 2026-06-19
+
+- **[15:50]**
+  - **Fixed**: 修复 AI 统一提取时因响应数据类型异常导致 `type 'String' is not a subtype of type 'int' of 'index'` 崩溃问题，增加防御性类型检查 (`lib/core/ai/ai_service.dart`)。
+
 ## 2026-06-17
 
 - **[10:30]**

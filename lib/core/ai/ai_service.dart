@@ -786,10 +786,40 @@ class AiService {
   }
 
   String _extractTextFromResponse(dynamic data) {
-    if (_config!.provider == 'gemini') {
-      return data['candidates']?[0]?['content']?['parts']?[0]?['text'] ?? '';
+    // 如果 data 本身就是字符串，直接返回（可能是未自动解析的 JSON 或纯文本响应）
+    if (data is String) {
+      return data;
     }
-    return data['choices']?[0]?['message']?['content'] ?? '';
+    if (data is! Map<String, dynamic>) {
+      LoggerService.instance.logAI(
+        'AI响应数据格式异常: ${data.runtimeType}',
+        level: LogLevel.warning,
+      );
+      return '';
+    }
+
+    if (_config!.provider == 'gemini') {
+      final candidates = data['candidates'];
+      if (candidates is List && candidates.isNotEmpty) {
+        final content = candidates[0]?['content'];
+        if (content is Map) {
+          final parts = content['parts'];
+          if (parts is List && parts.isNotEmpty) {
+            return parts[0]?['text']?.toString() ?? '';
+          }
+        }
+      }
+      return '';
+    }
+
+    final choices = data['choices'];
+    if (choices is List && choices.isNotEmpty) {
+      final message = choices[0]?['message'];
+      if (message is Map) {
+        return message['content']?.toString() ?? '';
+      }
+    }
+    return '';
   }
 
   dynamic _parseJsonFromAiContent(String content) {
