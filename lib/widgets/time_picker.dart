@@ -269,6 +269,8 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
               style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: theme.colorScheme.primary,
+                height: 1.0,
+                leadingDistribution: TextLeadingDistribution.even,
               ),
               decoration: InputDecoration(
                 counterText: '',
@@ -304,6 +306,8 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
               style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: theme.colorScheme.onSurface,
+                height: 1.0,
+                leadingDistribution: TextLeadingDistribution.even,
               ),
             ),
           ),
@@ -319,6 +323,8 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
               style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: theme.colorScheme.primary,
+                height: 1.0,
+                leadingDistribution: TextLeadingDistribution.even,
               ),
               decoration: InputDecoration(
                 counterText: '',
@@ -401,6 +407,8 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                         color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                        height: 1.0,
+                        leadingDistribution: TextLeadingDistribution.even,
                       ),
                     ),
                   );
@@ -412,6 +420,8 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: theme.colorScheme.onSurface,
+                height: 1.0,
+                leadingDistribution: TextLeadingDistribution.even,
               ),
             ),
             SizedBox(
@@ -433,6 +443,8 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                         color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                        height: 1.0,
+                        leadingDistribution: TextLeadingDistribution.even,
                       ),
                     ),
                   );

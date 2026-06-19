@@ -96,6 +96,14 @@ final dailyScoreHistoryProvider = FutureProvider.family<List<DailyScore>, int>((
   return list.reversed.toList(); // Return ascending by date for charts
 });
 
+/// 热力图数据：近 90 天的评分记录
+final dailyScoreHeatmapProvider = FutureProvider<List<DailyScore>>((ref) async {
+  final repository = ref.watch(dailyScoreRepositoryProvider);
+  final end = DateTime.now();
+  final start = end.subtract(const Duration(days: 90));
+  return repository.getByDateRange(start, end);
+});
+
 final dailyRecordsProvider = FutureProvider<List<DiaryRecord>>((ref) async {
   final date = ref.watch(selectedDateProvider);
   final repo = DiaryRepository();

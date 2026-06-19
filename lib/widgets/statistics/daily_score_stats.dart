@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:intl/intl.dart';
+
+import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/daily_score.dart';
 import 'package:qnote_flutter/providers/daily_score_provider.dart';
-import 'package:qnote_flutter/core/utils/toast_utils.dart';
-import 'package:intl/intl.dart';
+import 'package:qnote_flutter/widgets/statistics/score_heatmap.dart';
 
 class DailyScoreStats extends ConsumerStatefulWidget {
   const DailyScoreStats({super.key});
@@ -94,6 +97,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
     final scoreAsync = ref.watch(dailyScoreProvider);
     final recordsAsync = ref.watch(dailyRecordsProvider);
     final historyAsync = ref.watch(dailyScoreHistoryProvider(7));
+    final heatmapAsync = ref.watch(dailyScoreHeatmapProvider);
 
     final today = DateTime.now();
     final todayDate = DateTime(today.year, today.month, today.day);
@@ -157,9 +161,9 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _buildQuickDateBtn('今天', todayDate, selectedDate),
-                    _buildQuickDateBtn('昨天', yesterdayDate, selectedDate),
                     _buildQuickDateBtn('前天', beforeYesterdayDate, selectedDate),
+                    _buildQuickDateBtn('昨天', yesterdayDate, selectedDate),
+                    _buildQuickDateBtn('今天', todayDate, selectedDate),
                   ],
                 ),
               ],
@@ -454,6 +458,56 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
           ),
 
         const SizedBox(height: 24),
+        // 评分热力图卡片
+        Card(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+              width: 0.5,
+            ),
+          ),
+          elevation: 0,
+          color: theme.colorScheme.surface,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(Icons.grid_on, size: 18, color: theme.colorScheme.primary),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      '评分热力图 (近3个月)',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                heatmapAsync.when(
+                  loading: () => const SizedBox(
+                    height: 140,
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                  error: (err, stack) => SizedBox(
+                    height: 140,
+                    child: Center(child: Text('加载热力图失败: $err')),
+                  ),
+                  data: (scores) => ScoreHeatmap(scores: scores, isDark: isDark),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
         // History line chart card
         Card(
           shape: RoundedRectangleBorder(
@@ -685,6 +739,39 @@ class _AiSuggestionCard extends StatelessWidget {
 
   const _AiSuggestionCard({required this.summary, required this.suggestions});
 
+  /// 将 AI 返回的文本预处理为 Markdown 格式。
+  /// 如果文本已经包含 Markdown 标记（换行、加粗、列表等），直接返回；
+  /// 如果是纯文本（如 "[1. xxx。，2. xxx。]"），则自动转换为 Markdown 列表。
+  static String _formatMarkdownText(String text) {
+    // 已包含 Markdown 换行或列表标记，直接返回
+    if (text.contains('\n') || text.contains('**') || text.contains('- ') || text.contains('* ')) {
+      return text;
+    }
+
+    // 处理方括号包裹的列表格式：[1. xxx。，2. xxx。，3. xxx。]
+    final trimmed = text.trim();
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      final inner = trimmed.substring(1, trimmed.length - 1).trim();
+      // 按 "，" 或 ", " 分隔各条目
+      final items = inner.split(RegExp(r'[，,]\s*'));
+      return items.map((item) => '- ${item.trim()}').join('\n');
+    }
+
+    // 处理 "1. xxx。2. xxx。" 这种编号列表格式（无换行、无方括号）
+    final numberedMatch = RegExp(r'\d+\.\s').hasMatch(text);
+    if (numberedMatch) {
+      // 在每个 "数字. " 前面插入换行（第一个除外）
+      final result = text.replaceAllMapped(
+        RegExp(r'(?<=\S)\s*(\d+\.\s)'),
+        (match) => '\n${match.group(1)}',
+      );
+      return result;
+    }
+
+    // 其他纯文本，直接返回
+    return text;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -724,7 +811,7 @@ class _AiSuggestionCard extends StatelessWidget {
             const SizedBox(height: 16),
             if (summary.isNotEmpty) ...[
               MarkdownBody(
-                data: summary,
+                data: _formatMarkdownText(summary),
                 styleSheet: MarkdownStyleSheet(
                   p: TextStyle(fontSize: 14, color: theme.colorScheme.onSurface, height: 1.5),
                 ),
@@ -744,7 +831,7 @@ class _AiSuggestionCard extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               MarkdownBody(
-                data: suggestions,
+                data: _formatMarkdownText(suggestions),
                 styleSheet: MarkdownStyleSheet(
                   p: TextStyle(fontSize: 14, color: theme.colorScheme.onSurface, height: 1.5),
                 ),

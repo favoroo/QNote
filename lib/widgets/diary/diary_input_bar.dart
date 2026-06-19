@@ -3423,7 +3423,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         (extractImages && draft.selectedPhotos.isNotEmpty);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [

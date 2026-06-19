@@ -6,6 +6,23 @@
 
 ---
 
+## 2026-06-17
+
+- **[10:30]**
+  - **Fixed**: 修复批量管理页面日期选择无法选择时间段的问题。将 `showDatePicker` 替换为 `showDateRangePicker`，支持选择起止日期范围 (`lib/widgets/diary/diary_batch_manage_view.dart`)。
+  - **Added**: 在批量管理页面添加"本周"和"本月"快捷选择按钮。本周为周一到周日，本月为1号到月底 (`lib/widgets/diary/diary_batch_manage_view.dart`)。
+  - **Added**: 在日期范围选择器和批量管理页面添加"今天"快捷按钮，快速选择今天的日期范围 (`lib/widgets/diary/custom_date_range_picker.dart`, `lib/widgets/diary/diary_batch_manage_view.dart`)。
+
+- **[07:10]**
+  - **Added**: 在数据统计评分标签页新增 GitHub 风格热力图组件，展示近3个月每日评分，分数越高颜色越深，使用主题色 primary 配合 alpha 透明度实现深浅变化 (`lib/widgets/statistics/score_heatmap.dart`)。
+  - **Added**: 新增 `dailyScoreHeatmapProvider` 获取近 90 天评分数据 (`lib/providers/daily_score_provider.dart`)。
+  - **Changed**: 在评分统计页面折线图上方插入热力图卡片 (`lib/widgets/statistics/daily_score_stats.dart`)。
+  - **Fixed**: 修复热力图在移动端显示不全的问题。使用 `LayoutBuilder` 实现自适应宽度，根据屏幕可用空间动态计算显示周数 (`lib/widgets/statistics/score_heatmap.dart`)。
+
+- **[06:44]**
+  - **Changed**: 修改 `daily_score_system` AI 提示词的输出格式说明，要求 `summary` 和 `suggestions` 字段使用 Markdown 格式（换行、加粗、列表等），使 AI 评分建议内容在 UI 上正确渲染为富文本 (`lib/config/defaults.dart`)。
+  - **Fixed**: 修复 AI 评分建议内容挤在一行的问题。在 `_AiSuggestionCard` 中添加 `_formatMarkdownText` 预处理函数，自动将纯文本格式（如 `[1. xxx。，2. xxx。]`）转换为 Markdown 列表，确保即使 AI 未输出标准 Markdown 也能正确换行显示 (`lib/widgets/statistics/daily_score_stats.dart`)。
+
 ## 2026-06-14
 
 - **[22:55]**

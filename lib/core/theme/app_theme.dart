@@ -191,6 +191,11 @@ class AppTheme {
           return const Color(0xFF727785);
         }),
       ),
+      datePickerTheme: const DatePickerThemeData(
+        dayStyle: TextStyle(height: 1.0, leadingDistribution: TextLeadingDistribution.even),
+        weekdayStyle: TextStyle(height: 1.0, leadingDistribution: TextLeadingDistribution.even),
+        yearStyle: TextStyle(height: 1.0, leadingDistribution: TextLeadingDistribution.even),
+      ),
     );
   }
 
@@ -381,6 +386,11 @@ class AppTheme {
           }
           return const Color(0xFF8E94A3);
         }),
+      ),
+      datePickerTheme: const DatePickerThemeData(
+        dayStyle: TextStyle(height: 1.0, leadingDistribution: TextLeadingDistribution.even),
+        weekdayStyle: TextStyle(height: 1.0, leadingDistribution: TextLeadingDistribution.even),
+        yearStyle: TextStyle(height: 1.0, leadingDistribution: TextLeadingDistribution.even),
       ),
     );
   }
