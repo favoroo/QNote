@@ -132,6 +132,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   bool _isHistoryAction = false;
   Timer? _historyTimer;
 
+  bool _isToolbarExpanded = false;
+
   @override
   void initState() {
     super.initState();
@@ -509,6 +511,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
 
   @override
   void dispose() {
+    _hideHeadingMenu();
     _autoSaveTimer?.cancel();
     _historyTimer?.cancel();
     _titleController.dispose();
@@ -1643,6 +1646,79 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     );
   }
 
+  OverlayEntry? _headingMenuOverlay;
+
+  void _showHeadingMenu(BuildContext context) {
+    if (_headingMenuOverlay != null) return;
+    
+    final RenderBox button = context.findRenderObject() as RenderBox;
+    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final Offset position = button.localToGlobal(Offset.zero, ancestor: overlay);
+
+    _headingMenuOverlay = OverlayEntry(
+      builder: (context) {
+        return Stack(
+          children: [
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _hideHeadingMenu,
+              child: Container(
+                width: double.infinity,
+                height: double.infinity,
+                color: Colors.transparent,
+              ),
+            ),
+            Positioned(
+              left: position.dx - 20,
+              bottom: overlay.size.height - position.dy + 10,
+              child: Material(
+                elevation: 4,
+                borderRadius: BorderRadius.circular(12),
+                color: Theme.of(context).colorScheme.surface,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildPopupMenuItem('H1 一级标题', '# ', context),
+                      _buildPopupMenuItem('H2 二级标题', '## ', context),
+                      _buildPopupMenuItem('H3 三级标题', '### ', context),
+                      _buildPopupMenuItem('H4 四级标题', '#### ', context),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    Overlay.of(context).insert(_headingMenuOverlay!);
+  }
+
+  void _hideHeadingMenu() {
+    _headingMenuOverlay?.remove();
+    _headingMenuOverlay = null;
+  }
+
+  Widget _buildPopupMenuItem(String text, String prefix, BuildContext context) {
+    return InkWell(
+      onTap: () {
+        _hideHeadingMenu();
+        _toggleBlockPrefix(prefix);
+      },
+      child: Container(
+        width: 140,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Text(
+          text,
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+      ),
+    );
+  }
+
   Widget _buildToolbar(ThemeData theme) {
     return Container(
       decoration: BoxDecoration(
@@ -1656,45 +1732,88 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
       ),
       child: SafeArea(
         top: false,
-        child: SizedBox(
-          height: 38,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
-            children: [
-              _ToolbarButton(
-                icon: Icons.undo,
-                onPressed: _undoList.length >= 2 ? _undo : null,
-              ),
-              _ToolbarButton(
-                icon: Icons.redo,
-                onPressed: _redoList.isNotEmpty ? _redo : null,
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2),
-                child: VerticalDivider(
-                  width: 1, indent: 8, endIndent: 8,
-                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_isToolbarExpanded)
+              Container(
+                height: 38,
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                      width: 1,
+                    ),
+                  ),
+                ),
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
+                  children: [
+                    _ToolbarButton(icon: Icons.strikethrough_s, onPressed: () => _toggleInlineStyle('~~')),
+                    _ToolbarButton(icon: Icons.format_list_numbered, onPressed: () => _toggleBlockPrefix('1. ')),
+                    _ToolbarButton(icon: Icons.format_quote, onPressed: () => _toggleBlockPrefix('> ')),
+                    _ToolbarButton(icon: Icons.link, onPressed: _showInsertLinkDialog),
+                    _ToolbarButton(icon: Icons.camera_alt_outlined, onPressed: () => _pickImage(ImageSource.camera)),
+                    _ToolbarButton(icon: Icons.code, onPressed: () => _toggleInlineStyle('`')),
+                    _ToolbarButton(icon: Icons.horizontal_rule, onPressed: () => _insertBlock('---')),
+                  ],
                 ),
               ),
-              _ToolbarButton(icon: Icons.title, onPressed: () => _toggleBlockPrefix('# ')),
-              _ToolbarButton(icon: Icons.format_bold, onPressed: () => _toggleInlineStyle('**')),
-              _ToolbarButton(icon: Icons.format_italic, onPressed: () => _toggleInlineStyle('*')),
-              _ToolbarButton(icon: Icons.link, onPressed: _showInsertLinkDialog),
-              _ToolbarButton(icon: Icons.format_quote, onPressed: () => _toggleBlockPrefix('> ')),
-              _ToolbarButton(icon: Icons.image_outlined, onPressed: () => _pickImage(ImageSource.gallery)),
-              _ToolbarButton(icon: Icons.camera_alt_outlined, onPressed: () => _pickImage(ImageSource.camera)),
-              _ToolbarButton(icon: Icons.format_list_bulleted, onPressed: () => _toggleBlockPrefix('- ')),
-              _ToolbarButton(icon: Icons.format_list_numbered, onPressed: () => _toggleBlockPrefix('1. ')),
-              _ToolbarButton(icon: Icons.strikethrough_s, onPressed: () => _toggleInlineStyle('~~')),
-              _ToolbarButton(icon: Icons.code, onPressed: () => _toggleInlineStyle('`')),
-              _ToolbarButton(icon: Icons.horizontal_rule, onPressed: () => _insertBlock('---')),
-              _ToolbarButton(
-                icon: Icons.keyboard_hide,
-                onPressed: () => _focusedTextSeg?.focusNode.unfocus(),
+            SizedBox(
+              height: 38,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _ToolbarButton(
+                    icon: Icons.undo,
+                    onPressed: _undoList.length >= 2 ? _undo : null,
+                  ),
+                  _ToolbarButton(
+                    icon: Icons.redo,
+                    onPressed: _redoList.isNotEmpty ? _redo : null,
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: VerticalDivider(
+                      width: 1, indent: 8, endIndent: 8,
+                      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  Builder(
+                    builder: (context) => _ToolbarButton(
+                      icon: Icons.title, 
+                      onPressed: () => _toggleBlockPrefix('# '),
+                      onLongPress: () => _showHeadingMenu(context),
+                    ),
+                  ),
+                  _ToolbarButton(icon: Icons.format_bold, onPressed: () => _toggleInlineStyle('**')),
+                  _ToolbarButton(icon: Icons.format_italic, onPressed: () => _toggleInlineStyle('*')),
+                  _ToolbarButton(icon: Icons.format_list_bulleted, onPressed: () => _toggleBlockPrefix('- ')),
+                  _ToolbarButton(icon: Icons.image_outlined, onPressed: () => _pickImage(ImageSource.gallery)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: VerticalDivider(
+                      width: 1, indent: 8, endIndent: 8,
+                      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  _ToolbarButton(
+                    icon: _isToolbarExpanded ? Icons.keyboard_arrow_down : Icons.more_horiz,
+                    onPressed: () {
+                      setState(() {
+                        _isToolbarExpanded = !_isToolbarExpanded;
+                      });
+                    },
+                  ),
+                  _ToolbarButton(
+                    icon: Icons.keyboard_hide,
+                    onPressed: () => _focusedTextSeg?.focusNode.unfocus(),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -1707,8 +1826,9 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
 class _ToolbarButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback? onPressed;
+  final VoidCallback? onLongPress;
 
-  const _ToolbarButton({required this.icon, this.onPressed});
+  const _ToolbarButton({required this.icon, this.onPressed, this.onLongPress});
 
   @override
   Widget build(BuildContext context) {
@@ -1716,18 +1836,24 @@ class _ToolbarButton extends StatelessWidget {
     final isEnabled = onPressed != null;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 1),
-      child: IconButton(
-        icon: Icon(icon),
-        iconSize: 18,
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints(minWidth: 28, minHeight: 32),
-        style: IconButton.styleFrom(
-          foregroundColor: isEnabled
-              ? theme.colorScheme.onSurface
-              : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.38),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          onLongPress: onLongPress,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 32),
+            alignment: Alignment.center,
+            child: Icon(
+              icon,
+              size: 18,
+              color: isEnabled
+                  ? theme.colorScheme.onSurface
+                  : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.38),
+            ),
+          ),
         ),
-        onPressed: onPressed,
       ),
     );
   }

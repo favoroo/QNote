@@ -133,6 +133,8 @@ class _TimeScrollPickerState extends State<TimeScrollPicker> {
                           color: isSelected
                               ? theme.colorScheme.primary
                               : theme.colorScheme.onSurfaceVariant,
+                          height: 1.0,
+                          leadingDistribution: TextLeadingDistribution.even,
                         ),
                       ),
                     );
@@ -151,6 +153,8 @@ class _TimeScrollPickerState extends State<TimeScrollPicker> {
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
                   color: theme.colorScheme.onSurface,
+                  height: 1.0,
+                  leadingDistribution: TextLeadingDistribution.even,
                 ),
               ),
             ),
@@ -179,6 +183,8 @@ class _TimeScrollPickerState extends State<TimeScrollPicker> {
                           color: isSelected
                               ? theme.colorScheme.primary
                               : theme.colorScheme.onSurfaceVariant,
+                          height: 1.0,
+                          leadingDistribution: TextLeadingDistribution.even,
                         ),
                       ),
                     );
@@ -212,6 +218,8 @@ class _TimeScrollPickerState extends State<TimeScrollPicker> {
               style: theme.textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: theme.colorScheme.primary,
+                height: 1.0,
+                leadingDistribution: TextLeadingDistribution.even,
               ),
               decoration: InputDecoration(
                 counterText: '',
@@ -248,6 +256,8 @@ class _TimeScrollPickerState extends State<TimeScrollPicker> {
               style: theme.textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: theme.colorScheme.onSurface,
+                height: 1.0,
+                leadingDistribution: TextLeadingDistribution.even,
               ),
             ),
           ),
@@ -263,6 +273,8 @@ class _TimeScrollPickerState extends State<TimeScrollPicker> {
               style: theme.textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: theme.colorScheme.primary,
+                height: 1.0,
+                leadingDistribution: TextLeadingDistribution.even,
               ),
               decoration: InputDecoration(
                 counterText: '',

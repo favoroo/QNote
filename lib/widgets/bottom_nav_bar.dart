@@ -52,6 +52,7 @@ class BottomNavBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return NavigationBar(
+      height: 60,
       selectedIndex: currentIndex,
       onDestinationSelected: (index) {
         HapticFeedback.selectionClick();

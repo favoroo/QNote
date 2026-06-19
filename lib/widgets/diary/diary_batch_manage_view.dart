@@ -10,6 +10,7 @@ import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
+import 'package:qnote_flutter/widgets/diary/custom_date_range_picker.dart';
 
 class DiaryBatchManageView extends ConsumerStatefulWidget {
   final List<String>? initialTags;
@@ -114,34 +115,17 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
   }
 
   void _pickDateRange() async {
-    final result = await showDatePicker(
+    final result = await showDialog<DateTimeRange>(
       context: context,
-      initialDate: _dateRange?.start ?? DateTime.now(),
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
-      locale: const Locale('zh', 'CN'),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            splashFactory: NoSplash.splashFactory,
-            splashColor: Colors.transparent,
-            highlightColor: Colors.transparent,
-            colorScheme: ColorScheme.light(
-              primary: Theme.of(context).colorScheme.primary,
-              onPrimary: Colors.white,
-              onSurface: Colors.black,
-            ),
-            dialogTheme: DialogThemeData(
-              barrierColor: Colors.black.withValues(alpha: 0.2),
-            ),
-          ),
-          child: child!,
-        );
-      },
+      builder: (context) => CustomDateRangePickerDialog(
+        initialDateRange: _dateRange,
+        firstDate: DateTime(2000),
+        lastDate: DateTime(2100),
+      ),
     );
     if (result != null) {
       setState(() {
-        _dateRange = DateTimeRange(start: result, end: result);
+        _dateRange = result;
       });
       _applyFilters();
     }
@@ -150,6 +134,45 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
   void _clearDateRange() {
     setState(() {
       _dateRange = null;
+    });
+    _applyFilters();
+  }
+
+  /// 快捷选择今天
+  void _selectToday() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    setState(() {
+      _dateRange = DateTimeRange(
+        start: today,
+        end: today,
+      );
+    });
+    _applyFilters();
+  }
+
+  /// 快捷选择本周（周一到今天）
+  void _selectThisWeek() {
+    final now = DateTime.now();
+    // weekday: 1=周一 ... 7=周日
+    final monday = now.subtract(Duration(days: now.weekday - 1));
+    setState(() {
+      _dateRange = DateTimeRange(
+        start: DateTime(monday.year, monday.month, monday.day),
+        end: DateTime(now.year, now.month, now.day),
+      );
+    });
+    _applyFilters();
+  }
+
+  /// 快捷选择本月（本月1号到今天）
+  void _selectThisMonth() {
+    final now = DateTime.now();
+    setState(() {
+      _dateRange = DateTimeRange(
+        start: DateTime(now.year, now.month, 1),
+        end: DateTime(now.year, now.month, now.day),
+      );
     });
     _applyFilters();
   }
@@ -664,6 +687,30 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                 Icon(Icons.calendar_today, size: 16, color: colorScheme.onSurfaceVariant),
               ],
             ),
+          ),
+        ),
+        // 快捷选择按钮
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Wrap(
+            spacing: 8,
+            children: [
+              ActionChip(
+                label: const Text('今天'),
+                onPressed: _selectToday,
+                avatar: Icon(Icons.today, size: 16, color: colorScheme.primary),
+              ),
+              ActionChip(
+                label: const Text('本周'),
+                onPressed: _selectThisWeek,
+                avatar: Icon(Icons.date_range, size: 16, color: colorScheme.primary),
+              ),
+              ActionChip(
+                label: const Text('本月'),
+                onPressed: _selectThisMonth,
+                avatar: Icon(Icons.calendar_month, size: 16, color: colorScheme.primary),
+              ),
+            ],
           ),
         ),
         if (_dateRange != null)
