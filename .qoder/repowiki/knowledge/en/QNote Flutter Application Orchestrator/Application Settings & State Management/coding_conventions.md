@@ -1,0 +1,3 @@
+- Data models implement a consistent serialization pattern with `toMap()`, `fromMap()`, and `copyWith()` methods to facilitate database mapping and immutable state updates.
+- State notifiers extend `StateNotifier` or `AsyncNotifier` and expose their state via top-level `Provider` or `NotifierProvider` definitions for global access.
+- Configuration entities use a singular record pattern in the database, where methods like `getUserProfile` or `getWebdavConfig` query without specific IDs to retrieve the single active configuration.

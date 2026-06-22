@@ -19,11 +19,11 @@ class ScoreHeatmap extends StatefulWidget {
 
 class _ScoreHeatmapState extends State<ScoreHeatmap> {
   static const double _cellSize = 12;
-  static const double _cellGap = 3;
+  static const double _cellGap = 4;
   static const double _weekdayLabelWidth = 20;
   static const double _monthLabelHeight = 20;
   // 月份标签最小间距（像素），避免重叠
-  static const double _monthLabelMinGap = 32;
+  static const double _monthLabelMinGap = 36;
 
   // OverlayEntry 用于全屏 tooltip + ModalBarrier 实现点击任意位置消失
   OverlayEntry? _overlayEntry;
@@ -123,18 +123,18 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
           if (monthKey != lastMonth) {
             final leftPx = w * (_cellSize + _cellGap);
             if (leftPx - lastLeftPx >= _monthLabelMinGap) {
-              monthLabels.add((w, DateFormat.MMM().format(midDay), leftPx));
+              monthLabels.add((w, '${midDay.month}月', leftPx));
               lastLeftPx = leftPx;
               lastMonth = monthKey;
             }
           }
         }
 
-        // 星期标签
+        // 星期标签（中文）
         final weekdayLabels = [
-          (1, 'M'),
-          (3, 'W'),
-          (5, 'F'),
+          (1, '一'),
+          (3, '三'),
+          (5, '五'),
         ];
 
         // 计算网格实际宽度
@@ -356,7 +356,7 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        Text('Less', style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant)),
+        Text('少', style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant)),
         const SizedBox(width: 6),
         Container(width: _cellSize, height: _cellSize, decoration: BoxDecoration(color: emptyColor, borderRadius: BorderRadius.circular(2))),
         const SizedBox(width: 2),
@@ -368,7 +368,7 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
         const SizedBox(width: 2),
         Container(width: _cellSize, height: _cellSize, decoration: BoxDecoration(color: primary.withValues(alpha: 1.0), borderRadius: BorderRadius.circular(2))),
         const SizedBox(width: 6),
-        Text('More', style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant)),
+        Text('多', style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant)),
       ],
     );
   }

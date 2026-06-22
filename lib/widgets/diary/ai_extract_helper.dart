@@ -152,9 +152,11 @@ Future<AiExtractResult?> extractExistingRecord({
           }
           timeStr = parts.isNotEmpty ? parts.join('~') : null;
         }
+        // 查找不到时，回退到 'other' 快捷标签的名称
+        final fallbackShortcut = findShortcutById('other', shortcuts);
         tagEntriesList.add(TagEntry(
-          id: shortcutId ?? foundShortcut?.id ?? 'other',
-          name: foundShortcut?.name ?? shortcutId ?? '其他',
+          id: foundShortcut?.id ?? shortcutId ?? 'other',
+          name: foundShortcut?.name ?? fallbackShortcut?.name ?? '其他',
           fields: fields,
           time: timeStr,
           startHour: startHour,
@@ -220,12 +222,22 @@ Future<AiExtractResult?> extractExistingRecord({
 }
 
 ShortcutConfig? findShortcutById(String? shortcutId, List<ShortcutConfig> shortcuts) {
-  if (shortcutId == null) return null;
-  try {
-    return shortcuts.firstWhere((s) => s.id == shortcutId || s.name == shortcutId);
-  } catch (_) {
-    return null;
+  if (shortcutId == null || shortcutId.isEmpty) return null;
+  // 优先精确匹配 id 或 name
+  for (final s in shortcuts) {
+    if (s.id == shortcutId || s.name == shortcutId) return s;
   }
+  // 大小写不敏感兜底匹配
+  final lowerId = shortcutId.toLowerCase();
+  for (final s in shortcuts) {
+    if (s.id.toLowerCase() == lowerId || s.name.toLowerCase() == lowerId) return s;
+  }
+  // 记录警告日志，便于排查 AI 返回的 id 与实际快捷标签不匹配的问题
+  LoggerService.instance.logAI(
+    '快捷标签匹配失败: id="$shortcutId" 在已配置的标签列表中未找到（可用: ${shortcuts.map((s) => '${s.id}(${s.name})').join(', ')}）',
+    level: LogLevel.warning,
+  );
+  return null;
 }
 
 String cleanExtractedNotes(String rawNotes, Map<String, dynamic> fields, ShortcutConfig? shortcut) {

@@ -20,7 +20,22 @@
 - [flutter_window.cpp](file://windows/runner/flutter_window.cpp)
 - [win32_window.cpp](file://windows/runner/win32_window.cpp)
 - [pubspec.yaml](file://pubspec.yaml)
+- [fixed_events_page.dart](file://lib/pages/settings/fixed_events_page.dart)
+- [fixed_event_template.dart](file://lib/models/fixed_event_template.dart)
+- [fixed_event_provider.dart](file://lib/providers/fixed_event_provider.dart)
+- [fixed_event_repository.dart](file://lib/core/storage/fixed_event_repository.dart)
+- [diary_input_bar.dart](file://lib/widgets/diary/diary_input_bar.dart)
+- [app_router.dart](file://lib/core/router/app_router.dart)
+- [side_drawer.dart](file://lib/widgets/side_drawer.dart)
 </cite>
+
+## Update Summary
+**Changes Made**
+- Added comprehensive documentation for the Events Page refactoring with improved memory leak prevention
+- Documented enhanced controller management system with cache-based approach
+- Added detailed coverage of improved input handling reliability with focus management
+- Updated widget lifecycle management and disposal patterns
+- Enhanced documentation for the FixedEventsPage component architecture
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -36,6 +51,8 @@
 ## Introduction
 This document provides comprehensive coverage of QNote Flutter's platform-specific implementations across Android, iOS (via Flutter framework), Web, and Windows desktop. It explains native integrations, widget systems, build configurations, signing requirements, deployment processes, UI adaptations, and performance considerations. The goal is to help developers understand how the codebase adapts to each platform while maintaining cross-platform consistency.
 
+**Updated** Enhanced with detailed coverage of the Events Page refactoring that addresses memory leak prevention, improved controller management, and enhanced input handling reliability.
+
 ## Project Structure
 The project follows a standard Flutter structure with platform-specific folders:
 - android/: Android application code, manifests, Gradle configuration, and native Kotlin widgets/providers
@@ -49,7 +66,8 @@ graph TB
 subgraph "Shared Code"
 Dart[lib/main.dart]
 Core[Core Modules]
-end
+EventsPage[FixedEventsPage]
+End
 subgraph "Android"
 AMF[AndroidManifest.xml]
 Gradle[build.gradle.kts]
@@ -75,6 +93,7 @@ end
 Dart --> KMain
 Dart --> WMain
 Dart --> HTML
+EventsPage --> Dart
 AMF --> KMain
 AMF --> KQR
 AMF --> KW1
@@ -108,6 +127,7 @@ WFW --> WW
 - [main.cpp:1-44](file://windows/runner/main.cpp#L1-L44)
 - [flutter_window.cpp:1-72](file://windows/runner/flutter_window.cpp#L1-L72)
 - [win32_window.cpp:1-289](file://windows/runner/win32_window.cpp#L1-L289)
+- [fixed_events_page.dart:1-1122](file://lib/pages/settings/fixed_events_page.dart#L1-L1122)
 
 **Section sources**
 - [AndroidManifest.xml:1-112](file://android/app/src/main/AndroidManifest.xml#L1-L112)
@@ -125,6 +145,9 @@ WFW --> WW
 - Android platform integrates native Kotlin activities and AppWidget providers for quick recording and todo management, with MethodChannel communication between Flutter and native code.
 - Web platform supports PWA features via manifest and service worker for offline capabilities and caching.
 - Windows desktop implements native window management with DPI scaling, dark mode adaptation, and Flutter engine integration.
+- **FixedEventsPage**: Enhanced with comprehensive memory leak prevention, controller caching, and reliable input handling for fixed event templates management.
+
+**Updated** Added comprehensive coverage of the FixedEventsPage component with its advanced controller management and input handling improvements.
 
 **Section sources**
 - [MainActivity.kt:1-86](file://android/app/src/main/kotlin/com/appone/qnote_flutter/MainActivity.kt#L1-L86)
@@ -134,9 +157,10 @@ WFW --> WW
 - [manifest.json:1-36](file://web/manifest.json#L1-L36)
 - [sqflite_sw.js:1-800](file://web/sqflite_sw.js#L1-L800)
 - [win32_window.cpp:1-289](file://windows/runner/win32_window.cpp#L1-L289)
+- [fixed_events_page.dart:22-105](file://lib/pages/settings/fixed_events_page.dart#L22-L105)
 
 ## Architecture Overview
-The application initializes platform-specific services and database factories, then starts notification and synchronization services. Android adds native widget support and MethodChannel bridges. Web provides PWA shell and service worker. Windows creates a native window and registers Flutter plugins.
+The application initializes platform-specific services and database factories, then starts notification and synchronization services. Android adds native widget support and MethodChannel bridges. Web provides PWA shell and service worker. Windows creates a native window and registers Flutter plugins. The FixedEventsPage implements advanced state management with memory leak prevention and reliable input handling.
 
 ```mermaid
 sequenceDiagram
@@ -145,13 +169,17 @@ participant Dart as "Dart Main"
 participant Android as "Android Native"
 participant Web as "Web Shell"
 participant Windows as "Windows Native"
+participant EventsPage as "FixedEventsPage"
 Dart->>Dart : "initializeDateFormatting()"
 Dart->>Dart : "initDatabaseFactory()"
 Dart->>Dart : "DatabaseHelper.database"
 Dart->>Dart : "ConfigRepository defaults"
 Dart->>Dart : "NotificationService.init()"
 Dart->>Dart : "SyncScheduler.syncIfNeeded()"
-Dart->>Android : "MethodChannel 'com.appone.qnote_flutter/widgets'"
+Dart->>EventsPage : "ConsumerStatefulWidget"
+EventsPage->>EventsPage : "_fieldControllers cache init"
+EventsPage->>EventsPage : "_fieldFocusNodes cache init"
+Android-->>Dart : "MethodChannel 'com.appone.qnote_flutter/widgets'"
 Android-->>Dart : "updateWidgets()"
 Android-->>Dart : "getPendingRoute()"
 Dart->>Web : "index.html bootstrap"
@@ -165,6 +193,7 @@ Windows->>Windows : "RegisterPlugins()"
 **Diagram sources**
 - [main.dart:12-30](file://lib/main.dart#L12-L30)
 - [MainActivity.kt:38-59](file://android/app/src/main/kotlin/com/appone/qnote_flutter/MainActivity.kt#L38-L59)
+- [fixed_events_page.dart:22-51](file://lib/pages/settings/fixed_events_page.dart#L22-L51)
 - [index.html:32-34](file://web/index.html#L32-L34)
 - [manifest.json:1-36](file://web/manifest.json#L1-L36)
 - [sqflite_sw.js:1-800](file://web/sqflite_sw.js#L1-L800)
@@ -274,6 +303,51 @@ MW-->>Widget : "Refresh all widgets"
 - [QuickRecordActivity.kt:353-365](file://android/app/src/main/kotlin/com/appone/qnote_flutter/QuickRecordActivity.kt#L353-L365)
 - [MainActivity.kt:43-58](file://android/app/src/main/kotlin/com/appone/qnote_flutter/MainActivity.kt#L43-L58)
 
+### FixedEventsPage Component - Enhanced Memory Leak Prevention
+
+**Updated** Comprehensive documentation of the Events Page refactoring with improved memory leak prevention, controller management, and enhanced input handling reliability.
+
+The FixedEventsPage implements advanced state management patterns to prevent memory leaks and ensure reliable input handling:
+
+#### Controller Cache Management
+The component maintains two critical caches:
+- `_fieldControllers`: Map<String, TextEditingController> storing controllers keyed by '$tagId#${field.id}'
+- `_fieldFocusNodes`: Map<String, FocusNode> storing focus nodes for the same key pattern
+
+These caches ensure controllers persist across rebuilds while preventing memory leaks through proper disposal.
+
+#### Lifecycle Management
+- **Initialization**: Controllers are created during dialog open and cached for reuse
+- **Disposal**: All controllers are disposed in both normal and emergency scenarios
+- **Selective Cleanup**: Tag-specific controllers can be disposed when tags are deselected
+
+#### Input Handling Reliability
+The component implements sophisticated input handling to prevent cursor jumping and character reversal:
+- **Focus-Based Synchronization**: External values are only synchronized when fields are not focused
+- **ValueKey Usage**: Fields use ValueKey('$tagId#${field.id}') for proper widget identity
+- **Keyboard Type Optimization**: Number fields use TextInputType.numberWithOptions with filtering
+- **Post-Frame Callbacks**: End-time recalculation is deferred to prevent frame conflicts
+
+**Section sources**
+- [fixed_events_page.dart:22-105](file://lib/pages/settings/fixed_events_page.dart#L22-L105)
+- [fixed_events_page.dart:800-1122](file://lib/pages/settings/fixed_events_page.dart#L800-L1122)
+
+#### Dialog Lifecycle Integration
+The `_showEditDialog` method coordinates controller lifecycle:
+- Pre-creates controllers for existing template fields
+- Disposes all controllers in finally block regardless of dialog outcome
+- Manages tag-specific controller cleanup during selection changes
+
+#### Field Rendering Optimization
+The `_buildSelectedTagFields` method optimizes rendering:
+- Uses cached controllers instead of rebuilding on each change
+- Implements focus-aware value synchronization
+- Supports category-based field filtering with proper cleanup
+
+**Section sources**
+- [fixed_events_page.dart:248-748](file://lib/pages/settings/fixed_events_page.dart#L248-L748)
+- [fixed_events_page.dart:800-1122](file://lib/pages/settings/fixed_events_page.dart#L800-L1122)
+
 ### Web Platform Implementation
 
 #### Progressive Web App Features
@@ -342,6 +416,7 @@ Cross-platform dependencies are declared in pubspec.yaml. Platform-specific impl
 - Android: MethodChannel, AppWidgetManager, FileProvider, BroadcastReceiver
 - Web: PWA manifest, service worker, and Flutter web bootstrap
 - Windows: Flutter engine integration, Win32 window procedures, and CMake build system
+- **FixedEventsPage**: Riverpod state management, TextEditingController, FocusNode, and proper disposal patterns
 
 ```mermaid
 graph LR
@@ -355,6 +430,9 @@ Web --> PWA[PWA Manifest]
 Web --> SW[Service Worker]
 Windows --> FlutterEngine[Flutter Engine]
 Windows --> Win32[Win32 Window Procedures]
+EventsPage --> Riverpod[Riverpod State Management]
+EventsPage --> Controllers[TextEditingController Cache]
+EventsPage --> FocusNodes[FocusNode Management]
 ```
 
 **Diagram sources**
@@ -363,6 +441,7 @@ Windows --> Win32[Win32 Window Procedures]
 - [index.html:32-34](file://web/index.html#L32-L34)
 - [manifest.json:1-36](file://web/manifest.json#L1-L36)
 - [CMakeLists.txt:48-58](file://windows/CMakeLists.txt#L48-L58)
+- [fixed_events_page.dart:22-105](file://lib/pages/settings/fixed_events_page.dart#L22-L105)
 
 **Section sources**
 - [pubspec.yaml:9-43](file://pubspec.yaml#L9-L43)
@@ -382,8 +461,12 @@ Windows --> Win32[Win32 Window Procedures]
 - Windows
   - DPI-aware window sizing prevents repainting overhead
   - Dark mode registry polling updates window attributes efficiently
+- **FixedEventsPage**
+  - Controller caching prevents unnecessary rebuilds and memory allocation
+  - Focus-aware synchronization avoids input conflicts and cursor jumping
+  - Post-frame callbacks prevent frame timing conflicts during end-time calculations
 
-[No sources needed since this section provides general guidance]
+**Updated** Added performance considerations specific to the FixedEventsPage component's memory leak prevention and input handling optimizations.
 
 ## Troubleshooting Guide
 - Android
@@ -396,6 +479,12 @@ Windows --> Win32[Win32 Window Procedures]
 - Windows
   - Window not resizing properly: ensure WM_SIZE and WM_DPICHANGED handlers are active
   - Dark mode not applying: verify registry keys and DWMWA_USE_IMMERSIVE_DARK_MODE support
+- **FixedEventsPage**
+  - If controllers leak, verify disposal occurs in finally blocks and emergency disposal in dispose()
+  - If input characters reverse, check focus management and value synchronization logic
+  - If end-time calculation conflicts, ensure post-frame callbacks are used for state updates
+
+**Updated** Added troubleshooting guidance for the FixedEventsPage component's memory leak prevention and input handling issues.
 
 **Section sources**
 - [QuickRecordWidgetProvider.kt:53-62](file://android/app/src/main/kotlin/com/appone/qnote_flutter/QuickRecordWidgetProvider.kt#L53-L62)
@@ -405,6 +494,10 @@ Windows --> Win32[Win32 Window Procedures]
 - [index.html:17-34](file://web/index.html#L17-L34)
 - [manifest.json:1-36](file://web/manifest.json#L1-L36)
 - [win32_window.cpp:190-222](file://windows/runner/win32_window.cpp#L190-L222)
+- [fixed_events_page.dart:40-51](file://lib/pages/settings/fixed_events_page.dart#L40-L51)
+- [fixed_events_page.dart:54-80](file://lib/pages/settings/fixed_events_page.dart#L54-L80)
 
 ## Conclusion
-QNote Flutter leverages platform-specific strengths while maintaining a unified Dart codebase. Android benefits from native widgets and MethodChannel bridging, Web gains PWA capabilities with service workers, and Windows delivers native window management with DPI and theme awareness. Build configurations and dependency declarations ensure consistent behavior across platforms, with targeted optimizations for performance and user experience.
+QNote Flutter leverages platform-specific strengths while maintaining a unified Dart codebase. Android benefits from native widgets and MethodChannel bridging, Web gains PWA capabilities with service workers, and Windows delivers native window management with DPI and theme awareness. The FixedEventsPage component demonstrates advanced state management patterns with comprehensive memory leak prevention, controller caching, and reliable input handling. Build configurations and dependency declarations ensure consistent behavior across platforms, with targeted optimizations for performance and user experience.
+
+**Updated** Enhanced conclusion to highlight the FixedEventsPage component's significant improvements in memory leak prevention and input handling reliability.

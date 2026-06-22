@@ -1,0 +1,1 @@
+Manages daily and long-term todos with drag-and-drop reordering, reminders, and fixed event templates for quick logging.

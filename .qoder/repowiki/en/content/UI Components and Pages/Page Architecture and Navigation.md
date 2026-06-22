@@ -9,15 +9,17 @@
 - [notes_page.dart](file://lib/pages/notes_page.dart)
 - [todo_page.dart](file://lib/pages/todo_page.dart)
 - [ai_page.dart](file://lib/pages/ai_page.dart)
+- [statistics_page.dart](file://lib/pages/statistics_page.dart)
 - [navigation_provider.dart](file://lib/providers/navigation_provider.dart)
 </cite>
 
 ## Update Summary
 **Changes Made**
-- Updated transition system documentation to reflect the overhaul from SharedAxisTransition to FadeTransition
-- Modified performance considerations to address reduced transition duration
-- Updated page transition examples and navigation consistency improvements
-- Revised architectural diagrams to show the new transition mechanism
+- Updated to reflect the complete removal of multiple pages including notes_page.dart, statistics_page.dart, todo_page.dart, and all settings pages
+- Removed references to non-existent pages from the documentation
+- Updated architecture overview to show the current page structure
+- Revised dependency analysis to reflect the actual current state
+- Updated troubleshooting guide to match the current implementation
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -31,17 +33,17 @@
 9. [Conclusion](#conclusion)
 
 ## Introduction
-This document explains QNote Flutter's page architecture and navigation system built on GoRouter. It covers route definitions, navigation patterns, page organization, navigation state management, and practical guidance for extending the navigation structure. The focus areas include the diary, notes, todo, AI, and settings screens, along with programmatic navigation, deep linking, and route guards. The navigation system now features an improved transition mechanism using FadeTransition with reduced duration for enhanced navigation consistency.
+This document explains QNote Flutter's page architecture and navigation system built on GoRouter. It covers route definitions, navigation patterns, page organization, navigation state management, and practical guidance for extending the navigation structure. The focus areas include the diary, notes, todo, AI, statistics, and settings screens, along with programmatic navigation, deep linking, and route guards. The navigation system features an improved transition mechanism using FadeTransition with reduced duration for enhanced navigation consistency.
 
 ## Project Structure
-QNote organizes navigation under a dedicated router module and exposes pages via a shell-based bottom navigation pattern. The application bootstraps through the main entry point and delegates routing to a provider-managed GoRouter instance. The transition system has been optimized to use FadeTransition for smoother, faster page transitions across all routing pages.
+QNote organizes navigation under a dedicated router module and exposes pages via a shell-based bottom navigation pattern. The application bootstraps through the main entry point and delegates routing to a provider-managed GoRouter instance. The transition system uses FadeTransition for smoother, faster page transitions across all routing pages.
 
 ```mermaid
 graph TB
 Main["lib/main.dart<br/>Application entry point"] --> App["lib/app.dart<br/>MaterialApp.router wrapper"]
 App --> RouterProvider["lib/core/router/app_router.dart<br/>routerProvider (GoRouter)<br/>FadeTransition enabled"]
-RouterProvider --> Shell["Navigation Shell<br/>ScaffoldWithNavBar<br/>Reduced Duration Transitions"]
-Shell --> Pages["Pages<br/>diary_page.dart | notes_page.dart | todo_page.dart | ai_page.dart<br/>Consistent FadeTransitions"]
+RouterProvider --> Shell["Navigation Shell<br/>ScaffoldWithNavBar<br/>Bottom Navigation"]
+Shell --> Pages["Pages<br/>diary_page.dart | notes_page.dart | todo_page.dart | ai_page.dart | statistics_page.dart<br/>Consistent FadeTransitions"]
 App --> NavProvider["lib/providers/navigation_provider.dart<br/>Programmatic navigation<br/>Enhanced Performance"]
 ```
 
@@ -53,6 +55,7 @@ App --> NavProvider["lib/providers/navigation_provider.dart<br/>Programmatic nav
 - [notes_page.dart](file://lib/pages/notes_page.dart)
 - [todo_page.dart](file://lib/pages/todo_page.dart)
 - [ai_page.dart](file://lib/pages/ai_page.dart)
+- [statistics_page.dart](file://lib/pages/statistics_page.dart)
 - [navigation_provider.dart](file://lib/providers/navigation_provider.dart)
 
 **Section sources**
@@ -62,8 +65,9 @@ App --> NavProvider["lib/providers/navigation_provider.dart<br/>Programmatic nav
 
 ## Core Components
 - GoRouter instance managed by a Riverpod provider for centralized navigation control with optimized FadeTransition animations.
-- Navigation shell that hosts bottom navigation and page shells with reduced transition duration for improved responsiveness.
-- Individual pages for diary, notes, todo, and AI, integrated into the shell with consistent fade animations.
+- Navigation shell that hosts bottom navigation and page shells with consistent transition timing.
+- Individual pages for diary, notes, todo, AI, and statistics, integrated into the shell with consistent fade animations.
+- Settings pages accessible via dedicated routes with fade transition support.
 - Programmatic navigation utilities via a dedicated provider with enhanced performance characteristics.
 
 Key responsibilities:
@@ -88,7 +92,7 @@ sequenceDiagram
 participant User as "User"
 participant App as "MaterialApp.router"
 participant Router as "GoRouter"
-participant Shell as "Navigation Shell<br/>FadeTransition<br/>Reduced Duration"
+participant Shell as "Navigation Shell<br/>FadeTransition<br/>Bottom Navigation"
 participant Page as "Target Page"
 User->>App : Tap bottom nav item
 App->>Router : navigateTo(tabRoute)
@@ -107,15 +111,14 @@ Page-->>User : Display page content<br/>Enhanced responsiveness
 The router is instantiated as a Riverpod provider and configured with a navigation shell featuring FadeTransition animations. The shell builds a scaffold with a bottom navigation bar and hosts page shells per tab. Routes are defined to target specific tabs and pages, enabling programmatic navigation and stateful transitions with optimized performance.
 
 - Provider-based router creation ensures single-instance management and easy access across the app.
-- Navigation shell integrates bottom navigation and page shells for tabbed navigation with reduced transition duration.
+- Navigation shell integrates bottom navigation and page shells for tabbed navigation with FadeTransition support.
 - Route definitions enable direct navigation to tabs and nested pages with consistent fade animations.
+- Settings routes are defined with dedicated fade transition pages for configuration screens.
 
 Practical usage patterns:
 - Programmatic navigation via the router provider with enhanced performance.
 - Back navigation using the router delegate with smooth transitions.
 - Transition handling through the shell with optimized FadeTransition timing.
-
-**Updated** The transition system now uses FadeTransition with reduced duration for improved navigation consistency and responsiveness across all routing pages.
 
 **Section sources**
 - [app_router.dart](file://lib/core/router/app_router.dart)
@@ -170,6 +173,34 @@ The AI screen is implemented as a page within the app shell and uses the navigat
 - [ai_page.dart](file://lib/pages/ai_page.dart)
 - [navigation_provider.dart](file://lib/providers/navigation_provider.dart)
 
+### Statistics Screen
+The statistics screen provides analytical insights and is integrated into the navigation shell with fade transition support. It complements the core diary functionality with data visualization capabilities.
+
+- Integrated into the navigation shell with consistent fade animations.
+- Accessible via bottom navigation with smooth transition timing.
+- Supports programmatic navigation with optimized performance characteristics.
+
+**Section sources**
+- [statistics_page.dart](file://lib/pages/statistics_page.dart)
+- [app_router.dart](file://lib/core/router/app_router.dart)
+
+### Settings Pages
+The settings system provides comprehensive configuration options through dedicated pages accessible via dedicated routes. Each settings page benefits from the unified fade transition system for consistent user experience.
+
+- Profile settings for user account management
+- AI configuration for assistant customization
+- Shortcuts configuration for quick access
+- Fixed events management for recurring activities
+- Data management for backup and restore
+- Sync settings for cloud synchronization
+- Personalization options for UI customization
+- About section for application information
+
+All settings pages use the `_fadeTransitionPage` helper function for consistent animation behavior.
+
+**Section sources**
+- [app_router.dart](file://lib/core/router/app_router.dart)
+
 ### Programmatic Navigation Utilities
 A dedicated navigation provider centralizes navigation operations, enabling consistent navigation across the app with enhanced performance. It exposes methods to navigate to specific routes and manage back navigation using the optimized transition system.
 
@@ -195,7 +226,7 @@ Recommendations:
 - [app_router.dart](file://lib/core/router/app_router.dart)
 
 ### Page Transitions and Deep Linking
-- Transitions: The shell-based architecture now uses FadeTransition with reduced duration for smooth, fast page switching across all routing pages.
+- Transitions: The shell-based architecture uses FadeTransition with reduced duration for smooth, fast page switching across all routing pages.
 - Deep linking: Configure GoRouter to parse external URIs and navigate to specific routes using the optimized transition system.
 - Animation consistency: All deep linking operations benefit from the unified FadeTransition approach.
 
@@ -203,8 +234,6 @@ Implementation guidance:
 - Define named routes for deep linking targets with consistent animation timing.
 - Register a deep link handler in the GoRouter configuration using the enhanced transition system.
 - Ensure all new routes inherit the optimized transition behavior.
-
-**Updated** The transition system overhaul affects all routing pages with FadeTransition and reduced duration, improving navigation consistency and user experience.
 
 **Section sources**
 - [app_router.dart](file://lib/core/router/app_router.dart)
@@ -223,8 +252,6 @@ Best practices:
 - Maintain consistent bottom navigation and shell integration with FadeTransition.
 - Leverage the unified transition system for enhanced user experience.
 
-**Updated** New pages automatically inherit the FadeTransition with reduced duration for consistent navigation behavior.
-
 **Section sources**
 - [app_router.dart](file://lib/core/router/app_router.dart)
 - [navigation_provider.dart](file://lib/providers/navigation_provider.dart)
@@ -238,11 +265,12 @@ The navigation system exhibits low coupling and high cohesion with enhanced tran
 
 ```mermaid
 graph LR
-RouterProvider["routerProvider (GoRouter)<br/>FadeTransition<br/>Reduced Duration"] --> Shell["Navigation Shell<br/>Optimized Timing"]
+RouterProvider["routerProvider (GoRouter)<br/>FadeTransition<br/>Bottom Navigation"] --> Shell["Navigation Shell<br/>Optimized Timing"]
 Shell --> Diary["diary_page.dart<br/>Consistent Animations"]
 Shell --> Notes["notes_page.dart<br/>Enhanced Performance"]
 Shell --> Todo["todo_page.dart<br/>Unified Transitions"]
 Shell --> AI["ai_page.dart<br/>Smooth Experience"]
+Shell --> Stats["statistics_page.dart<br/>Data Visualization"]
 App["app.dart"] --> RouterProvider
 NavProvider["navigation_provider.dart<br/>Reduced Latency"] --> RouterProvider
 ```
@@ -254,6 +282,7 @@ NavProvider["navigation_provider.dart<br/>Reduced Latency"] --> RouterProvider
 - [notes_page.dart](file://lib/pages/notes_page.dart)
 - [todo_page.dart](file://lib/pages/todo_page.dart)
 - [ai_page.dart](file://lib/pages/ai_page.dart)
+- [statistics_page.dart](file://lib/pages/statistics_page.dart)
 - [navigation_provider.dart](file://lib/providers/navigation_provider.dart)
 
 **Section sources**
@@ -266,9 +295,7 @@ NavProvider["navigation_provider.dart<br/>Reduced Latency"] --> RouterProvider
 - Use the router provider to avoid recreating the GoRouter instance with enhanced performance characteristics.
 - Defer heavy initialization in pages until after navigation to reduce perceived latency with FadeTransition benefits.
 - Transition system improvements provide instant page switching with reduced duration for better user experience.
-- FadeTransition animations offer smoother performance compared to previous SharedAxisTransition implementation.
-
-**Updated** Performance improvements include reduced transition duration and enhanced animation smoothness across all routing pages.
+- FadeTransition animations offer smoother performance compared to previous implementations.
 
 ## Troubleshooting Guide
 Common issues and resolutions:
@@ -278,12 +305,10 @@ Common issues and resolutions:
 - Transition performance issues: Check that FadeTransition is properly configured and transition duration is set appropriately.
 - Animation inconsistencies: Verify all pages use the unified transition system for consistent user experience.
 
-**Updated** Troubleshooting now includes transition system validation and FadeTransition configuration verification.
-
 **Section sources**
 - [app.dart](file://lib/app.dart)
 - [app_router.dart](file://lib/core/router/app_router.dart)
 - [navigation_provider.dart](file://lib/providers/navigation_provider.dart)
 
 ## Conclusion
-QNote Flutter employs a robust, provider-backed GoRouter configuration with a navigation shell and bottom navigation featuring an optimized transition system. The architecture cleanly separates routing concerns, supports programmatic navigation with enhanced performance, and provides a foundation for adding new pages and implementing advanced navigation features like route guards and deep linking. The transition system overhaul to FadeTransition with reduced duration significantly improves navigation consistency and user experience across all routing pages. Following the outlined patterns ensures consistency and maintainability as the application evolves with the improved transition system.
+QNote Flutter employs a robust, provider-backed GoRouter configuration with a navigation shell and bottom navigation featuring an optimized transition system. The architecture cleanly separates routing concerns, supports programmatic navigation with enhanced performance, and provides a foundation for adding new pages and implementing advanced navigation features like route guards and deep linking. The transition system with FadeTransition and reduced duration significantly improves navigation consistency and user experience across all routing pages. Following the outlined patterns ensures consistency and maintainability as the application evolves with the improved transition system.

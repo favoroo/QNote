@@ -1,0 +1,1 @@
+Flutter (Dart) with Material 3, Riverpod for state management, SQLite (sqflite) for persistence, go_router for navigation, and flutter_local_notifications for reminders.

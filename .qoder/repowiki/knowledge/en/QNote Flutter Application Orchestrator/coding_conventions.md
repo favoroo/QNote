@@ -1,0 +1,3 @@
+- Feature modules expose functionality via Riverpod AsyncNotifier or StateNotifier providers rather than direct service instantiation.
+- Data models implement toMap()/fromMap() methods for consistent SQLite serialization across all repositories.
+- Core services (Database, Notifications, Sync) follow a singleton pattern with lazy initialization in main.dart.

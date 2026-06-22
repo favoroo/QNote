@@ -1,0 +1,1 @@
+Uses `flutter_riverpod` for state management and `uuid` for generating unique note identifiers.

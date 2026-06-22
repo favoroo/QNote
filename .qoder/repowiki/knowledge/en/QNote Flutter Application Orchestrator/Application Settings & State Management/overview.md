@@ -1,0 +1,1 @@
+Manages user preferences, theme configuration, data synchronization, and shortcut customization through a Riverpod-based state management layer.

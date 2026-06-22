@@ -2,11 +2,11 @@
 schema_version: 1
 locale: en-US
 branch: master
-exported_at: "2026-06-14T04:18:49Z"
+exported_at: "2026-06-19T08:26:41Z"
 modules:
     "":
-        dir_name: QNote Cross-Platform Orchestrator
-        title: QNote Cross-Platform Orchestrator
+        dir_name: QNote Cross-Platform Productivity Orchestrator
+        title: QNote Cross-Platform Productivity Orchestrator
         scope: []
         source_files: []
         children: []
@@ -18,8 +18,8 @@ modules:
         scope: []
         source_files: []
         children:
-            - decisions/bbf95725d582_a0098f734f46
             - decisions/bbf95725d582_bee858165e63
+            - decisions/bbf95725d582_a0098f734f46
         depends_on: []
         related_to: []
     decisions/bbf95725d582_a0098f734f46:
@@ -38,18 +38,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: distribution_copy
-    distribution_copy:
-        dir_name: Notes & Folders Management
-        title: Notes & Folders Management
-        scope:
-            - 应用分享/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: decisions/bbf95725d582_bee858165e63
+        related_to: []
     flutter_app:
         dir_name: QNote Flutter Application Orchestrator
         title: QNote Flutter Application Orchestrator
@@ -61,13 +50,13 @@ modules:
             - test/
         source_files: []
         children:
-            - flutter_app/shared_core
-            - flutter_app/notes
-            - flutter_app/todo
-            - flutter_app/statistics
-            - flutter_app/settings
-            - flutter_app/diary
             - flutter_app/ai
+            - flutter_app/shared_core
+            - flutter_app/statistics
+            - flutter_app/notes
+            - flutter_app/diary
+            - flutter_app/settings
+            - flutter_app/todo
         depends_on: []
         related_to: []
     flutter_app/ai:
@@ -83,8 +72,7 @@ modules:
         children: []
         depends_on: []
         related_to:
-            - path: flutter_app/notes
-            - path: flutter_app/diary
+            - path: flutter_app/statistics
     flutter_app/diary:
         dir_name: Diary Timeline & Management
         title: Diary Timeline & Management
@@ -96,9 +84,8 @@ modules:
         children: []
         depends_on: []
         related_to:
-            - path: flutter_app/ai
-            - path: flutter_app/notes
             - path: flutter_app/todo
+            - path: flutter_app/notes
     flutter_app/notes:
         dir_name: Notes Management & Organization
         title: Notes Management & Organization
@@ -110,7 +97,6 @@ modules:
         children: []
         depends_on: []
         related_to:
-            - path: flutter_app/ai
             - path: flutter_app/diary
     flutter_app/settings:
         dir_name: Application Settings & State Management
@@ -158,7 +144,9 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to: []
+        related_to:
+            - path: flutter_app/ai
+            - path: flutter_app/todo
     flutter_app/todo:
         dir_name: Todo Management & Fixed Event Templates
         title: Todo Management & Fixed Event Templates
@@ -173,3 +161,4 @@ modules:
         depends_on: []
         related_to:
             - path: flutter_app/diary
+            - path: flutter_app/statistics

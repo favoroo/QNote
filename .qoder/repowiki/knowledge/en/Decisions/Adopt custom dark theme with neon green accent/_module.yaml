@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: decisions/bbf95725d582_a0098f734f46
+title: Adopt custom dark theme with neon green accent
+scope: []
+source_files: []
+depends_on: []
+related_to:
+    - path: flutter_app/settings

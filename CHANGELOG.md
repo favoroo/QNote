@@ -6,10 +6,19 @@
 
 ---
 
+## 2026-06-22
+
+- **[22:39]**
+  - **Added**: 新增 SenseNova（商汤）与 MiniMax AI 服务商配置 (`lib/config/models.dart`)。
+
 ## 2026-06-19
+
+- **[18:30]**
+  - **Changed**: 热力图月份标签改为中文（2月、3月等），星期标签改为中文（一/三/五），图例改为"少"/"多"，同时增大方块间距改善视觉拥挤问题 (`lib/widgets/statistics/score_heatmap.dart`)。
 
 - **[15:50]**
   - **Fixed**: 修复 AI 统一提取时因响应数据类型异常导致 `type 'String' is not a subtype of type 'int' of 'index'` 崩溃问题，增加防御性类型检查 (`lib/core/ai/ai_service.dart`)。
+  - **Fixed**: 修复 AI 提取结果中快捷标签匹配失败时显示原始英文 ID 或“其他”而非正确中文名称的问题，增强 `findShortcutById` 支持大小写不敏感匹配，并修复 `diary_input_bar.dart` 中回退逻辑 (`lib/widgets/diary/ai_extract_helper.dart`, `lib/widgets/diary/diary_input_bar.dart`)。
 
 ## 2026-06-17
 
