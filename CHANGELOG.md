@@ -8,6 +8,16 @@
 
 ## 2026-06-22
 
+- **[22:55]**
+  - **Added**: 新增免费模型功能板块，支持 sensenova/agnes/gemma/gemini-flash-lite 四个免费模型，用户可选择主模型，调用失败时自动切换 (`lib/core/utils/obfuscation_utils.dart`, `lib/models/free_model_config.dart`, `lib/core/ai/free_model_service.dart`, `lib/core/ai/free_model_executor.dart`)。
+  - **Added**: 免费模型列表支持从 GitHub（jsDelivr 加速）远程更新，apikey 经简单混淆处理 (`lib/core/ai/free_model_service.dart`)。
+  - **Added**: 在 AI 配置页面新增免费模型 UI 板块，含更新按钮、主模型选择、模型列表展示 (`lib/pages/settings/ai_config_page.dart`)。
+  - **Added**: 角色绑定（助手/时间轴优化）下拉新增"免费模型（自动切换）"选项 (`lib/pages/settings/ai_config_page.dart`)。
+  - **Added**: 新增 `tool/generate_free_models.dart` 脚本，用于生成远程配置文件 `free_models.json`。
+  - **Changed**: `AiRoles` 新增 `assistantUseFreeModel` / `timelineOptimizationUseFreeModel` 字段，支持角色级别启用免费模型 (`lib/models/ai_roles.dart`)。
+  - **Changed**: `AiRoleService.getEffectiveConfigForRole` 支持免费模型，新增 `isFreeModelEnabled` / `getPreferredFreeModelId` / `getFreeModelConfigsForRole` 方法 (`lib/core/ai/ai_role_service.dart`)。
+  - **Changed**: `CurrentChatNotifier.sendMessage` 支持免费模型自动切换逻辑 (`lib/providers/ai_provider.dart`)。
+
 - **[22:39]**
   - **Added**: 新增 SenseNova（商汤）与 MiniMax AI 服务商配置 (`lib/config/models.dart`)。
 

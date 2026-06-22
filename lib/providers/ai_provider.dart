@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import 'package:qnote_flutter/config/defaults.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/ai/free_model_executor.dart';
+import 'package:qnote_flutter/core/ai/free_model_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/storage/diary_repository.dart';
@@ -14,6 +16,7 @@ import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
+import 'package:qnote_flutter/models/free_model_config.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/models/todo.dart';
 import 'package:uuid/uuid.dart';
@@ -67,6 +70,27 @@ final aiTemperaturesProvider = FutureProvider<AiTemperatures?>((ref) async {
   final repo = ConfigRepository.instance;
   return repo.getAiTemperatures();
 });
+
+// 免费模型相关 Provider
+final freeModelsProvider =
+    FutureProvider<List<FreeModelConfig>>((ref) async {
+  return FreeModelService.instance.getCachedModels();
+});
+
+final freeModelsManifestProvider =
+    FutureProvider<FreeModelsManifest?>((ref) async {
+  return FreeModelService.instance.getCachedManifest();
+});
+
+final freeModelsLastUpdateProvider = FutureProvider<DateTime?>((ref) async {
+  return FreeModelService.instance.getLastUpdateTime();
+});
+
+// 用户选择的主模型ID
+final selectedFreeModelProvider = StateProvider<String?>((ref) => null);
+
+// 免费模型更新状态
+final freeModelUpdatingProvider = StateProvider<bool>((ref) => false);
 
 final contextFilterProvider = StateProvider<AiContextFilter>(
   (ref) => const AiContextFilter(),
@@ -493,15 +517,10 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       userContent += '==== [用户指令] ====\n$content';
 
       final aiService = _ref.read(aiServiceProvider);
-      final assistantConfig = await AiRoleService.instance
-          .getEffectiveConfigForRole('assistant');
+      final useFreeModel =
+          await AiRoleService.instance.isFreeModelEnabled('assistant');
       final roleSettings = await AiRoleService.instance.getSettingsForRole(
         'assistant',
-      );
-      aiService.updateConfig(
-        assistantConfig,
-        temperature: roleSettings.temperature,
-        maxTokens: roleSettings.maxTokens,
       );
 
       // 6. Build enriched messages history to send to LLM (with system instruction and contextualized last message)
@@ -525,12 +544,49 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
 
       _ref.read(aiStreamingMessageProvider.notifier).state = '';
       DateTime lastUpdateTime = DateTime.now();
-      await for (final chunk in aiService.chatStream(messagesToSend)) {
-        _streamingContent.write(chunk);
-        final now = DateTime.now();
-        if (now.difference(lastUpdateTime).inMilliseconds >= 50) {
-          _ref.read(aiStreamingMessageProvider.notifier).state = _streamingContent.toString();
-          lastUpdateTime = now;
+
+      if (useFreeModel) {
+        // 免费模型模式：使用执行器自动切换
+        final freeModels =
+            await AiRoleService.instance.getFreeModelConfigsForRole('assistant');
+        if (freeModels.isEmpty) {
+          throw Exception('免费模型列表为空，请先在设置中更新免费模型');
+        }
+        final preferredId =
+            await AiRoleService.instance.getPreferredFreeModelId();
+        await for (final chunk in FreeModelExecutor.chatStreamWithFallback(
+          aiService: aiService,
+          models: freeModels,
+          preferredId: preferredId,
+          messages: messagesToSend,
+          temperature: roleSettings.temperature,
+          maxTokens: roleSettings.maxTokens,
+        )) {
+          _streamingContent.write(chunk);
+          final now = DateTime.now();
+          if (now.difference(lastUpdateTime).inMilliseconds >= 50) {
+            _ref.read(aiStreamingMessageProvider.notifier).state =
+                _streamingContent.toString();
+            lastUpdateTime = now;
+          }
+        }
+      } else {
+        // 普通模式：使用角色绑定的配置
+        final assistantConfig = await AiRoleService.instance
+            .getEffectiveConfigForRole('assistant');
+        aiService.updateConfig(
+          assistantConfig,
+          temperature: roleSettings.temperature,
+          maxTokens: roleSettings.maxTokens,
+        );
+        await for (final chunk in aiService.chatStream(messagesToSend)) {
+          _streamingContent.write(chunk);
+          final now = DateTime.now();
+          if (now.difference(lastUpdateTime).inMilliseconds >= 50) {
+            _ref.read(aiStreamingMessageProvider.notifier).state =
+                _streamingContent.toString();
+            lastUpdateTime = now;
+          }
         }
       }
       _ref.read(aiStreamingMessageProvider.notifier).state = _streamingContent.toString();

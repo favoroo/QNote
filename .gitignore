@@ -66,6 +66,7 @@ skills-lock.json
 *.key
 secrets.yaml
 email_config.json
+free_models.json
 
 # ---- Android 构建产物 ----
 android/app/build/
