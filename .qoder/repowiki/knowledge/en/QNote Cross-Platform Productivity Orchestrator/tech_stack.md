@@ -1,0 +1,1 @@
+Flutter SDK ^3.11.5, Riverpod ^2.6.1, GoRouter ^14.8.1, SQLite (sqflite/ffi), Dio ^5.7.0

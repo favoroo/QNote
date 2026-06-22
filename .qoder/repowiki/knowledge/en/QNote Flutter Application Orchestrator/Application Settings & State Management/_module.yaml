@@ -1,0 +1,18 @@
+schema_version: 1
+module_path: flutter_app/settings
+title: Application Settings & State Management
+scope:
+    - lib/providers/user_profile_provider.dart
+    - lib/providers/theme_provider.dart
+    - lib/providers/sync_provider.dart
+    - lib/providers/shortcut_provider.dart
+    - lib/models/user_profile.dart
+    - lib/models/webdav_config.dart
+    - lib/models/shortcut_category.dart
+    - lib/models/shortcut_config.dart
+    - lib/models/shortcut_field.dart
+    - lib/models/folder.dart
+source_files: []
+depends_on: []
+related_to:
+    - path: decisions/bbf95725d582_a0098f734f46

@@ -10,6 +10,8 @@
 - [note_editor_view.dart](file://lib/widgets/notes/note_editor_view.dart)
 - [diary_input_bar.dart](file://lib/widgets/diary/diary_input_bar.dart)
 - [diary_item.dart](file://lib/widgets/diary/diary_item.dart)
+- [animated_gradient_border.dart](file://lib/widgets/animated_gradient_border.dart)
+- [unified_image.dart](file://lib/widgets/unified_image.dart)
 - [scaffold_with_nav_bar.dart](file://lib/widgets/scaffold_with_nav_bar.dart)
 - [theme_mode_provider.dart](file://lib/providers/theme_mode_provider.dart)
 - [accent_color_provider.dart](file://lib/providers/accent_color_provider.dart)
@@ -20,6 +22,7 @@
 - [app_theme.dart](file://lib/core/theme/app_theme.dart)
 - [app_durations.dart](file://lib/core/theme/app_durations.dart)
 - [app_radius.dart](file://lib/core/theme/app_radius.dart)
+- [tag_colors.dart](file://lib/core/theme/tag_colors.dart)
 - [theme_provider.dart](file://lib/providers/theme_provider.dart)
 - [personalization_page.dart](file://lib/pages/settings/personalization_page.dart)
 - [colors.xml](file://android/app/src/main/res/values/colors.xml)
@@ -31,11 +34,11 @@
 
 ## Update Summary
 **Changes Made**
-- Enhanced theming system with improved switch controls and checkbox styling
-- Refined visual feedback for interactive elements with enhanced color schemes
-- Added accessibility features for interactive elements
-- Updated personalization page with improved theme mode buttons
-- Added duration and radius constants for consistent animations and spacing
+- Added AnimatedGradientBorder widget for enhanced UI animations and visual effects
+- Enhanced diary item presentation with improved tag styling, shadow effects, and gradient border integration
+- Integrated UnifiedImage widget for improved image handling and gallery functionality
+- Updated tag styling system with better visual hierarchy and shadow effects
+- Enhanced visual feedback for interactive elements with gradient border animations
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -45,16 +48,18 @@
 5. [Detailed Component Analysis](#detailed-component-analysis)
 6. [Enhanced Editor Features](#enhanced-editor-features)
 7. [Enhanced Theming System](#enhanced-theming-system)
-8. [Dependency Analysis](#dependency-analysis)
-9. [Performance Considerations](#performance-considerations)
-10. [Troubleshooting Guide](#troubleshooting-guide)
-11. [Conclusion](#conclusion)
-12. [Appendices](#appendices)
+8. [New Animated Gradient Border System](#new-animated-gradient-border-system)
+9. [Enhanced Diary Item Presentation](#enhanced-diary-item-presentation)
+10. [Dependency Analysis](#dependency-analysis)
+11. [Performance Considerations](#performance-considerations)
+12. [Troubleshooting Guide](#troubleshooting-guide)
+13. [Conclusion](#conclusion)
+14. [Appendices](#appendices)
 
 ## Introduction
 This document describes the UI components and page architecture of QNote Flutter. It focuses on the page-based navigation system powered by GoRouter, the organization of screens, reusable UI components, theming and styling, responsive design patterns, accessibility compliance, component composition, integration with state management, cross-platform considerations, and guidelines for building consistent UI elements.
 
-**Updated** Enhanced with new markdown formatting capabilities, improved emoji support, advanced diary item rendering features, and a significantly improved theming system with enhanced interactive element styling and accessibility features.
+**Updated** Enhanced with new AnimatedGradientBorder widget for dynamic visual effects, improved diary item presentation with better tag styling and shadow effects, enhanced image handling with UnifiedImage widget, and significantly improved theming system with enhanced interactive element styling and accessibility features.
 
 ## Project Structure
 QNote Flutter organizes UI-related code under lib/, with distinct layers for application bootstrap, routing, pages, widgets, providers, models, and configuration. The navigation system centers around a provider-managed GoRouter instance configured via a dedicated router module. Pages and views are separated to promote composability and testability, while reusable UI components live in a dedicated widgets directory. Providers manage global state such as theme mode and accent color, enabling reactive UI updates. The theming system now includes comprehensive styling for interactive elements like switches, checkboxes, and radios with enhanced visual feedback.
@@ -75,6 +80,8 @@ DIARY_EDITOR["widgets/diary/diary_editor_view.dart"]
 NOTE_EDITOR["widgets/notes/note_editor_view.dart"]
 DIARY_INPUT_BAR["widgets/diary/diary_input_bar.dart"]
 DIARY_ITEM["widgets/diary/diary_item.dart"]
+ANIMATED_BORDER["widgets/animated_gradient_border.dart"]
+UNIFIED_IMAGE["widgets/unified_image.dart"]
 PERSONALIZATION["pages/settings/personalization_page.dart"]
 END
 subgraph "Widgets"
@@ -89,6 +96,7 @@ subgraph "Theming System"
 APP_THEME["core/theme/app_theme.dart"]
 APP_DURATIONS["core/theme/app_durations.dart"]
 APP_RADIUS["core/theme/app_radius.dart"]
+TAG_COLORS["core/theme/tag_colors.dart"]
 END
 subgraph "Models & Repositories"
 MODEL["models/diary_record_model.dart"]
@@ -104,6 +112,9 @@ ROUTER --> NOTE_EDITOR
 DIARY_PAGE --> SNA
 DIARY_EDITOR --> SNA
 NOTE_EDITOR --> DIARY_INPUT_BAR
+DIARY_ITEM --> ANIMATED_BORDER
+DIARY_ITEM --> UNIFIED_IMAGE
+DIARY_ITEM --> TAG_COLORS
 DIARY_ITEM --> DELTA_MD
 PERSONALIZATION --> THEME_PROVIDER
 APP_THEME --> THEME_PROVIDER
@@ -118,6 +129,8 @@ APP_THEME --> THEME_PROVIDER
 - [note_editor_view.dart](file://lib/widgets/notes/note_editor_view.dart)
 - [diary_input_bar.dart](file://lib/widgets/diary/diary_input_bar.dart)
 - [diary_item.dart](file://lib/widgets/diary/diary_item.dart)
+- [animated_gradient_border.dart](file://lib/widgets/animated_gradient_border.dart)
+- [unified_image.dart](file://lib/widgets/unified_image.dart)
 - [scaffold_with_nav_bar.dart](file://lib/widgets/scaffold_with_nav_bar.dart)
 - [theme_mode_provider.dart](file://lib/providers/theme_mode_provider.dart)
 - [accent_color_provider.dart](file://lib/providers/accent_color_provider.dart)
@@ -128,6 +141,7 @@ APP_THEME --> THEME_PROVIDER
 - [app_theme.dart](file://lib/core/theme/app_theme.dart)
 - [app_durations.dart](file://lib/core/theme/app_durations.dart)
 - [app_radius.dart](file://lib/core/theme/app_radius.dart)
+- [tag_colors.dart](file://lib/core/theme/tag_colors.dart)
 - [theme_provider.dart](file://lib/providers/theme_provider.dart)
 - [personalization_page.dart](file://lib/pages/settings/personalization_page.dart)
 
@@ -144,6 +158,8 @@ APP_THEME --> THEME_PROVIDER
 - State management: Theme mode and accent color are managed via providers, enabling runtime theme switching with persistent storage.
 - **Enhanced theming system**: Comprehensive styling for interactive elements including switches, checkboxes, and radio buttons with enhanced visual feedback and accessibility.
 - **Enhanced editor components**: Specialized editors with markdown support and rich formatting capabilities.
+- **New animated gradient border system**: Dynamic gradient border effects with customizable animation and visual styling.
+- **Enhanced image handling**: Unified image widget with cross-platform support and gallery functionality.
 
 **Section sources**
 - [app.dart](file://lib/app.dart)
@@ -161,6 +177,8 @@ The UI architecture follows a layered pattern:
 - Models and repositories provide domain data and persistence.
 - **Enhanced theming system**: AppTheme provides comprehensive Material 3 theming with specialized styling for interactive elements.
 - **Enhanced markdown processing**: Delta to markdown conversion utilities enable sophisticated text formatting.
+- **New animated gradient system**: AnimatedGradientBorder widget provides dynamic visual effects with customizable animation parameters.
+- **Enhanced image system**: UnifiedImage widget handles cross-platform image loading with error handling and gallery support.
 
 ```mermaid
 sequenceDiagram
@@ -172,6 +190,7 @@ participant Shell as "ScaffoldWithNavBar"
 participant Diary as "DiaryPage"
 participant Editor as "DiaryEditorView"
 participant NoteEditor as "NoteEditorView"
+participant AnimatedBorder as "AnimatedGradientBorder"
 Entry->>App : "Run app"
 App->>RouterProv : "Initialize provider"
 RouterProv-->>App : "GoRouter instance"
@@ -181,6 +200,8 @@ Shell-->>Diary : "Render current branch"
 Diary->>Editor : "Navigate to nested 'editor' route"
 Editor->>NoteEditor : "Enhanced markdown editor"
 NoteEditor-->>Shell : "Overlay with transition"
+Diary->>AnimatedBorder : "Apply gradient border effects"
+AnimatedBorder-->>Diary : "Dynamic visual enhancement"
 ```
 
 **Diagram sources**
@@ -191,6 +212,7 @@ NoteEditor-->>Shell : "Overlay with transition"
 - [diary_page.dart](file://lib/pages/diary_page.dart)
 - [diary_editor_view.dart](file://lib/widgets/diary/diary_editor_view.dart)
 - [note_editor_view.dart](file://lib/widgets/notes/note_editor_view.dart)
+- [animated_gradient_border.dart](file://lib/widgets/animated_gradient_border.dart)
 
 ## Detailed Component Analysis
 
@@ -228,6 +250,7 @@ Back --> HomeScreen
 - View-level editors: The editor view encapsulates editing UI and is presented as an overlay via nested routing.
 - Shell integration: The scaffold wrapper coordinates bottom navigation and shell-aware rendering for the active branch.
 - **Personalization integration**: Settings pages utilize the enhanced theming system for consistent UI styling.
+- **Enhanced component integration**: New AnimatedGradientBorder widget seamlessly integrates with existing UI components.
 
 ```mermaid
 classDiagram
@@ -250,10 +273,18 @@ class PersonalizationPage {
 +themeModeButtons
 +build(context)
 }
+class AnimatedGradientBorder {
++child
++isAnimating
++borderRadius
++strokeWidth
++build(context)
+}
 ScaffoldWithNavBar --> DiaryPage : "hosts"
 ScaffoldWithNavBar --> DiaryEditorView : "overlay"
 DiaryEditorView --> NoteEditorView : "enhanced editor"
 PersonalizationPage --> ThemeProvider : "uses"
+AnimatedGradientBorder --> DiaryItem : "enhances"
 ```
 
 **Diagram sources**
@@ -262,6 +293,7 @@ PersonalizationPage --> ThemeProvider : "uses"
 - [diary_editor_view.dart](file://lib/widgets/diary/diary_editor_view.dart)
 - [note_editor_view.dart](file://lib/widgets/notes/note_editor_view.dart)
 - [personalization_page.dart](file://lib/pages/settings/personalization_page.dart)
+- [animated_gradient_border.dart](file://lib/widgets/animated_gradient_border.dart)
 
 **Section sources**
 - [diary_page.dart](file://lib/pages/diary_page.dart)
@@ -274,6 +306,7 @@ PersonalizationPage --> ThemeProvider : "uses"
 - Platform-specific resources: Android defines colors and styles for day/night modes; web provides HTML and manifest configurations for PWA behavior.
 - Color management: Colors are centralized in platform resources and consumed by widgets and pages.
 - **Enhanced interactive elements**: Comprehensive styling for switches, checkboxes, and radio buttons with widget state properties for visual feedback.
+- **Enhanced tag system**: Centralized tag color management with consistent color schemes across the application.
 - **Consistent spacing and timing**: AppDurations and AppRadius provide standardized animation durations and corner radii.
 
 ```mermaid
@@ -285,6 +318,7 @@ APP --> WIDGETS["Widgets consume theme"]
 APP_THEME["AppTheme"] --> WIDGETS
 APP_DURATIONS["AppDurations"] --> WIDGETS
 APP_RADIUS["AppRadius"] --> WIDGETS
+TAG_COLORS["TagColors"] --> WIDGETS
 ANDROID_COLORS["Android colors.xml"] --> WIDGETS
 WEB_MANIFEST["Web manifest.json"] --> WIDGETS
 ```
@@ -297,6 +331,7 @@ WEB_MANIFEST["Web manifest.json"] --> WIDGETS
 - [app_theme.dart](file://lib/core/theme/app_theme.dart)
 - [app_durations.dart](file://lib/core/theme/app_durations.dart)
 - [app_radius.dart](file://lib/core/theme/app_radius.dart)
+- [tag_colors.dart](file://lib/core/theme/tag_colors.dart)
 - [colors.xml](file://android/app/src/main/res/values/colors.xml)
 - [styles.xml](file://android/app/src/main/res/values/styles.xml)
 - [colors.xml (night)](file://android/app/src/main/res/values-night/colors.xml)
@@ -310,6 +345,7 @@ WEB_MANIFEST["Web manifest.json"] --> WIDGETS
 - [app_theme.dart](file://lib/core/theme/app_theme.dart)
 - [app_durations.dart](file://lib/core/theme/app_durations.dart)
 - [app_radius.dart](file://lib/core/theme/app_radius.dart)
+- [tag_colors.dart](file://lib/core/theme/tag_colors.dart)
 - [colors.xml](file://android/app/src/main/res/values/colors.xml)
 - [styles.xml](file://android/app/src/main/res/values/styles.xml)
 - [colors.xml (night)](file://android/app/src/main/res/values-night/colors.xml)
@@ -433,14 +469,16 @@ The diary input bar has been redesigned with expanded emoji support:
 Diary items now feature enhanced rendering capabilities:
 
 - **Rich text display**: Proper markdown rendering in diary entries
-- **Media support**: Image thumbnails and media previews
+- **Media support**: Image thumbnails and media previews with UnifiedImage widget
 - **Interactive elements**: Clickable links and formatted content
 - **Performance optimization**: Efficient rendering of complex markdown content
+- **Enhanced visual hierarchy**: Better tag styling with improved shadow effects
 
 **Section sources**
 - [note_editor_view.dart](file://lib/widgets/notes/note_editor_view.dart)
 - [diary_input_bar.dart](file://lib/widgets/diary/diary_input_bar.dart)
 - [diary_item.dart](file://lib/widgets/diary/diary_item.dart)
+- [unified_image.dart](file://lib/widgets/unified_image.dart)
 - [delta_markdown.dart](file://lib/core/utils/delta_markdown.dart)
 
 ## Enhanced Theming System
@@ -497,6 +535,7 @@ DarkTheme --> CheckboxDark["Checkbox: Dark<br/>Fill: Transparent → Accent<br/>
 ThemeSystem --> Personalization["Personalization Page"]
 Personalization --> ThemeButtons["Enhanced Theme Buttons<br/>Card + Shadow + Border"]
 ThemeSystem --> Constants["Duration & Radius<br/>AppDurations & AppRadius"]
+ThemeSystem --> TagColors["Centralized Tag Colors<br/>Sleep/Diet/Activity/Finance"]
 ```
 
 **Diagram sources**
@@ -504,12 +543,125 @@ ThemeSystem --> Constants["Duration & Radius<br/>AppDurations & AppRadius"]
 - [personalization_page.dart](file://lib/pages/settings/personalization_page.dart)
 - [app_durations.dart](file://lib/core/theme/app_durations.dart)
 - [app_radius.dart](file://lib/core/theme/app_radius.dart)
+- [tag_colors.dart](file://lib/core/theme/tag_colors.dart)
 
 **Section sources**
 - [app_theme.dart](file://lib/core/theme/app_theme.dart)
 - [personalization_page.dart](file://lib/pages/settings/personalization_page.dart)
 - [app_durations.dart](file://lib/core/theme/app_durations.dart)
 - [app_radius.dart](file://lib/core/theme/app_radius.dart)
+- [tag_colors.dart](file://lib/core/theme/tag_colors.dart)
+
+## New Animated Gradient Border System
+
+### AnimatedGradientBorder Widget
+A new widget has been introduced to provide dynamic gradient border effects with customizable animation parameters:
+
+- **Dynamic gradient animation**: Smooth rotating gradient effect with customizable animation duration
+- **Glow effect integration**: Dual-layer border system with blurred glow underneath and sharp main border on top
+- **Customizable parameters**: Configurable border radius, stroke width, and animation control
+- **Theme-aware styling**: Automatically adapts to current theme colors and alpha values
+- **Performance optimized**: Efficient CustomPainter implementation with proper repaint detection
+
+### Gradient Effects and Transformations
+The widget utilizes advanced gradient techniques for visual appeal:
+
+- **Rotating gradient transform**: Matrix-based rotation transformation for seamless animation
+- **Sweep gradient shader**: Radial gradient effect with carefully crafted color stops
+- **Dual-layer rendering**: Glow layer with increased stroke width plus main border for depth
+- **Mask filter integration**: Blur effect for soft glow appearance
+- **Custom paint optimization**: Efficient repainting only when parameters change
+
+### Integration with Diary Items
+The AnimatedGradientBorder widget is seamlessly integrated into the diary item system:
+
+- **Conditional animation**: Only animates during AI extraction processes
+- **Theme integration**: Uses current theme's primary color and outline variant for consistent styling
+- **Visual enhancement**: Provides subtle animation feedback without distracting from content
+- **Performance conscious**: Animation controlled by isAnimating parameter to prevent unnecessary CPU usage
+
+```mermaid
+flowchart TD
+AnimatedBorder["AnimatedGradientBorder"] --> Controller["AnimationController<br/>3000ms duration"]
+Controller --> Transform["RotatingGradientTransform"]
+Transform --> Shader["SweepGradient Shader"]
+Shader --> GlowLayer["Glow Layer<br/>Blurred + Increased Width"]
+Shader --> MainLayer["Main Layer<br/>Sharp + Normal Width"]
+GlowLayer --> Canvas["Canvas Rendering"]
+MainLayer --> Canvas
+Canvas --> Border["Final Gradient Border"]
+Border --> DiaryItem["Integrated into DiaryItem"]
+DiaryItem --> AIExtraction["AI Extraction State"]
+AIExtraction --> AnimatedBorder["Trigger Animation"]
+```
+
+**Diagram sources**
+- [animated_gradient_border.dart](file://lib/widgets/animated_gradient_border.dart)
+- [diary_item.dart](file://lib/widgets/diary/diary_item.dart)
+
+**Section sources**
+- [animated_gradient_border.dart](file://lib/widgets/animated_gradient_border.dart)
+- [diary_item.dart](file://lib/widgets/diary/diary_item.dart)
+
+## Enhanced Diary Item Presentation
+
+### Improved Tag Styling System
+The diary item presentation has been significantly enhanced with better tag styling and visual hierarchy:
+
+- **Centralized tag colors**: Dedicated TagColors class with consistent color mapping for all tag types
+- **Enhanced shadow effects**: Improved BoxShadow implementations with better depth perception
+- **Better visual hierarchy**: Clear distinction between filled tags and outlined field tags
+- **Responsive tag layout**: Horizontal scrolling tags with proper spacing and overflow handling
+- **Icon integration**: Consistent icon usage with tags for better visual recognition
+
+### Unified Image Integration
+Enhanced image handling with the new UnifiedImage widget:
+
+- **Cross-platform support**: Handles local files, web URLs, and asset paths seamlessly
+- **Error handling**: Graceful fallbacks for missing or corrupted images
+- **Performance optimization**: Intelligent caching and downscaling for mobile devices
+- **Gallery functionality**: Full-screen image viewer with pinch-to-zoom and swipe navigation
+- **Loading states**: Proper loading indicators and skeleton screens for better UX
+
+### Enhanced Content Rendering
+Improved content presentation with better formatting and organization:
+
+- **Rich text processing**: Advanced markdown parsing with intelligent field extraction
+- **Remark handling**: Proper separation and styling of remark text sections
+- **Field normalization**: Consistent formatting of extracted field-value pairs
+- **Multi-tag support**: Enhanced presentation for records with multiple tag entries
+- **Photo grid layout**: Responsive image grid with adaptive sizing and spacing
+
+```mermaid
+flowchart TD
+DiaryItem["DiaryItem Widget"] --> TagSystem["Enhanced Tag System"]
+TagSystem --> TagColors["Centralized Tag Colors"]
+TagSystem --> ShadowEffects["Improved Shadow Effects"]
+TagSystem --> Layout["Responsive Tag Layout"]
+DiaryItem --> ImageSystem["Unified Image System"]
+ImageSystem --> CrossPlatform["Cross-Platform Support"]
+ImageSystem --> ErrorHandling["Error Handling"]
+ImageSystem --> Gallery["Full-Screen Gallery"]
+DiaryItem --> ContentRendering["Enhanced Content Rendering"]
+ContentRendering --> RichText["Rich Text Processing"]
+ContentRendering --> FieldExtraction["Intelligent Field Extraction"]
+ContentRendering --> PhotoGrid["Responsive Photo Grid"]
+DiaryItem --> AnimatedBorder["Animated Gradient Border"]
+AnimatedBorder --> ConditionalAnimation["Conditional Animation"]
+AnimatedBorder --> ThemeIntegration["Theme-Aware Styling"]
+```
+
+**Diagram sources**
+- [diary_item.dart](file://lib/widgets/diary/diary_item.dart)
+- [tag_colors.dart](file://lib/core/theme/tag_colors.dart)
+- [unified_image.dart](file://lib/widgets/unified_image.dart)
+- [animated_gradient_border.dart](file://lib/widgets/animated_gradient_border.dart)
+
+**Section sources**
+- [diary_item.dart](file://lib/widgets/diary/diary_item.dart)
+- [tag_colors.dart](file://lib/core/theme/tag_colors.dart)
+- [unified_image.dart](file://lib/widgets/unified_image.dart)
+- [animated_gradient_border.dart](file://lib/widgets/animated_gradient_border.dart)
 
 ## Dependency Analysis
 The UI layer depends on:
@@ -518,6 +670,9 @@ The UI layer depends on:
 - Domain: Editor views depend on models and repositories for data operations.
 - **Enhanced formatting**: Delta to markdown conversion utilities for sophisticated text processing.
 - **Enhanced theming**: AppTheme provides comprehensive styling for interactive elements.
+- **Enhanced tag system**: Centralized tag color management for consistent visual identity.
+- **New animated system**: AnimatedGradientBorder widget for dynamic visual effects.
+- **Enhanced image system**: UnifiedImage widget for robust image handling across platforms.
 - **Persistent preferences**: Theme providers store user preferences in SharedPreferences.
 
 ```mermaid
@@ -536,6 +691,9 @@ DELTA_MD --> RENDERING["Enhanced Rendering"]
 APP_THEME["app_theme.dart"] --> WIDGETS["Interactive Elements<br/>Switches/Checkboxes/Radios"]
 APP_DURATIONS["app_durations.dart"] --> ANIMATIONS["Standardized Animations"]
 APP_RADIUS["app_radius.dart"] --> SPACING["Consistent Spacing"]
+TAG_COLORS["tag_colors.dart"] --> DIARY_ITEMS["Enhanced Diary Items"]
+ANIMATED_BORDER["animated_gradient_border.dart"] --> DIARY_ITEMS
+UNIFIED_IMAGE["unified_image.dart"] --> DIARY_ITEMS
 ```
 
 **Diagram sources**
@@ -551,8 +709,11 @@ APP_RADIUS["app_radius.dart"] --> SPACING["Consistent Spacing"]
 - [app_theme.dart](file://lib/core/theme/app_theme.dart)
 - [app_durations.dart](file://lib/core/theme/app_durations.dart)
 - [app_radius.dart](file://lib/core/theme/app_radius.dart)
+- [tag_colors.dart](file://lib/core/theme/tag_colors.dart)
 - [theme_provider.dart](file://lib/providers/theme_provider.dart)
 - [personalization_page.dart](file://lib/pages/settings/personalization_page.dart)
+- [animated_gradient_border.dart](file://lib/widgets/animated_gradient_border.dart)
+- [unified_image.dart](file://lib/widgets/unified_image.dart)
 
 **Section sources**
 - [router_provider.dart](file://lib/providers/router_provider.dart)
@@ -568,6 +729,9 @@ APP_RADIUS["app_radius.dart"] --> SPACING["Consistent Spacing"]
 - [app_durations.dart](file://lib/core/theme/app_durations.dart)
 - [app_radius.dart](file://lib/core/theme/app_radius.dart)
 - [theme_provider.dart](file://lib/providers/theme_provider.dart)
+- [tag_colors.dart](file://lib/core/theme/tag_colors.dart)
+- [animated_gradient_border.dart](file://lib/widgets/animated_gradient_border.dart)
+- [unified_image.dart](file://lib/widgets/unified_image.dart)
 
 ## Performance Considerations
 - Route transitions: Prefer lightweight transitions for nested routes to minimize jank during navigation.
@@ -578,6 +742,8 @@ APP_RADIUS["app_radius.dart"] --> SPACING["Consistent Spacing"]
 - **Memory management**: Cache frequently used markdown renderers and emoji data to reduce memory allocation overhead.
 - **Animation optimization**: Use standardized durations from AppDurations for consistent performance across interactive elements.
 - **State management**: WidgetStateProperty.resolveWith ensures efficient state-based styling updates.
+- **New performance considerations**: AnimatedGradientBorder uses efficient CustomPainter implementation; consider animation throttling for low-end devices.
+- **Image optimization**: UnifiedImage widget includes intelligent caching and downscaling to prevent memory spikes on mobile devices.
 
 ## Troubleshooting Guide
 - Navigation failures: Verify the router provider is initialized and the GoRouter instance is accessible before calling navigation methods.
@@ -589,6 +755,9 @@ APP_RADIUS["app_radius.dart"] --> SPACING["Consistent Spacing"]
 - **Performance degradation**: Monitor markdown parsing performance and consider implementing lazy loading for complex content.
 - **Interactive element styling**: Verify WidgetStateProperty usage for proper state-based styling in switches, checkboxes, and radio buttons.
 - **Theme persistence**: Check SharedPreferences storage for theme mode and accent color preferences if theme changes don't persist.
+- **New troubleshooting**: AnimatedGradientBorder animation issues: Verify AnimationController lifecycle and ensure proper cleanup in dispose method.
+- **Image loading problems**: Check UnifiedImage widget error handling and verify file paths are accessible across platforms.
+- **Tag color inconsistencies**: Ensure TagColors class is properly imported and centralized color management is functioning correctly.
 
 **Section sources**
 - [app.dart](file://lib/app.dart)
@@ -600,7 +769,7 @@ APP_RADIUS["app_radius.dart"] --> SPACING["Consistent Spacing"]
 ## Conclusion
 QNote Flutter's UI architecture emphasizes a clean separation of concerns: routing via a provider-managed GoRouter, composable pages and views, reusable widgets, and reactive state management for theming. The system supports nested navigation, customizable transitions, and cross-platform deployment with platform-specific resources.
 
-**Updated** The enhanced editor features provide comprehensive markdown support, expanded emoji capabilities, and improved rendering performance, making the application more powerful for content creation and management. The significantly enhanced theming system now includes comprehensive styling for interactive elements with improved visual feedback, accessibility features, and consistent animation patterns. Following the outlined patterns ensures consistency and maintainability as the application evolves.
+**Updated** The enhanced editor features provide comprehensive markdown support, expanded emoji capabilities, and improved rendering performance, making the application more powerful for content creation and management. The significantly enhanced theming system now includes comprehensive styling for interactive elements with improved visual feedback, accessibility features, and consistent animation patterns. The new AnimatedGradientBorder widget adds dynamic visual effects with customizable animation parameters, while the enhanced diary item presentation improves tag styling, shadow effects, and overall visual hierarchy. The UnifiedImage widget provides robust cross-platform image handling with error management and gallery functionality. Following the outlined patterns ensures consistency and maintainability as the application evolves.
 
 ## Appendices
 
@@ -614,6 +783,8 @@ QNote Flutter's UI architecture emphasizes a clean separation of concerns: routi
 - **Follow accessibility guidelines**: Ensure sufficient contrast ratios and proper state differentiation for interactive elements.
 - **Use standardized durations**: Employ AppDurations for consistent animation timing across components.
 - **Apply consistent spacing**: Use AppRadius for proportional corner radii in UI elements.
+- **Consider animation performance**: When adding animated components, ensure efficient animation controllers and proper cleanup.
+- **Handle cross-platform differences**: Account for platform-specific behaviors in image loading, navigation, and UI rendering.
 
 ### Common UI Patterns and Interaction Handling
 - Bottom navigation with shell: Use a shell scaffold to host multiple branches and coordinate navigation.
@@ -624,6 +795,8 @@ QNote Flutter's UI architecture emphasizes a clean separation of concerns: routi
 - **Emoji integration**: Provide contextual emoji selection and real-time preview functionality.
 - **Interactive element styling**: Implement proper state-based styling for switches, checkboxes, and radio buttons.
 - **Persistent theme preferences**: Store user theme choices in SharedPreferences for session continuity.
+- **New animation patterns**: Consider AnimatedGradientBorder for visual feedback during loading or processing states.
+- **Image handling best practices**: Use UnifiedImage widget for consistent cross-platform image loading and error handling.
 
 ### Accessibility Compliance Checklist
 - Contrast ratios: Ensure sufficient contrast between foreground and background colors in both day and night themes.
@@ -635,6 +808,7 @@ QNote Flutter's UI architecture emphasizes a clean separation of concerns: routi
 - **Emoji alternatives**: Provide text alternatives for emoji content where appropriate.
 - **Screen reader support**: Verify proper announcement of formatted content and interactive elements.
 - **State indication**: Ensure interactive elements clearly indicate their state (selected/unselected) for accessibility.
+- **Animation accessibility**: Consider reduced motion preferences and provide alternatives for users sensitive to animations.
 
 ### Enhanced Editor Implementation Guidelines
 - **Markdown syntax support**: Implement comprehensive markdown parsing for headers, lists, blockquotes, and inline formatting.
@@ -643,6 +817,7 @@ QNote Flutter's UI architecture emphasizes a clean separation of concerns: routi
 - **Cross-platform compatibility**: Ensure emoji and markdown rendering work consistently across iOS, Android, and web platforms.
 - **Accessibility considerations**: Provide proper semantic markup for rendered content and support screen readers.
 - **Interactive element styling**: Follow the enhanced theming system guidelines for consistent styling of form controls.
+- **New animation integration**: Consider AnimatedGradientBorder for visual feedback during AI processing or content extraction.
 
 ### Theming System Guidelines
 - **Comprehensive interactive styling**: Follow the enhanced switch, checkbox, and radio button styling patterns.
@@ -652,3 +827,12 @@ QNote Flutter's UI architecture emphasizes a clean separation of concerns: routi
 - **Accessibility compliance**: Ensure all interactive elements meet accessibility standards with proper contrast and state indication.
 - **Theme persistence**: Implement SharedPreferences storage for user theme preferences.
 - **Cross-theme consistency**: Maintain consistent styling patterns across light and dark themes.
+- **Centralized color management**: Use TagColors class for consistent color schemes across the application.
+
+### New Component Development Guidelines
+- **AnimatedGradientBorder usage**: Integrate with existing components for visual feedback during processing states.
+- **Tag system integration**: Utilize centralized TagColors for consistent visual identity.
+- **Image handling best practices**: Implement UnifiedImage widget for robust cross-platform image support.
+- **Performance optimization**: Ensure new components don't introduce performance regressions in existing functionality.
+- **Testing across platforms**: Validate new components on Android, iOS, and web platforms.
+- **Documentation updates**: Update documentation to reflect new component capabilities and usage patterns.

@@ -1,0 +1,1 @@
+Manages note and folder lifecycle, including hierarchical organization, drag-and-drop reordering, and batch operations.

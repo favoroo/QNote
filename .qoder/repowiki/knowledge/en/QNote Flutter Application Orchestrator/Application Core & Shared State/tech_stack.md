@@ -1,0 +1,3 @@
+- State Management: flutter_riverpod (AsyncNotifier, StateProvider).
+- Routing: go_router with StatefulShellRoute for tabbed navigation.
+- Database: sqflite_common_ffi_web for cross-platform SQLite support.

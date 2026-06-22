@@ -1,0 +1,4 @@
+- **State Management**: Uses `flutter_riverpod` with `AsyncNotifierProvider` (`DiaryListNotifier`) for asynchronous data fetching and state synchronization.
+- **Data Model**: `DiaryRecord` serves as the immutable core entity, featuring robust JSON serialization (`toMap`/`fromMap`) and complex date-range logic for cross-day events.
+- **UI Implementation**: `DiaryPage` implements a custom virtualized timeline using `ListView.builder` with manual scroll offset calculations to handle infinite scrolling and dynamic item heights.
+- **AI Integration**: Integrates an AI extraction service via `DiaryProvider` to automatically tag and structure unstructured diary content, supporting both single-record and batch processing workflows.

@@ -1,0 +1,1 @@
+Uses `flutter_riverpod` for reactive state management (specifically `StateNotifierProvider` and `AsyncNotifierProvider`) and `sqflite` for persistent local storage of configuration data.

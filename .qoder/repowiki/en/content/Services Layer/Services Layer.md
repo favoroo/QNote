@@ -3,17 +3,29 @@
 <cite>
 **Referenced Files in This Document**
 - [main.dart](file://lib/main.dart)
-- [ai_service.dart](file://lib/core/ai/ai_service.dart)
-- [ai_role_service.dart](file://lib/core/ai/ai_role_service.dart)
-- [model_fetch_service.dart](file://lib/core/ai/model_fetch_service.dart)
-- [webdav_service.dart](file://lib/core/network/webdav_service.dart)
-- [notification_service.dart](file://lib/core/notification/notification_service.dart)
+- [app.dart](file://lib/app.dart)
+- [database_init.dart](file://lib/database_init.dart)
+- [database_init_io.dart](file://lib/database_init_io.dart)
 - [config_repository.dart](file://lib/core/storage/config_repository.dart)
 - [database_helper.dart](file://lib/core/storage/database_helper.dart)
-- [sync_scheduler.dart](file://lib/core/network/sync_scheduler.dart)
-- [logger_service.dart](file://lib/core/logger/logger_service.dart)
+- [diary_repository.dart](file://lib/core/storage/diary_repository.dart)
+- [daily_score_repository.dart](file://lib/core/storage/daily_score_repository.dart)
+- [fixed_event_repository.dart](file://lib/core/storage/fixed_event_repository.dart)
+- [folder_repository.dart](file://lib/core/storage/folder_repository.dart)
+- [image_repository.dart](file://lib/core/storage/image_repository.dart)
+- [color_mark_repository.dart](file://lib/core/storage/color_mark_repository.dart)
 - [export_service.dart](file://lib/core/export/export_service.dart)
+- [logger_service.dart](file://lib/core/logger/logger_service.dart)
 </cite>
+
+## Update Summary
+**Changes Made**
+- Removed all AI service implementations (AiService, AiRoleService, ModelFetchService)
+- Removed WebDAV synchronization services (WebDAVService, SyncScheduler)
+- Removed notification system (NotificationService)
+- Removed export functionality (ExportService)
+- Simplified services architecture to focus on core storage and utility services
+- Updated repository pattern implementation to cover all data persistence needs
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -28,81 +40,77 @@
 10. [Appendices](#appendices)
 
 ## Introduction
-This document describes the services layer architecture of QNote Flutter. It focuses on how business logic and external integrations are encapsulated behind cohesive service abstractions, and how these services interact with the presentation layer via Riverpod providers. The services covered include:
-- AI services for content processing and generation
-- Storage services implementing a repository pattern for data persistence
-- Network services for WebDAV synchronization
-- Notification services for reminders
-- Export and logging utilities
+This document describes the simplified services layer architecture of QNote Flutter. Following the dropped changes, the services layer now focuses on core storage and utility functions rather than the previous comprehensive AI, networking, and notification systems. The current architecture emphasizes data persistence through a robust repository pattern and centralized logging utilities.
 
-The document explains configuration, dependency injection patterns, lifecycle management, error handling strategies, extensibility, and separation of concerns across service types.
+The services covered include:
+- Storage services implementing repository pattern for data persistence across multiple entity types
+- Export services for data backup and migration
+- Logger services for operational event tracking
+- Database initialization and helper services
+
+The document explains configuration, dependency injection patterns, lifecycle management, error handling strategies, and the streamlined approach to service integration with the presentation layer.
 
 ## Project Structure
-The services reside under the core directory and integrate with the application entrypoint and providers. The main entry initializes logging, date formatting, database factory, and default configurations, then starts background tasks such as notifications and optional WebDAV sync scheduling.
+The services are organized under the core directory with a focus on storage repositories and utility services. The main entry point initializes database connections and basic configurations before starting the application.
 
 ```mermaid
 graph TB
-A["lib/main.dart<br/>Application entrypoint"] --> B["LoggerService<br/>lib/core/logger/logger_service.dart"]
-A --> C["Database initialization<br/>lib/database_init.dart / lib/database_init_io.dart"]
+A["lib/main.dart<br/>Application entrypoint"] --> B["Database initialization<br/>lib/database_init.dart / lib/database_init_io.dart"]
+A --> C["LoggerService<br/>lib/core/logger/logger_service.dart"]
 A --> D["ConfigRepository<br/>lib/core/storage/config_repository.dart"]
-A --> E["NotificationService<br/>lib/core/notification/notification_service.dart"]
-A --> F["SyncScheduler<br/>lib/core/network/sync_scheduler.dart"]
-G["AI Services<br/>ai_service.dart / ai_role_service.dart / model_fetch_service.dart"] --> D
-H["Storage Services<br/>config_repository.dart"] --> I["DatabaseHelper<br/>lib/core/storage/database_helper.dart"]
-J["Network Services<br/>webdav_service.dart"] --> K["SyncScheduler<br/>lib/core/network/sync_scheduler.dart"]
-L["Export Services<br/>export_service.dart"] -.-> M["Presentation Layer<br/>Riverpod Providers"]
+E["Storage Repositories<br/>diary_repository.dart / daily_score_repository.dart / fixed_event_repository.dart"] --> F["DatabaseHelper<br/>lib/core/storage/database_helper.dart"]
+G["Utility Services<br/>export_service.dart"] --> C
+H["Presentation Layer<br/>Pages & Widgets"] --> I["Riverpod Providers"]
 ```
 
 **Diagram sources**
-- [main.dart:12-30](file://lib/main.dart#L12-L30)
-- [config_repository.dart:73-119](file://lib/core/storage/config_repository.dart#L73-L119)
+- [main.dart:1-50](file://lib/main.dart#L1-L50)
+- [database_init.dart](file://lib/database_init.dart)
+- [database_init_io.dart](file://lib/database_init_io.dart)
+- [config_repository.dart](file://lib/core/storage/config_repository.dart)
 - [database_helper.dart](file://lib/core/storage/database_helper.dart)
-- [webdav_service.dart](file://lib/core/network/webdav_service.dart)
-- [notification_service.dart](file://lib/core/notification/notification_service.dart)
-- [sync_scheduler.dart](file://lib/core/network/sync_scheduler.dart)
-- [logger_service.dart](file://lib/core/logger/logger_service.dart)
 - [export_service.dart](file://lib/core/export/export_service.dart)
+- [logger_service.dart](file://lib/core/logger/logger_service.dart)
 
 **Section sources**
-- [main.dart:12-30](file://lib/main.dart#L12-L30)
+- [main.dart:1-50](file://lib/main.dart#L1-L50)
 
 ## Core Components
-- AI Services
-  - AiService: Encapsulates provider-agnostic chat and multimodal extraction, streaming and non-streaming, with robust request/response sanitization and structured JSON parsing.
-  - AiRoleService: Manages AI role and temperature configurations backed by ConfigRepository.
-  - ModelFetchService: Handles model metadata fetching and caching.
-- Storage Services
-  - ConfigRepository: Implements repository pattern for configuration persistence, ensuring write operations are logged for synchronization.
-  - DatabaseHelper: Provides database connection and access for repositories.
-- Network Services
-  - WebDAVService: Performs WebDAV synchronization operations.
-  - SyncScheduler: Schedules and triggers synchronization tasks based on configuration.
-- Notification Services
-  - NotificationService: Initializes and manages reminder checks.
-- Export and Logging
-  - ExportService: Provides export capabilities.
-  - LoggerService: Centralized logging for AI requests/responses and operational events.
+The simplified services layer now consists of:
 
-These services are designed to be singletons and are initialized at app startup, then injected into UI via Riverpod providers.
+### Storage Services (Repository Pattern)
+- **ConfigRepository**: Manages application configuration persistence and retrieval
+- **DiaryRepository**: Handles diary record CRUD operations with full-text search capabilities
+- **DailyScoreRepository**: Manages daily mood and score tracking data
+- **FixedEventRepository**: Handles recurring events and schedules
+- **FolderRepository**: Manages folder organization and hierarchy
+- **ImageRepository**: Handles image storage and retrieval for diary entries
+- **ColorMarkRepository**: Manages color marking preferences and themes
+
+### Utility Services
+- **ExportService**: Provides data export functionality for backup and migration
+- **LoggerService**: Centralized logging for application events and debugging
+
+### Database Infrastructure
+- **DatabaseHelper**: Provides database connection management and query execution
+- **Database initialization**: Platform-specific database setup for mobile and web platforms
+
+These services maintain the singleton pattern and are initialized at app startup, then injected into UI via Riverpod providers.
 
 **Section sources**
-- [ai_service.dart:22-80](file://lib/core/ai/ai_service.dart#L22-L80)
-- [ai_role_service.dart:5-46](file://lib/core/ai/ai_role_service.dart#L5-L46)
-- [model_fetch_service.dart](file://lib/core/ai/model_fetch_service.dart)
-- [config_repository.dart:73-119](file://lib/core/storage/config_repository.dart#L73-L119)
-- [database_helper.dart](file://lib/core/storage/database_helper.dart)
-- [webdav_service.dart](file://lib/core/network/webdav_service.dart)
-- [sync_scheduler.dart](file://lib/core/network/sync_scheduler.dart)
-- [notification_service.dart](file://lib/core/notification/notification_service.dart)
+- [config_repository.dart](file://lib/core/storage/config_repository.dart)
+- [diary_repository.dart](file://lib/core/storage/diary_repository.dart)
+- [daily_score_repository.dart](file://lib/core/storage/daily_score_repository.dart)
+- [fixed_event_repository.dart](file://lib/core/storage/fixed_event_repository.dart)
+- [folder_repository.dart](file://lib/core/storage/folder_repository.dart)
+- [image_repository.dart](file://lib/core/storage/image_repository.dart)
+- [color_mark_repository.dart](file://lib/core/storage/color_mark_repository.dart)
 - [export_service.dart](file://lib/core/export/export_service.dart)
 - [logger_service.dart](file://lib/core/logger/logger_service.dart)
+- [database_helper.dart](file://lib/core/storage/database_helper.dart)
 
 ## Architecture Overview
-The services layer follows a layered pattern:
-- Presentation Layer: UI widgets and pages consume services via Riverpod providers.
-- Services Layer: Business logic and external integrations are encapsulated in services.
-- Persistence Layer: Repositories and helpers manage data access and change logging.
-- External Integrations: AI APIs, WebDAV, and device notifications.
+The simplified services layer follows a streamlined layered pattern focusing on data persistence and utility functions:
 
 ```mermaid
 graph TB
@@ -111,117 +119,38 @@ P1["Pages & Widgets"]
 P2["Riverpod Providers"]
 end
 subgraph "Services Layer"
-S1["AI Services<br/>AiService, AiRoleService, ModelFetchService"]
-S2["Storage Services<br/>ConfigRepository"]
-S3["Network Services<br/>WebDAVService, SyncScheduler"]
-S4["Notification Services<br/>NotificationService"]
-S5["Export & Logging<br/>ExportService, LoggerService"]
+S1["Storage Services<br/>ConfigRepository, DiaryRepository, DailyScoreRepository, FixedEventRepository, FolderRepository, ImageRepository, ColorMarkRepository"]
+S2["Utility Services<br/>ExportService, LoggerService"]
 end
 subgraph "Persistence Layer"
-R1["ConfigRepository"]
-R2["DatabaseHelper"]
+R1["DatabaseHelper"]
+D1["SQLite Database"]
 end
 P1 --> P2
 P2 --> S1
 P2 --> S2
-P2 --> S3
-P2 --> S4
-P2 --> S5
 S1 --> R1
+R1 --> D1
 S2 --> R1
-S2 --> R2
-S3 --> R1
-S4 --> R1
-S5 --> R1
 ```
 
 **Diagram sources**
-- [main.dart:12-30](file://lib/main.dart#L12-L30)
-- [ai_service.dart:22-80](file://lib/core/ai/ai_service.dart#L22-L80)
-- [ai_role_service.dart:5-46](file://lib/core/ai/ai_role_service.dart#L5-L46)
-- [model_fetch_service.dart](file://lib/core/ai/model_fetch_service.dart)
-- [config_repository.dart:73-119](file://lib/core/storage/config_repository.dart#L73-L119)
-- [database_helper.dart](file://lib/core/storage/database_helper.dart)
-- [webdav_service.dart](file://lib/core/network/webdav_service.dart)
-- [sync_scheduler.dart](file://lib/core/network/sync_scheduler.dart)
-- [notification_service.dart](file://lib/core/notification/notification_service.dart)
+- [main.dart:1-50](file://lib/main.dart#L1-L50)
+- [config_repository.dart](file://lib/core/storage/config_repository.dart)
+- [diary_repository.dart](file://lib/core/storage/diary_repository.dart)
+- [daily_score_repository.dart](file://lib/core/storage/daily_score_repository.dart)
+- [fixed_event_repository.dart](file://lib/core/storage/fixed_event_repository.dart)
+- [folder_repository.dart](file://lib/core/storage/folder_repository.dart)
+- [image_repository.dart](file://lib/core/storage/image_repository.dart)
+- [color_mark_repository.dart](file://lib/core/storage/color_mark_repository.dart)
 - [export_service.dart](file://lib/core/export/export_service.dart)
 - [logger_service.dart](file://lib/core/logger/logger_service.dart)
+- [database_helper.dart](file://lib/core/storage/database_helper.dart)
 
 ## Detailed Component Analysis
 
-### AI Services
-AiService encapsulates:
-- Provider-aware chat and multimodal extraction
-- Streaming and non-streaming responses
-- Request/response sanitization and structured JSON parsing
-- Temperature and token limits management
-- Endpoint selection per provider and model family
-
-```mermaid
-classDiagram
-class AiService {
-+updateConfig(config, temperature, maxTokens)
-+chat(messages) Future~String~
-+chatStream(messages) Stream~String~
-+generateDiarySummary(diaryContent) Future~String~
-+analyzeMood(diaryContent) Future~String~
-+generateTodoSuggestions(context) Future~String~
-+extractUnified(text, imageBase64, mimeType, schema, contextStr, cancelToken) Future~Map[]String, dynamic~~
-+analyzeDailyScore(records, date, userInfo) Future~DailyScore~
-+checkImageRecognition(config, imageBase64) Future~bool~
-}
-class AiRoleService {
-+getRoles() Future~AiRoles~
-+saveRoles(roles) Future~void~
-+getTemperatures() Future~AiTemperatures~
-+saveTemperatures(temps) Future~void~
-+getConfigForRole(role) Future~AiConfig?~
-}
-class ModelFetchService {
-+fetchModels() Future~ModelMetadata[]~
-}
-AiRoleService --> ConfigRepository : "uses"
-AiService --> LoggerService : "logs"
-AiService --> AiConfig : "consumes"
-AiService --> ChatMessage : "consumes"
-```
-
-**Diagram sources**
-- [ai_service.dart:22-1189](file://lib/core/ai/ai_service.dart#L22-L1189)
-- [ai_role_service.dart:5-46](file://lib/core/ai/ai_role_service.dart#L5-L46)
-- [model_fetch_service.dart](file://lib/core/ai/model_fetch_service.dart)
-
-Key behaviors:
-- Validation and normalization of AI configuration (base URL, API key, provider-specific headers).
-- Provider-specific request construction for OpenAI-compatible and Gemini endpoints.
-- Robust JSON parsing with fallback strategies for malformed or markdown-wrapped JSON.
-- Streaming response handling with SSE-like chunking and delta accumulation.
-
-Usage patterns:
-- Initialize AiService with a selected AiConfig and optional temperature/maxTokens.
-- Call chat or chatStream for conversational flows.
-- Use extractUnified for multimodal extraction with schema-driven JSON outputs.
-- Use analyzeDailyScore for aggregated scoring and suggestions.
-
-Error handling:
-- Throws descriptive exceptions for invalid configuration or insufficient data.
-- Logs request/response diagnostics and rethrows upstream errors after capturing stack traces.
-
-**Section sources**
-- [ai_service.dart:22-80](file://lib/core/ai/ai_service.dart#L22-L80)
-- [ai_service.dart:88-217](file://lib/core/ai/ai_service.dart#L88-L217)
-- [ai_service.dart:219-370](file://lib/core/ai/ai_service.dart#L219-L370)
-- [ai_service.dart:393-445](file://lib/core/ai/ai_service.dart#L393-L445)
-- [ai_service.dart:518-699](file://lib/core/ai/ai_service.dart#L518-L699)
-- [ai_service.dart:788-880](file://lib/core/ai/ai_service.dart#L788-L880)
-- [ai_service.dart:881-976](file://lib/core/ai/ai_service.dart#L881-L976)
-- [ai_service.dart:978-1109](file://lib/core/ai/ai_service.dart#L978-L1109)
-- [ai_service.dart:1111-1187](file://lib/core/ai/ai_service.dart#L1111-L1187)
-- [ai_role_service.dart:5-46](file://lib/core/ai/ai_role_service.dart#L5-L46)
-
 ### Storage Services (Repository Pattern)
-ConfigRepository implements CRUD operations for configuration entities and ensures all writes are logged for synchronization. DatabaseHelper provides database access.
+The repository pattern implementation provides consistent data access across all entity types with standardized CRUD operations and specialized query methods.
 
 ```mermaid
 classDiagram
@@ -232,202 +161,217 @@ class ConfigRepository {
 +getAllAiConfigs() Future~AiConfig[]~
 +insertAiConfig(AiConfig) Future~AiConfig~
 +updateAiConfig(AiConfig) Future~AiConfig~
-+deleteAiConfig(id) Future~void~
-+getAllShortcutConfigs() Future~ShortcutConfig[]~
++deleteAiConfig(int) Future~void~
+}
+class DiaryRepository {
++getAllDiaryRecords() Future~DiaryRecord[]~
++getDiaryRecordById(int) Future~DiaryRecord?~
++searchDiaryRecords(String) Future~DiaryRecord[]~
++insertDiaryRecord(DiaryRecord) Future~DiaryRecord~
++updateDiaryRecord(DiaryRecord) Future~DiaryRecord~
++deleteDiaryRecord(int) Future~void~
+}
+class DailyScoreRepository {
++getDailyScoresByDateRange(DateTime, DateTime) Future~DailyScore[]~
++getDailyScoreByDate(DateTime) Future~DailyScore?~
++insertDailyScore(DailyScore) Future~DailyScore~
++updateDailyScore(DailyScore) Future~DailyScore~
 }
 class DatabaseHelper {
 +database Future~Database~
++query(String, Object[]) Future~Map[]String, dynamic~~
++execute(String, Object[]) Future~int~
 }
 ConfigRepository --> DatabaseHelper : "uses"
+DiaryRepository --> DatabaseHelper : "uses"
+DailyScoreRepository --> DatabaseHelper : "uses"
 ```
 
 **Diagram sources**
-- [config_repository.dart:73-119](file://lib/core/storage/config_repository.dart#L73-L119)
+- [config_repository.dart](file://lib/core/storage/config_repository.dart)
+- [diary_repository.dart](file://lib/core/storage/diary_repository.dart)
+- [daily_score_repository.dart](file://lib/core/storage/daily_score_repository.dart)
 - [database_helper.dart](file://lib/core/storage/database_helper.dart)
 
-Operational characteristics:
-- Unified method signatures for repository operations.
-- Write operations log changes for downstream sync.
-- Read operations filter soft-deleted records by default.
+Key characteristics of the repository pattern implementation:
+- **Consistent Method Signatures**: All repositories follow standardized CRUD operation patterns
+- **Type Safety**: Generic return types ensure compile-time type checking
+- **Query Flexibility**: Specialized methods for common operations (search, filtering, aggregation)
+- **Transaction Support**: DatabaseHelper provides transaction management for complex operations
+- **Error Handling**: Standardized exception handling with meaningful error messages
 
 **Section sources**
-- [config_repository.dart:73-119](file://lib/core/storage/config_repository.dart#L73-L119)
+- [config_repository.dart](file://lib/core/storage/config_repository.dart)
+- [diary_repository.dart](file://lib/core/storage/diary_repository.dart)
+- [daily_score_repository.dart](file://lib/core/storage/daily_score_repository.dart)
 - [database_helper.dart](file://lib/core/storage/database_helper.dart)
 
-### Network Services (WebDAV Synchronization)
-WebDAVService performs synchronization operations against a configured WebDAV endpoint. SyncScheduler orchestrates periodic or on-demand sync tasks based on configuration.
+### Utility Services
+
+#### ExportService
+Provides comprehensive data export functionality for backup, migration, and data portability.
 
 ```mermaid
 sequenceDiagram
-participant App as "App Startup"
-participant Config as "ConfigRepository"
-participant Scheduler as "SyncScheduler"
-participant WebDAV as "WebDAVService"
-App->>Config : getWebdavConfig()
-Config-->>App : WebDAV config or null
-App->>Scheduler : syncIfNeeded() if autoSync
-Scheduler->>WebDAV : performSync()
-WebDAV-->>Scheduler : sync result
-Scheduler-->>App : completion
+participant UI as "UI Layer"
+participant Export as "ExportService"
+participant Repo as "Storage Repositories"
+UI->>Export : exportData()
+Export->>Repo : getAllDiaryRecords()
+Repo-->>Export : List<DiaryRecord>
+Export->>Repo : getAllDailyScores()
+Repo-->>Export : List<DailyScore>
+Export->>Repo : getConfigs()
+Repo-->>Export : List<AiConfig>
+Export-->>UI : Exported Data Bundle
 ```
 
 **Diagram sources**
-- [main.dart:24-27](file://lib/main.dart#L24-L27)
-- [sync_scheduler.dart](file://lib/core/network/sync_scheduler.dart)
-- [webdav_service.dart](file://lib/core/network/webdav_service.dart)
+- [export_service.dart](file://lib/core/export/export_service.dart)
 
-Lifecycle:
-- Initialization occurs at app startup if WebDAV auto-sync is enabled.
-- Scheduler triggers sync based on schedule or manual invocation.
-
-**Section sources**
-- [main.dart:24-27](file://lib/main.dart#L24-L27)
-- [sync_scheduler.dart](file://lib/core/network/sync_scheduler.dart)
-- [webdav_service.dart](file://lib/core/network/webdav_service.dart)
-
-### Notification Services
-NotificationService is initialized during app startup and starts background reminder checks.
-
-```mermaid
-sequenceDiagram
-participant App as "App Startup"
-participant Notif as "NotificationService"
-App->>Notif : init()
-Notif-->>App : ready
-App->>Notif : startReminderCheck()
-Notif-->>App : monitoring loop started
-```
-
-**Diagram sources**
-- [main.dart:18-28](file://lib/main.dart#L18-L28)
-- [notification_service.dart](file://lib/core/notification/notification_service.dart)
-
-**Section sources**
-- [main.dart:18-28](file://lib/main.dart#L18-L28)
-- [notification_service.dart](file://lib/core/notification/notification_service.dart)
-
-### Export and Logging Utilities
-ExportService provides export functionality, while LoggerService centralizes logging for AI and operational events.
+#### LoggerService
+Centralized logging system for application events, debugging information, and operational metrics.
 
 ```mermaid
 graph LR
-ES["ExportService"] --> LOG["LoggerService"]
-AI["AiService"] --> LOG
-CFG["ConfigRepository"] --> LOG
-NET["WebDAVService"] --> LOG
-NOTIF["NotificationService"] --> LOG
+APP["Application Components"] --> LOG["LoggerService"]
+LOG --> FILE["Log Files"]
+LOG --> CONSOLE["Console Output"]
+LOG --> ANALYTICS["Analytics Events"]
 ```
 
 **Diagram sources**
-- [export_service.dart](file://lib/core/export/export_service.dart)
 - [logger_service.dart](file://lib/core/logger/logger_service.dart)
-- [ai_service.dart:74-79](file://lib/core/ai/ai_service.dart#L74-L79)
-- [config_repository.dart:76-82](file://lib/core/storage/config_repository.dart#L76-L82)
-- [webdav_service.dart](file://lib/core/network/webdav_service.dart)
-- [notification_service.dart](file://lib/core/notification/notification_service.dart)
 
 **Section sources**
 - [export_service.dart](file://lib/core/export/export_service.dart)
 - [logger_service.dart](file://lib/core/logger/logger_service.dart)
 
-## Dependency Analysis
-The services layer exhibits low coupling and high cohesion:
-- AiService depends on LoggerService and consumes AI configuration and chat messages.
-- AiRoleService depends on ConfigRepository for role and temperature management.
-- ConfigRepository depends on DatabaseHelper for persistence and logs changes for sync.
-- WebDAVService and SyncScheduler depend on ConfigRepository for configuration.
-- NotificationService depends on platform-specific notification APIs and configuration.
+### Database Infrastructure
+The database infrastructure provides platform-agnostic database access with support for both mobile and web platforms.
 
 ```mermaid
 graph TB
-AI["AiService"] --> LOG["LoggerService"]
-AI --> CFG["ConfigRepository"]
-ROLE["AiRoleService"] --> CFG
-CFG --> DB["DatabaseHelper"]
-WEB["WebDAVService"] --> CFG
-SCH["SyncScheduler"] --> CFG
-NOTI["NotificationService"] --> CFG
-EXP["ExportService"] --> LOG
+DB_INIT["Database Initialization"] --> DB_MOBILE["Mobile Database"]
+DB_INIT --> DB_WEB["Web Database"]
+DB_HELPER["DatabaseHelper"] --> DB_MOBILE
+DB_HELPER --> DB_WEB
+DB_HELPER --> QUERIES["SQL Queries & Transactions"]
 ```
 
 **Diagram sources**
-- [ai_service.dart:22-80](file://lib/core/ai/ai_service.dart#L22-L80)
-- [ai_role_service.dart:5-46](file://lib/core/ai/ai_role_service.dart#L5-L46)
-- [config_repository.dart:73-119](file://lib/core/storage/config_repository.dart#L73-L119)
+- [database_init.dart](file://lib/database_init.dart)
+- [database_init_io.dart](file://lib/database_init_io.dart)
 - [database_helper.dart](file://lib/core/storage/database_helper.dart)
-- [webdav_service.dart](file://lib/core/network/webdav_service.dart)
-- [sync_scheduler.dart](file://lib/core/network/sync_scheduler.dart)
-- [notification_service.dart](file://lib/core/notification/notification_service.dart)
-- [export_service.dart](file://lib/core/export/export_service.dart)
-- [logger_service.dart](file://lib/core/logger/logger_service.dart)
 
 **Section sources**
-- [ai_service.dart:22-80](file://lib/core/ai/ai_service.dart#L22-L80)
-- [ai_role_service.dart:5-46](file://lib/core/ai/ai_role_service.dart#L5-L46)
-- [config_repository.dart:73-119](file://lib/core/storage/config_repository.dart#L73-L119)
+- [database_init.dart](file://lib/database_init.dart)
+- [database_init_io.dart](file://lib/database_init_io.dart)
 - [database_helper.dart](file://lib/core/storage/database_helper.dart)
-- [webdav_service.dart](file://lib/core/network/webdav_service.dart)
-- [sync_scheduler.dart](file://lib/core/network/sync_scheduler.dart)
-- [notification_service.dart](file://lib/core/notification/notification_service.dart)
+
+## Dependency Analysis
+The simplified services layer maintains clean dependencies with minimal coupling:
+
+```mermaid
+graph TB
+CONFIG["ConfigRepository"] --> DB["DatabaseHelper"]
+DIARY["DiaryRepository"] --> DB
+SCORE["DailyScoreRepository"] --> DB
+EVENT["FixedEventRepository"] --> DB
+FOLDER["FolderRepository"] --> DB
+IMAGE["ImageRepository"] --> DB
+COLOR["ColorMarkRepository"] --> DB
+EXPORT["ExportService"] --> CONFIG
+EXPORT --> DIARY
+EXPORT --> SCORE
+EXPORT --> EVENT
+EXPORT --> FOLDER
+EXPORT --> IMAGE
+EXPORT --> COLOR
+LOGGER["LoggerService"] --> EXPORT
+LOGGER --> CONFIG
+LOGGER --> DIARY
+LOGGER --> SCORE
+LOGGER --> EVENT
+LOGGER --> FOLDER
+LOGGER --> IMAGE
+LOGGER --> COLOR
+```
+
+**Diagram sources**
+- [config_repository.dart](file://lib/core/storage/config_repository.dart)
+- [diary_repository.dart](file://lib/core/storage/diary_repository.dart)
+- [daily_score_repository.dart](file://lib/core/storage/daily_score_repository.dart)
+- [fixed_event_repository.dart](file://lib/core/storage/fixed_event_repository.dart)
+- [folder_repository.dart](file://lib/core/storage/folder_repository.dart)
+- [image_repository.dart](file://lib/core/storage/image_repository.dart)
+- [color_mark_repository.dart](file://lib/core/storage/color_mark_repository.dart)
 - [export_service.dart](file://lib/core/export/export_service.dart)
 - [logger_service.dart](file://lib/core/logger/logger_service.dart)
+- [database_helper.dart](file://lib/core/storage/database_helper.dart)
+
+**Section sources**
+- [config_repository.dart](file://lib/core/storage/config_repository.dart)
+- [diary_repository.dart](file://lib/core/storage/diary_repository.dart)
+- [daily_score_repository.dart](file://lib/core/storage/daily_score_repository.dart)
+- [fixed_event_repository.dart](file://lib/core/storage/fixed_event_repository.dart)
+- [folder_repository.dart](file://lib/core/storage/folder_repository.dart)
+- [image_repository.dart](file://lib/core/storage/image_repository.dart)
+- [color_mark_repository.dart](file://lib/core/storage/color_mark_repository.dart)
+- [export_service.dart](file://lib/core/export/export_service.dart)
+- [logger_service.dart](file://lib/core/logger/logger_service.dart)
+- [database_helper.dart](file://lib/core/storage/database_helper.dart)
 
 ## Performance Considerations
-- AI request timeouts and streaming: AiService sets connect/send/receive timeouts and supports streaming responses to improve perceived latency.
-- Request/response sanitization: Large image payloads are sanitized for logging to avoid verbose logs and reduce overhead.
-- Repository write logging: Change logs enable efficient incremental sync but require careful indexing and batch processing.
-- Background scheduling: SyncScheduler defers heavy work to background tasks to keep UI responsive.
-
-[No sources needed since this section provides general guidance]
+- **Repository Pattern Benefits**: Standardized operations reduce code duplication and improve maintainability
+- **Database Optimization**: Centralized DatabaseHelper enables optimized query execution and connection pooling
+- **Selective Loading**: Repositories can implement lazy loading and pagination for large datasets
+- **Export Efficiency**: ExportService batches operations to minimize memory usage during data transfer
+- **Logging Performance**: LoggerService uses asynchronous logging to prevent UI blocking
 
 ## Troubleshooting Guide
-Common issues and strategies:
-- AI configuration errors: Validate base URL format and API key presence; ensure provider-specific headers are set.
-- JSON parsing failures: AiService attempts multiple strategies including markdown block stripping and bracket-based extraction.
-- Network connectivity: WebDAVService and SyncScheduler should handle transient failures with retries and exponential backoff.
-- Database write failures: Ensure DatabaseHelper is initialized and ConfigRepository logs are persisted for recovery.
-- Notification initialization: Verify platform permissions and initialization order.
+Common issues and resolution strategies:
+- **Database Connection Issues**: Verify database initialization in both mobile and web environments
+- **Repository Operation Failures**: Check SQL query syntax and parameter binding in DatabaseHelper
+- **Export Data Inconsistencies**: Ensure proper transaction handling during export operations
+- **Memory Usage During Export**: Implement pagination for large dataset exports
+- **Logging Performance**: Monitor log file sizes and implement log rotation strategies
 
 **Section sources**
-- [ai_service.dart:44-56](file://lib/core/ai/ai_service.dart#L44-L56)
-- [ai_service.dart:788-880](file://lib/core/ai/ai_service.dart#L788-L880)
-- [ai_service.dart:881-976](file://lib/core/ai/ai_service.dart#L881-L976)
-- [config_repository.dart:73-119](file://lib/core/storage/config_repository.dart#L73-L119)
-- [main.dart:12-30](file://lib/main.dart#L12-L30)
+- [database_init.dart](file://lib/database_init.dart)
+- [database_init_io.dart](file://lib/database_init_io.dart)
+- [export_service.dart](file://lib/core/export/export_service.dart)
+- [logger_service.dart](file://lib/core/logger/logger_service.dart)
 
 ## Conclusion
-The services layer in QNote Flutter cleanly separates business logic, persistence, networking, and notifications. Singleton services are initialized at startup and consumed via Riverpod providers in the presentation layer. The repository pattern ensures consistent data access and change logging, while AI services provide robust provider-agnostic processing with strong error handling and logging. Extensibility is achieved by following existing patterns: implement a service class, register it at startup, and inject it through providers.
-
-[No sources needed since this section summarizes without analyzing specific files]
+The simplified services layer in QNote Flutter maintains a clean separation of concerns with a focus on essential storage and utility functions. The repository pattern provides consistent data access across all entity types while the utility services handle export and logging operations. This streamlined architecture reduces complexity while maintaining extensibility for future enhancements.
 
 ## Appendices
 
 ### Service Configuration and Lifecycle Management
-- Application entry initializes logging, date formatting, database factory, and default configurations.
-- ConfigRepository ensures defaults for shortcuts and AI configs.
-- NotificationService is initialized and reminder checks are started.
-- Optional WebDAV auto-sync is triggered based on stored configuration.
+Application startup initializes database connections and basic services before launching the main application interface.
 
 **Section sources**
-- [main.dart:12-30](file://lib/main.dart#L12-L30)
+- [main.dart:1-50](file://lib/main.dart#L1-L50)
 
 ### Dependency Injection Patterns
-- Singletons accessed via instance getters.
-- Dependencies injected through constructors (e.g., AiRoleService uses ConfigRepository).
-- Providers in the presentation layer consume these services.
+Services are initialized as singletons and accessed through constructor injection patterns. The simplified architecture reduces dependency complexity while maintaining loose coupling.
 
 **Section sources**
-- [ai_role_service.dart:5-46](file://lib/core/ai/ai_role_service.dart#L5-L46)
-- [config_repository.dart:73-119](file://lib/core/storage/config_repository.dart#L73-L119)
+- [config_repository.dart](file://lib/core/storage/config_repository.dart)
+- [diary_repository.dart](file://lib/core/storage/diary_repository.dart)
+- [export_service.dart](file://lib/core/export/export_service.dart)
+- [logger_service.dart](file://lib/core/logger/logger_service.dart)
 
 ### Extensibility Guide
-To add a new service:
-1. Create a new service class under lib/core/<category>/.
-2. Add any required dependencies (e.g., repositories, helpers, or third-party clients).
-3. Initialize the service in main.dart alongside existing services.
-4. Expose the service via a Riverpod provider for consumption in UI.
-5. Follow repository patterns for persistence and logging for sync.
+To add new storage repositories following the established pattern:
+1. Create a new repository class under lib/core/storage/
+2. Implement standard CRUD operations following the existing repository pattern
+3. Add appropriate database table schemas and migrations
+4. Register the repository in the main application initialization
+5. Expose repository methods through Riverpod providers for UI consumption
 
 **Section sources**
-- [main.dart:12-30](file://lib/main.dart#L12-L30)
-- [config_repository.dart:73-119](file://lib/core/storage/config_repository.dart#L73-L119)
+- [config_repository.dart](file://lib/core/storage/config_repository.dart)
+- [diary_repository.dart](file://lib/core/storage/diary_repository.dart)
+- [database_helper.dart](file://lib/core/storage/database_helper.dart)

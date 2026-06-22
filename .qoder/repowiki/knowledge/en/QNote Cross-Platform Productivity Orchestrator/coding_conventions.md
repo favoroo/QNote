@@ -1,0 +1,3 @@
+- Feature-based modular directory structure in lib/ (config, core, models, pages, providers, widgets).
+- Riverpod used as the exclusive state management solution across all feature domains.
+- Conditional imports for platform-specific database initialization (database_init_io.dart).

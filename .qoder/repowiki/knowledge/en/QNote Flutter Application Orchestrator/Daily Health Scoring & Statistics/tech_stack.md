@@ -1,0 +1,4 @@
+- **State Management**: `flutter_riverpod` with `AsyncNotifier` for complex async state flows.
+- **AI/LLM**: `dio` for HTTP requests to Gemini/OpenAI-compatible APIs, with custom prompt engineering for structured JSON output.
+- **Visualization**: `fl_chart` for rendering historical score trends in `DailyScoreStats`.
+- **Persistence**: Local SQLite database via `DatabaseHelper` with a repository pattern for `DailyScore` and `WeightRecord`.

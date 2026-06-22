@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'package:qnote_flutter/core/utils/schema_formatter.dart';
+import 'package:qnote_flutter/widgets/diary/ai_extract_helper.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/shortcut_field.dart';
@@ -1127,11 +1128,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           final result = results[i];
           ShortcutConfig? foundShortcut;
           if (result['shortcutId'] != null) {
-            try {
-              foundShortcut = shortcuts.firstWhere(
-                (s) => s.id == result['shortcutId'],
-              );
-            } catch (_) {}
+            foundShortcut = findShortcutById(result['shortcutId'] as String?, shortcuts);
           }
 
           TimeOfDay? itemTime;
@@ -1295,9 +1292,10 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
             timeStr = parts.isNotEmpty ? parts.join('~') : null;
           }
 
+          final fallbackShortcut = findShortcutById('other', shortcuts);
           final singleTagEntry = TagEntry(
             id: foundShortcut?.id ?? result['shortcutId'] ?? 'other',
-            name: foundShortcut?.name ?? '其他',
+            name: foundShortcut?.name ?? fallbackShortcut?.name ?? '其他',
             fields: fields,
             time: timeStr,
           );

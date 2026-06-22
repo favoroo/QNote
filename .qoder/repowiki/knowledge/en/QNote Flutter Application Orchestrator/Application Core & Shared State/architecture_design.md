@@ -1,0 +1,5 @@
+- Entry Point: `lib/main.dart` handles async bootstrap (logging, database factory, notifications) before launching the `ProviderScope`.
+- App Shell: `lib/app.dart` configures `MaterialApp.router` with `go_router`, theming, and platform channel listeners for deep linking.
+- State Management: Uses `flutter_riverpod` for global state. `navigation_provider.dart` manages bottom-nav index; `selected_date_provider.dart` tracks the active calendar date.
+- Data Models: `tag_entry.dart` and `date_color_mark.dart` provide immutable data structures with JSON/Map serialization for persistence.
+- Platform Abstraction: Conditional imports (`database_init.dart` vs `database_init_io.dart`) isolate web-specific SQLite initialization from native IO environments.

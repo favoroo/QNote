@@ -1,0 +1,13 @@
+schema_version: 1
+module_path: flutter_app/statistics
+title: Daily Health Scoring & Statistics
+scope:
+    - lib/pages/statistics_page.dart
+    - lib/providers/daily_score_provider.dart
+    - lib/models/daily_score.dart
+    - lib/models/weight_record.dart
+source_files: []
+depends_on: []
+related_to:
+    - path: flutter_app/ai
+    - path: flutter_app/todo

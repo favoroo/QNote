@@ -1,0 +1,4 @@
+- Models implement `toMap`, `fromMap`, and `copyWith` methods for serialization and immutable updates.
+- Providers use `AsyncNotifier` or `StateNotifier` to manage asynchronous state and expose actions like `add`, `update`, `delete`, and `reorder`.
+- UI components use `GlobalKey` to anchor context menus (`ActionMenu`) relative to specific list items.
+- Drag-and-drop functionality is implemented using `ReorderableListView` with immediate local state updates followed by background persistence.

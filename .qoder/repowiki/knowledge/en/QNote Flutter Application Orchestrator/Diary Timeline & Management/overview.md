@@ -1,0 +1,1 @@
+Provides a vertical timeline interface for viewing, creating, and AI-enhancing diary records with date-based navigation.
