@@ -3,16 +3,23 @@ import 'dart:convert';
 class AiRoles {
   final String? assistant;
   final String? timelineOptimization;
+  // 角色是否使用免费模型
+  final bool assistantUseFreeModel;
+  final bool timelineOptimizationUseFreeModel;
 
   const AiRoles({
     this.assistant,
     this.timelineOptimization,
+    this.assistantUseFreeModel = false,
+    this.timelineOptimizationUseFreeModel = false,
   });
 
   Map<String, dynamic> toMap() {
     return {
       'assistant': assistant,
       'timelineOptimization': timelineOptimization,
+      'assistantUseFreeModel': assistantUseFreeModel,
+      'timelineOptimizationUseFreeModel': timelineOptimizationUseFreeModel,
     };
   }
 
@@ -20,6 +27,9 @@ class AiRoles {
     return AiRoles(
       assistant: map['assistant'] as String?,
       timelineOptimization: map['timelineOptimization'] as String?,
+      assistantUseFreeModel: map['assistantUseFreeModel'] as bool? ?? false,
+      timelineOptimizationUseFreeModel:
+          map['timelineOptimizationUseFreeModel'] as bool? ?? false,
     );
   }
 
@@ -31,10 +41,17 @@ class AiRoles {
   AiRoles copyWith({
     String? assistant,
     String? timelineOptimization,
+    bool? assistantUseFreeModel,
+    bool? timelineOptimizationUseFreeModel,
   }) {
     return AiRoles(
       assistant: assistant ?? this.assistant,
       timelineOptimization: timelineOptimization ?? this.timelineOptimization,
+      assistantUseFreeModel:
+          assistantUseFreeModel ?? this.assistantUseFreeModel,
+      timelineOptimizationUseFreeModel:
+          timelineOptimizationUseFreeModel ??
+              this.timelineOptimizationUseFreeModel,
     );
   }
 }

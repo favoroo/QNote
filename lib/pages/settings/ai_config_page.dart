@@ -7,10 +7,12 @@ import 'package:uuid/uuid.dart';
 import 'package:dio/dio.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
+import 'package:qnote_flutter/models/free_model_config.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/config/models.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/ai/free_model_service.dart';
 import 'package:qnote_flutter/core/ai/model_fetch_service.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
@@ -40,6 +42,15 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   bool _fetchMessageIsError = false;
   SharedPreferences? _prefs;
 
+  // 免费模型相关状态
+  List<FreeModelConfig> _freeModels = [];
+  DateTime? _freeModelsLastUpdate;
+  String? _selectedFreeModelId;
+  bool _isUpdatingFreeModels = false;
+  bool _freeBatchTesting = false;
+  final Map<String, bool> _freeModelTestingMap = {};
+  final Map<String, String> _freeModelLatencyMap = {};
+
   Future<SharedPreferences> _getPrefs() async {
     _prefs ??= await SharedPreferences.getInstance();
     return _prefs!;
@@ -51,6 +62,102 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     _loadRoles();
     _loadLatencies();
     _loadAllCachedModels();
+    _loadFreeModels();
+  }
+
+  Future<void> _loadFreeModels() async {
+    final models = await FreeModelService.instance.getCachedModels();
+    final lastUpdate = await FreeModelService.instance.getLastUpdateTime();
+    final selectedId = await AiRoleService.instance.getPreferredFreeModelId();
+    if (mounted) {
+      setState(() {
+        _freeModels = models;
+        _freeModelsLastUpdate = lastUpdate;
+        _selectedFreeModelId = selectedId;
+      });
+    }
+  }
+
+  Future<void> _updateFreeModels() async {
+    if (_isUpdatingFreeModels) return;
+    setState(() => _isUpdatingFreeModels = true);
+    try {
+      final manifest = await FreeModelService.instance.fetchRemoteManifest();
+      if (mounted) {
+        setState(() {
+          _freeModels = manifest.models;
+          _freeModelsLastUpdate = DateTime.now();
+        });
+        Toast.success(context, '免费模型更新成功（${manifest.models.length}个）');
+      }
+    } catch (e) {
+      if (mounted) {
+        Toast.error(context, '更新失败: $e');
+      }
+    } finally {
+      if (mounted) setState(() => _isUpdatingFreeModels = false);
+    }
+  }
+
+  Future<void> _saveSelectedFreeModel(String? modelId) async {
+    await AiRoleService.instance.savePreferredFreeModelId(modelId);
+    if (mounted) {
+      setState(() => _selectedFreeModelId = modelId);
+    }
+  }
+
+  /// 批量测试所有免费模型
+  Future<void> _batchTestFreeModels() async {
+    if (_freeBatchTesting || _freeModels.isEmpty) return;
+    if (mounted) setState(() => _freeBatchTesting = true);
+
+    try {
+      const int maxConcurrency = 3;
+      final List<Future<void>> tasks = [];
+      final remainingModels = List<FreeModelConfig>.from(_freeModels);
+
+      // 测试单个免费模型
+      Future<void> testOne(FreeModelConfig model) async {
+        if (!mounted) return;
+        setState(() => _freeModelTestingMap[model.id] = true);
+        try {
+          final service = AiService();
+          final config = FreeModelService.instance.toAiConfig(model);
+          service.updateConfig(config);
+          final sw = Stopwatch()..start();
+          await service.chat([
+            ChatMessage(role: 'user', content: 'Hi', timestamp: DateTime.now()),
+          ]);
+          sw.stop();
+          if (mounted) {
+            setState(() => _freeModelLatencyMap[model.id] = '${sw.elapsedMilliseconds}ms');
+          }
+        } catch (e) {
+          if (mounted) {
+            setState(() => _freeModelLatencyMap[model.id] = _formatTestError(e));
+          }
+        } finally {
+          if (mounted) {
+            setState(() => _freeModelTestingMap[model.id] = false);
+          }
+        }
+      }
+
+      // 并发执行（限制并发数）
+      Future<void> runNext() async {
+        if (remainingModels.isEmpty || !mounted) return;
+        final model = remainingModels.removeAt(0);
+        await testOne(model);
+        await runNext();
+      }
+
+      for (int i = 0; i < maxConcurrency && i < _freeModels.length; i++) {
+        tasks.add(runNext());
+      }
+      await Future.wait(tasks);
+    } finally {
+      if (mounted) setState(() => _freeBatchTesting = false);
+    }
   }
 
   @override
@@ -670,6 +777,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // 免费模型板块
+              _buildFreeModelsCard(context),
+              const SizedBox(height: 24),
               Row(
                 children: [
                   Text(
@@ -724,6 +834,240 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
               ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFreeModelsCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final lastUpdateStr = _freeModelsLastUpdate != null
+        ? '${_freeModelsLastUpdate!.month.toString().padLeft(2, '0')}-${_freeModelsLastUpdate!.day.toString().padLeft(2, '0')} ${_freeModelsLastUpdate!.hour.toString().padLeft(2, '0')}:${_freeModelsLastUpdate!.minute.toString().padLeft(2, '0')}'
+        : '未更新';
+
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.card_giftcard,
+                    size: 18, color: theme.colorScheme.primary),
+                const SizedBox(width: 6),
+                Text(
+                  '免费模型',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Spacer(),
+                // 批量测试按钮
+                TextButton.icon(
+                  onPressed: (_freeBatchTesting || _freeModels.isEmpty)
+                      ? null
+                      : _batchTestFreeModels,
+                  icon: _freeBatchTesting
+                      ? SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: theme.colorScheme.primary,
+                          ),
+                        )
+                      : const Icon(Icons.flash_on, size: 16),
+                  label: Text(
+                    _freeBatchTesting ? '测试中...' : '批量测试',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: theme.colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                // 更新按钮
+                TextButton.icon(
+                  onPressed: _isUpdatingFreeModels ? null : _updateFreeModels,
+                  icon: _isUpdatingFreeModels
+                      ? SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: theme.colorScheme.primary,
+                          ),
+                        )
+                      : const Icon(Icons.refresh, size: 16),
+                  label: Text(
+                    _isUpdatingFreeModels ? '更新中...' : '更新',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: theme.colorScheme.primary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (_freeModels.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Center(
+                  child: Column(
+                    children: [
+                      Text(
+                        '暂无免费模型',
+                        style: theme.textTheme.bodyMedium
+                            ?.copyWith(color: theme.disabledColor),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '点击右上角"更新"从远程获取',
+                        style: theme.textTheme.labelSmall
+                            ?.copyWith(color: theme.disabledColor),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else ...[
+              // 主模型选择
+              Row(
+                children: [
+                  Text(
+                    '主模型:',
+                    style: theme.textTheme.bodyMedium?.copyWith(fontSize: 12),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String?>(
+                        isExpanded: true,
+                        value: _selectedFreeModelId,
+                        hint: const Text(
+                          '自动选择（按优先级）',
+                          style: TextStyle(fontSize: 12),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        style: theme.textTheme.bodyMedium
+                            ?.copyWith(fontSize: 12),
+                        items: [
+                          const DropdownMenuItem<String?>(
+                            value: null,
+                            child: Text(
+                              '自动选择（按优先级）',
+                              style: TextStyle(fontSize: 12),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          ..._freeModels.map((m) => DropdownMenuItem<String?>(
+                                value: m.id,
+                                child: Text(
+                                  m.displayName,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              )),
+                        ],
+                        onChanged: (value) => _saveSelectedFreeModel(value),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // 模型列表（含延迟显示）
+              ..._freeModels.map((model) {
+                final isSelected = model.id == _selectedFreeModelId;
+                final isTesting = _freeModelTestingMap[model.id] == true;
+                final latency = _freeModelLatencyMap[model.id];
+                final isError =
+                    latency != null && (latency.contains('失败') || latency.contains('限制') || latency.contains('无法'));
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    children: [
+                      Icon(
+                        isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+                        size: 14,
+                        color: isSelected
+                            ? theme.colorScheme.primary
+                            : theme.disabledColor,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          model.displayName,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontSize: 12,
+                            color: isSelected
+                                ? theme.colorScheme.primary
+                                : null,
+                            fontWeight: isSelected ? FontWeight.w600 : null,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (isTesting)
+                        SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.5,
+                            color: theme.colorScheme.primary,
+                          ),
+                        )
+                      else if (latency != null)
+                        Text(
+                          latency,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            fontSize: 10,
+                            color: isError ? Colors.red : Colors.orange,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        )
+                      else
+                        Text(
+                          model.provider == 'gemini' ? 'Gemini' : 'OpenAI',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            fontSize: 10,
+                            color: theme.disabledColor,
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              }),
+              const SizedBox(height: 8),
+              Divider(
+                  color: theme.colorScheme.outlineVariant
+                      .withValues(alpha: 0.3)),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Text(
+                    '最后更新: $lastUpdateStr',
+                    style: theme.textTheme.labelSmall
+                        ?.copyWith(fontSize: 10, color: theme.disabledColor),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '调用失败自动切换',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontSize: 10,
+                      color: theme.disabledColor,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -887,16 +1231,22 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     final theme = Theme.of(context);
     final settings = _getSettingsForRole(roleKey);
     String? currentId;
+    bool useFreeModel = false;
     switch (roleKey) {
       case 'assistant':
         currentId = _roles.assistant;
+        useFreeModel = _roles.assistantUseFreeModel;
       case 'timelineOptimization':
         currentId = _roles.timelineOptimization;
+        useFreeModel = _roles.timelineOptimizationUseFreeModel;
     }
 
     double tempValue = settings.temperature;
     int tokenValue = settings.maxTokens;
     final tokenCtl = TextEditingController(text: tokenValue.toString());
+
+    // 免费模型选项的特殊值
+    const freeModelValue = '__free_model__';
 
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -924,7 +1274,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String?>(
                       isExpanded: true,
-                      value: currentId,
+                      value: useFreeModel
+                          ? freeModelValue
+                          : currentId,
                       hint: const Text(
                         '未设置',
                         style: TextStyle(fontSize: 12),
@@ -936,6 +1288,22 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                           value: null,
                           child: Text('未设置', style: TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
                         ),
+                        const DropdownMenuItem<String?>(
+                          value: freeModelValue,
+                          child: Row(
+                            children: [
+                              Icon(Icons.card_giftcard, size: 12),
+                              SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  '免费模型（自动切换）',
+                                  style: TextStyle(fontSize: 12),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                         ...configs.map((c) => DropdownMenuItem<String?>(
                           value: c.id,
                           child: Text(c.name, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
@@ -943,11 +1311,18 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                       ],
                       onChanged: (value) async {
                         AiRoles newRoles;
+                        final isFree = value == freeModelValue;
                         switch (roleKey) {
                           case 'assistant':
-                            newRoles = _roles.copyWith(assistant: value);
+                            newRoles = _roles.copyWith(
+                              assistant: isFree ? null : value,
+                              assistantUseFreeModel: isFree,
+                            );
                           case 'timelineOptimization':
-                            newRoles = _roles.copyWith(timelineOptimization: value);
+                            newRoles = _roles.copyWith(
+                              timelineOptimization: isFree ? null : value,
+                              timelineOptimizationUseFreeModel: isFree,
+                            );
                           default:
                             newRoles = _roles;
                         }
