@@ -161,6 +161,18 @@
 - **[11:00]**
   - **Fixed**: 修复 `ai_roles.dart` 文件结构损坏导致编译失败的问题——`AiRoles` 类内部嵌套了重复的类定义，`AiRoleSettings` 类完全缺失。重新整理为三个独立类：`AiRoles`（角色配置 ID）、`AiRoleSettings`（温度/令牌数设置）、`AiTemperatures`（角色温度组合） (`lib/models/ai_roles.dart`)。
 
+## 2026-06-23
+
+- **[22:20]**
+  - **Changed**: 去除了免费模型配置面板中冗余的「自动选择（按优先级）」下拉选项，改为在拉取或加载免费模型时，自动将有效的第一款模型设置并保存为主模型 (`lib/pages/settings/ai_config_page.dart`)。
+  - **Changed**: 将角色绑定下拉菜单中的「免费模型（自动切换）」选项文本简化为「免费模型」 (`lib/pages/settings/ai_config_page.dart`)。
+  - **Fixed**: 修复了当角色（如时间轴智能提取）绑定了「免费模型」时，点击「检测图片识别」进行多模态能力检测仍会错误弹出「请先绑定并保存模型」提示的 bug，现在会正确使用当前选中的免费主模型进行评测 (`lib/pages/settings/ai_config_page.dart`)。
+
+- **[10:30]**
+  - **Changed**: 修改了 `AiRoleService` 的初始化逻辑，初次进入应用后会自动将 `assistant` 和 `timelineOptimization` 角色配置为使用免费模型，并在后台自动刷新免费模型列表 (`lib/core/ai/ai_role_service.dart`, `lib/main.dart`)。
+  - **Changed**: 修改了「AI 配置」页面逻辑，在本地缓存为空且未在更新时，自动触发免费模型列表更新 (`lib/pages/settings/ai_config_page.dart`)。
+  - **Fixed**: 修复了 `ConfigRepository` 中尝试使用已被移除的 `defaultAiConfigs` 导致编译报错的问题 (`lib/core/storage/config_repository.dart`)。
+
 - **[10:30]**
   - **Added**: 新增主题常量文件 `app_durations.dart`（动画时长）、`tag_colors.dart`（标签颜色）、`app_radius.dart`（圆角值），统一设计令牌 (`lib/core/theme/`)。
   - **Added**: 新增通用空状态组件 `EmptyStateWidget`，统一四个页面的空状态样式 (`lib/widgets/empty_state.dart`)。

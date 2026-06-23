@@ -15,6 +15,33 @@ class AiRoleService {
   // 免费模型主模型选择持久化键
   static const _selectedFreeModelKey = 'selected_free_model';
 
+  /// 初始化并确保默认配置
+  Future<void> initAndEnsureDefaults() async {
+    final existing = await _repo.getAiRoles();
+    if (existing == null) {
+      // 初次进入应用：自动配置使用免费模型
+      await saveRoles(
+        const AiRoles(
+          assistantUseFreeModel: true,
+          timelineOptimizationUseFreeModel: true,
+        ),
+      );
+
+      // 自动刷新（拉取）免费模型列表，不阻塞 UI
+      FreeModelService.instance.fetchRemoteManifest().catchError((e) {
+        return FreeModelsManifest(models: [], updatedAt: DateTime.now());
+      });
+    } else {
+      // 如果已有配置，但缓存为空，也静默拉取一次
+      final cached = await FreeModelService.instance.getCachedModels();
+      if (cached.isEmpty) {
+        FreeModelService.instance.fetchRemoteManifest().catchError((e) {
+          return FreeModelsManifest(models: [], updatedAt: DateTime.now());
+        });
+      }
+    }
+  }
+
   Future<AiRoles> getRoles() async {
     return await _repo.getAiRoles() ?? const AiRoles();
   }
@@ -125,8 +152,10 @@ class AiRoleService {
         throw Exception('免费模型列表为空，请先在设置中更新免费模型');
       }
       final preferredId = await getPreferredFreeModelId();
-      final ordered =
-          FreeModelService.instance.getOrderedModels(models, preferredId);
+      final ordered = FreeModelService.instance.getOrderedModels(
+        models,
+        preferredId,
+      );
       return FreeModelService.instance.toAiConfig(ordered.first);
     }
 

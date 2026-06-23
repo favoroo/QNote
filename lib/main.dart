@@ -6,6 +6,7 @@ import 'package:qnote_flutter/core/notification/notification_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/network/sync_scheduler.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
+import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'app.dart';
 import 'database_init.dart' if (dart.library.io) 'database_init_io.dart';
 
@@ -19,6 +20,7 @@ void main() async {
   await Future.wait([
     configRepo.ensureDefaultShortcuts(),
     configRepo.ensureDefaultAiConfigs(),
+    AiRoleService.instance.initAndEnsureDefaults(),
     NotificationService.instance.init(),
   ]);
   final webdavConfig = await configRepo.getWebdavConfig();

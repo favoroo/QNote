@@ -208,8 +208,6 @@ class ConfigRepository {
     await db.delete('webdav_configs', where: 'id = ?', whereArgs: [id]);
   }
 
-
-
   Future<List<ChatSession>> getAllChatSessions({
     bool includeDeleted = false,
   }) async {
@@ -340,10 +338,6 @@ class ConfigRepository {
   }
 
   Future<void> ensureDefaultAiConfigs() async {
-    final existing = await getAllAiConfigs();
-    if (existing.isNotEmpty) return;
-    for (final config in defaultAiConfigs) {
-      await insertAiConfig(config);
-    }
+    // 默认配置已移除，直接返回
   }
 }
