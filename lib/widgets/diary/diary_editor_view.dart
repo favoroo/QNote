@@ -12,6 +12,7 @@ import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
+import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
