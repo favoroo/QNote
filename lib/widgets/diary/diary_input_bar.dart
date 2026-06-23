@@ -1481,23 +1481,29 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     }
 
     final roles = await AiRoleService.instance.getRoles();
-    final currentModelId = roles.timelineOptimization;
+    final currentModelId = roles.timelineOptimizationUseFreeModel ? '__free_model__' : roles.timelineOptimization;
 
     if (!mounted) return;
 
-    final selectedConfig = await showDialog<AiConfig>(
+    final selectedId = await showDialog<String>(
       context: context,
       builder: (context) =>
           _ModelSelectionDialog(configs: configs, selectedId: currentModelId),
     );
 
-    if (selectedConfig != null && mounted) {
-      await AiRoleService.instance.saveRoles(
-        roles.copyWith(timelineOptimization: selectedConfig.id),
+    if (selectedId != null && mounted) {
+      final isFree = selectedId == '__free_model__';
+      final newRoles = AiRoles(
+        assistant: roles.assistant,
+        assistantUseFreeModel: roles.assistantUseFreeModel,
+        timelineOptimization: isFree ? null : selectedId,
+        timelineOptimizationUseFreeModel: isFree,
       );
+      await AiRoleService.instance.saveRoles(newRoles);
+      final displayName = isFree ? '免费模型' : (configs.firstWhere((c) => c.id == selectedId, orElse: () => configs.first).name);
       Toast.success(
         context,
-        '已切换：${selectedConfig.name}',
+        '已切换：$displayName',
         duration: const Duration(seconds: 1),
       );
     }
@@ -3653,6 +3659,7 @@ class _ModelSelectionDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isFreeSelected = selectedId == '__free_model__';
 
     return Dialog(
       backgroundColor: colorScheme.surface,
@@ -3677,18 +3684,106 @@ class _ModelSelectionDialog extends StatelessWidget {
             Flexible(
               child: SingleChildScrollView(
                 child: Column(
-                  children: configs.map<Widget>((config) {
-                    final isSelected = config.id == selectedId;
-                    return _ModelItem(
-                      config: config,
-                      isSelected: isSelected,
-                      onTap: () => Navigator.pop(context, config),
-                    );
-                  }).toList(),
+                  children: [
+                    _ModelFreeItem(
+                      isSelected: isFreeSelected,
+                      onTap: () => Navigator.pop(context, '__free_model__'),
+                    ),
+                    ...configs.map<Widget>((config) {
+                      final isSelected = config.id == selectedId;
+                      return _ModelItem(
+                        config: config,
+                        isSelected: isSelected,
+                        onTap: () => Navigator.pop(context, config.id),
+                      );
+                    }).toList(),
+                  ],
                 ),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ModelFreeItem extends StatelessWidget {
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _ModelFreeItem({
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Material(
+      color: isSelected
+          ? colorScheme.primary.withValues(alpha: 0.05)
+          : Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isSelected
+                        ? colorScheme.primary
+                        : colorScheme.outlineVariant,
+                    width: 2,
+                  ),
+                ),
+                child: isSelected
+                    ? Center(
+                        child: Container(
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            color: colorScheme.primary,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '免费模型',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: isSelected
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                        color: isSelected
+                            ? colorScheme.primary
+                            : colorScheme.onSurface,
+                      ),
+                    ),
+                    Text(
+                      '自动切换并重试',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
