@@ -18,7 +18,7 @@ import 'package:qnote_flutter/widgets/statistics/mood_stats.dart';
 import 'package:qnote_flutter/widgets/statistics/activity_stats.dart';
 import 'package:qnote_flutter/widgets/statistics/daily_score_stats.dart';
 
-enum StatTab { sleep, diet, finance, mood, activity, score }
+enum StatTab { score, sleep, diet, finance, mood, activity }
 
 class _TabConfig {
   final StatTab tab;
@@ -32,6 +32,7 @@ class _TabConfig {
 }
 
 const _tabs = [
+  _TabConfig(tab: StatTab.score, label: '评分', icon: Icons.insights),
   _TabConfig(tab: StatTab.sleep, label: '睡眠', icon: Icons.bedtime),
   _TabConfig(tab: StatTab.diet, label: '饮食', icon: Icons.restaurant),
   _TabConfig(
@@ -41,7 +42,6 @@ const _tabs = [
   ),
   _TabConfig(tab: StatTab.mood, label: '健康', icon: Icons.health_and_safety),
   _TabConfig(tab: StatTab.activity, label: '活动', icon: Icons.directions_run),
-  _TabConfig(tab: StatTab.score, label: '评分', icon: Icons.insights),
 ];
 
 class StatisticsPage extends ConsumerStatefulWidget {
@@ -52,7 +52,7 @@ class StatisticsPage extends ConsumerStatefulWidget {
 }
 
 class _StatisticsPageState extends ConsumerState<StatisticsPage> {
-  StatTab _activeTab = StatTab.sleep;
+  StatTab _activeTab = StatTab.score;
   TimeRangeType _timeRange = TimeRangeType.week;
 
   void _onTabChanged(StatTab tab) {
