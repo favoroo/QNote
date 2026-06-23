@@ -250,20 +250,7 @@ final defaultShortcutConfigs = <ShortcutConfig>[
   ),
 ];
 
-final defaultAiConfigs = <AiConfig>[
-  AiConfig(
-    id: 'agnes-2.0-flash',
-    name: 'Agnes 2.0 Flash',
-    provider: 'openai',
-    modelName: 'agnes-2.0-flash',
-    apiKey: 'sk-ywtKENdgygWK82Rx5ZPI6QLp5hJZ5EIdXgSL4SJ1fu4OAcJG',
-    baseUrl: 'https://apihub.agnes-ai.com/v1',
-    vendorId: 'agnes',
-    isDefault: true,
-    createdAt: DateTime.now(),
-    updatedAt: DateTime.now(),
-  ),
-];
+// 已移除默认 AI 配置，使用免费模型
 
 const defaultAiRoles = AiRoles(assistant: null, timelineOptimization: null);
 

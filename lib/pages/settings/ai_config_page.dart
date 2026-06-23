@@ -35,7 +35,8 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   bool _testingImageRecognition = false;
   String? _imageTestResult;
   final ValueNotifier<bool> _isBatchTestingNotifier = ValueNotifier(false);
-  final ValueNotifier<Map<String, String>> _modelLatencyNotifier = ValueNotifier({});
+  final ValueNotifier<Map<String, String>> _modelLatencyNotifier =
+      ValueNotifier({});
   final Map<String, List<String>> _fetchedModelsMap = {};
   bool _isFetchingModels = false;
   String? _fetchMessage;
@@ -74,7 +75,22 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         _freeModels = models;
         _freeModelsLastUpdate = lastUpdate;
         _selectedFreeModelId = selectedId;
+        // 如果已选主模型不存在于当前的免费模型列表中，或者为 null，则默认选中第一个免费模型并保存
+        if (_freeModels.isNotEmpty) {
+          final hasSelected = _freeModels.any((m) => m.id == _selectedFreeModelId);
+          if (!hasSelected) {
+            _selectedFreeModelId = _freeModels.first.id;
+            _saveSelectedFreeModel(_selectedFreeModelId);
+          }
+        } else {
+          _selectedFreeModelId = null;
+        }
       });
+
+      // 如果列表仍然为空，自动触发一次网络更新
+      if (_freeModels.isEmpty && !_isUpdatingFreeModels) {
+        _updateFreeModels();
+      }
     }
   }
 
@@ -87,6 +103,17 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         setState(() {
           _freeModels = manifest.models;
           _freeModelsLastUpdate = DateTime.now();
+          // 如果已选主模型不存在于新获取的免费模型列表中，或者为 null，则默认选中第一个
+          if (_freeModels.isNotEmpty) {
+            final hasSelected = _freeModels.any((m) => m.id == _selectedFreeModelId);
+            if (!hasSelected) {
+              _selectedFreeModelId = _freeModels.first.id;
+              _saveSelectedFreeModel(_selectedFreeModelId);
+            }
+          } else {
+            _selectedFreeModelId = null;
+            _saveSelectedFreeModel(null);
+          }
         });
         Toast.success(context, '免费模型更新成功（${manifest.models.length}个）');
       }
@@ -130,11 +157,16 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           ]);
           sw.stop();
           if (mounted) {
-            setState(() => _freeModelLatencyMap[model.id] = '${sw.elapsedMilliseconds}ms');
+            setState(
+              () => _freeModelLatencyMap[model.id] =
+                  '${sw.elapsedMilliseconds}ms',
+            );
           }
         } catch (e) {
           if (mounted) {
-            setState(() => _freeModelLatencyMap[model.id] = _formatTestError(e));
+            setState(
+              () => _freeModelLatencyMap[model.id] = _formatTestError(e),
+            );
           }
         } finally {
           if (mounted) {
@@ -169,8 +201,10 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   Future<void> _loadAllCachedModels() async {
     final prefs = await _getPrefs();
     for (final provider in aiProviders) {
-      List<String>? cachedModels = prefs.getStringList('fetched_models_${provider.id}');
-      
+      List<String>? cachedModels = prefs.getStringList(
+        'fetched_models_${provider.id}',
+      );
+
       // 兼容旧的缓存 Key
       if (cachedModels == null || cachedModels.isEmpty) {
         if (provider.id == 'openrouter') {
@@ -179,7 +213,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           cachedModels = prefs.getStringList('chatanywhere_models');
         }
       }
-      
+
       if (cachedModels != null && cachedModels.isNotEmpty) {
         if (mounted) {
           setState(() {
@@ -259,9 +293,12 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       if (mounted) {
         String errorMsg = e.toString();
         if (e is DioException) {
-          if (kIsWeb && (errorMsg.contains('XMLHttpRequest') || errorMsg.contains('CORS'))) {
+          if (kIsWeb &&
+              (errorMsg.contains('XMLHttpRequest') ||
+                  errorMsg.contains('CORS'))) {
             errorMsg = 'Web端存在CORS限制，请在模拟器或真机中操作';
-          } else if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
+          } else if (e.response?.statusCode == 401 ||
+              e.response?.statusCode == 403) {
             errorMsg = '认证失败，请检查 API Key';
           } else {
             errorMsg = '网络连接失败，请检查网络设置';
@@ -269,7 +306,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         } else if (errorMsg.contains('请先填写 API Key')) {
           errorMsg = '请先填写 API Key 后尝试';
         }
-        
+
         if (errorMsg.startsWith('Exception: ')) {
           errorMsg = errorMsg.substring('Exception: '.length);
         }
@@ -330,7 +367,6 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     );
   }
 
-
   void _showProviderPickerBottomSheet({
     required BuildContext context,
     required String currentSelected,
@@ -371,7 +407,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.2),
+                      color: theme.colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.2,
+                      ),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -402,20 +440,32 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                       final provider = aiProviders[index];
                       final isSelected = provider.id == currentSelected;
                       return ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 4,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                         title: Text(
                           provider.name,
                           style: TextStyle(
                             fontSize: 14,
-                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                            fontWeight: isSelected
+                                ? FontWeight.w600
+                                : FontWeight.normal,
                           ),
                         ),
                         trailing: isSelected
-                            ? Icon(Icons.check_circle, color: theme.colorScheme.primary, size: 20)
+                            ? Icon(
+                                Icons.check_circle,
+                                color: theme.colorScheme.primary,
+                                size: 20,
+                              )
                             : null,
                         selected: isSelected,
-                        selectedTileColor: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+                        selectedTileColor: theme.colorScheme.primaryContainer
+                            .withValues(alpha: 0.3),
                         onTap: () {
                           Navigator.pop(context);
                           onSelected(provider.id);
@@ -449,13 +499,13 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     final keys = prefs.getKeys();
     final configKeys = keys.where((k) => k.startsWith('ai_latency_'));
     final modelKeys = keys.where((k) => k.startsWith('batch_latency_'));
-    
+
     final configMap = <String, String>{};
     for (final key in configKeys) {
       final val = prefs.getString(key);
       if (val != null) configMap[key.replaceFirst('ai_latency_', '')] = val;
     }
-    
+
     final modelMap = <String, String>{};
     for (final key in modelKeys) {
       final val = prefs.getString(key);
@@ -465,24 +515,38 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     if (mounted) {
       setState(() {
         _latencyMap.addAll(configMap);
-        _modelLatencyNotifier.value = {..._modelLatencyNotifier.value, ...modelMap};
+        _modelLatencyNotifier.value = {
+          ..._modelLatencyNotifier.value,
+          ...modelMap,
+        };
       });
     }
   }
 
-  Future<void> _saveLatency(String configId, String value, {bool rebuild = true}) async {
+  Future<void> _saveLatency(
+    String configId,
+    String value, {
+    bool rebuild = true,
+  }) async {
     final prefs = await _getPrefs();
     prefs.setString('ai_latency_$configId', value);
     _latencyMap[configId] = value;
     if (rebuild && mounted) setState(() {});
   }
 
-  Future<void> _saveModelLatency(String vendorId, String modelName, String value) async {
+  Future<void> _saveModelLatency(
+    String vendorId,
+    String modelName,
+    String value,
+  ) async {
     final prefs = await _getPrefs();
     final key = '$vendorId:$modelName';
     prefs.setString('batch_latency_$key', value);
     if (mounted) {
-      _modelLatencyNotifier.value = {..._modelLatencyNotifier.value, key: value};
+      _modelLatencyNotifier.value = {
+        ..._modelLatencyNotifier.value,
+        key: value,
+      };
     }
   }
 
@@ -505,12 +569,15 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
 
       Future<void> runNext() async {
         if (remainingModels.isEmpty || !mounted) return;
-        
+
         final model = remainingModels.removeAt(0);
         final key = '$vendorId:$model';
-        
+
         if (mounted) {
-          _modelLatencyNotifier.value = {..._modelLatencyNotifier.value, key: '测试中...'};
+          _modelLatencyNotifier.value = {
+            ..._modelLatencyNotifier.value,
+            key: '测试中...',
+          };
         }
 
         try {
@@ -527,19 +594,19 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
             updatedAt: DateTime.now(),
           );
           service.updateConfig(testConfig);
-          
+
           final sw = Stopwatch()..start();
           await service.chat([
             ChatMessage(role: 'user', content: 'Hi', timestamp: DateTime.now()),
           ]);
           sw.stop();
-          
+
           final latencyStr = '${sw.elapsedMilliseconds}ms';
           await _saveModelLatency(vendorId, model, latencyStr);
         } catch (e) {
           await _saveModelLatency(vendorId, model, '失败');
         }
-        
+
         await runNext();
       }
 
@@ -555,7 +622,6 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       }
     }
   }
-
 
   String _formatTestError(Object e) {
     if (e is DioException) {
@@ -578,10 +644,15 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         }
       }
       final msg = e.toString();
-      if (kIsWeb && (msg.contains('XMLHttpRequest') || msg.contains('connection error') || msg.contains('CORS') || msg.contains('onError'))) {
+      if (kIsWeb &&
+          (msg.contains('XMLHttpRequest') ||
+              msg.contains('connection error') ||
+              msg.contains('CORS') ||
+              msg.contains('onError'))) {
         return '浏览器限制：Web端无法直接调用外部API（CORS），请在真机上测试';
       }
-      if (e.type == DioExceptionType.connectionTimeout || e.type == DioExceptionType.receiveTimeout) {
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout) {
         return '请求超时';
       }
       if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
@@ -593,10 +664,16 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     }
 
     final msg = e.toString();
-    if (kIsWeb && (msg.contains('XMLHttpRequest') || msg.contains('connection error') || msg.contains('CORS') || msg.contains('onError'))) {
+    if (kIsWeb &&
+        (msg.contains('XMLHttpRequest') ||
+            msg.contains('connection error') ||
+            msg.contains('CORS') ||
+            msg.contains('onError'))) {
       return '浏览器限制：Web端无法直接调用外部API（CORS），请在真机上测试';
     }
-    if (msg.contains('SocketException') || msg.contains('NetworkException') || msg.contains('connection')) {
+    if (msg.contains('SocketException') ||
+        msg.contains('NetworkException') ||
+        msg.contains('connection')) {
       return '网络连接失败，请检查网络或Base URL';
     }
     if (msg.contains('401') || msg.contains('403')) {
@@ -638,24 +715,48 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     return base64Encode(bytes);
   }
 
-  Future<void> _testModelImageRecognition(String roleKey, List<AiConfig> configs) async {
-    String? currentId;
-    switch (roleKey) {
-      case 'assistant':
-        currentId = _roles.assistant;
-        break;
-      case 'timelineOptimization':
-        currentId = _roles.timelineOptimization;
-        break;
+  Future<void> _testModelImageRecognition(
+    String roleKey,
+    List<AiConfig> configs,
+  ) async {
+    final useFreeModel = roleKey == 'assistant'
+        ? _roles.assistantUseFreeModel
+        : _roles.timelineOptimizationUseFreeModel;
+
+    AiConfig? config;
+
+    if (useFreeModel) {
+      if (_freeModels.isEmpty) {
+        Toast.warning(context, '请先更新免费模型');
+        return;
+      }
+      final model = _freeModels.firstWhere(
+        (m) => m.id == _selectedFreeModelId,
+        orElse: () => _freeModels.first,
+      );
+      config = FreeModelService.instance.toAiConfig(model);
+    } else {
+      String? currentId;
+      switch (roleKey) {
+        case 'assistant':
+          currentId = _roles.assistant;
+          break;
+        case 'timelineOptimization':
+          currentId = _roles.timelineOptimization;
+          break;
+      }
+
+      if (currentId == null) {
+        Toast.warning(context, '请先绑定并保存模型');
+        return;
+      }
+
+      config = configs.firstWhere(
+        (c) => c.id == currentId,
+        orElse: () => configs.first,
+      );
     }
 
-    if (currentId == null) {
-      Toast.warning(context, '请先绑定并保存模型');
-      return;
-    }
-
-    final config = configs.firstWhere((c) => c.id == currentId, orElse: () => configs.first);
-    
     if (mounted) {
       setState(() {
         _testingImageRecognition = true;
@@ -667,7 +768,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       final imgBase64 = await _generateTestImageBase64();
       final service = AiService();
       final success = await service.checkImageRecognition(config, imgBase64);
-      
+
       if (mounted) {
         setState(() {
           if (success) {
@@ -704,7 +805,11 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         ChatMessage(role: 'user', content: 'Hi', timestamp: DateTime.now()),
       ]);
       sw.stop();
-      await _saveLatency(config.id, '${sw.elapsedMilliseconds}ms', rebuild: false);
+      await _saveLatency(
+        config.id,
+        '${sw.elapsedMilliseconds}ms',
+        rebuild: false,
+      );
     } catch (e) {
       await _saveLatency(config.id, _formatTestError(e), rebuild: false);
     } finally {
@@ -740,7 +845,10 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   Widget _buildLatencyText(String configId, ThemeData theme) {
     final latency = _latencyMap[configId];
     if (latency == null) return const SizedBox.shrink();
-    final isError = latency.contains('失败') || latency.contains('限制') || latency.contains('无法');
+    final isError =
+        latency.contains('失败') ||
+        latency.contains('限制') ||
+        latency.contains('无法');
     final isLong = latency.length > 10;
     return Text(
       latency,
@@ -784,40 +892,58 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                 children: [
                   Text(
                     '模型列表',
-                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const Spacer(),
                   if (configs.isNotEmpty)
                     TextButton.icon(
-                      onPressed: _batchTesting ? null : () => _testAllConfigs(configs),
+                      onPressed: _batchTesting
+                          ? null
+                          : () => _testAllConfigs(configs),
                       icon: _batchTesting
                           ? SizedBox(
                               width: 14,
                               height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.primary),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: theme.colorScheme.primary,
+                              ),
                             )
                           : const Icon(Icons.bolt, size: 16),
-                      label: Text(_batchTesting ? '测试中...' : '批量测试', style: const TextStyle(fontSize: 12)),
-                      style: TextButton.styleFrom(foregroundColor: theme.colorScheme.primary),
+                      label: Text(
+                        _batchTesting ? '测试中...' : '批量测试',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      style: TextButton.styleFrom(
+                        foregroundColor: theme.colorScheme.primary,
+                      ),
                     ),
                   const SizedBox(width: 4),
                   TextButton.icon(
                     onPressed: () => _showEditDialog(context, null),
                     icon: const Icon(Icons.add, size: 16),
                     label: const Text('添加模型', style: TextStyle(fontSize: 12)),
-                    style: TextButton.styleFrom(foregroundColor: theme.colorScheme.primary),
+                    style: TextButton.styleFrom(
+                      foregroundColor: theme.colorScheme.primary,
+                    ),
                   ),
                 ],
               ),
               const SizedBox(height: 8),
-              ...configs.map((config) => _buildConfigCard(context, config, configs)),
+              ...configs.map(
+                (config) => _buildConfigCard(context, config, configs),
+              ),
               if (configs.isEmpty)
                 Padding(
                   padding: const EdgeInsets.all(32),
                   child: Center(
                     child: Text(
                       '暂无配置，点击右上角 + 添加',
-                      style: theme.textTheme.bodyMedium?.copyWith(color: theme.disabledColor),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.disabledColor,
+                      ),
                     ),
                   ),
                 ),
@@ -825,12 +951,19 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
               if (_rolesLoaded && configs.isNotEmpty) ...[
                 Text(
                   '角色绑定',
-                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 _buildRoleAssignment(context, '提问助手', 'assistant', configs),
                 const SizedBox(height: 8),
-                _buildRoleAssignment(context, '时间轴智能提取', 'timelineOptimization', configs),
+                _buildRoleAssignment(
+                  context,
+                  '时间轴智能提取',
+                  'timelineOptimization',
+                  configs,
+                ),
               ],
             ],
           ),
@@ -854,8 +987,11 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           children: [
             Row(
               children: [
-                Icon(Icons.card_giftcard,
-                    size: 18, color: theme.colorScheme.primary),
+                Icon(
+                  Icons.card_giftcard,
+                  size: 18,
+                  color: theme.colorScheme.primary,
+                ),
                 const SizedBox(width: 6),
                 Text(
                   '免费模型',
@@ -920,14 +1056,16 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                     children: [
                       Text(
                         '暂无免费模型',
-                        style: theme.textTheme.bodyMedium
-                            ?.copyWith(color: theme.disabledColor),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.disabledColor,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         '点击右上角"更新"从远程获取',
-                        style: theme.textTheme.labelSmall
-                            ?.copyWith(color: theme.disabledColor),
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.disabledColor,
+                        ),
                       ),
                     ],
                   ),
@@ -948,30 +1086,23 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                         isExpanded: true,
                         value: _selectedFreeModelId,
                         hint: const Text(
-                          '自动选择（按优先级）',
+                          '未设置',
                           style: TextStyle(fontSize: 12),
                           overflow: TextOverflow.ellipsis,
                         ),
-                        style: theme.textTheme.bodyMedium
-                            ?.copyWith(fontSize: 12),
-                        items: [
-                          const DropdownMenuItem<String?>(
-                            value: null,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontSize: 12,
+                        ),
+                        items: _freeModels.map(
+                          (m) => DropdownMenuItem<String?>(
+                            value: m.id,
                             child: Text(
-                              '自动选择（按优先级）',
-                              style: TextStyle(fontSize: 12),
+                              m.displayName,
                               overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12),
                             ),
                           ),
-                          ..._freeModels.map((m) => DropdownMenuItem<String?>(
-                                value: m.id,
-                                child: Text(
-                                  m.displayName,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 12),
-                                ),
-                              )),
-                        ],
+                        ).toList(),
                         onChanged: (value) => _saveSelectedFreeModel(value),
                       ),
                     ),
@@ -985,14 +1116,19 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                 final isTesting = _freeModelTestingMap[model.id] == true;
                 final latency = _freeModelLatencyMap[model.id];
                 final isError =
-                    latency != null && (latency.contains('失败') || latency.contains('限制') || latency.contains('无法'));
+                    latency != null &&
+                    (latency.contains('失败') ||
+                        latency.contains('限制') ||
+                        latency.contains('无法'));
 
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 2),
                   child: Row(
                     children: [
                       Icon(
-                        isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+                        isSelected
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_off,
                         size: 14,
                         color: isSelected
                             ? theme.colorScheme.primary
@@ -1046,15 +1182,17 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
               }),
               const SizedBox(height: 8),
               Divider(
-                  color: theme.colorScheme.outlineVariant
-                      .withValues(alpha: 0.3)),
+                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+              ),
               const SizedBox(height: 4),
               Row(
                 children: [
                   Text(
                     '最后更新: $lastUpdateStr',
-                    style: theme.textTheme.labelSmall
-                        ?.copyWith(fontSize: 10, color: theme.disabledColor),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontSize: 10,
+                      color: theme.disabledColor,
+                    ),
                   ),
                   const Spacer(),
                   Text(
@@ -1073,9 +1211,15 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     );
   }
 
-  Widget _buildConfigCard(BuildContext context, AiConfig config, List<AiConfig> allConfigs) {
+  Widget _buildConfigCard(
+    BuildContext context,
+    AiConfig config,
+    List<AiConfig> allConfigs,
+  ) {
     final theme = Theme.of(context);
-    final providerConfig = config.vendorId != null ? getProviderById(config.vendorId!) : null;
+    final providerConfig = config.vendorId != null
+        ? getProviderById(config.vendorId!)
+        : null;
     final displayName = providerConfig?.name ?? config.name;
     final isTesting = _testingMap[config.id] == true;
 
@@ -1093,8 +1237,14 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
             title: const Text('确认删除'),
             content: Text('确定要删除 "$displayName" 吗？'),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-              TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('删除')),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('删除'),
+              ),
             ],
           ),
         );
@@ -1153,22 +1303,38 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
                 icon: isTesting
-                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.5))
-                    : Icon(Icons.bolt_outlined, size: 18, color: theme.colorScheme.primary),
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 1.5),
+                      )
+                    : Icon(
+                        Icons.bolt_outlined,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                 tooltip: '测试延迟',
                 onPressed: isTesting ? null : () => _testSingleConfig(config),
               ),
               IconButton(
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-                icon: Icon(Icons.edit_outlined, size: 16, color: theme.colorScheme.outline),
+                icon: Icon(
+                  Icons.edit_outlined,
+                  size: 16,
+                  color: theme.colorScheme.outline,
+                ),
                 tooltip: '编辑',
                 onPressed: () => _showEditDialog(context, config),
               ),
               IconButton(
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-                icon: Icon(Icons.delete_outline, size: 16, color: Colors.red.shade300),
+                icon: Icon(
+                  Icons.delete_outline,
+                  size: 16,
+                  color: Colors.red.shade300,
+                ),
                 tooltip: '删除',
                 onPressed: () async {
                   if (allConfigs.length <= 1) {
@@ -1181,13 +1347,21 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                       title: const Text('确认删除'),
                       content: Text('确定要删除 "$displayName" 吗？'),
                       actions: [
-                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-                        TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('删除')),
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('取消'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('删除'),
+                        ),
                       ],
                     ),
                   );
                   if (confirmed == true) {
-                    ref.read(aiConfigListProvider.notifier).deleteConfig(config.id);
+                    ref
+                        .read(aiConfigListProvider.notifier)
+                        .deleteConfig(config.id);
                     if (mounted) setState(() => _latencyMap.remove(config.id));
                   }
                 },
@@ -1210,7 +1384,10 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     }
   }
 
-  Future<void> _updateRoleSettings(String roleKey, AiRoleSettings newSettings) async {
+  Future<void> _updateRoleSettings(
+    String roleKey,
+    AiRoleSettings newSettings,
+  ) async {
     AiTemperatures newTemps;
     switch (roleKey) {
       case 'assistant':
@@ -1227,7 +1404,12 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     if (mounted) setState(() => _roleSettings = newTemps);
   }
 
-  Widget _buildRoleAssignment(BuildContext context, String label, String roleKey, List<AiConfig> configs) {
+  Widget _buildRoleAssignment(
+    BuildContext context,
+    String label,
+    String roleKey,
+    List<AiConfig> configs,
+  ) {
     final theme = Theme.of(context);
     final settings = _getSettingsForRole(roleKey);
     String? currentId;
@@ -1274,9 +1456,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String?>(
                       isExpanded: true,
-                      value: useFreeModel
-                          ? freeModelValue
-                          : currentId,
+                      value: useFreeModel ? freeModelValue : currentId,
                       hint: const Text(
                         '未设置',
                         style: TextStyle(fontSize: 12),
@@ -1286,7 +1466,11 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                       items: [
                         const DropdownMenuItem<String?>(
                           value: null,
-                          child: Text('未设置', style: TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
+                          child: Text(
+                            '未设置',
+                            style: TextStyle(fontSize: 12),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                         const DropdownMenuItem<String?>(
                           value: freeModelValue,
@@ -1296,7 +1480,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                               SizedBox(width: 4),
                               Expanded(
                                 child: Text(
-                                  '免费模型（自动切换）',
+                                  '免费模型',
                                   style: TextStyle(fontSize: 12),
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -1304,10 +1488,16 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                             ],
                           ),
                         ),
-                        ...configs.map((c) => DropdownMenuItem<String?>(
-                          value: c.id,
-                          child: Text(c.name, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
-                        )),
+                        ...configs.map(
+                          (c) => DropdownMenuItem<String?>(
+                            value: c.id,
+                            child: Text(
+                              c.name,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ),
                       ],
                       onChanged: (value) async {
                         AiRoles newRoles;
@@ -1356,8 +1546,13 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                     decoration: InputDecoration(
                       hintText: '2048',
                       isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 4,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                     onChanged: (v) {
                       final parsed = int.tryParse(v);
@@ -1368,7 +1563,10 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                     onSubmitted: (v) {
                       final parsed = int.tryParse(v);
                       if (parsed != null && parsed > 0) {
-                        _updateRoleSettings(roleKey, settings.copyWith(maxTokens: parsed));
+                        _updateRoleSettings(
+                          roleKey,
+                          settings.copyWith(maxTokens: parsed),
+                        );
                       }
                     },
                   ),
@@ -1385,13 +1583,18 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                 divisions: 20,
                 onChanged: (v) {
                   if (mounted) setState(() => tempValue = v);
-                  _updateRoleSettings(roleKey, settings.copyWith(temperature: v));
+                  _updateRoleSettings(
+                    roleKey,
+                    settings.copyWith(temperature: v),
+                  );
                 },
               ),
             ),
             if (roleKey == 'timelineOptimization') ...[
               const SizedBox(height: 4),
-              Divider(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
+              Divider(
+                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+              ),
               const SizedBox(height: 6),
               Row(
                 children: [
@@ -1410,7 +1613,8 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                         Text(
                           '提取时包含图片信息（需要模型支持）',
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                            color: theme.colorScheme.onSurfaceVariant
+                                .withValues(alpha: 0.6),
                             fontSize: 10,
                           ),
                         ),
@@ -1420,7 +1624,10 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                   Switch(
                     value: settings.extractImages,
                     onChanged: (value) {
-                      _updateRoleSettings(roleKey, settings.copyWith(extractImages: value));
+                      _updateRoleSettings(
+                        roleKey,
+                        settings.copyWith(extractImages: value),
+                      );
                     },
                   ),
                 ],
@@ -1444,8 +1651,12 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                           _imageTestResult ?? '一键测试模型是否支持图片识别',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: _imageTestResult == null
-                                ? theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6)
-                                : (_imageTestResult == '支持识别' ? Colors.green : Colors.red),
+                                ? theme.colorScheme.onSurfaceVariant.withValues(
+                                    alpha: 0.6,
+                                  )
+                                : (_imageTestResult == '支持识别'
+                                      ? Colors.green
+                                      : Colors.red),
                             fontSize: 10,
                           ),
                         ),
@@ -1473,10 +1684,13 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     );
   }
 
-  Future<void> _showEditDialog(BuildContext context, AiConfig? existingConfig) async {
+  Future<void> _showEditDialog(
+    BuildContext context,
+    AiConfig? existingConfig,
+  ) async {
     final prefs = await _getPrefs();
     if (!context.mounted) return;
-    
+
     // Load previously saved API keys for all providers
     final tempSavedApiKeys = <String, String>{};
     for (final provider in aiProviders) {
@@ -1485,11 +1699,12 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         tempSavedApiKeys[provider.id] = key;
       }
     }
-    
+
     // Seed keys from existing configurations if not present in SharedPreferences
     final currentConfigs = ref.read(aiConfigListProvider).value ?? [];
     for (final config in currentConfigs) {
-      if (config.vendorId != null && !tempSavedApiKeys.containsKey(config.vendorId)) {
+      if (config.vendorId != null &&
+          !tempSavedApiKeys.containsKey(config.vendorId)) {
         if (config.apiKey.isNotEmpty) {
           tempSavedApiKeys[config.vendorId!] = config.apiKey;
         }
@@ -1498,11 +1713,15 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
 
     final isEditing = existingConfig != null;
     final nameCtl = TextEditingController(text: existingConfig?.name ?? '');
-    final modelCtl = TextEditingController(text: existingConfig?.modelName ?? '');
-    final baseUrlCtl = TextEditingController(text: existingConfig?.baseUrl ?? '');
+    final modelCtl = TextEditingController(
+      text: existingConfig?.modelName ?? '',
+    );
+    final baseUrlCtl = TextEditingController(
+      text: existingConfig?.baseUrl ?? '',
+    );
     String selectedVendorId = existingConfig?.vendorId ?? 'deepseek';
     String selectedProvider = existingConfig?.provider ?? 'openai';
-    
+
     bool isNameManuallyEdited = isEditing;
 
     String getCleanModelName(String model) {
@@ -1511,13 +1730,14 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       }
       return model.replaceAll(':free', '');
     }
-    
-    // Determine the initial API key: 
+
+    // Determine the initial API key:
     // 1. If editing, use the configuration's API key.
     // 2. If adding, use the saved key for the selected vendor.
-    final initialApiKey = existingConfig?.apiKey ?? tempSavedApiKeys[selectedVendorId] ?? '';
+    final initialApiKey =
+        existingConfig?.apiKey ?? tempSavedApiKeys[selectedVendorId] ?? '';
     final apiKeyCtl = TextEditingController(text: initialApiKey);
-    
+
     bool showApiKey = false;
     String? testResult;
     bool isTesting = false;
@@ -1540,7 +1760,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     }
 
     // 防御性兜底：编辑已有配置时，若 baseUrl 为空且有 vendorId，从供应商配置自动填充
-    if (isEditing && baseUrlCtl.text.isEmpty && existingConfig!.vendorId != null) {
+    if (isEditing &&
+        baseUrlCtl.text.isEmpty &&
+        existingConfig!.vendorId != null) {
       final providerConfig = getProviderById(existingConfig!.vendorId!);
       if (providerConfig != null && providerConfig.defaultBaseUrl.isNotEmpty) {
         baseUrlCtl.text = providerConfig.defaultBaseUrl;
@@ -1556,435 +1778,589 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
               onTap: () => FocusScope.of(ctx).unfocus(),
               behavior: HitTestBehavior.opaque,
               child: AlertDialog(
-                title: Text(isEditing ? '编辑配置' : '添加模型', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                title: Text(
+                  isEditing ? '编辑配置' : '添加模型',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
                 contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
                 content: SingleChildScrollView(
                   child: SizedBox(
-                  width: MediaQuery.of(context).size.width * 0.85,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('供应商选择', style: Theme.of(context).textTheme.labelSmall),
-                      const SizedBox(height: 4),
-                      InkWell(
-                        onTap: () {
-                          _showProviderPickerBottomSheet(
-                            context: ctx,
-                            currentSelected: selectedVendorId,
-                            onSelected: (value) {
-                              final provider = getProviderById(value);
-                              setDialogState(() {
-                                // Remember the current API key input for this vendor in the temporary map
-                                tempSavedApiKeys[selectedVendorId] = apiKeyCtl.text;
-
-                                selectedVendorId = value;
-                                _fetchMessage = null;
-                                _fetchMessageIsError = false;
-                                
-                                // Load the API key of the newly selected vendor
-                                apiKeyCtl.text = tempSavedApiKeys[value] ?? '';
-
-                                if (provider != null) {
-                                  selectedProvider = provider.provider;
-                                  baseUrlCtl.text = provider.defaultBaseUrl;
-                                  if (provider.models.isNotEmpty) {
-                                    modelCtl.text = provider.models.first;
-                                  } else {
-                                    modelCtl.text = '';
-                                  }
-                                  // Always update name when vendor/model changes as per user request
-                                  nameCtl.text = getCleanModelName(modelCtl.text);
-                                  isNameManuallyEdited = false;
-                                }
-                              });
-                            },
-                          );
-                        },
-                        borderRadius: BorderRadius.circular(10),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: Theme.of(ctx).colorScheme.surface,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: Theme.of(ctx).colorScheme.outline,
-                              width: 1,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  getProviderById(selectedVendorId)?.name ?? selectedVendorId,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.normal,
-                                    color: Theme.of(ctx).colorScheme.onSurface,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              Icon(
-                                Icons.arrow_drop_down,
-                                color: Theme.of(ctx).colorScheme.onSurfaceVariant,
-                              ),
-                            ],
-                          ),
+                    width: MediaQuery.of(context).size.width * 0.85,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '供应商选择',
+                          style: Theme.of(context).textTheme.labelSmall,
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                      if (selectedVendorId == 'custom') ...[
-                        Text('接口类型', style: Theme.of(context).textTheme.labelSmall),
                         const SizedBox(height: 4),
-                        InputDecorator(
-                          decoration: const InputDecoration(
-                            contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              value: selectedProvider,
-                              isExpanded: true,
-                              isDense: true,
-                              items: const [
-                                DropdownMenuItem(value: 'openai', child: Text('OpenAI 兼容')),
-                                DropdownMenuItem(value: 'gemini', child: Text('Google Gemini')),
-                              ],
-                              onChanged: (value) {
-                                if (value == null) return;
+                        InkWell(
+                          onTap: () {
+                            _showProviderPickerBottomSheet(
+                              context: ctx,
+                              currentSelected: selectedVendorId,
+                              onSelected: (value) {
+                                final provider = getProviderById(value);
                                 setDialogState(() {
-                                  selectedProvider = value;
+                                  // Remember the current API key input for this vendor in the temporary map
+                                  tempSavedApiKeys[selectedVendorId] =
+                                      apiKeyCtl.text;
+
+                                  selectedVendorId = value;
+                                  _fetchMessage = null;
+                                  _fetchMessageIsError = false;
+
+                                  // Load the API key of the newly selected vendor
+                                  apiKeyCtl.text =
+                                      tempSavedApiKeys[value] ?? '';
+
+                                  if (provider != null) {
+                                    selectedProvider = provider.provider;
+                                    baseUrlCtl.text = provider.defaultBaseUrl;
+                                    if (provider.models.isNotEmpty) {
+                                      modelCtl.text = provider.models.first;
+                                    } else {
+                                      modelCtl.text = '';
+                                    }
+                                    // Always update name when vendor/model changes as per user request
+                                    nameCtl.text = getCleanModelName(
+                                      modelCtl.text,
+                                    );
+                                    isNameManuallyEdited = false;
+                                  }
                                 });
                               },
+                            );
+                          },
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 12,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Theme.of(ctx).colorScheme.surface,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: Theme.of(ctx).colorScheme.outline,
+                                width: 1,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    getProviderById(selectedVendorId)?.name ??
+                                        selectedVendorId,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.normal,
+                                      color: Theme.of(
+                                        ctx,
+                                      ).colorScheme.onSurface,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.arrow_drop_down,
+                                  color: Theme.of(
+                                    ctx,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                              ],
                             ),
                           ),
                         ),
                         const SizedBox(height: 16),
-                      ],
-                      Text('模型名称', style: Theme.of(context).textTheme.labelSmall),
-                      const SizedBox(height: 4),
-                      _buildModelSelector(
-                        ctx,
-                        selectedVendorId,
-                        modelCtl,
-                        setDialogState,
-                        (newModel) {
-                          // Always sync name when model changes, even if previously edited
-                          nameCtl.text = getCleanModelName(newModel);
-                          isNameManuallyEdited = false;
-                        },
-                        selectedVendorId == 'custom' ? null : () {
-                          final providerConfig = getProviderById(selectedVendorId);
-                          List<String> modelsToTest = [];
-                          if (providerConfig != null) {
-                            final cached = _fetchedModelsMap[selectedVendorId];
-                            modelsToTest = (cached != null && cached.isNotEmpty)
-                                ? cached
-                                : providerConfig.models;
-                          }
-                          
-                          _batchTestModels(
-                            vendorId: selectedVendorId,
-                            apiKey: apiKeyCtl.text,
-                            baseUrl: baseUrlCtl.text,
-                            provider: selectedProvider,
-                            models: modelsToTest,
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Builder(
-                            builder: (context) {
-                              final providerConfig = getProviderById(selectedVendorId);
-                              if (providerConfig == null || providerConfig.modelsEndpoint.isEmpty) {
-                                return const SizedBox.shrink();
-                              }
-                              return TextButton.icon(
-                                onPressed: _isFetchingModels
-                                    ? null
-                                    : () => _fetchModelsForVendor(
+                        if (selectedVendorId == 'custom') ...[
+                          Text(
+                            '接口类型',
+                            style: Theme.of(context).textTheme.labelSmall,
+                          ),
+                          const SizedBox(height: 4),
+                          InputDecorator(
+                            decoration: const InputDecoration(
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 10,
+                              ),
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: selectedProvider,
+                                isExpanded: true,
+                                isDense: true,
+                                items: const [
+                                  DropdownMenuItem(
+                                    value: 'openai',
+                                    child: Text('OpenAI 兼容'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'gemini',
+                                    child: Text('Google Gemini'),
+                                  ),
+                                ],
+                                onChanged: (value) {
+                                  if (value == null) return;
+                                  setDialogState(() {
+                                    selectedProvider = value;
+                                  });
+                                },
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        Text(
+                          '模型名称',
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
+                        const SizedBox(height: 4),
+                        _buildModelSelector(
+                          ctx,
+                          selectedVendorId,
+                          modelCtl,
+                          setDialogState,
+                          (newModel) {
+                            // Always sync name when model changes, even if previously edited
+                            nameCtl.text = getCleanModelName(newModel);
+                            isNameManuallyEdited = false;
+                          },
+                          selectedVendorId == 'custom'
+                              ? null
+                              : () {
+                                  final providerConfig = getProviderById(
+                                    selectedVendorId,
+                                  );
+                                  List<String> modelsToTest = [];
+                                  if (providerConfig != null) {
+                                    final cached =
+                                        _fetchedModelsMap[selectedVendorId];
+                                    modelsToTest =
+                                        (cached != null && cached.isNotEmpty)
+                                        ? cached
+                                        : providerConfig.models;
+                                  }
+
+                                  _batchTestModels(
+                                    vendorId: selectedVendorId,
+                                    apiKey: apiKeyCtl.text,
+                                    baseUrl: baseUrlCtl.text,
+                                    provider: selectedProvider,
+                                    models: modelsToTest,
+                                  );
+                                },
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Builder(
+                              builder: (context) {
+                                final providerConfig = getProviderById(
+                                  selectedVendorId,
+                                );
+                                if (providerConfig == null ||
+                                    providerConfig.modelsEndpoint.isEmpty) {
+                                  return const SizedBox.shrink();
+                                }
+                                return TextButton.icon(
+                                  onPressed: _isFetchingModels
+                                      ? null
+                                      : () => _fetchModelsForVendor(
                                           vendorId: selectedVendorId,
                                           baseUrl: baseUrlCtl.text,
                                           apiKey: apiKeyCtl.text,
                                           setDialogState: setDialogState,
                                         ),
-                                icon: _isFetchingModels
-                                    ? const SizedBox(
-                                        width: 14,
-                                        height: 14,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
-                                      )
-                                    : const Icon(Icons.refresh, size: 16),
-                                label: Text(
-                                  _isFetchingModels 
-                                      ? '更新中...' 
-                                      : (selectedVendorId == 'openrouter' ? '一键获取免费模型' : '一键获取模型列表'),
-                                  style: const TextStyle(fontSize: 12),
-                                ),
-                                style: TextButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                  minimumSize: Size.zero,
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                ),
-                              );
-                            },
-                          ),
-                        ],
-                      ),
-                      if (selectedVendorId != 'custom' && _fetchMessage != null) ...[
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: _fetchMessageIsError 
-                                ? Colors.red.shade50.withValues(alpha: 0.8) 
-                                : Colors.green.shade50.withValues(alpha: 0.8),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: _fetchMessageIsError 
-                                  ? Colors.red.shade200.withValues(alpha: 0.5) 
-                                  : Colors.green.shade200.withValues(alpha: 0.5),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                _fetchMessageIsError ? Icons.error_outline : Icons.check_circle_outline,
-                                size: 16,
-                                color: _fetchMessageIsError ? Colors.red.shade700 : Colors.green.shade700,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  _fetchMessage!,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: _fetchMessageIsError ? Colors.red.shade800 : Colors.green.shade800,
-                                    fontWeight: FontWeight.w500,
+                                  icon: _isFetchingModels
+                                      ? const SizedBox(
+                                          width: 14,
+                                          height: 14,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Icon(Icons.refresh, size: 16),
+                                  label: Text(
+                                    _isFetchingModels
+                                        ? '更新中...'
+                                        : (selectedVendorId == 'openrouter'
+                                              ? '一键获取免费模型'
+                                              : '一键获取模型列表'),
+                                    style: const TextStyle(fontSize: 12),
                                   ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 16),
-                      Text('显示名称', style: Theme.of(context).textTheme.labelSmall),
-                      const SizedBox(height: 4),
-                      TextField(
-                        controller: nameCtl,
-                        decoration: const InputDecoration(hintText: '例如：我的模型'),
-                        onChanged: (val) {
-                          // Only mark as manually edited if there's actual user input
-                          // If user clears it, we allow auto-sync again
-                          isNameManuallyEdited = val.isNotEmpty;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      Text('API Key', style: Theme.of(context).textTheme.labelSmall),
-                      const SizedBox(height: 4),
-                      TextField(
-                        controller: apiKeyCtl,
-                        obscureText: !showApiKey,
-                        decoration: InputDecoration(
-                          hintText: 'sk-...',
-                          suffixIcon: IconButton(
-                            icon: Icon(showApiKey ? Icons.visibility_off : Icons.visibility),
-                            onPressed: () => setDialogState(() => showApiKey = !showApiKey),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      if (selectedProvider != 'gemini') ...[
-                        Row(
-                          children: [
-                            Text('Base URL', style: Theme.of(context).textTheme.labelSmall),
-                            if (selectedVendorId == 'chatanywhere') ...[
-                              const Spacer(),
-                              Builder(
-                                builder: (context) {
-                                  Widget buildChip(String label, String url) {
-                                    final isSelected = baseUrlCtl.text == url;
-                                    return InkWell(
-                                      onTap: () {
-                                        setDialogState(() {
-                                          baseUrlCtl.text = url;
-                                        });
-                                      },
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: isSelected
-                                              ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.2)
-                                              : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                                          borderRadius: BorderRadius.circular(12),
-                                          border: Border.all(
-                                            color: isSelected
-                                                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.4)
-                                                : Colors.transparent,
-                                            width: 1,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          label,
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                            color: isSelected
-                                                ? Theme.of(context).colorScheme.primary
-                                                : Theme.of(context).colorScheme.onSurfaceVariant,
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                  return Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      buildChip('国内中转', 'https://api.chatanywhere.tech/v1'),
-                                      const SizedBox(width: 6),
-                                      buildChip('国外使用', 'https://api.chatanywhere.org/v1'),
-                                    ],
-                                  );
-                                },
-                              ),
-                            ],
+                                  style: TextButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
+                                    minimumSize: Size.zero,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                );
+                              },
+                            ),
                           ],
                         ),
-                        const SizedBox(height: 4),
-                        TextField(controller: baseUrlCtl, decoration: const InputDecoration(hintText: 'https://api.openai.com')),
-                        const SizedBox(height: 20),
-                      ],
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: isTesting
-                              ? null
-                              : () async {
-                                  setDialogState(() {
-                                    isTesting = true;
-                                    testResult = null;
-                                  });
-                                  try {
-                                    final testConfig = AiConfig(
-                                      id: existingConfig?.id ?? 'test',
-                                      name: nameCtl.text,
-                                      provider: selectedProvider,
-                                      modelName: modelCtl.text,
-                                      apiKey: apiKeyCtl.text,
-                                      baseUrl: baseUrlCtl.text,
-                                      vendorId: selectedVendorId,
-                                      createdAt: DateTime.now(),
-                                      updatedAt: DateTime.now(),
-                                    );
-                                    final service = AiService();
-                                    service.updateConfig(testConfig);
-                                    final sw = Stopwatch()..start();
-                                    await service.chat([
-                                      ChatMessage(role: 'user', content: 'Hi', timestamp: DateTime.now()),
-                                    ]);
-                                    sw.stop();
-                                    final latencyStr = '${sw.elapsedMilliseconds}ms';
-                                    if (existingConfig != null) await _saveLatency(existingConfig.id, latencyStr);
-                                    setDialogState(() {
-                                      isTesting = false;
-                                      testResult = '连接成功！延迟: $latencyStr';
-                                    });
-                                  } catch (e) {
-                                    final errMsg = _formatTestError(e);
-                                    if (existingConfig != null) await _saveLatency(existingConfig.id, errMsg);
-                                    setDialogState(() {
-                                      isTesting = false;
-                                      testResult = '连接失败: $errMsg';
-                                    });
-                                  }
-                                },
-                          icon: isTesting
-                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                              : const Icon(Icons.online_prediction, size: 18),
-                          label: Text(isTesting ? '测试中...' : '连接测试'),
-                        ),
-                      ),
-                      if (testResult != null)
-                        Container(
-                          margin: const EdgeInsets.only(top: 12),
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: testResult!.startsWith('连接成功') 
-                                ? Colors.green.shade50.withValues(alpha: 0.8) 
-                                : Colors.red.shade50.withValues(alpha: 0.8),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: testResult!.startsWith('连接成功') 
-                                  ? Colors.green.shade200.withValues(alpha: 0.5) 
-                                  : Colors.red.shade200.withValues(alpha: 0.5),
+                        if (selectedVendorId != 'custom' &&
+                            _fetchMessage != null) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
                             ),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                testResult!.startsWith('连接成功') ? Icons.check_circle_outline : Icons.error_outline,
-                                size: 16,
-                                color: testResult!.startsWith('连接成功') ? Colors.green.shade700 : Colors.red.shade700,
+                            decoration: BoxDecoration(
+                              color: _fetchMessageIsError
+                                  ? Colors.red.shade50.withValues(alpha: 0.8)
+                                  : Colors.green.shade50.withValues(alpha: 0.8),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: _fetchMessageIsError
+                                    ? Colors.red.shade200.withValues(alpha: 0.5)
+                                    : Colors.green.shade200.withValues(
+                                        alpha: 0.5,
+                                      ),
                               ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  testResult!,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: testResult!.startsWith('连接成功') ? Colors.green.shade800 : Colors.red.shade800,
-                                    fontWeight: FontWeight.w500,
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  _fetchMessageIsError
+                                      ? Icons.error_outline
+                                      : Icons.check_circle_outline,
+                                  size: 16,
+                                  color: _fetchMessageIsError
+                                      ? Colors.red.shade700
+                                      : Colors.green.shade700,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _fetchMessage!,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: _fetchMessageIsError
+                                          ? Colors.red.shade800
+                                          : Colors.green.shade800,
+                                      fontWeight: FontWeight.w500,
+                                    ),
                                   ),
                                 ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 16),
+                        Text(
+                          '显示名称',
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
+                        const SizedBox(height: 4),
+                        TextField(
+                          controller: nameCtl,
+                          decoration: const InputDecoration(
+                            hintText: '例如：我的模型',
+                          ),
+                          onChanged: (val) {
+                            // Only mark as manually edited if there's actual user input
+                            // If user clears it, we allow auto-sync again
+                            isNameManuallyEdited = val.isNotEmpty;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'API Key',
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
+                        const SizedBox(height: 4),
+                        TextField(
+                          controller: apiKeyCtl,
+                          obscureText: !showApiKey,
+                          decoration: InputDecoration(
+                            hintText: 'sk-...',
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                showApiKey
+                                    ? Icons.visibility_off
+                                    : Icons.visibility,
                               ),
-                            ],
+                              onPressed: () => setDialogState(
+                                () => showApiKey = !showApiKey,
+                              ),
+                            ),
                           ),
                         ),
-                    ],
+                        const SizedBox(height: 16),
+                        if (selectedProvider != 'gemini') ...[
+                          Row(
+                            children: [
+                              Text(
+                                'Base URL',
+                                style: Theme.of(context).textTheme.labelSmall,
+                              ),
+                              if (selectedVendorId == 'chatanywhere') ...[
+                                const Spacer(),
+                                Builder(
+                                  builder: (context) {
+                                    Widget buildChip(String label, String url) {
+                                      final isSelected = baseUrlCtl.text == url;
+                                      return InkWell(
+                                        onTap: () {
+                                          setDialogState(() {
+                                            baseUrlCtl.text = url;
+                                          });
+                                        },
+                                        borderRadius: BorderRadius.circular(12),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: isSelected
+                                                ? Theme.of(context)
+                                                      .colorScheme
+                                                      .primaryContainer
+                                                      .withValues(alpha: 0.2)
+                                                : Theme.of(context)
+                                                      .colorScheme
+                                                      .surfaceContainerHighest
+                                                      .withValues(alpha: 0.3),
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                            border: Border.all(
+                                              color: isSelected
+                                                  ? Theme.of(context)
+                                                        .colorScheme
+                                                        .primary
+                                                        .withValues(alpha: 0.4)
+                                                  : Colors.transparent,
+                                              width: 1,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            label,
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: isSelected
+                                                  ? FontWeight.bold
+                                                  : FontWeight.normal,
+                                              color: isSelected
+                                                  ? Theme.of(
+                                                      context,
+                                                    ).colorScheme.primary
+                                                  : Theme.of(context)
+                                                        .colorScheme
+                                                        .onSurfaceVariant,
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }
+
+                                    return Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        buildChip(
+                                          '国内中转',
+                                          'https://api.chatanywhere.tech/v1',
+                                        ),
+                                        const SizedBox(width: 6),
+                                        buildChip(
+                                          '国外使用',
+                                          'https://api.chatanywhere.org/v1',
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                ),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          TextField(
+                            controller: baseUrlCtl,
+                            decoration: const InputDecoration(
+                              hintText: 'https://api.openai.com',
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                        ],
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: isTesting
+                                ? null
+                                : () async {
+                                    setDialogState(() {
+                                      isTesting = true;
+                                      testResult = null;
+                                    });
+                                    try {
+                                      final testConfig = AiConfig(
+                                        id: existingConfig?.id ?? 'test',
+                                        name: nameCtl.text,
+                                        provider: selectedProvider,
+                                        modelName: modelCtl.text,
+                                        apiKey: apiKeyCtl.text,
+                                        baseUrl: baseUrlCtl.text,
+                                        vendorId: selectedVendorId,
+                                        createdAt: DateTime.now(),
+                                        updatedAt: DateTime.now(),
+                                      );
+                                      final service = AiService();
+                                      service.updateConfig(testConfig);
+                                      final sw = Stopwatch()..start();
+                                      await service.chat([
+                                        ChatMessage(
+                                          role: 'user',
+                                          content: 'Hi',
+                                          timestamp: DateTime.now(),
+                                        ),
+                                      ]);
+                                      sw.stop();
+                                      final latencyStr =
+                                          '${sw.elapsedMilliseconds}ms';
+                                      if (existingConfig != null)
+                                        await _saveLatency(
+                                          existingConfig.id,
+                                          latencyStr,
+                                        );
+                                      setDialogState(() {
+                                        isTesting = false;
+                                        testResult = '连接成功！延迟: $latencyStr';
+                                      });
+                                    } catch (e) {
+                                      final errMsg = _formatTestError(e);
+                                      if (existingConfig != null)
+                                        await _saveLatency(
+                                          existingConfig.id,
+                                          errMsg,
+                                        );
+                                      setDialogState(() {
+                                        isTesting = false;
+                                        testResult = '连接失败: $errMsg';
+                                      });
+                                    }
+                                  },
+                            icon: isTesting
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.online_prediction, size: 18),
+                            label: Text(isTesting ? '测试中...' : '连接测试'),
+                          ),
+                        ),
+                        if (testResult != null)
+                          Container(
+                            margin: const EdgeInsets.only(top: 12),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: testResult!.startsWith('连接成功')
+                                  ? Colors.green.shade50.withValues(alpha: 0.8)
+                                  : Colors.red.shade50.withValues(alpha: 0.8),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: testResult!.startsWith('连接成功')
+                                    ? Colors.green.shade200.withValues(
+                                        alpha: 0.5,
+                                      )
+                                    : Colors.red.shade200.withValues(
+                                        alpha: 0.5,
+                                      ),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  testResult!.startsWith('连接成功')
+                                      ? Icons.check_circle_outline
+                                      : Icons.error_outline,
+                                  size: 16,
+                                  color: testResult!.startsWith('连接成功')
+                                      ? Colors.green.shade700
+                                      : Colors.red.shade700,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    testResult!,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: testResult!.startsWith('连接成功')
+                                          ? Colors.green.shade800
+                                          : Colors.red.shade800,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('取消'),
-                ),
-                FilledButton(
-                  onPressed: () async {
-                    // Save API Key to SharedPreferences
-                    final prefs = await _getPrefs();
-                    if (selectedVendorId.isNotEmpty && apiKeyCtl.text.isNotEmpty) {
-                      prefs.setString('last_api_key_$selectedVendorId', apiKeyCtl.text);
-                    }
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('取消'),
+                  ),
+                  FilledButton(
+                    onPressed: () async {
+                      // Save API Key to SharedPreferences
+                      final prefs = await _getPrefs();
+                      if (selectedVendorId.isNotEmpty &&
+                          apiKeyCtl.text.isNotEmpty) {
+                        prefs.setString(
+                          'last_api_key_$selectedVendorId',
+                          apiKeyCtl.text,
+                        );
+                      }
 
-                    final config = AiConfig(
-                      id: existingConfig?.id ?? const Uuid().v4(),
-                      name: nameCtl.text.isEmpty ? '未命名' : nameCtl.text,
-                      provider: selectedProvider,
-                      modelName: modelCtl.text,
-                      apiKey: apiKeyCtl.text,
-                      baseUrl: baseUrlCtl.text,
-                      isDefault: existingConfig?.isDefault ?? false,
-                      vendorId: selectedVendorId,
-                      createdAt: existingConfig?.createdAt ?? DateTime.now(),
-                      updatedAt: DateTime.now(),
-                    );
-                    if (isEditing) {
-                      await ref.read(aiConfigListProvider.notifier).updateConfig(config);
-                    } else {
-                      await ref.read(aiConfigListProvider.notifier).addConfig(config);
-                    }
-                    if (ctx.mounted) Navigator.pop(ctx);
-                  },
-                  child: const Text('保存'),
-                ),
-              ],
+                      final config = AiConfig(
+                        id: existingConfig?.id ?? const Uuid().v4(),
+                        name: nameCtl.text.isEmpty ? '未命名' : nameCtl.text,
+                        provider: selectedProvider,
+                        modelName: modelCtl.text,
+                        apiKey: apiKeyCtl.text,
+                        baseUrl: baseUrlCtl.text,
+                        isDefault: existingConfig?.isDefault ?? false,
+                        vendorId: selectedVendorId,
+                        createdAt: existingConfig?.createdAt ?? DateTime.now(),
+                        updatedAt: DateTime.now(),
+                      );
+                      if (isEditing) {
+                        await ref
+                            .read(aiConfigListProvider.notifier)
+                            .updateConfig(config);
+                      } else {
+                        await ref
+                            .read(aiConfigListProvider.notifier)
+                            .addConfig(config);
+                      }
+                      if (ctx.mounted) Navigator.pop(ctx);
+                    },
+                    child: const Text('保存'),
+                  ),
+                ],
               ),
             );
           },
@@ -2002,7 +2378,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     VoidCallback? onBatchTest,
   ) {
     final providerConfig = getProviderById(vendorId);
-    
+
     final cached = _fetchedModelsMap[vendorId];
     final List<String> modelsList = (cached != null && cached.isNotEmpty)
         ? cached
@@ -2053,13 +2429,18 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                       modelCtl.text.isEmpty
                           ? '点击选择模型...'
                           : (modelCtl.text.contains('/')
-                              ? modelCtl.text.split('/').last.replaceAll(':free', '')
-                              : modelCtl.text),
+                                ? modelCtl.text
+                                      .split('/')
+                                      .last
+                                      .replaceAll(':free', '')
+                                : modelCtl.text),
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.normal,
                         color: modelCtl.text.isEmpty
-                            ? Theme.of(dialogContext).colorScheme.onSurfaceVariant
+                            ? Theme.of(
+                                dialogContext,
+                              ).colorScheme.onSurfaceVariant
                             : Theme.of(dialogContext).colorScheme.onSurface,
                       ),
                       overflow: TextOverflow.ellipsis,
@@ -2077,7 +2458,10 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
             const SizedBox(height: 4),
             Text(
               '完整 ID: ${modelCtl.text}',
-              style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(fontSize: 10, color: Theme.of(dialogContext).colorScheme.onSurfaceVariant),
+              style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
+                fontSize: 10,
+                color: Theme.of(dialogContext).colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
           if (!isModelInList) ...[
@@ -2086,8 +2470,13 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
               controller: modelCtl,
               decoration: InputDecoration(
                 hintText: providerConfig?.placeholder ?? '请输入自定义模型名称',
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
               style: const TextStyle(fontSize: 13),
               onChanged: (val) {
@@ -2103,7 +2492,10 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       controller: modelCtl,
       decoration: InputDecoration(
         hintText: providerConfig?.placeholder ?? '请输入模型名称',
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 10,
+        ),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       ),
       style: const TextStyle(fontSize: 13),
@@ -2134,7 +2526,8 @@ class _ModelPickerBottomSheet extends StatefulWidget {
   });
 
   @override
-  State<_ModelPickerBottomSheet> createState() => _ModelPickerBottomSheetState();
+  State<_ModelPickerBottomSheet> createState() =>
+      _ModelPickerBottomSheetState();
 }
 
 class _ModelPickerBottomSheetState extends State<_ModelPickerBottomSheet> {
@@ -2152,14 +2545,18 @@ class _ModelPickerBottomSheetState extends State<_ModelPickerBottomSheet> {
     return model.split('/').first.toLowerCase();
   }
 
-  Widget _buildLatency(String model, ThemeData theme, Map<String, String> latencyMap) {
+  Widget _buildLatency(
+    String model,
+    ThemeData theme,
+    Map<String, String> latencyMap,
+  ) {
     final key = '${widget.vendorId}:$model';
     final latency = latencyMap[key];
     if (latency == null) return const SizedBox.shrink();
 
     final isTesting = latency == '测试中...';
     final isError = latency == '失败';
-    
+
     return Container(
       margin: const EdgeInsets.only(left: 8),
       child: isTesting
@@ -2229,7 +2626,8 @@ class _ModelPickerBottomSheetState extends State<_ModelPickerBottomSheet> {
         textColor = Colors.grey.shade700;
     }
 
-    final displayName = provider.toUpperCase() == 'OPENAI' || provider.toUpperCase() == 'GLM'
+    final displayName =
+        provider.toUpperCase() == 'OPENAI' || provider.toUpperCase() == 'GLM'
         ? provider.toUpperCase()
         : provider[0].toUpperCase() + provider.substring(1);
 
@@ -2285,7 +2683,9 @@ class _ModelPickerBottomSheetState extends State<_ModelPickerBottomSheet> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.2),
+                  color: theme.colorScheme.onSurfaceVariant.withValues(
+                    alpha: 0.2,
+                  ),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -2310,11 +2710,23 @@ class _ModelPickerBottomSheetState extends State<_ModelPickerBottomSheet> {
                           return TextButton.icon(
                             onPressed: isTesting ? null : widget.onBatchTest,
                             icon: isTesting
-                                ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
                                 : const Icon(Icons.bolt, size: 16),
-                            label: Text(isTesting ? '测试中...' : '批量测试', style: const TextStyle(fontSize: 12)),
+                            label: Text(
+                              isTesting ? '测试中...' : '批量测试',
+                              style: const TextStyle(fontSize: 12),
+                            ),
                             style: TextButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
                               minimumSize: Size.zero,
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
@@ -2349,9 +2761,14 @@ class _ModelPickerBottomSheetState extends State<_ModelPickerBottomSheet> {
                         },
                       )
                     : null,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 filled: true,
-                fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                fillColor: theme.colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.3,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
                   borderSide: BorderSide.none,
@@ -2383,7 +2800,8 @@ class _ModelPickerBottomSheetState extends State<_ModelPickerBottomSheet> {
                               Icon(
                                 Icons.search_off_outlined,
                                 size: 48,
-                                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                                color: theme.colorScheme.onSurfaceVariant
+                                    .withValues(alpha: 0.5),
                               ),
                               const SizedBox(height: 8),
                               Text(
@@ -2399,16 +2817,26 @@ class _ModelPickerBottomSheetState extends State<_ModelPickerBottomSheet> {
                           itemCount: filteredModels.length + 1,
                           itemBuilder: (context, index) {
                             if (index == filteredModels.length) {
-                              final isSelected = widget.currentSelected == '__custom__' || 
-                                  (!widget.models.contains(widget.currentSelected) && widget.currentSelected.isNotEmpty);
+                              final isSelected =
+                                  widget.currentSelected == '__custom__' ||
+                                  (!widget.models.contains(
+                                        widget.currentSelected,
+                                      ) &&
+                                      widget.currentSelected.isNotEmpty);
                               return ListTile(
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
                                 leading: Container(
                                   width: 32,
                                   height: 32,
                                   decoration: BoxDecoration(
-                                    color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
+                                    color: theme.colorScheme.primaryContainer
+                                        .withValues(alpha: 0.5),
                                     shape: BoxShape.circle,
                                   ),
                                   child: Icon(
@@ -2419,14 +2847,21 @@ class _ModelPickerBottomSheetState extends State<_ModelPickerBottomSheet> {
                                 ),
                                 title: const Text(
                                   '自定义模型标识符...',
-                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                                 subtitle: const Text(
                                   '手动输入其他模型 ID',
                                   style: TextStyle(fontSize: 11),
                                 ),
                                 trailing: isSelected
-                                    ? Icon(Icons.check_circle, color: theme.colorScheme.primary, size: 20)
+                                    ? Icon(
+                                        Icons.check_circle,
+                                        color: theme.colorScheme.primary,
+                                        size: 20,
+                                      )
                                     : null,
                                 selected: isSelected,
                                 onTap: () {
@@ -2439,7 +2874,7 @@ class _ModelPickerBottomSheetState extends State<_ModelPickerBottomSheet> {
                             final model = filteredModels[index];
                             final isSelected = model == widget.currentSelected;
                             final provider = _parseProvider(model);
-                            
+
                             String displayName = model;
                             if (model.contains('/')) {
                               displayName = model.split('/').last;
@@ -2456,15 +2891,20 @@ class _ModelPickerBottomSheetState extends State<_ModelPickerBottomSheet> {
                                 borderRadius: BorderRadius.circular(12),
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 200),
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 10,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: isSelected
-                                        ? theme.colorScheme.primaryContainer.withValues(alpha: 0.15)
+                                        ? theme.colorScheme.primaryContainer
+                                              .withValues(alpha: 0.15)
                                         : Colors.transparent,
                                     borderRadius: BorderRadius.circular(12),
                                     border: Border.all(
                                       color: isSelected
-                                          ? theme.colorScheme.primary.withValues(alpha: 0.3)
+                                          ? theme.colorScheme.primary
+                                                .withValues(alpha: 0.3)
                                           : Colors.transparent,
                                       width: 1,
                                     ),
@@ -2479,7 +2919,10 @@ class _ModelPickerBottomSheetState extends State<_ModelPickerBottomSheet> {
                                           border: Border.all(
                                             color: isSelected
                                                 ? theme.colorScheme.primary
-                                                : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                                                : theme
+                                                      .colorScheme
+                                                      .onSurfaceVariant
+                                                      .withValues(alpha: 0.3),
                                             width: isSelected ? 3.5 : 1.5,
                                           ),
                                         ),
@@ -2487,34 +2930,53 @@ class _ModelPickerBottomSheetState extends State<_ModelPickerBottomSheet> {
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
                                             Row(
                                               children: [
                                                 Flexible(
                                                   child: Text(
                                                     displayName,
-                                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                                                      color: isSelected
-                                                          ? theme.colorScheme.primary
-                                                          : theme.colorScheme.onSurface,
-                                                      fontSize: 13,
-                                                    ),
+                                                    style: theme
+                                                        .textTheme
+                                                        .bodyMedium
+                                                        ?.copyWith(
+                                                          fontWeight: isSelected
+                                                              ? FontWeight.bold
+                                                              : FontWeight.w500,
+                                                          color: isSelected
+                                                              ? theme
+                                                                    .colorScheme
+                                                                    .primary
+                                                              : theme
+                                                                    .colorScheme
+                                                                    .onSurface,
+                                                          fontSize: 13,
+                                                        ),
                                                     maxLines: 1,
-                                                    overflow: TextOverflow.ellipsis,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
                                                   ),
                                                 ),
-                                                _buildLatency(model, theme, latencyMap),
+                                                _buildLatency(
+                                                  model,
+                                                  theme,
+                                                  latencyMap,
+                                                ),
                                               ],
                                             ),
                                             const SizedBox(height: 2),
                                             Text(
                                               model,
-                                              style: theme.textTheme.bodySmall?.copyWith(
-                                                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                                                fontSize: 10.5,
-                                              ),
+                                              style: theme.textTheme.bodySmall
+                                                  ?.copyWith(
+                                                    color: theme
+                                                        .colorScheme
+                                                        .onSurfaceVariant
+                                                        .withValues(alpha: 0.7),
+                                                    fontSize: 10.5,
+                                                  ),
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                             ),
@@ -2528,10 +2990,15 @@ class _ModelPickerBottomSheetState extends State<_ModelPickerBottomSheet> {
                                       if (model.endsWith(':free')) ...[
                                         const SizedBox(width: 4),
                                         Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 5,
+                                            vertical: 1.5,
+                                          ),
                                           decoration: BoxDecoration(
                                             color: Colors.green.shade50,
-                                            borderRadius: BorderRadius.circular(6),
+                                            borderRadius: BorderRadius.circular(
+                                              6,
+                                            ),
                                           ),
                                           child: const Text(
                                             'FREE',
