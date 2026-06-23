@@ -151,26 +151,28 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
                 SizedBox(
                   width: _weekdayLabelWidth,
                   child: Column(
-                    children: List.generate(7, (row) {
-                      final weekday = row + 1;
-                      final labelEntry = weekdayLabels.firstWhere(
-                        (e) => e.$1 == weekday,
-                        orElse: () => (weekday, ''),
-                      );
-                      return SizedBox(
-                        height: _cellSize + _cellGap,
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: Text(
-                            labelEntry.$2,
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: theme.colorScheme.onSurfaceVariant,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      for (var row = 0; row < 7; row++) ...[
+                        if (row > 0) SizedBox(height: _cellGap),
+                        SizedBox(
+                          height: _cellSize,
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              weekdayLabels.firstWhere(
+                                (e) => e.$1 == (row + 1),
+                                orElse: () => (row + 1, ''),
+                              ).$2,
+                              style: TextStyle(
+                                fontSize: 9,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
                             ),
                           ),
                         ),
-                      );
-                    }),
+                      ],
+                    ],
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -198,17 +200,20 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
-                        children: List.generate(7, (row) {
-                          return Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              for (var col = 0; col < weekCount; col++) ...[
-                                if (col > 0) SizedBox(width: _cellGap),
-                                _buildCell(weeks[col], row, col, scoreMap, primary, emptyColor, theme),
+                        children: [
+                          for (var row = 0; row < 7; row++) ...[
+                            if (row > 0) SizedBox(height: _cellGap),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                for (var col = 0; col < weekCount; col++) ...[
+                                  if (col > 0) SizedBox(width: _cellGap),
+                                  _buildCell(weeks[col], row, col, scoreMap, primary, emptyColor, theme),
+                                ],
                               ],
-                            ],
-                          );
-                        }),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
                   ),

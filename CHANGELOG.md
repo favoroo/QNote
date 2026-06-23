@@ -8,6 +8,12 @@
 
 ## 2026-06-23
 
+- **[23:02]**
+  - **Changed**: 将数据统计的默认界面改为评分板块，并将评分选项卡移动到首位 (`lib/pages/statistics_page.dart`)。
+
+- **[22:58]**
+  - **Fixed**: 修复评分热力图网格的各个方块挤在一起的问题。在网格行之间以及星期标签列中加入 `_cellGap` 垂直间距，解决垂直方向紧贴的问题，并让星期标签与网格行完美垂直对齐 (`lib/widgets/statistics/score_heatmap.dart`)。
+
 - **[22:29]**
   - **Fixed**: 修复推理思考模型（如 SenseNova）图片识别检测误报"不支持图片识别"的问题。根因是 `_extractTextFromResponse` 只读取 `message.content`，当 token 被 `reasoning` 消耗完后返回空字符串；修复为回退读取 `reasoning`/`reasoning_content` 字段，同时提高 `checkImageRecognition` 的 `max_tokens` 从 50 到 200 (`lib/core/ai/ai_service.dart`)。
 
