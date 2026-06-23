@@ -12,6 +12,7 @@ import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/shortcut_field.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
+import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/models/fixed_event_template.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
