@@ -65,13 +65,17 @@ class _AiPageState extends ConsumerState<AiPage> {
   }
 
   Future<void> _initActiveModelId() async {
+    final roles = await ref.read(aiRolesProvider.future);
+    if (roles != null && roles.assistantUseFreeModel) {
+      if (mounted) setState(() => _activeModelId = '__free_model__');
+      return;
+    }
     try {
       final config = await AiRoleService.instance.getEffectiveConfigForRole('assistant');
       if (mounted) {
         setState(() => _activeModelId = config.id);
       }
     } catch (_) {
-      final roles = await ref.read(aiRolesProvider.future);
       if (roles?.assistant != null) {
         if (mounted) setState(() => _activeModelId = roles!.assistant);
       } else {
@@ -287,9 +291,16 @@ class _AiPageState extends ConsumerState<AiPage> {
     if (selected != null && selected != _activeModelId) {
       setState(() => _activeModelId = selected);
       final roles = await ref.read(aiRolesProvider.future);
-      await saveAiRoles(
-        (roles ?? const AiRoles()).copyWith(assistant: selected),
+      final isFree = selected == '__free_model__';
+      final oldRoles = roles ?? const AiRoles();
+      final newRoles = AiRoles(
+        assistant: isFree ? null : selected,
+        assistantUseFreeModel: isFree,
+        timelineOptimization: oldRoles.timelineOptimization,
+        timelineOptimizationUseFreeModel: oldRoles.timelineOptimizationUseFreeModel,
       );
+      await saveAiRoles(newRoles);
+      ref.invalidate(aiRolesProvider);
     }
   }
 
@@ -926,6 +937,7 @@ class _AiPageState extends ConsumerState<AiPage> {
   }
 
   String _getActiveConfigName(List<AiConfig> configs) {
+    if (_activeModelId == '__free_model__') return '免费模型';
     if (_activeModelId == null) return '默认';
     final config = configs.where((c) => c.id == _activeModelId).firstOrNull;
     return config?.name ?? '默认';
@@ -1963,19 +1975,20 @@ class _ModelSelectorDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isFreeActive = activeModelId == '__free_model__';
+
     return SimpleDialog(
       title: const Text('选择模型'),
-      children: configs.map((config) {
-        final isActive = config.id == activeModelId;
-        return SimpleDialogOption(
-          onPressed: () => Navigator.pop(context, config.id),
+      children: [
+        SimpleDialogOption(
+          onPressed: () => Navigator.pop(context, '__free_model__'),
           child: Row(
             children: [
               Icon(
-                isActive
+                isFreeActive
                     ? Icons.radio_button_checked
                     : Icons.radio_button_unchecked,
-                color: isActive
+                color: isFreeActive
                     ? theme.colorScheme.primary
                     : theme.colorScheme.onSurfaceVariant,
                 size: 20,
@@ -1986,14 +1999,14 @@ class _ModelSelectorDialog extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      config.name,
+                      '免费模型',
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
-                        color: isActive ? theme.colorScheme.primary : null,
+                        color: isFreeActive ? theme.colorScheme.primary : null,
                       ),
                     ),
                     Text(
-                      '${config.provider} / ${config.modelName}',
+                      '自动切换并重试',
                       style: TextStyle(
                         fontSize: 11,
                         color: theme.colorScheme.onSurfaceVariant,
@@ -2004,8 +2017,49 @@ class _ModelSelectorDialog extends StatelessWidget {
               ),
             ],
           ),
-        );
-      }).toList(),
+        ),
+        ...configs.map((config) {
+          final isActive = config.id == activeModelId;
+          return SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, config.id),
+            child: Row(
+              children: [
+                Icon(
+                  isActive
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                  color: isActive
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        config.name,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: isActive ? theme.colorScheme.primary : null,
+                        ),
+                      ),
+                      Text(
+                        '${config.provider} / ${config.modelName}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
     );
   }
 }

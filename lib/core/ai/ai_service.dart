@@ -816,7 +816,21 @@ class AiService {
     if (choices is List && choices.isNotEmpty) {
       final message = choices[0]?['message'];
       if (message is Map) {
-        return message['content']?.toString() ?? '';
+        final content = message['content']?.toString();
+        if (content != null && content.isNotEmpty) {
+          return content;
+        }
+        // 推理模型（如 DeepSeek-R1、SenseNova）可能把答案放在 reasoning 中
+        // 当 max_tokens 不够时 content 可能为空，回退到 reasoning
+        final reasoning = message['reasoning']?.toString();
+        if (reasoning != null && reasoning.isNotEmpty) {
+          return reasoning;
+        }
+        final reasoningContent = message['reasoning_content']?.toString();
+        if (reasoningContent != null && reasoningContent.isNotEmpty) {
+          return reasoningContent;
+        }
+        return '';
       }
     }
     return '';
@@ -1159,7 +1173,7 @@ class AiService {
         ],
         'generationConfig': {
           'temperature': 0.1,
-          'maxOutputTokens': 50,
+          'maxOutputTokens': 200,
         },
       };
       endpoint = 'v1beta/models/${config.modelName}:generateContent';
@@ -1196,7 +1210,7 @@ class AiService {
           },
         ],
         'temperature': 0.1,
-        'max_tokens': 50,
+        'max_tokens': 200,
       };
     }
 

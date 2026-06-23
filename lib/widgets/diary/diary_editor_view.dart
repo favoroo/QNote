@@ -1034,23 +1034,29 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     }
 
     final roles = await AiRoleService.instance.getRoles();
-    final currentModelId = roles.timelineOptimization;
+    final currentModelId = roles.timelineOptimizationUseFreeModel ? '__free_model__' : roles.timelineOptimization;
     if (!mounted) return;
 
-    final selectedConfig = await showDialog<AiConfig>(
+    final selectedId = await showDialog<String>(
       context: context,
       builder: (context) =>
           _ExtractModelDialog(configs: configs, selectedId: currentModelId),
     );
 
-    if (selectedConfig != null && mounted) {
-      await AiRoleService.instance.saveRoles(
-        roles.copyWith(timelineOptimization: selectedConfig.id),
+    if (selectedId != null && mounted) {
+      final isFree = selectedId == '__free_model__';
+      final newRoles = AiRoles(
+        assistant: roles.assistant,
+        assistantUseFreeModel: roles.assistantUseFreeModel,
+        timelineOptimization: isFree ? null : selectedId,
+        timelineOptimizationUseFreeModel: isFree,
       );
+      await AiRoleService.instance.saveRoles(newRoles);
       if (mounted) {
+        final displayName = isFree ? '免费模型' : (configs.firstWhere((c) => c.id == selectedId, orElse: () => configs.first).name);
         Toast.success(
           context,
-          '已切换：${selectedConfig.name}',
+          '已切换：$displayName',
           duration: const Duration(seconds: 1),
         );
       }
@@ -2402,6 +2408,7 @@ class _ExtractModelDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isFreeSelected = selectedId == '__free_model__';
     return Dialog(
       backgroundColor: theme.colorScheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
@@ -2424,18 +2431,83 @@ class _ExtractModelDialog extends StatelessWidget {
             Flexible(
               child: SingleChildScrollView(
                 child: Column(
-                  children: configs
-                      .map(
-                        (config) => _ExtractModelItem(
-                          config: config,
-                          isSelected: config.id == selectedId,
-                          onTap: () => Navigator.pop(context, config),
-                        ),
-                      )
-                      .toList(),
+                  children: [
+                    _ExtractFreeModelItem(
+                      isSelected: isFreeSelected,
+                      onTap: () => Navigator.pop(context, '__free_model__'),
+                    ),
+                    ...configs.map(
+                      (config) => _ExtractModelItem(
+                        config: config,
+                        isSelected: config.id == selectedId,
+                        onTap: () => Navigator.pop(context, config.id),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ExtractFreeModelItem extends StatelessWidget {
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _ExtractFreeModelItem({
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        child: Row(
+          children: [
+            Icon(
+              Icons.card_giftcard,
+              size: 20,
+              color: isSelected
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '免费模型',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                    ),
+                  ),
+                  Text(
+                    '自动切换并重试',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isSelected)
+              Icon(
+                Icons.check_circle,
+                size: 20,
+                color: theme.colorScheme.primary,
+              ),
           ],
         ),
       ),

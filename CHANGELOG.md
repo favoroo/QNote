@@ -6,6 +6,11 @@
 
 ---
 
+## 2026-06-23
+
+- **[22:29]**
+  - **Fixed**: 修复推理思考模型（如 SenseNova）图片识别检测误报"不支持图片识别"的问题。根因是 `_extractTextFromResponse` 只读取 `message.content`，当 token 被 `reasoning` 消耗完后返回空字符串；修复为回退读取 `reasoning`/`reasoning_content` 字段，同时提高 `checkImageRecognition` 的 `max_tokens` 从 50 到 200 (`lib/core/ai/ai_service.dart`)。
+
 ## 2026-06-22
 
 - **[22:55]**
@@ -167,6 +172,7 @@
   - **Changed**: 去除了免费模型配置面板中冗余的「自动选择（按优先级）」下拉选项，改为在拉取或加载免费模型时，自动将有效的第一款模型设置并保存为主模型 (`lib/pages/settings/ai_config_page.dart`)。
   - **Changed**: 将角色绑定下拉菜单中的「免费模型（自动切换）」选项文本简化为「免费模型」 (`lib/pages/settings/ai_config_page.dart`)。
   - **Fixed**: 修复了当角色（如时间轴智能提取）绑定了「免费模型」时，点击「检测图片识别」进行多模态能力检测仍会错误弹出「请先绑定并保存模型」提示的 bug，现在会正确使用当前选中的免费主模型进行评测 (`lib/pages/settings/ai_config_page.dart`)。
+  - **Changed**: 聊天页面和智能提取处的长按选择模型功能支持选择并切换至「免费模型」，已在 `lib/pages/ai_page.dart`、`lib/pages/diary_page.dart`、`lib/widgets/diary/diary_editor_view.dart`、`lib/widgets/diary/diary_input_bar.dart` 各处长按切换对话框中新增支持。
 
 - **[10:30]**
   - **Changed**: 修改了 `AiRoleService` 的初始化逻辑，初次进入应用后会自动将 `assistant` 和 `timelineOptimization` 角色配置为使用免费模型，并在后台自动刷新免费模型列表 (`lib/core/ai/ai_role_service.dart`, `lib/main.dart`)。
