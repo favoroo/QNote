@@ -38,6 +38,8 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _refreshProviders();
+      // APP 恢复前台后拉取小组件挂起路由，确保在 Provider 刷新之后执行导航
+      _tryNavigatePendingRoute();
     }
   }
 
@@ -60,25 +62,42 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
       }
     });
 
-    // 检查是否有 cold-start pending route
+    // 冷启动时拉取挂起路由，带延迟重试以等待 MethodChannel 就绪
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      try {
-        final pending = await _channel.invokeMethod<String>('getPendingRoute');
-        if (pending != null) {
-          _navigateToRoute(pending);
-        }
-      } catch (e) {
-        debugPrint('获取挂起路由失败: $e');
-      }
+      await _tryNavigatePendingRoute(retryCount: 2);
     });
   }
 
-  void _navigateToRoute(String route) {
+  /// 从原生侧拉取挂起路由并导航，retryCount 为重试次数
+  Future<void> _tryNavigatePendingRoute({int retryCount = 0}) async {
+    try {
+      final pending = await _channel.invokeMethod<String>('getPendingRoute');
+      if (pending != null) {
+        _navigateToRoute(pending);
+      }
+    } catch (e) {
+      // MethodChannel 可能尚未就绪，延迟重试
+      if (retryCount > 0) {
+        await Future.delayed(const Duration(milliseconds: 200));
+        await _tryNavigatePendingRoute(retryCount: retryCount - 1);
+      } else {
+        debugPrint('获取挂起路由失败: $e');
+      }
+    }
+  }
+
+  void _navigateToRoute(String route, {int retryCount = 1}) {
     try {
       final router = ref.read(routerProvider);
       router.go(route);
     } catch (e) {
       debugPrint('路由导航失败: $e');
+      // 导航可能因路由器正在过渡而失败，延迟重试
+      if (retryCount > 0) {
+        Future.delayed(const Duration(milliseconds: 200), () {
+          _navigateToRoute(route, retryCount: retryCount - 1);
+        });
+      }
     }
   }
 

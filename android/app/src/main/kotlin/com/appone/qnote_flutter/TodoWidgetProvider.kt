@@ -41,7 +41,14 @@ class TodoWidgetProvider : AppWidgetProvider() {
                     putExtra("route", route)
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 }
-                context.startActivity(startAppIntent)
+                // 使用 PendingIntent 发送，兼容 Android 12+ 后台启动限制
+                val pendingIntent = PendingIntent.getActivity(
+                    context,
+                    0,
+                    startAppIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                pendingIntent.send()
             }
             ACTION_TODO_REFRESH -> {
                 val appWidgetManager = AppWidgetManager.getInstance(context)
