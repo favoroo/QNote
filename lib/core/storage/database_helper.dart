@@ -25,7 +25,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 16,
+      version: 17,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onOpen: (db) async {
@@ -95,7 +95,7 @@ class DatabaseHelper {
       ''');
     } catch (_) {}
 
-    // 兜底：补 fixed_event_templates 缺失的列（防老库跳版未走 _onUpgrade）
+    // 兜底：补 fixed_event_templates 缺失 of 列（防老库跳版未走 _onUpgrade）
     try {
       final feColumns = await db.rawQuery('PRAGMA table_info(fixed_event_templates)');
       final feColumnNames = feColumns.map((c) => c['name'] as String).toSet();
@@ -104,6 +104,9 @@ class DatabaseHelper {
       }
       if (feColumnNames.isNotEmpty && !feColumnNames.contains('tag_fields')) {
         await db.execute('ALTER TABLE fixed_event_templates ADD COLUMN tag_fields TEXT DEFAULT "{}"');
+      }
+      if (feColumnNames.isNotEmpty && !feColumnNames.contains('time_periods')) {
+        await db.execute('ALTER TABLE fixed_event_templates ADD COLUMN time_periods TEXT DEFAULT "[]"');
       }
     } catch (_) {}
   }
@@ -324,6 +327,7 @@ class DatabaseHelper {
         tag_fields TEXT DEFAULT '{}',
         sort_order INTEGER DEFAULT 0,
         is_enabled INTEGER DEFAULT 1,
+        time_periods TEXT DEFAULT '[]',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
@@ -469,6 +473,13 @@ class DatabaseHelper {
       // 为 fixed_event_templates 表添加 is_time_point 列（时间点/时间段模式标志）
       try {
         await db.execute('ALTER TABLE fixed_event_templates ADD COLUMN is_time_point INTEGER DEFAULT 0');
+      } catch (_) {}
+    }
+
+    if (oldVersion < 17) {
+      // 为 fixed_event_templates 表添加 time_periods 列
+      try {
+        await db.execute('ALTER TABLE fixed_event_templates ADD COLUMN time_periods TEXT DEFAULT "[]"');
       } catch (_) {}
     }
   }

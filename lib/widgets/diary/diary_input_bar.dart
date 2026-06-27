@@ -661,12 +661,26 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         selectedTemplates.add(t);
       }
     }
-    // 时间用最后选中模板的时间
+    // 时间用最后选中模板的第一个时间段的开始/结束时间
     final last = selectedTemplates.last;
-    final startTime = TimeOfDay(hour: last.startHour, minute: last.startMinute);
-    final TimeOfDay? endTime = last.isTimePoint
+    final firstPeriod = last.timePeriods.isNotEmpty 
+        ? last.timePeriods.first 
+        : TimePeriod(startTime: last.startTime, endTime: last.endTime);
+
+    final startParts = firstPeriod.startTime.split(':');
+    final startTime = TimeOfDay(
+      hour: int.tryParse(startParts[0]) ?? last.startHour,
+      minute: startParts.length > 1 ? int.tryParse(startParts[1]) ?? last.startMinute : 0,
+    );
+    final TimeOfDay? endTime = last.isTimePoint || firstPeriod.endTime.isEmpty
         ? null
-        : TimeOfDay(hour: last.endHour, minute: last.endMinute);
+        : () {
+            final endParts = firstPeriod.endTime.split(':');
+            return TimeOfDay(
+              hour: int.tryParse(endParts[0]) ?? last.endHour,
+              minute: endParts.length > 1 ? int.tryParse(endParts[1]) ?? last.endMinute : 0,
+            );
+          }();
 
     // 备注换行拼接（过滤掉空备注）
     final contents = selectedTemplates
@@ -1577,6 +1591,213 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         draft.selectedPhotos.isEmpty;
     if (isEmpty) return;
 
+    final now = DateTime.now();
+
+    // 如果选了固定事件模板，则针对每个模板的每个时间段，分别生成一条日记记录
+    if (_selectedFixedEventIds.isNotEmpty) {
+      final allTemplates = ref.read(fixedEventListProvider).valueOrNull ?? [];
+      final selectedTemplates = allTemplates.where((t) => _selectedFixedEventIds.contains(t.id)).toList();
+
+      for (final template in selectedTemplates) {
+        // 找到与该模板关联的标签在草稿中的 entries
+        final templateTagEntries = <TagEntry>[];
+        for (final entry in draft.tagEntries) {
+          if (template.tags.contains(entry.id)) {
+            templateTagEntries.add(entry);
+          }
+        }
+
+        for (final period in template.timePeriods) {
+          final partsStart = period.startTime.split(':');
+          final sh = int.tryParse(partsStart[0]) ?? 8;
+          final sm = partsStart.length > 1 ? int.tryParse(partsStart[1]) ?? 0 : 0;
+
+          var startDt = DateTime(
+            selectedDate.year,
+            selectedDate.month,
+            selectedDate.day,
+            sh,
+            sm,
+          );
+
+          DateTime? endDt;
+          if (!template.isTimePoint && period.endTime.isNotEmpty) {
+            final partsEnd = period.endTime.split(':');
+            final eh = int.tryParse(partsEnd[0]) ?? 12;
+            final em = partsEnd.length > 1 ? int.tryParse(partsEnd[1]) ?? 0 : 0;
+            endDt = DateTime(
+              selectedDate.year,
+              selectedDate.month,
+              selectedDate.day,
+              eh,
+              em,
+            );
+            if (endDt.isBefore(startDt)) {
+              endDt = endDt.add(const Duration(days: 1));
+            }
+          }
+
+          // 同步标签 entries 里的时长/时间等参数
+          final syncedTagEntries = templateTagEntries.map((e) {
+            var fields = Map<String, dynamic>.from(e.fields);
+            if (e.id == 'sleep') {
+              fields['fallAsleepTime'] = period.startTime;
+              if (endDt != null) {
+                final diffMin = endDt.difference(startDt).inMinutes;
+                fields['duration'] = (diffMin / 60.0).toStringAsFixed(1);
+              } else {
+                fields.remove('duration');
+              }
+            } else if (e.id == 'activity') {
+              if (endDt != null) {
+                final diffMin = endDt.difference(startDt).inMinutes;
+                fields['duration'] = (diffMin / 60.0).toStringAsFixed(1);
+              } else {
+                fields.remove('duration');
+              }
+            }
+
+            int? endH;
+            int? endM;
+            int endOff = 0;
+            if (endDt != null) {
+              endH = endDt.hour;
+              endM = endDt.minute;
+              endOff = endDt.difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day)).inDays;
+            }
+            final startOff = startDt.difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day)).inDays;
+
+            final updated = e.copyWith(
+              fields: fields,
+              startHour: sh,
+              startMinute: sm,
+              startOffset: startOff,
+              endHour: endH,
+              endMinute: endM,
+              endOffset: endOff,
+              clearEndTime: endDt == null,
+            );
+            return updated.copyWith(time: updated.formattedTime);
+          }).toList();
+
+          // 组织记录内容
+          final popupEntries = <TagEntry>[];
+          final popupConfigs = <ShortcutConfig>[];
+          for (final entry in syncedTagEntries) {
+            try {
+              final config = shortcuts.firstWhere(
+                (s) => s.id == entry.id || s.name == entry.name,
+              );
+              if (config.hasPopup) {
+                popupEntries.add(entry);
+                popupConfigs.add(config);
+              }
+            } catch (_) {}
+          }
+
+          String recordContent = '';
+          if (popupEntries.isNotEmpty) {
+            final detailParts = <String>[];
+            for (int pi = 0; pi < popupEntries.length; pi++) {
+              final entry = popupEntries[pi];
+              final config = popupConfigs[pi];
+              List<ShortcutField> fieldsToProcess = config.fields;
+              Map<String, dynamic> entryFields = Map<String, dynamic>.from(entry.fields);
+              String categoryPrefix = '';
+              if (config.categories != null && config.categories!.isNotEmpty) {
+                final currentCategory = config.categories!.firstWhere(
+                  (c) => c.id == entryFields['_category'],
+                  orElse: () => config.categories!.first,
+                );
+                fieldsToProcess = currentCategory.fields;
+                categoryPrefix = '${currentCategory.name} - ';
+              }
+              final details = fieldsToProcess
+                  .map((f) {
+                    final val = entryFields[f.id];
+                    if (val == null) return null;
+                    if (val is List) return '${f.label}：${val.join('、')}';
+                    return '${f.label}：$val';
+                  })
+                  .where((s) => s != null)
+                  .join('，');
+              final fullDetails = categoryPrefix.isNotEmpty ? '$categoryPrefix$details' : details;
+              if (fullDetails.isNotEmpty) detailParts.add(fullDetails);
+            }
+            final allDetails = detailParts.join('；');
+
+            // 备注优先使用用户编辑过的输入框草稿文字，若无则使用模板预设的 content
+            final baseText = draft.inputText.isNotEmpty ? draft.inputText : (template.content ?? '');
+            recordContent = '$allDetails${baseText.isNotEmpty ? '\n备注：$baseText' : ''}';
+          } else {
+            recordContent = draft.inputText.isNotEmpty ? draft.inputText : (template.content ?? '');
+          }
+
+          final recordTags = template.tags.isNotEmpty
+              ? template.tags
+                  .map((tid) => shortcuts
+                      .where((s) => s.id == tid)
+                      .firstOrNull
+                      ?.name ??
+                      tid)
+                  .toList()
+              : <String>[];
+
+          Map<String, dynamic>? recordBodyState;
+          if (syncedTagEntries.isNotEmpty) {
+            recordBodyState = Map<String, dynamic>.from(syncedTagEntries.first.fields);
+          }
+
+          final record = DiaryRecord(
+            id: const Uuid().v4(),
+            title: template.name,
+            time: startDt,
+            startTime: startDt,
+            endTime: endDt,
+            tags: recordTags,
+            displayTag: recordTags.isNotEmpty ? recordTags.first : template.name,
+            content: recordContent,
+            bodyState: recordBodyState,
+            tagEntries: syncedTagEntries,
+            photos: draft.selectedPhotos.isNotEmpty ? draft.selectedPhotos : [],
+            createdAt: now,
+            updatedAt: now,
+          );
+
+          await notifier.addDiary(
+            title: record.title,
+            content: record.content,
+            tags: record.tags,
+            time: record.time,
+            startTime: record.startTime,
+            endTime: record.endTime,
+            displayTag: record.displayTag,
+            bodyState: record.bodyState,
+            tagEntries: record.tagEntries,
+            photos: record.photos,
+          );
+        }
+      }
+
+      ref.read(diaryInputTimeProvider.notifier).state = null;
+      ref.read(currentInputTimeProvider.notifier).state = TimeOfDay.now();
+      _undoController.stop();
+      setState(() {
+        _draft = _Draft(id: const Uuid().v4(), startTime: TimeOfDay.now());
+        _textController.text = '';
+        _canUndo = false;
+        _preExtractDraft = null;
+        _preExtractText = null;
+        _activeFormTagId = null;
+        _selectedFixedEventIds.clear();
+      });
+
+      if (mounted) {
+        FocusScope.of(context).unfocus();
+      }
+      return;
+    }
+
     final selectEvent = ref.read(diaryInputTimeProvider);
     final TimeOfDay eventTime = selectEvent == null
         ? TimeOfDay.now()
@@ -1727,7 +1948,6 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       bodyState ??= Map<String, dynamic>.from(tagEntries.first.fields);
     }
 
-    final now = DateTime.now();
     final record = DiaryRecord(
       id: const Uuid().v4(),
       title: tags.isNotEmpty ? tags.first : '记录',
