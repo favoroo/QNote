@@ -26,12 +26,9 @@ class MainActivity : FlutterActivity() {
     private fun handleIntent(intent: Intent?) {
         val route = intent?.getStringExtra("route")
         if (route != null) {
-            val channel = methodChannel
-            if (channel != null) {
-                channel.invokeMethod("navigate", route)
-            } else {
-                pendingRoute = route
-            }
+            // 始终走 pendingRoute 路径，避免 invokeMethod 与 Flutter 引擎恢复/Provider 刷新竞态
+            // Flutter 侧在 resumed 后主动 getPendingRoute 拉取，确保导航在 Provider 刷新之后执行
+            pendingRoute = route
         }
     }
 

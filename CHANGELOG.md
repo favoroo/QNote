@@ -8,6 +8,14 @@
 
 ## 2026-06-27
 
+- **[——]**
+  - **Fixed**: 修复桌面小组件偶尔点击无反应的问题 (`android/.../MainActivity.kt`, `lib/app.dart`, `android/.../TodoWidgetProvider.kt`)：
+    1. `handleIntent` 始终走 `pendingRoute` 路径，避免 `invokeMethod` 与 Flutter 引擎恢复/Provider 刷新竞态。
+    2. `didChangeAppLifecycleState(resumed)` 中增加 `getPendingRoute` 拉取，确保导航在 Provider 刷新之后执行。
+    3. 冷启动 `addPostFrameCallback` 增加 MethodChannel 就绪重试机制。
+    4. `_navigateToRoute` 增加 200ms 延迟重试，防止路由器过渡中导航失败。
+    5. `ACTION_TODO_CLICK` 的 `context.startActivity` 改为 `PendingIntent.send()`，兼容 Android 12+ 后台启动限制。
+
 - **[22:27]**
   - **Changed**: 调整日记输入栏底部操作按钮样式：将时间按钮圆角从 12 调大至 18（胶囊形），并将右侧的图片与相机按钮调整为圆形（`BoxShape.circle`） (`lib/widgets/diary/diary_input_bar.dart`)。
 
