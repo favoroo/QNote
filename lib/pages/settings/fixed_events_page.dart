@@ -255,12 +255,16 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
       text: existingTemplate?.content ?? '',
     );
 
-    int startHour = existingTemplate?.startHour ?? 8;
-    int startMinute = existingTemplate?.startMinute ?? 0;
-    int endHour = existingTemplate?.endHour ?? 12;
-    int endMinute = existingTemplate?.endMinute ?? 0;
     // 时间点模式：true 只选一个时间点，false 选时间段
     bool isTimePoint = existingTemplate?.isTimePoint ?? false;
+    final List<TimePeriod> periods = List<TimePeriod>.from(
+      existingTemplate?.timePeriods ?? [
+        TimePeriod(
+          startTime: '08:30',
+          endTime: isTimePoint ? '' : '12:00',
+        )
+      ],
+    );
 
     // 已选择的标签 ID 列表
     final List<String> selectedTagIds = List<String>.from(
@@ -288,15 +292,17 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
       await showDialog<void>(
       context: context,
       builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setDialogState) {
+        return Consumer(
+          builder: (ctx, ref, child) {
             // 获取可用的快捷标签列表
             final shortcutsAsync = ref.watch(shortcutListProvider);
 
             return shortcutsAsync.when(
               data: (shortcuts) {
-                return AlertDialog(
-                  title: Text(isEditing ? '编辑固定事件' : '添加固定事件'),
+                return StatefulBuilder(
+                  builder: (ctx, setDialogState) {
+                    return AlertDialog(
+                      title: Text(isEditing ? '编辑固定事件' : '添加固定事件'),
                   scrollable: true,
                   content: SizedBox(
                     width: MediaQuery.of(context).size.width * 0.9,
@@ -344,119 +350,182 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                                   selectedTagFields.containsKey('sleep')) {
                                 selectedTagFields['sleep']!.remove('duration');
                               }
+                              // 同时把所有 periods 转为时间点模式 (即清空 endTime)
+                              for (int i = 0; i < periods.length; i++) {
+                                periods[i] = TimePeriod(
+                                  startTime: periods[i].startTime,
+                                  endTime: '',
+                                );
+                              }
                               // 重新联动 sleep/activity 标签字段
                               _syncTagFieldsFromTime(
                                 selectedTagFields,
-                                startHour,
-                                startMinute,
-                                isTimePoint ? null : (endHour, endMinute),
+                                periods,
+                                isTimePoint,
                               );
                             });
                           },
                         ),
                         const SizedBox(height: 16),
 
-                        // 开始时间 / 时间点
-                        Row(
-                          children: [
-                            Text(
-                              isTimePoint ? '时间' : '开始时间',
-                              style: Theme.of(context).textTheme.labelSmall,
-                            ),
-                            const Spacer(),
-                            GestureDetector(
-                              onTap: () async {
-                                final result = await showTimeScrollPicker(
-                                  context: context,
-                                  initialHour: startHour,
-                                  initialMinute: startMinute,
-                                );
-                                if (result != null) {
-                                  setDialogState(() {
-                                    startHour = result.hour;
-                                    startMinute = result.minute;
-                                    _syncTagFieldsFromTime(
-                                      selectedTagFields,
-                                      startHour,
-                                      startMinute,
-                                      isTimePoint ? null : (endHour, endMinute),
-                                    );
-                                  });
-                                }
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 8,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.surfaceContainerHighest,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  '${startHour.toString().padLeft(2, '0')}:${startMinute.toString().padLeft(2, '0')}',
-                                  style: Theme.of(context).textTheme.bodyMedium
-                                      ?.copyWith(fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                            ),
-                          ],
+                        // 时间设置
+                        Text(
+                          isTimePoint ? '时间点列表' : '时间段列表',
+                          style: Theme.of(context).textTheme.labelSmall,
                         ),
-                        const SizedBox(height: 12),
-
-                        // 结束时间（仅时间段模式显示）
-                        if (!isTimePoint)
-                          Row(
-                            children: [
-                              Text(
-                                '结束时间',
-                                style: Theme.of(context).textTheme.labelSmall,
+                        const SizedBox(height: 6),
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: periods.length,
+                          itemBuilder: (ctx, pIdx) {
+                            final period = periods[pIdx];
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: GestureDetector(
+                                      onTap: () async {
+                                        // 编辑该时间段的开始时间
+                                        final startParts = period.startTime.split(':');
+                                        final sh = int.tryParse(startParts[0]) ?? 8;
+                                        final sm = startParts.length > 1 ? int.tryParse(startParts[1]) ?? 0 : 0;
+                                        final startRes = await showTimeScrollPicker(
+                                          context: context,
+                                          initialHour: sh,
+                                          initialMinute: sm,
+                                        );
+                                        if (startRes != null) {
+                                          final newStart = '${startRes.hour.toString().padLeft(2, '0')}:${startRes.minute.toString().padLeft(2, '0')}';
+                                          
+                                          String newEnd = period.endTime;
+                                          if (!isTimePoint) {
+                                            // 如果是时间段，接着选择结束时间，或者默认以之前的结束时间
+                                            final endParts = period.endTime.split(':');
+                                            final eh = int.tryParse(endParts[0]) ?? (startRes.hour + 1) % 24;
+                                            final em = endParts.length > 1 ? int.tryParse(endParts[1]) ?? 0 : 0;
+                                            final endRes = await showTimeScrollPicker(
+                                              context: context,
+                                              initialHour: eh,
+                                              initialMinute: em,
+                                            );
+                                            if (endRes != null) {
+                                              newEnd = '${endRes.hour.toString().padLeft(2, '0')}:${endRes.minute.toString().padLeft(2, '0')}';
+                                            } else {
+                                              return; // 取消了就不保存
+                                            }
+                                          }
+                                          
+                                          setDialogState(() {
+                                            periods[pIdx] = TimePeriod(startTime: newStart, endTime: newEnd);
+                                            _syncTagFieldsFromTime(
+                                              selectedTagFields,
+                                              periods,
+                                              isTimePoint,
+                                            );
+                                          });
+                                        }
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 8,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              isTimePoint
+                                                  ? period.startTime
+                                                  : '${period.startTime} - ${period.endTime}',
+                                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                            ),
+                                            Icon(
+                                              Icons.edit_calendar,
+                                              size: 16,
+                                              color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  if (periods.length > 1) ...[
+                                    const SizedBox(width: 8),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete_outline),
+                                      color: Theme.of(context).colorScheme.error,
+                                      onPressed: () {
+                                        setDialogState(() {
+                                          periods.removeAt(pIdx);
+                                          _syncTagFieldsFromTime(
+                                            selectedTagFields,
+                                            periods,
+                                            isTimePoint,
+                                          );
+                                        });
+                                      },
+                                    ),
+                                  ],
+                                ],
                               ),
-                              const Spacer(),
-                              GestureDetector(
-                                onTap: () async {
-                                  final result = await showTimeScrollPicker(
-                                    context: context,
-                                    initialHour: endHour,
-                                    initialMinute: endMinute,
-                                  );
-                                  if (result != null) {
-                                    setDialogState(() {
-                                      endHour = result.hour;
-                                      endMinute = result.minute;
-                                      _syncTagFieldsFromTime(
-                                        selectedTagFields,
-                                        startHour,
-                                        startMinute,
-                                        (endHour, endMinute),
-                                      );
-                                    });
-                                  }
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.surfaceContainerHighest,
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    '${endHour.toString().padLeft(2, '0')}:${endMinute.toString().padLeft(2, '0')}',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodyMedium
-                                        ?.copyWith(fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 6),
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            // 添加新的时间段
+                            int defH = 8;
+                            int defM = 0;
+                            if (periods.isNotEmpty) {
+                              final lastP = periods.last;
+                              final parts = (isTimePoint || lastP.endTime.isEmpty ? lastP.startTime : lastP.endTime).split(':');
+                              defH = int.tryParse(parts[0]) ?? 8;
+                              defM = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
+                            }
+                            
+                            final startRes = await showTimeScrollPicker(
+                              context: context,
+                              initialHour: defH,
+                              initialMinute: defM,
+                            );
+                            if (startRes != null) {
+                              final newStart = '${startRes.hour.toString().padLeft(2, '0')}:${startRes.minute.toString().padLeft(2, '0')}';
+                              String newEnd = '';
+                              if (!isTimePoint) {
+                                final endRes = await showTimeScrollPicker(
+                                  context: context,
+                                  initialHour: (startRes.hour + 1) % 24,
+                                  initialMinute: startRes.minute,
+                                );
+                                if (endRes != null) {
+                                  newEnd = '${endRes.hour.toString().padLeft(2, '0')}:${endRes.minute.toString().padLeft(2, '0')}';
+                                } else {
+                                  return;
+                                }
+                              }
+                              
+                              setDialogState(() {
+                                periods.add(TimePeriod(startTime: newStart, endTime: newEnd));
+                                _syncTagFieldsFromTime(
+                                  selectedTagFields,
+                                  periods,
+                                  isTimePoint,
+                                );
+                              });
+                            }
+                          },
+                          icon: const Icon(Icons.add, size: 16),
+                          label: Text(isTimePoint ? '添加时间点' : '添加时间段'),
+                        ),
                         const SizedBox(height: 16),
 
                         // 关联标签（可选）
@@ -502,11 +571,8 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                                       // 选中 sleep/activity 时，用当前事件时间预填联动字段
                                       _syncTagFieldsFromTime(
                                         selectedTagFields,
-                                        startHour,
-                                        startMinute,
-                                        isTimePoint
-                                            ? null
-                                            : (endHour, endMinute),
+                                        periods,
+                                        isTimePoint,
                                       );
                                     }
                                   });
@@ -585,21 +651,28 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                             if (fieldId != 'duration') return;
                             final hours = double.tryParse(value);
                             if (hours == null) return;
-                            final startMin = startHour * 60 + startMinute;
-                            final totalMin = startMin + (hours * 60).toInt();
-                            final eh = (totalMin ~/ 60) % 24;
-                            final em = totalMin % 60;
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              // 此时控件树已无正在处理的 onChanged。
-                              // 使用 mounted 守卫避免 dialog 已关闭后仍触发 setState。
-                              if (!ctx.mounted) return;
-                              setDialogState(() {
-                                // 时长有效时自动切回时间段模式并推算结束时间
-                                isTimePoint = false;
-                                endHour = eh;
-                                endMinute = em;
-                              });
-                            });
+                            if (periods.length == 1) {
+                              final startParts = periods[0].startTime.split(':');
+                              if (startParts.length >= 2) {
+                                final sh = int.tryParse(startParts[0]) ?? 0;
+                                final sm = int.tryParse(startParts[1]) ?? 0;
+                                final startMin = sh * 60 + sm;
+                                final totalMin = startMin + (hours * 60).toInt();
+                                final eh = (totalMin ~/ 60) % 24;
+                                final em = totalMin % 60;
+                                final newEndTime = '${eh.toString().padLeft(2, '0')}:${em.toString().padLeft(2, '0')}';
+                                WidgetsBinding.instance.addPostFrameCallback((_) {
+                                  // 此时控件树已无正在处理的 onChanged。
+                                  // 使用 mounted 守卫避免 dialog 已关闭后仍触发 setState。
+                                  if (!ctx.mounted) return;
+                                  setDialogState(() {
+                                    // 时长有效时自动切回时间段模式并推算结束时间
+                                    isTimePoint = false;
+                                    periods[0] = TimePeriod(startTime: periods[0].startTime, endTime: newEndTime);
+                                  });
+                                });
+                              }
+                            }
                           },
                         ),
 
@@ -690,17 +763,15 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                                 final template = FixedEventTemplate(
                                   id: existingTemplate?.id ?? const Uuid().v4(),
                                   name: nameCtl.text,
-                                  startTime:
-                                      '${startHour.toString().padLeft(2, '0')}:${startMinute.toString().padLeft(2, '0')}',
-                                  endTime: isTimePoint
-                                      ? ''
-                                      : '${endHour.toString().padLeft(2, '0')}:${endMinute.toString().padLeft(2, '0')}',
+                                  startTime: periods.isNotEmpty ? periods.first.startTime : '08:00',
+                                  endTime: isTimePoint || periods.isEmpty ? '' : periods.first.endTime,
                                   isTimePoint: isTimePoint,
                                   content: contentCtl.text.isEmpty
                                       ? null
                                       : contentCtl.text,
                                   tags: selectedTagIds,
                                   tagFields: selectedTagFields,
+                                  timePeriods: periods,
                                   sortOrder:
                                       existingTemplate?.sortOrder ??
                                       ref
@@ -729,10 +800,26 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                       ],
                     ),
                   ],
+                    );
+                  },
                 );
               },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, st) => const Center(child: Text('加载标签失败')),
+              loading: () => const AlertDialog(
+                content: SizedBox(
+                  height: 100,
+                  child: Center(
+                    child: CircularProgressIndicator(),
+                  ),
+                ),
+              ),
+              error: (e, st) => const AlertDialog(
+                content: SizedBox(
+                  height: 100,
+                  child: Center(
+                    child: Text('加载标签失败'),
+                  ),
+                ),
+              ),
             );
           },
         );
@@ -747,30 +834,44 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
     }
   }
 
-  /// 根据固定事件的开始/结束时间，同步推算关联标签的字段值
-  /// - sleep 标签：fallAsleepTime = 开始时间；有结束时间时 duration = (end-start)/60
-  /// - activity 标签：有结束时间时 duration = (end-start)/60
-  /// 跨天时（end < start）按 +24h 处理
+  /// 根据固定事件的时间段列表，同步推算关联标签的字段值
+  /// - sleep 标签：fallAsleepTime = 第一个时间段开始时间；有结束时间时 duration = 各时段总时长
+  /// - activity 标签：duration = 各时段总时长
   void _syncTagFieldsFromTime(
     Map<String, Map<String, dynamic>> selectedTagFields,
-    int startHour,
-    int startMinute,
-    (int, int)? endHM,
+    List<TimePeriod> periods,
+    bool isTimePoint,
   ) {
+    if (periods.isEmpty) return;
+    final first = periods.first;
+
+    // 计算所有时间段的总时长（分钟）
+    int totalDiffMin = 0;
+    for (final period in periods) {
+      if (isTimePoint || period.endTime.isEmpty) continue;
+      final startParts = period.startTime.split(':');
+      final endParts = period.endTime.split(':');
+      if (startParts.length >= 2 && endParts.length >= 2) {
+        final sh = int.tryParse(startParts[0]) ?? 0;
+        final sm = int.tryParse(startParts[1]) ?? 0;
+        final eh = int.tryParse(endParts[0]) ?? 0;
+        final em = int.tryParse(endParts[1]) ?? 0;
+        final startMin = sh * 60 + sm;
+        final endMin = eh * 60 + em;
+        var diffMin = endMin - startMin;
+        if (diffMin < 0) diffMin += 1440;
+        totalDiffMin += diffMin;
+      }
+    }
+
     // sleep 联动
     if (selectedTagFields.containsKey('sleep')) {
       final sleepFields = Map<String, dynamic>.from(
         selectedTagFields['sleep']!,
       );
-      sleepFields['fallAsleepTime'] =
-          '${startHour.toString().padLeft(2, '0')}:${startMinute.toString().padLeft(2, '0')}';
-      if (endHM != null) {
-        final (eh, em) = endHM;
-        final startMin = startHour * 60 + startMinute;
-        final endMin = eh * 60 + em;
-        var diffMin = endMin - startMin;
-        if (diffMin < 0) diffMin += 1440;
-        sleepFields['duration'] = (diffMin / 60.0).toStringAsFixed(1);
+      sleepFields['fallAsleepTime'] = first.startTime;
+      if (!isTimePoint && totalDiffMin > 0) {
+        sleepFields['duration'] = (totalDiffMin / 60.0).toStringAsFixed(1);
       } else {
         sleepFields.remove('duration');
       }
@@ -782,13 +883,8 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
       final activityFields = Map<String, dynamic>.from(
         selectedTagFields['activity']!,
       );
-      if (endHM != null) {
-        final (eh, em) = endHM;
-        final startMin = startHour * 60 + startMinute;
-        final endMin = eh * 60 + em;
-        var diffMin = endMin - startMin;
-        if (diffMin < 0) diffMin += 1440;
-        activityFields['duration'] = (diffMin / 60.0).toStringAsFixed(1);
+      if (!isTimePoint && totalDiffMin > 0) {
+        activityFields['duration'] = (totalDiffMin / 60.0).toStringAsFixed(1);
       } else {
         activityFields.remove('duration');
       }

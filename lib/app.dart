@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import 'package:qnote_flutter/core/router/app_router.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
-import 'package:qnote_flutter/providers/theme_provider.dart';
-import 'package:flutter/services.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
+import 'package:qnote_flutter/providers/theme_provider.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
 
 class QNoteApp extends ConsumerStatefulWidget {
@@ -58,7 +60,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
       }
     });
 
-    // 检查是否有冷启动挂起的路由
+    // 检查是否有 cold-start pending route
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
         final pending = await _channel.invokeMethod<String>('getPendingRoute');
@@ -104,22 +106,34 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
       ],
       locale: const Locale('zh', 'CN'),
       builder: (context, child) {
-        return GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-          child: PopScope(
-            canPop: false,
-            onPopInvokedWithResult: (didPop, result) {
-              if (didPop) return;
-              final router = GoRouter.of(context);
-              final location = router.routerDelegate.currentConfiguration.uri.toString();
-              final shellRoutes = ['/diary', '/notes', '/todo', '/ai', '/statistics'];
-              if (shellRoutes.contains(location)) {
-                return;
-              }
-              router.pop();
-            },
-            child: child ?? const SizedBox.shrink(),
+        final theme = Theme.of(context);
+        final style = SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: theme.brightness == Brightness.dark ? Brightness.light : Brightness.dark,
+          statusBarBrightness: theme.brightness == Brightness.dark ? Brightness.dark : Brightness.light,
+          systemNavigationBarColor: theme.colorScheme.surface,
+          systemNavigationBarIconBrightness: theme.brightness == Brightness.dark ? Brightness.light : Brightness.dark,
+        );
+
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: style,
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+            child: PopScope(
+              canPop: false,
+              onPopInvokedWithResult: (didPop, result) {
+                if (didPop) return;
+                final router = GoRouter.of(context);
+                final location = router.routerDelegate.currentConfiguration.uri.toString();
+                final shellRoutes = ['/diary', '/notes', '/todo', '/ai', '/statistics'];
+                if (shellRoutes.contains(location)) {
+                  return;
+                }
+                router.pop();
+              },
+              child: child ?? const SizedBox.shrink(),
+            ),
           ),
         );
       },

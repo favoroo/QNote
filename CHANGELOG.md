@@ -6,7 +6,22 @@
 
 ---
 
+## 2026-06-27
+
+- **[21:10]**
+  - **Fixed**: 修复刚进入应用时顶部状态栏不是白色的问题。根因是冷启动默认加载的 `DiaryPage` 未使用 `AppBar`，导致系统未自动触发状态栏样式的刷新与初始化。已在 `lib/main.dart` 启动时及 `lib/app.dart` 的 `MaterialApp` 构建器中使用 `AnnotatedRegion` 全局动态控制状态栏的沉浸式和前景色（深浅色跟随主题动态切换），并为 `lib/core/theme/app_theme.dart` 中的 `lightTheme` 与 `darkTheme` 配置了默认的 `appBarTheme.systemOverlayStyle` 以维持统一体验。
+
+## 2026-06-26
+
+- **[08:30]**
+  - **Changed**: 升级 `flutter_quill` 从 `11.5.0` 到 `11.5.1`，以兼容 Flutter 3.44/Dart 3.12 新增的 `TextInputClient.onFocusReceived` 方法（旧版本会导致 Web/移动端编译失败） (`pubspec.yaml`, `pubspec.lock`)。
+
 ## 2026-06-23
+
+- **[23:14]**
+  - **Added**: 固定事件支持设置和配置多个时间段/点，并优化联动标签的时长计算为全部时间段总和 (`lib/models/fixed_event_template.dart`, `lib/pages/settings/fixed_events_page.dart`, `lib/core/storage/database_helper.dart`)。
+  - **Changed**: 重构日记快速记录栏（`DiaryInputBar`）发送逻辑，当使用含有多时段的固定事件模板时，自动为各个时段生成并保存独立的时间线日记记录 (`lib/widgets/diary/diary_input_bar.dart`)。
+  - **Fixed**: 修复固定事件编辑/添加弹窗无法弹出的问题。原因是在 `showDialog` 异步路由内直接使用父页面的 `ref.watch` 导致对话框无法接收到 Riverpod 加载完毕的刷新通知，已在 `showDialog` 内层引入 `Consumer` 组件使对话框可以独立监听并正确重载 UI 展示 (`lib/pages/settings/fixed_events_page.dart`)。
 
 - **[23:02]**
   - **Changed**: 将数据统计的默认界面改为评分板块，并将评分选项卡移动到首位 (`lib/pages/statistics_page.dart`)。
