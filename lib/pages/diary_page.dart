@@ -1437,7 +1437,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
           decoration: BoxDecoration(
             color: _isBatchExtracting
                 ? theme.colorScheme.surface
-                : theme.colorScheme.primary.withValues(alpha: 0.1),
+                : theme.colorScheme.primary,
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
@@ -1478,7 +1478,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
               : Icon(
                   Icons.auto_fix_high,
                   size: 20,
-                  color: theme.colorScheme.primary,
+                  color: theme.colorScheme.onPrimary,
                 ),
         ),
       ),
@@ -1669,9 +1669,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                           width: 36,
                           height: 36,
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.primary.withValues(
-                              alpha: 0.04,
-                            ),
+                            color: theme.colorScheme.primaryContainer,
                             shape: BoxShape.circle,
                           ),
                           child: IconButton(
@@ -1724,9 +1722,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withValues(
-                          alpha: 0.04,
-                        ),
+                        color: theme.colorScheme.primaryContainer,
                         shape: BoxShape.circle,
                       ),
                       child: IconButton(

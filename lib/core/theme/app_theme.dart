@@ -102,10 +102,10 @@ class AppTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: colorScheme.surface,
-        indicatorColor: accentColor.withValues(alpha: 0.12),
+        indicatorColor: accentColor,
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return IconThemeData(color: accentColor);
+            return const IconThemeData(color: Colors.white);
           }
           return IconThemeData(color: const Color(0xFF727785));
         }),
@@ -303,10 +303,10 @@ class AppTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: colorScheme.surface,
-        indicatorColor: accentColor.withValues(alpha: 0.15),
+        indicatorColor: accentColor,
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return IconThemeData(color: accentColor);
+            return const IconThemeData(color: Colors.white);
           }
           return IconThemeData(color: const Color(0xFF8E94A3));
         }),

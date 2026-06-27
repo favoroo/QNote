@@ -333,7 +333,7 @@ class _SegmentedControl extends StatelessWidget {
                 duration: AppDurations.normal,
                 curve: Curves.easeInOut,
                 decoration: BoxDecoration(
-                  color: !isLongTerm ? colorScheme.surface : Colors.transparent,
+                  color: !isLongTerm ? colorScheme.primary : Colors.transparent,
                   borderRadius: BorderRadius.circular(AppRadius.large),
                   boxShadow: !isLongTerm
                       ? [
@@ -352,7 +352,7 @@ class _SegmentedControl extends StatelessWidget {
                       fontWeight: !isLongTerm ? FontWeight.bold : FontWeight.w600,
                       fontSize: 13.5,
                       color: !isLongTerm
-                          ? colorScheme.primary
+                          ? colorScheme.onPrimary
                           : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                     ),
                   ),
@@ -367,7 +367,7 @@ class _SegmentedControl extends StatelessWidget {
                 duration: AppDurations.normal,
                 curve: Curves.easeInOut,
                 decoration: BoxDecoration(
-                  color: isLongTerm ? colorScheme.surface : Colors.transparent,
+                  color: isLongTerm ? colorScheme.primary : Colors.transparent,
                   borderRadius: BorderRadius.circular(AppRadius.large),
                   boxShadow: isLongTerm
                       ? [
@@ -386,7 +386,7 @@ class _SegmentedControl extends StatelessWidget {
                       fontWeight: isLongTerm ? FontWeight.bold : FontWeight.w600,
                       fontSize: 13.5,
                       color: isLongTerm
-                          ? colorScheme.primary
+                          ? colorScheme.onPrimary
                           : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                     ),
                   ),
