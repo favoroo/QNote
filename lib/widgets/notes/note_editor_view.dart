@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:qnote_flutter/config/defaults.dart' show defaultSystemPrompts;
+import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/note.dart';
@@ -1864,16 +1865,12 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     }
     final imgSeg = _segments[index] as _ImageSegment;
 
-    // 1. 读取默认 AI 配置
-    final AiConfig? aiConfig;
+    // 1. 获取 AI 配置（支持免费模型）
+    final AiConfig aiConfig;
     try {
-      aiConfig = await ref.read(defaultAiConfigProvider.future);
-    } catch (_) {
-      if (mounted) Toast.warning(context, 'AI 配置读取失败，请先在设置中配置');
-      return;
-    }
-    if (aiConfig == null) {
-      if (mounted) Toast.warning(context, '请先在设置中配置 AI 模型');
+      aiConfig = await AiRoleService.instance.getEffectiveConfigForRole('timelineOptimization');
+    } catch (e) {
+      if (mounted) Toast.warning(context, 'AI 模型配置失败，请检查设置');
       return;
     }
 
@@ -1893,7 +1890,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
 
       // 4. 配置 AI 服务并调用
       final aiService = ref.read(aiServiceProvider);
-      aiService.updateConfig(aiConfig, temperature: 0.3, maxTokens: 1024);
+      final roleSettings = await AiRoleService.instance.getSettingsForRole('timelineOptimization');
+      aiService.updateConfig(aiConfig, temperature: roleSettings.temperature, maxTokens: roleSettings.maxTokens);
       final systemPrompt = defaultSystemPrompts['note_image_analysis'] ?? '';
       final result = await aiService.chatWithImage(
         imageBase64: imageBase64,
@@ -1943,20 +1941,25 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     _historyTimer?.cancel();
     _saveHistoryState();
 
-    final wrapped = '> 图：$extractedText';
+    final wrapped = extractedText.trim().isEmpty ? '' : '> 图：${extractedText.trim()}';
 
     setState(() {
       final nextIdx = imageIndex + 1;
       if (nextIdx < _segments.length && _segments[nextIdx] is _TextSegment) {
-        // 已有文本段：在开头追加（保留原内容）
+        // 已有文本段：合并为新的文本段（避免旧 selection 越界）
         final seg = _segments[nextIdx] as _TextSegment;
         final original = seg.controller.text;
-        seg.controller.text = original.isEmpty ? wrapped : '$wrapped\n\n$original';
+        final combined = original.isEmpty ? wrapped : '$wrapped\n\n$original';
+        seg.dispose();
+        _segments[nextIdx] = _TextSegment(context: context, text: combined);
+        _attachListeners();
       } else {
         // 无文本段：插入新文本段
-        final newSeg = _TextSegment(context: context, text: wrapped);
-        _segments.insert(nextIdx, newSeg);
-        _attachListeners();
+        if (wrapped.isNotEmpty) {
+          final newSeg = _TextSegment(context: context, text: wrapped);
+          _segments.insert(nextIdx, newSeg);
+          _attachListeners();
+        }
       }
     });
 

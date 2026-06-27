@@ -34,7 +34,7 @@ class TimeRangeSelector extends StatelessWidget {
               curve: Curves.easeInOut,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               decoration: BoxDecoration(
-                color: isSelected ? colorScheme.surface : Colors.transparent,
+                color: isSelected ? colorScheme.primary : Colors.transparent,
                 borderRadius: BorderRadius.circular(10),
                 boxShadow: isSelected
                     ? [
@@ -50,7 +50,7 @@ class TimeRangeSelector extends StatelessWidget {
                 _label(range),
                 style: TextStyle(
                   color: isSelected
-                      ? colorScheme.primary
+                      ? colorScheme.onPrimary
                       : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                   fontSize: 14,
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,

@@ -8,6 +8,23 @@
 
 ## 2026-06-27
 
+- **[23:59]**
+  - **Changed**: 深度美化并统一输入栏的快捷工具组设计 (`lib/widgets/diary/diary_input_bar.dart`)：
+    1. 统一尺寸与圆角：将右侧“图片”和“相机”按钮的尺寸从圆形 `44x44` 调整为与时间按钮一致的圆角矩形 `36x36`（`BorderRadius.circular(12)`），使整排按钮在高度和形态上完美对齐统一。
+    2. 色彩优化（选项 A）：将时间按钮（开始/结束/「+ 结束时间」）以及媒体按钮（图片、相机）的视觉风格统一调整为淡主题色大色块设计（淡蓝色 `primaryContainer` 背景 + 主题色 `primary` 文字及图标），降低视觉沉重感，提升界面整体美观度和舒适度。
+  - **Changed**: 微调顶部栏按钮视觉层级，将调色盘按钮与批量管理按钮的背景色从实心主题色调整为较淡的主题色容器背景（`primaryContainer`），并将图标颜色设回主题色（`primary`），使顶部导航区域在保持色块交互感的同时更显清爽协调 (`lib/pages/diary_page.dart`)。
+  - **Changed**: 进一步优化应用的主题大色块呈现设计，提升界面交互层级与视觉质感 (`lib/pages/diary_page.dart`, `lib/widgets/diary/diary_input_bar.dart`)：
+    1. 顶部栏：调色盘按钮与批量管理按钮，背景均改为实心主题色，图标改为高对比度的纯白色。
+    2. 输入栏时间按钮：开始时间与结束时间按钮背景均改为实心主题色，未设置的「+ 结束时间」按钮也同步改为实心主题色背景，按钮内的文字、图标与清除按钮均使用高对比度纯白色。
+    3. 输入栏右侧操作按钮：图片选择与相机拍摄按钮背景均改为实心主题色，图标改为纯白色。
+    4. 智能提取悬浮按钮：未处于提取状态下的魔法棒按钮背景改为实心主题色，魔法棒图标改为纯白色。
+
+- **[23:45]**
+  - **Changed**: 优化应用的主题色块呈现设计，将仅文本/线条的轻量着色优化为大色块设计 (`lib/pages/todo_page.dart`, `lib/widgets/time_range_selector.dart`, `lib/core/theme/app_theme.dart`)：
+    1. 待办页（`TodoPage`）的“今日/长期”分段选择器，选中项背景改为实心主题色，文字颜色改为 `onPrimary`（白色）。
+    2. 统计页（`TimeRangeSelector`）时间范围选择器，选中项背景改为实心主题色，文字颜色改为 `onPrimary`（白色）。
+    3. 全局底部导航栏（`NavigationBar`）的选中态指示胶囊颜色改为实心主题色，同时将选中图标的线条颜色改为 `Colors.white`（白色），形成清晰的主题大色块反馈。
+
 - **[22:30]**
   - **Added**: 笔记图片长按支持「AI 提取图片内容」功能。长按图片弹出操作菜单（AI 提取 / 预览 / 删除），选择「AI 提取图片内容」后调用多模态大模型识别图片，结果以 Markdown 引用块 `> 图：xxx` 形式自动追加到图片下方，方便分享笔记给 AI 助手时携带图片信息 (`lib/widgets/notes/note_editor_view.dart`)。
   - **Added**: `AiService` 新增多模态自由文本对话方法 `chatWithImage`，与 `extractUnified` 区别在于不强制 JSON 输出，返回模型纯文本响应；同步新增内部方法 `_buildImageChatRequestBody` 复用三种 provider（Gemini/Omni/标准 OpenAI）的多模态请求体结构 (`lib/core/ai/ai_service.dart`)。

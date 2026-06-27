@@ -3263,16 +3263,8 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                       height: 36,
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withValues(
-                          alpha: 0.08,
-                        ),
+                        color: theme.colorScheme.primaryContainer,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: theme.colorScheme.primary.withValues(
-                            alpha: 0.15,
-                          ),
-                          width: 1,
-                        ),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -3312,7 +3304,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                     child: Text(
                       '-',
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.5),
+                        color: theme.colorScheme.primary,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -3325,16 +3317,8 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                           height: 36,
                           padding: const EdgeInsets.only(left: 8),
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.primary.withValues(
-                              alpha: 0.08,
-                            ),
+                            color: theme.colorScheme.primaryContainer,
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: theme.colorScheme.primary.withValues(
-                                alpha: 0.15,
-                              ),
-                              width: 1,
-                            ),
                           ),
                           child: Row(
                             children: [
@@ -3399,14 +3383,8 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                           child: Container(
                             height: 36,
                             decoration: BoxDecoration(
-                              color: Colors.transparent,
+                              color: theme.colorScheme.primaryContainer,
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: theme.colorScheme.primary.withValues(
-                                  alpha: 0.3,
-                                ),
-                                width: 1.2,
-                              ),
                             ),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -3439,13 +3417,11 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                 ? _pickImageFromGallery
                 : null,
             child: Container(
-              width: 44,
-              height: 44,
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withValues(
-                  alpha: 0.5,
-                ),
-                shape: BoxShape.circle,
+                color: theme.colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Stack(
                 alignment: Alignment.center,
@@ -3485,13 +3461,11 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                 ? _pickImageFromCamera
                 : null,
             child: Container(
-              width: 44,
-              height: 44,
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withValues(
-                  alpha: 0.5,
-                ),
-                shape: BoxShape.circle,
+                color: theme.colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
                 Icons.camera_alt_outlined,
