@@ -807,26 +807,41 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     }
 
     setState(() {
-      // Merge adjacent text segments around the removed image
-      final prevIdx = segmentIndex - 1;
+      // 检查图片下方的文本段是否为 AI 提取的引用块（以 > 图： 开头），如果是则一并删除
       final nextIdx = segmentIndex + 1;
+      final hasNextExtract = nextIdx < _segments.length &&
+          _segments[nextIdx] is _TextSegment &&
+          (_segments[nextIdx] as _TextSegment).controller.text.startsWith('> 图：');
+
+      // Merge adjacent text segments around the removed image (and its extracted text)
+      final prevIdx = segmentIndex - 1;
       String mergedText = '';
 
       if (prevIdx >= 0 && _segments[prevIdx] is _TextSegment) {
         mergedText += (_segments[prevIdx] as _TextSegment).controller.text.trimRight();
         (_segments[prevIdx] as _TextSegment).dispose();
       }
-      if (nextIdx < _segments.length && _segments[nextIdx] is _TextSegment) {
-        final nextText = (_segments[nextIdx] as _TextSegment).controller.text.trimLeft();
-        if (mergedText.isNotEmpty && nextText.isNotEmpty) mergedText += '\n';
-        mergedText += nextText;
+
+      // 再下一个文本段（跳过 AI 提取引用块后）
+      final afterExtractIdx = hasNextExtract ? nextIdx + 1 : nextIdx;
+      if (afterExtractIdx < _segments.length && _segments[afterExtractIdx] is _TextSegment) {
+        final afterText = (_segments[afterExtractIdx] as _TextSegment).controller.text.trimLeft();
+        if (mergedText.isNotEmpty && afterText.isNotEmpty) mergedText += '\n';
+        mergedText += afterText;
+        (_segments[afterExtractIdx] as _TextSegment).dispose();
+      }
+
+      // 如果有 AI 提取引用块，也要 dispose
+      if (hasNextExtract) {
         (_segments[nextIdx] as _TextSegment).dispose();
       }
 
       final merged = _TextSegment(context: context, text: mergedText);
 
       final start = (prevIdx >= 0 && _segments[prevIdx] is _TextSegment) ? prevIdx : segmentIndex;
-      final end = (nextIdx < _segments.length && _segments[nextIdx] is _TextSegment) ? nextIdx : segmentIndex;
+      final end = (afterExtractIdx < _segments.length && _segments[afterExtractIdx] is _TextSegment)
+          ? afterExtractIdx
+          : (hasNextExtract ? nextIdx : segmentIndex);
       _segments.replaceRange(start, end + 1, [merged]);
       _attachListeners();
     });
@@ -1656,31 +1671,6 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
                 ),
                 child: const Center(
                   child: Icon(Icons.close, size: 16, color: Colors.white),
-                ),
-              ),
-            ),
-          ),
-          // 长按提示徽标：左下角
-          Positioned(
-            left: 8,
-            bottom: 8,
-            child: IgnorePointer(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.55),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.touch_app, size: 12, color: Colors.white),
-                    SizedBox(width: 4),
-                    Text(
-                      '长按识别',
-                      style: TextStyle(color: Colors.white, fontSize: 11),
-                    ),
-                  ],
                 ),
               ),
             ),

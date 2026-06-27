@@ -3264,7 +3264,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       decoration: BoxDecoration(
                         color: theme.colorScheme.primaryContainer,
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(18),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -3318,7 +3318,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                           padding: const EdgeInsets.only(left: 8),
                           decoration: BoxDecoration(
                             color: theme.colorScheme.primaryContainer,
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(18),
                           ),
                           child: Row(
                             children: [
@@ -3384,7 +3384,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                             height: 36,
                             decoration: BoxDecoration(
                               color: theme.colorScheme.primaryContainer,
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(18),
                             ),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -3421,7 +3421,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
               height: 36,
               decoration: BoxDecoration(
                 color: theme.colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(12),
+                shape: BoxShape.circle,
               ),
               child: Stack(
                 alignment: Alignment.center,
@@ -3465,7 +3465,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
               height: 36,
               decoration: BoxDecoration(
                 color: theme.colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(12),
+                shape: BoxShape.circle,
               ),
               child: Icon(
                 Icons.camera_alt_outlined,
