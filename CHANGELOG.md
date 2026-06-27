@@ -8,6 +8,9 @@
 
 ## 2026-06-27
 
+- **[22:27]**
+  - **Changed**: 调整日记输入栏底部操作按钮样式：将时间按钮圆角从 12 调大至 18（胶囊形），并将右侧的图片与相机按钮调整为圆形（`BoxShape.circle`） (`lib/widgets/diary/diary_input_bar.dart`)。
+
 - **[23:59]**
   - **Changed**: 深度美化并统一输入栏的快捷工具组设计 (`lib/widgets/diary/diary_input_bar.dart`)：
     1. 统一尺寸与圆角：将右侧“图片”和“相机”按钮的尺寸从圆形 `44x44` 调整为与时间按钮一致的圆角矩形 `36x36`（`BorderRadius.circular(12)`），使整排按钮在高度和形态上完美对齐统一。
