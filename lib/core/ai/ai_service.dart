@@ -698,6 +698,161 @@ class AiService {
     }
   }
 
+  /// 多模态对话：发送图片+文本，返回纯文本响应（不强制 JSON 格式）。
+  ///
+  /// 用于笔记图片内容识别等场景，与 [extractUnified] 的区别在于：
+  /// - 不强制 `response_format: json_object` / `responseMimeType: application/json`
+  /// - 直接返回模型的纯文本输出，由调用方自行处理
+  Future<String> chatWithImage({
+    required String imageBase64,
+    required String mimeType,
+    String? userText,
+    String? systemPrompt,
+    CancelToken? cancelToken,
+  }) async {
+    if (_config == null) throw Exception('AI config not set');
+
+    final startTime = DateTime.now();
+    LoggerService.instance.logAI(
+      '开始图片识别请求',
+      details: '模型=${_config!.modelName}, 有文本=${userText != null && userText.isNotEmpty}',
+    );
+
+    final requestBody = _buildImageChatRequestBody(
+      systemPrompt: systemPrompt ?? '',
+      imageBase64: imageBase64,
+      mimeType: mimeType,
+      text: userText,
+    );
+
+    final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
+    LoggerService.instance.logAI(
+      '图片识别请求 [${_config!.provider}] [${_config!.modelName}] $_generateContentEndpoint:\n${_formatJsonForLogging(sanitizedBody)}',
+    );
+
+    try {
+      final response = await _dio.post(
+        _generateContentEndpoint,
+        data: requestBody,
+        cancelToken: cancelToken,
+      );
+      final result = _extractTextFromResponse(response.data);
+      LoggerService.instance.logAI(
+        '图片识别响应:\n${_formatJsonForLogging(response.data)}',
+      );
+      LoggerService.instance.logAI(
+        '图片识别完成',
+        details: '耗时=${DateTime.now().difference(startTime).inMilliseconds}ms, 响应长度=${result.length}字符',
+      );
+      return result;
+    } catch (e, stackTrace) {
+      String details = stackTrace.toString();
+      if (e is DioException) {
+        final respData = e.response?.data;
+        if (respData != null) {
+          details = 'Response Body: $respData\n\n$details';
+        }
+      }
+      LoggerService.instance.logAI(
+        '图片识别失败: $e',
+        level: LogLevel.error,
+        details: details,
+      );
+      rethrow;
+    }
+  }
+
+  /// 构建多模态对话请求体（自由文本输出，不强制 JSON）。
+  ///
+  /// 结构与 [_buildMultimodalRequestBody] 一致，但去掉了 `response_format` /
+  /// `responseMimeType` 约束，让模型自由输出文本。
+  Map<String, dynamic> _buildImageChatRequestBody({
+    required String systemPrompt,
+    required String imageBase64,
+    required String mimeType,
+    String? text,
+  }) {
+    final userMessageText = text ?? '';
+    if (_config!.provider == 'gemini') {
+      final parts = <Map<String, dynamic>>[
+        if (userMessageText.isNotEmpty) {'text': userMessageText},
+        {
+          'inline_data': {'mime_type': mimeType, 'data': imageBase64},
+        },
+      ];
+      return {
+        'contents': [
+          {
+            'role': 'user',
+            'parts': parts,
+          },
+        ],
+        'systemInstruction': {
+          'parts': [
+            {'text': systemPrompt},
+          ],
+        },
+        'generationConfig': {
+          'temperature': _temperature,
+          'maxOutputTokens': _maxTokens,
+        },
+      };
+    }
+
+    final isOmni = _config!.modelName.toLowerCase().contains('omni');
+    if (isOmni) {
+      return {
+        'model': _config!.modelName,
+        'messages': [
+          {
+            'role': 'system',
+            'content': [
+              {'type': 'text', 'text': systemPrompt},
+            ],
+          },
+          {
+            'role': 'user',
+            'content': [
+              if (userMessageText.isNotEmpty)
+                {'type': 'text', 'text': userMessageText},
+              {
+                'type': 'input_image',
+                'input_image': {
+                  'type': 'base64',
+                  'data': [imageBase64],
+                },
+              },
+            ],
+          },
+        ],
+        'temperature': _temperature,
+        'max_tokens': _maxTokens,
+        'sessionId': DateTime.now().millisecondsSinceEpoch.toString(),
+        'output_modalities': ['text'],
+      };
+    }
+
+    return {
+      'model': _config!.modelName,
+      'messages': [
+        {'role': 'system', 'content': systemPrompt},
+        {
+          'role': 'user',
+          'content': [
+            if (userMessageText.isNotEmpty)
+              {'type': 'text', 'text': userMessageText},
+            {
+              'type': 'image_url',
+              'image_url': {'url': 'data:$mimeType;base64,$imageBase64'},
+            },
+          ],
+        },
+      ],
+      'temperature': _temperature,
+      'max_tokens': _maxTokens,
+    };
+  }
+
   Map<String, dynamic> _buildMultimodalRequestBody({
     required String systemPrompt,
     required String imageBase64,

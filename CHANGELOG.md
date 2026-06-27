@@ -8,6 +8,11 @@
 
 ## 2026-06-27
 
+- **[22:30]**
+  - **Added**: 笔记图片长按支持「AI 提取图片内容」功能。长按图片弹出操作菜单（AI 提取 / 预览 / 删除），选择「AI 提取图片内容」后调用多模态大模型识别图片，结果以 Markdown 引用块 `> 图：xxx` 形式自动追加到图片下方，方便分享笔记给 AI 助手时携带图片信息 (`lib/widgets/notes/note_editor_view.dart`)。
+  - **Added**: `AiService` 新增多模态自由文本对话方法 `chatWithImage`，与 `extractUnified` 区别在于不强制 JSON 输出，返回模型纯文本响应；同步新增内部方法 `_buildImageChatRequestBody` 复用三种 provider（Gemini/Omni/标准 OpenAI）的多模态请求体结构 (`lib/core/ai/ai_service.dart`)。
+  - **Added**: 在 `defaultSystemPrompts` 中新增 `note_image_analysis` 提示词，约束模型输出纯文本格式的图片描述 (`lib/config/defaults.dart`)。
+
 - **[21:10]**
   - **Fixed**: 修复刚进入应用时顶部状态栏不是白色的问题。根因是冷启动默认加载的 `DiaryPage` 未使用 `AppBar`，导致系统未自动触发状态栏样式的刷新与初始化。已在 `lib/main.dart` 启动时及 `lib/app.dart` 的 `MaterialApp` 构建器中使用 `AnnotatedRegion` 全局动态控制状态栏的沉浸式和前景色（深浅色跟随主题动态切换），并为 `lib/core/theme/app_theme.dart` 中的 `lightTheme` 与 `darkTheme` 配置了默认的 `appBarTheme.systemOverlayStyle` 以维持统一体验。
 

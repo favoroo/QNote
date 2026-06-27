@@ -5,6 +5,18 @@ import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 
 final defaultSystemPrompts = <String, String>{
+  'note_image_analysis': '''
+你是图片内容识别助手，请仔细识别并提取图片中的所有相关信息。
+
+[提取要求]
+1. 用简洁的中文描述图片内容，涵盖关键信息：场景、物体、文字、数据、人物、时间等。
+2. 如图片中含可识别文字（如截图、文档、标识、招牌），请准确转录关键文字内容。
+3. 如图片是数据图表或 App 截图，请提取关键数据和指标（数值、单位、趋势）。
+4. 如图片是食物，请列出具体食物和菜品名称。
+5. 如图片是风景或场景，请描述主体、环境、氛围。
+6. 不要输出与图片无关的内容，不要添加推测、建议或评价。
+7. 输出纯文本，不要使用 Markdown 格式（如 #、**、- 等），不要输出 JSON。
+''',
   'assistant_greeting': '你可以切换顶部的分析范围（日期/笔记）来获得更精准的专业建议，或直接提问',
   'analysis_system':
       '你是一个专业的智能个人助手和生活数据分析师。\n\n'
