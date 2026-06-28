@@ -406,66 +406,69 @@ class _DiaryItemState extends State<DiaryItem> {
                     children: [
                       Padding(
                         padding: const EdgeInsets.only(right: 12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildHeader(theme, tagColor),
-                            if (hasMultipleTags)
-                              _buildMultiTagSections(theme)
-                            else ...[
-                              _buildTagAndFieldsRow(theme, tagColor),
-                              _buildSingleTagContent(theme, tagColor),
-                            ],
-                            if (record.photos.isNotEmpty)
-                              Builder(
-                                builder: (context) {
-                                  final screenWidth = MediaQuery.of(
-                                    context,
-                                  ).size.width;
-                                  final maxWidth =
-                                      screenWidth - 132 - _contentIndent;
-                                  final spacing = 6.0;
-                                  final itemWidth =
-                                      ((maxWidth - spacing * 2 - 2.0) / 3)
-                                          .clamp(50.0, 70.0);
-                                  return Padding(
-                                    padding: const EdgeInsets.only(
-                                      left: _contentIndent,
-                                      top: 4,
-                                    ),
-                                    child: Wrap(
-                                      spacing: spacing,
-                                      runSpacing: spacing,
-                                      children: record.photos.asMap().entries.map((entry) {
-                                        final index = entry.key;
-                                        final photo = entry.value;
-                                        return GestureDetector(
-                                          behavior: HitTestBehavior.opaque,
-                                          onTap: () {
-                                            Navigator.of(context).push(
-                                              MaterialPageRoute(
-                                                builder: (_) => FullScreenImageGallery(
-                                                  images: record.photos,
-                                                  initialIndex: index,
+                        child: SingleChildScrollView(
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildHeader(theme, tagColor),
+                              if (hasMultipleTags)
+                                _buildMultiTagSections(theme)
+                              else ...[
+                                _buildTagAndFieldsRow(theme, tagColor),
+                                _buildSingleTagContent(theme, tagColor),
+                              ],
+                              if (record.photos.isNotEmpty)
+                                Builder(
+                                  builder: (context) {
+                                    final screenWidth = MediaQuery.of(
+                                      context,
+                                    ).size.width;
+                                    final maxWidth =
+                                        screenWidth - 132 - _contentIndent;
+                                    final spacing = 6.0;
+                                    final itemWidth =
+                                        ((maxWidth - spacing * 2 - 2.0) / 3)
+                                            .clamp(50.0, 70.0);
+                                    return Padding(
+                                      padding: const EdgeInsets.only(
+                                        left: _contentIndent,
+                                        top: 4,
+                                      ),
+                                      child: Wrap(
+                                        spacing: spacing,
+                                        runSpacing: spacing,
+                                        children: record.photos.asMap().entries.map((entry) {
+                                          final index = entry.key;
+                                          final photo = entry.value;
+                                          return GestureDetector(
+                                            behavior: HitTestBehavior.opaque,
+                                            onTap: () {
+                                              Navigator.of(context).push(
+                                                MaterialPageRoute(
+                                                  builder: (_) => FullScreenImageGallery(
+                                                    images: record.photos,
+                                                    initialIndex: index,
+                                                  ),
                                                 ),
+                                              );
+                                            },
+                                            child: UnifiedImage(
+                                              imagePath: photo,
+                                              width: itemWidth,
+                                              height: itemWidth,
+                                              borderRadius: BorderRadius.circular(
+                                                8,
                                               ),
-                                            );
-                                          },
-                                          child: UnifiedImage(
-                                            imagePath: photo,
-                                            width: itemWidth,
-                                            height: itemWidth,
-                                            borderRadius: BorderRadius.circular(
-                                              8,
                                             ),
-                                          ),
-                                        );
-                                      }).toList(),
-                                    ),
-                                  );
-                                },
-                              ),
-                          ],
+                                          );
+                                        }).toList(),
+                                      ),
+                                    );
+                                  },
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                       Positioned(
@@ -912,18 +915,19 @@ class _DiaryItemState extends State<DiaryItem> {
   }
 
   Widget _buildSingleTagContent(ThemeData theme, Color tagColor) {
+    final richContent = _buildRichContent(
+      context: theme,
+      text: record.content,
+      bodyState: record.bodyState,
+      tag: record.displayTag,
+      leftPadding: _contentIndent,
+    );
+    if (richContent == null) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 12),
-        _buildRichContent(
-              context: theme,
-              text: record.content,
-              bodyState: record.bodyState,
-              tag: record.displayTag,
-              leftPadding: _contentIndent,
-            ) ??
-            const SizedBox.shrink(),
+        richContent,
       ],
     );
   }

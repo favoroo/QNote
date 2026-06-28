@@ -1681,43 +1681,21 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                           constraints: const BoxConstraints(),
                         ),
                         const SizedBox(width: 2),
-                        Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            Container(
-                              width: 36,
-                              height: 36,
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.primaryContainer,
-                                shape: BoxShape.circle,
-                              ),
-                              child: IconButton(
-                                icon:
-                                    const Icon(Icons.palette_outlined, size: 18),
-                                color: theme.colorScheme.primary,
-                                onPressed: _showColorMarkDialog,
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                              ),
-                            ),
-                            if (currentColorMark != null)
-                              Positioned(
-                                right: -1,
-                                top: -1,
-                                child: Container(
-                                  width: 9,
-                                  height: 9,
-                                  decoration: BoxDecoration(
-                                    color: _hexToColor(currentColorMark.color),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: theme.colorScheme.surface,
-                                      width: 1.5,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primaryContainer,
+                            shape: BoxShape.circle,
+                          ),
+                          child: IconButton(
+                            icon:
+                                const Icon(Icons.palette_outlined, size: 18),
+                            color: theme.colorScheme.primary,
+                            onPressed: _showColorMarkDialog,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
                         ),
                         Expanded(
                           child: GestureDetector(
@@ -1725,16 +1703,33 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                             child: Padding(
                               padding:
                                   const EdgeInsets.symmetric(horizontal: 8.0),
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  _formatDateTitle(selectedDate),
-                                  textAlign: TextAlign.center,
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 0.5,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      _formatDateTitle(selectedDate),
+                                      textAlign: TextAlign.center,
+                                      style: theme.textTheme.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                  if (currentColorMark != null) ...[
+                                    const SizedBox(height: 4),
+                                    Container(
+                                      width: 24,
+                                      height: 3,
+                                      decoration: BoxDecoration(
+                                        color: _hexToColor(currentColorMark.color),
+                                        borderRadius: BorderRadius.circular(1.5),
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
                             ),
                           ),

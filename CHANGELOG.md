@@ -8,6 +8,33 @@
 
 ## 2026-06-28
 
+- **[22:56]**
+  - **Changed**: 移除了顶部工具栏调色盘按钮右上角用于表示日期颜色标记的小圆点 (`lib/pages/diary_page.dart`)。
+  - **Added**: 在顶部日期文本下方添加了一条短的对应标记颜色的下划线，用于更美观直观地呈现当前标记颜色 (`lib/pages/diary_page.dart`)。
+
+- **[22:54]**
+  - **Fixed**: 修复了日记时间线卡片由于排版舍入误差导致的 1px 底部溢出（`BOTTOM OVERFLOWED BY 1.00 PIXELS`）问题 (`lib/widgets/diary/diary_item.dart`)。
+    - **Changed**: 在 `DiaryItem` 中，当 `richContent == null` 时不再渲染空的 `SizedBox(height: 12)`，以消除不必要的卡片底部空白和额外的高度占用。
+    - **Changed**: 在 `DiaryItem` 卡片内的 `Column` 外层包裹 `SingleChildScrollView` 并设置 `NeverScrollableScrollPhysics`，提供高度容差，彻底解决由 `IntrinsicHeight` 引起的溢出错误。
+
+- **[23:05]**
+  - **Added**: 新增个人背景自定义信息字段分类输入功能 (`lib/models/user_profile.dart`, `lib/core/storage/database_helper.dart`, `lib/pages/settings/user_profile_page.dart`)。
+    - **Database**: 升级数据库至版本 19，在 `user_profiles` 表新增 `custom_fields` TEXT 列。
+    - **Model**: `UserProfile` 类新增 `customFields` Map，支持多字段数据的序列化和反序列化。
+    - **UI**: 个人信息设置页新增“添加自定义信息字段”按钮。支持用户任意添加、删除、重命名自定义信息字段，每个自定义字段拥有独立的输入框。
+    - **AI**: 自动将用户填写的自定义分类信息格式化并合并到 AI 分析与提取对话的提示词背景中 (`lib/providers/ai_provider.dart`, `lib/providers/daily_score_provider.dart`)。
+
+- **[22:50]**
+  - **Fixed**: 修复了年龄输入框在未输入时 hintText 与 suffixText 挤在一起显示为“年龄岁”的问题 (`lib/pages/settings/user_profile_page.dart`)。
+    - 去除了年龄输入框的 `hintText` 属性。
+
+- **[22:47]**
+  - **Changed**: 优化个人信息界面排版布局，提高单行信息密度与界面美观度 (`lib/pages/settings/user_profile_page.dart`)。
+    - 头像、姓名输入框、性别选择器改为在一行中紧凑并排展示，去除姓名输入框的左侧图标并缩矮性别选择器。
+    - 将身高和最新体重输入框从健康卡片移入第一张个人资料卡片，作为第三行并排展示。
+    - 简化第二张体重记录卡片，移除身高与最新体重，使其功能更聚焦。
+    - 统一所有卡片的 padding 值为 20。
+
 - **[22:34]**
   - **Added**: 在 AI 统一提取结果处理中增加重复标签自动合并 (`lib/widgets/diary/ai_extract_helper.dart`)。
     - **Changed**: 新增 `_mergeDuplicateTagEntries` 辅助函数，当多个提取结果的 shortcut id 与 fields 完全一致时只保留一个，避免同一标签类型重复显示。

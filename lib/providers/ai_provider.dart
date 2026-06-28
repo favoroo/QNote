@@ -397,7 +397,8 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
             userProfile.height != null ||
             userProfile.weightHistory.isNotEmpty ||
             (userProfile.otherInfo != null &&
-                userProfile.otherInfo!.isNotEmpty))) {
+                userProfile.otherInfo!.isNotEmpty) ||
+            userProfile.customFields.values.any((v) => v.isNotEmpty))) {
       buffer.writeln('### 个人背景信息\n');
       if (userProfile.nickname != null && userProfile.nickname!.isNotEmpty) {
         buffer.writeln('- **昵称**: ${userProfile.nickname}');
@@ -427,6 +428,11 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       if (userProfile.otherInfo != null && userProfile.otherInfo!.isNotEmpty) {
         buffer.writeln('- **其他信息**: ${userProfile.otherInfo}');
       }
+      userProfile.customFields.forEach((key, value) {
+        if (value.isNotEmpty) {
+          buffer.writeln('- **$key**: $value');
+        }
+      });
       buffer.writeln();
     }
 
@@ -493,6 +499,7 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
           'height': userProfile.height,
           'gender': userProfile.gender,
           'otherInfo': userProfile.otherInfo,
+          'customFields': userProfile.customFields,
         };
 
         if (userProfile.birthday != null && userProfile.birthday!.isNotEmpty) {

@@ -200,6 +200,9 @@ class ExportService {
     final dailyScoreMaps = await db.query('daily_scores');
     data['daily_scores'] = dailyScoreMaps;
 
+    final fixedEventMaps = await db.query('fixed_event_templates');
+    data['fixed_event_templates'] = fixedEventMaps;
+
     data['export_version'] = 2;
     data['export_time'] = DateTime.now().toIso8601String();
     return data;
@@ -348,6 +351,12 @@ class ExportService {
       await _importDailyScores(dailyScores, overwrite);
     }
 
+    if (importData.containsKey('fixed_event_templates')) {
+      final templates = (importData['fixed_event_templates'] as List)
+          .map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      await _importFixedEventTemplates(templates, overwrite);
+    }
+
     final duration = DateTime.now().difference(startTime).inMilliseconds;
     final summary = StringBuffer('耗时=${duration}ms');
     if (importData.containsKey('diary_records')) summary.write(', 日记=${(importData['diary_records'] as List).length}');
@@ -374,6 +383,7 @@ class ExportService {
       'ai_temperatures',
       'body_states',
       'daily_scores',
+      'fixed_event_templates',
       'export_version',
       'export_time',
       'snapshot_version',
@@ -409,6 +419,7 @@ class ExportService {
     await db.delete('date_color_marks');
     await db.delete('body_states');
     await db.delete('daily_scores');
+    await db.delete('fixed_event_templates');
     // await db.delete('app_configs');
   }
 
@@ -639,6 +650,30 @@ class ExportService {
       try {
         await db.insert(
           'daily_scores',
+          map,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _importFixedEventTemplates(
+    List<Map<String, dynamic>> templates,
+    bool merge,
+  ) async {
+    final db = await DatabaseHelper.instance.database;
+    for (final map in templates) {
+      if (merge) {
+        final existing = await db.query(
+          'fixed_event_templates',
+          where: 'id = ?',
+          whereArgs: [map['id']],
+        );
+        if (existing.isNotEmpty) continue;
+      }
+      try {
+        await db.insert(
+          'fixed_event_templates',
           map,
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
@@ -1149,6 +1184,27 @@ class ExportService {
       for (final id in deletes) {
         try {
           await db.delete('daily_scores', where: 'id = ?', whereArgs: [id]);
+        } catch (_) {}
+      }
+    }
+
+    if (changes.containsKey('fixed_event_templates')) {
+      final tableChanges = Map<String, dynamic>.from(changes['fixed_event_templates'] as Map);
+      final upserts = (tableChanges['upserts'] as List?) ?? [];
+      final deletes = (tableChanges['deletes'] as List?) ?? [];
+      final db = await DatabaseHelper.instance.database;
+      for (final item in upserts) {
+        try {
+          await db.insert(
+            'fixed_event_templates',
+            Map<String, dynamic>.from(item as Map),
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        } catch (_) {}
+      }
+      for (final id in deletes) {
+        try {
+          await db.delete('fixed_event_templates', where: 'id = ?', whereArgs: [id]);
         } catch (_) {}
       }
     }
