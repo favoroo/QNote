@@ -9,6 +9,12 @@
 ## 2026-06-28
 
 - **[——]**
+  - **Changed**: 优化固定事件管理页列表卡片布局：将多段时间从标题行移到副标题行，避免被右侧开关挤压截断；副标题中仅当备注与名称不同时才显示备注，减少重复信息 (`lib/pages/settings/fixed_events_page.dart`)。
+
+- **[——]**
+  - **Changed**: 移除日记输入栏固定事件按钮行左侧的重复图标，使界面更简洁 (`lib/widgets/diary/diary_input_bar.dart`)。
+
+- **[——]**
   - **Added**: 活动标签新增「情绪」类型选项，支持记录心情类事件（如"今天被领导骂了，不开心"）；优化智能提取提示词，使 AI 能识别并提取情绪类表达到活动标签 (`lib/config/defaults.dart`)。
   - **Changed**: 数据库版本升级至 18，自动为已有用户的活动标签追加「情绪」选项 (`lib/core/storage/database_helper.dart`)。
 

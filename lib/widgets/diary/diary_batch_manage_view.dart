@@ -884,41 +884,47 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                         ),
                         _buildTagAndFieldsRow(theme, record, colorScheme),
                         const SizedBox(height: 6),
-                        Text(
-                          record.content.isNotEmpty ? record.content : '无备注内容',
-                          maxLines: 8,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: record.content.isNotEmpty
-                                ? colorScheme.onSurface
-                                : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 6),
+                          child: Text(
+                            record.content.isNotEmpty ? record.content : '无备注内容',
+                            maxLines: 8,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: record.content.isNotEmpty
+                                  ? colorScheme.onSurface
+                                  : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                            ),
                           ),
                         ),
                         if (record.photos.isNotEmpty) ...[
                           const SizedBox(height: 8),
-                          GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () {}, // Prevent card tap selection
-                            child: Row(
-                              children: record.photos.asMap().entries.map((entry) {
-                                final idx = entry.key;
-                                final photo = entry.value;
-                                return GestureDetector(
-                                  onTap: () => _openGallery(record, idx),
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(right: 8),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: UnifiedImage(
-                                        imagePath: photo,
-                                        width: 48,
-                                        height: 48,
-                                        fit: BoxFit.cover,
+                          Padding(
+                            padding: const EdgeInsets.only(left: 6),
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () {}, // Prevent card tap selection
+                              child: Row(
+                                children: record.photos.asMap().entries.map((entry) {
+                                  final idx = entry.key;
+                                  final photo = entry.value;
+                                  return GestureDetector(
+                                    onTap: () => _openGallery(record, idx),
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(right: 8),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: UnifiedImage(
+                                          imagePath: photo,
+                                          width: 48,
+                                          height: 48,
+                                          fit: BoxFit.cover,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                );
-                              }).toList(),
+                                  );
+                                }).toList(),
+                              ),
                             ),
                           ),
                         ],
