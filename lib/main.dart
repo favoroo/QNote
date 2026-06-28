@@ -2,17 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/date_symbol_data_local.dart';
 
 import 'app.dart';
-import 'database_init.dart' if (dart.library.io) 'database_init_io.dart';
-import 'package:qnote_flutter/core/ai/ai_role_service.dart';
-import 'package:qnote_flutter/core/logger/logger_service.dart';
-import 'package:qnote_flutter/core/network/sync_scheduler.dart';
-import 'package:qnote_flutter/core/notification/notification_service.dart';
-import 'package:qnote_flutter/core/storage/config_repository.dart';
-import 'package:qnote_flutter/core/storage/database_helper.dart';
 
+/// P2-35: 启动优化——先 runApp 渲染首帧（splash），初始化在 QNoteApp 内部后台并行完成。
+///
+/// 原实现串行 await 8 个初始化步骤（Logger/日期/数据库工厂/数据库/4 个配置/WebDAV/通知），
+/// 用户看到黑屏直到全部完成。现改为 runApp 立即显示 splash，初始化完成后切换到主应用。
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
@@ -20,21 +16,5 @@ void main() async {
     statusBarIconBrightness: Brightness.dark,
     statusBarBrightness: Brightness.light,
   ));
-  await LoggerService.instance.init();
-  await initializeDateFormatting('zh_CN');
-  await initDatabaseFactory();
-  await DatabaseHelper.instance.database;
-  final configRepo = ConfigRepository.instance;
-  await Future.wait([
-    configRepo.ensureDefaultShortcuts(),
-    configRepo.ensureDefaultAiConfigs(),
-    AiRoleService.instance.initAndEnsureDefaults(),
-    NotificationService.instance.init(),
-  ]);
-  final webdavConfig = await configRepo.getWebdavConfig();
-  if (webdavConfig != null && webdavConfig.autoSync) {
-    SyncScheduler.instance.syncIfNeeded();
-  }
-  NotificationService.instance.startReminderCheck();
   runApp(const ProviderScope(child: QNoteApp()));
 }

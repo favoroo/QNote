@@ -8,6 +8,14 @@
 
 ## 2026-06-28
 
+- **[22:00]**
+  - **Added**: 完成 P2 长期/架构优化（实施 3 项 + 1 项审查通过 + 7 项评估跳过），主要变化如下：
+    1. **P2-35**: `lib/main.dart` 精简为仅 `WidgetsFlutterBinding` + `SystemChrome` + `runApp`；`lib/app.dart` 新增 `_initialized` 状态字段 + `_initializeApp()` 方法（三批并行初始化：LoggerService/initializeDateFormatting/initDatabaseFactory → database → configRepo + AiRoleService + NotificationService），未完成时显示 `_SplashScreen`，完成后切换到主应用；observer 与导航监听延迟到初始化完成后注册，避免初始化期间 watch 依赖数据库的 Provider 触发不必要重建。
+    2. **P2-37**: `lib/core/router/app_router.dart` 3 处内联 `transitionsBuilder`（diary editor / batch / notes editor 路由）改为复用已有的 `_fadeTransitionPage` helper，消除重复过渡代码。
+    3. **P2-30**: `lib/providers/theme_provider.dart` `ThemeModeNotifier` 与 `AccentColorNotifier` 从 `StateNotifier<ThemeMode/Color>` 改为 `Notifier<ThemeMode/Color>`，对应 Provider 从 `StateNotifierProvider` 改为 `NotifierProvider`，符合 Riverpod 新推荐写法；同步状态 API，调用方 `ref.watch` / `ref.read(notifier).setXxx` 用法完全兼容，无需修改 `app.dart` / `personalization_page.dart`。
+    4. **P2-38**: 审查 `lib/pages/ai_page.dart` 的 `_TypingDots` / `_BlinkingCursor` 动画停止逻辑：`showTyping = _isTyping && !hasStreaming` 控制父级卸载、`finally` 块确保 `aiStreamingMessageProvider` 置 null、dispose 正确释放 controller，无 ticker 泄漏，无需修改。
+  - **Changed**: P2 评估后跳过 7 项：P2-36（Hero 动画，PageView 同名 tag 冲突风险高）、P2-39（并发 undo controller，已有 dispose 兜底 + vsync 共享 mixin 开销小）、P2-29（列表分页，破坏性大且 diary_page 是自定义 ScrollController 视图非 ListView）、P2-32（SQL 聚合，P0-2 已 isolate 化主线程不卡）、P2-31（FTS5，P1-21 已评估）、P2-33（流式导入导出，P1-13 已 isolate 化）、P2-34（WebDAV 增量，P1-22 已评估）；P2-40（双 DI 入口）已于 P1-23 完成。所有跳过项原因详见对应 todo 摘要。
+
 - **[21:30]**
   - **Added**: 完成 P1 中等影响性能优化（实施 11 项 + 评估跳过 7 项），主要变化如下：
     1. **P1-10**: `lib/core/logger/logger_service.dart` `_entriesController.add` 改传引用而非 `List.from` 复制（已确认 entriesStream 无订阅方），3 处通知点消除无效复制。
