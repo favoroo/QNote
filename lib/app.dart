@@ -4,10 +4,19 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
+import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/network/sync_scheduler.dart';
+import 'package:qnote_flutter/core/notification/notification_service.dart';
 import 'package:qnote_flutter/core/router/app_router.dart';
+import 'package:qnote_flutter/core/storage/config_repository.dart';
+import 'package:qnote_flutter/core/storage/database_helper.dart';
 import 'package:qnote_flutter/core/storage/sync_log_repository.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
+import 'package:qnote_flutter/database_init.dart'
+    if (dart.library.io) 'package:qnote_flutter/database_init_io.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/theme_provider.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
@@ -25,11 +34,64 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
   /// 最近一次进入后台的时刻，用于在 resume 时判断是否真有数据变更
   DateTime? _lastPausedTime;
 
+  /// P2-35: 初始化完成标志。false 时显示 splash，true 时显示主应用。
+  bool _initialized = false;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _initNavigationListener();
+    // P2-35: observer 与导航监听延迟到初始化完成后注册，避免初始化期间
+    // lifecycle 回调或原生导航请求访问未就绪的数据库。
+    _initializeApp();
+  }
+
+  /// P2-35: 后台并行初始化。
+  ///
+  /// 第一批并行：Logger / 日期格式化 / 数据库工厂（三者无依赖）。
+  /// 第二批：打开数据库（依赖工厂）。
+  /// 第三批并行：4 个默认配置初始化（依赖数据库）。
+  /// 最后：WebDAV 同步检查 + 通知服务启动。
+  Future<void> _initializeApp() async {
+    try {
+      // 第一批：无依赖的初始化并行执行
+      await Future.wait([
+        LoggerService.instance.init(),
+        initializeDateFormatting('zh_CN'),
+        initDatabaseFactory(),
+      ]);
+
+      // 第二批：打开数据库（依赖工厂）
+      await DatabaseHelper.instance.database;
+
+      // 第三批：依赖数据库的默认配置初始化并行执行
+      final configRepo = ConfigRepository.instance;
+      await Future.wait([
+        configRepo.ensureDefaultShortcuts(),
+        configRepo.ensureDefaultAiConfigs(),
+        AiRoleService.instance.initAndEnsureDefaults(),
+        NotificationService.instance.init(),
+      ]);
+
+      // 最后：WebDAV 自动同步检查 + 通知提醒启动
+      final webdavConfig = await configRepo.getWebdavConfig();
+      if (webdavConfig != null && webdavConfig.autoSync) {
+        SyncScheduler.instance.syncIfNeeded();
+      }
+      NotificationService.instance.startReminderCheck();
+    } catch (e, stackTrace) {
+      LoggerService.instance.error(
+        '应用初始化失败: $e',
+        category: LogCategory.system,
+        details: stackTrace.toString(),
+      );
+    } finally {
+      if (mounted) {
+        // 初始化完成后注册生命周期观察者和导航监听
+        WidgetsBinding.instance.addObserver(this);
+        _initNavigationListener();
+        setState(() => _initialized = true);
+      }
+    }
   }
 
   @override
@@ -130,6 +192,16 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
 
   @override
   Widget build(BuildContext context) {
+    // P2-35: 初始化未完成时显示 splash，不 watch 任何依赖数据库的 Provider
+    if (!_initialized) {
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.lightTheme(AppTheme.primaryDefault),
+        darkTheme: AppTheme.darkTheme(AppTheme.primaryDefault),
+        home: const _SplashScreen(),
+      );
+    }
+
     final themeMode = ref.watch(themeModeProvider);
     final accentColor = ref.watch(accentColorProvider);
     final router = ref.watch(routerProvider);
@@ -183,6 +255,42 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
           ),
         );
       },
+    );
+  }
+}
+
+/// P2-35: 启动 splash 页，在后台初始化完成前显示。
+///
+/// 用 AppTheme.primaryDefault 与主应用保持视觉一致，避免主题切换跳变。
+class _SplashScreen extends StatelessWidget {
+  const _SplashScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      backgroundColor: theme.colorScheme.surface,
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.auto_stories_rounded,
+              size: 64,
+              color: theme.colorScheme.primary,
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                valueColor: AlwaysStoppedAnimation(theme.colorScheme.primary),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

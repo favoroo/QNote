@@ -2,13 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-final themeModeProvider = StateNotifierProvider<ThemeModeNotifier, ThemeMode>((ref) {
-  return ThemeModeNotifier();
-});
+// P2-30: 从 StateNotifierProvider 迁移到 NotifierProvider，符合 Riverpod 新推荐写法。
+// NotifierProvider 是同步状态，调用方 ref.watch / ref.read(notifier).setXxx 用法完全兼容。
+final themeModeProvider =
+    NotifierProvider<ThemeModeNotifier, ThemeMode>(ThemeModeNotifier.new);
 
-class ThemeModeNotifier extends StateNotifier<ThemeMode> {
-  ThemeModeNotifier() : super(ThemeMode.system) {
+class ThemeModeNotifier extends Notifier<ThemeMode> {
+  @override
+  ThemeMode build() {
+    // 构造时异步加载持久化的偏好，加载完成前先用默认值，避免阻塞首帧
     _load();
+    return ThemeMode.system;
   }
 
   Future<void> _load() async {
@@ -29,13 +33,14 @@ class ThemeModeNotifier extends StateNotifier<ThemeMode> {
   }
 }
 
-final accentColorProvider = StateNotifierProvider<AccentColorNotifier, Color>((ref) {
-  return AccentColorNotifier();
-});
+final accentColorProvider =
+    NotifierProvider<AccentColorNotifier, Color>(AccentColorNotifier.new);
 
-class AccentColorNotifier extends StateNotifier<Color> {
-  AccentColorNotifier() : super(const Color(0xFF005BCB)) {
+class AccentColorNotifier extends Notifier<Color> {
+  @override
+  Color build() {
     _load();
+    return const Color(0xFF005BCB);
   }
 
   Future<void> _load() async {

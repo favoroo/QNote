@@ -44,15 +44,9 @@ final routerProvider = Provider<GoRouter>((ref) {
                     parentNavigatorKey: _rootNavigatorKey,
                     pageBuilder: (context, state) {
                       final record = state.extra as DiaryRecord?;
-                      return CustomTransitionPage(
-                        child: record != null ? DiaryEditorView(record: record) : const DiaryPage(),
-                        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                          return FadeTransition(
-                            opacity: CurveTween(curve: Curves.easeInOut).animate(animation),
-                            child: child,
-                          );
-                        },
-                        transitionDuration: const Duration(milliseconds: 250),
+                      // P2-37: 复用 _fadeTransitionPage helper，避免重复 transitionsBuilder
+                      return _fadeTransitionPage(
+                        record != null ? DiaryEditorView(record: record) : const DiaryPage(),
                       );
                     },
                   ),
@@ -63,18 +57,11 @@ final routerProvider = Provider<GoRouter>((ref) {
                       final extra = state.extra as Map<String, dynamic>?;
                       final initialTags = extra?['initialTags'] as List<String>?;
                       final initialDateRange = extra?['initialDateRange'] as DateTimeRange?;
-                      return CustomTransitionPage(
-                        child: DiaryBatchManageView(
+                      return _fadeTransitionPage(
+                        DiaryBatchManageView(
                           initialTags: initialTags,
                           initialDateRange: initialDateRange,
                         ),
-                        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                          return FadeTransition(
-                            opacity: CurveTween(curve: Curves.easeInOut).animate(animation),
-                            child: child,
-                          );
-                        },
-                        transitionDuration: const Duration(milliseconds: 250),
                       );
                     },
                   ),
@@ -93,15 +80,9 @@ final routerProvider = Provider<GoRouter>((ref) {
                     parentNavigatorKey: _rootNavigatorKey,
                     pageBuilder: (context, state) {
                       final note = state.extra as Note?;
-                      return CustomTransitionPage(
-                        child: note != null ? NoteEditorView(note: note) : const NotesPage(),
-                        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                          return FadeTransition(
-                            opacity: CurveTween(curve: Curves.easeInOut).animate(animation),
-                            child: child,
-                          );
-                        },
-                        transitionDuration: const Duration(milliseconds: 250),
+                      // P2-37: 复用 _fadeTransitionPage helper
+                      return _fadeTransitionPage(
+                        note != null ? NoteEditorView(note: note) : const NotesPage(),
                       );
                     },
                   ),
