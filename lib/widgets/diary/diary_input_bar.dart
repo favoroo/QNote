@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'package:qnote_flutter/core/utils/schema_formatter.dart';
 import 'package:qnote_flutter/widgets/diary/ai_extract_helper.dart';
+import 'package:qnote_flutter/widgets/diary/model_selection_dialog.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/shortcut_field.dart';
@@ -695,31 +696,19 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       clearEndTime: last.isTimePoint,
       inputText: mergedText.isEmpty ? _textController.text : mergedText,
       tagEntries: tagEntries,
+      clearStartOffset: true,
+      clearEndOffset: true,
     );
 
-    // 更新时间选择 Provider
+    // 更新时间选择 Provider（使用 _calculateStartDateTime 确保与 _updateActiveDraft 一致）
     final selectedDate = ref.read(selectedDateProvider);
-    final startDateTime = DateTime(
-      selectedDate.year,
-      selectedDate.month,
-      selectedDate.day,
-      startTime.hour,
-      startTime.minute,
-    );
-    final endDateTime = endTime == null
-        ? null
-        : DateTime(
-            selectedDate.year,
-            selectedDate.month,
-            selectedDate.day,
-            endTime.hour,
-            endTime.minute,
-          );
+    final targetDate = _calculateStartDateTime(_draft, selectedDate);
+    final targetEndDate = _calculateEndDateTime(_draft, selectedDate);
     ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
       startTime,
       endTime: endTime,
-      date: startDateTime,
-      endDate: endDateTime,
+      date: targetDate,
+      endDate: targetEndDate,
     );
   }
 
@@ -1503,7 +1492,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     final selectedId = await showDialog<String>(
       context: context,
       builder: (context) =>
-          _ModelSelectionDialog(configs: configs, selectedId: currentModelId),
+          ModelSelectionDialog(configs: configs, selectedId: currentModelId),
     );
 
     if (selectedId != null && mounted) {
@@ -3843,232 +3832,6 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
 }
 
 enum _ExtractPhase { idle, sending, waiting, error }
-
-class _ModelSelectionDialog extends StatelessWidget {
-  final List<AiConfig> configs;
-  final String? selectedId;
-
-  const _ModelSelectionDialog({required this.configs, this.selectedId});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isFreeSelected = selectedId == '__free_model__';
-
-    return Dialog(
-      backgroundColor: colorScheme.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Text(
-                '选择模型',
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: colorScheme.onSurface,
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Flexible(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    _ModelFreeItem(
-                      isSelected: isFreeSelected,
-                      onTap: () => Navigator.pop(context, '__free_model__'),
-                    ),
-                    ...configs.map<Widget>((config) {
-                      final isSelected = config.id == selectedId;
-                      return _ModelItem(
-                        config: config,
-                        isSelected: isSelected,
-                        onTap: () => Navigator.pop(context, config.id),
-                      );
-                    }).toList(),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ModelFreeItem extends StatelessWidget {
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _ModelFreeItem({
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Material(
-      color: isSelected
-          ? colorScheme.primary.withValues(alpha: 0.05)
-          : Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          child: Row(
-            children: [
-              Container(
-                width: 22,
-                height: 22,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: isSelected
-                        ? colorScheme.primary
-                        : colorScheme.outlineVariant,
-                    width: 2,
-                  ),
-                ),
-                child: isSelected
-                    ? Center(
-                        child: Container(
-                          width: 12,
-                          height: 12,
-                          decoration: BoxDecoration(
-                            color: colorScheme.primary,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      )
-                    : null,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '免费模型',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: isSelected
-                            ? FontWeight.bold
-                            : FontWeight.normal,
-                        color: isSelected
-                            ? colorScheme.primary
-                            : colorScheme.onSurface,
-                      ),
-                    ),
-                    Text(
-                      '自动切换并重试',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ModelItem extends StatelessWidget {
-  final AiConfig config;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _ModelItem({
-    required this.config,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Material(
-      color: isSelected
-          ? colorScheme.primary.withValues(alpha: 0.05)
-          : Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          child: Row(
-            children: [
-              Container(
-                width: 22,
-                height: 22,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: isSelected
-                        ? colorScheme.primary
-                        : colorScheme.outlineVariant,
-                    width: 2,
-                  ),
-                ),
-                child: isSelected
-                    ? Center(
-                        child: Container(
-                          width: 12,
-                          height: 12,
-                          decoration: BoxDecoration(
-                            color: colorScheme.primary,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      )
-                    : null,
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      config.name,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: isSelected
-                            ? colorScheme.primary
-                            : colorScheme.onSurface,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${config.provider} / ${config.modelName}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant.withValues(
-                          alpha: 0.6,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class _UndoCountdownPainter extends CustomPainter {
   final double progress;

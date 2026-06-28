@@ -9,6 +9,13 @@
 ## 2026-06-27
 
 - **[——]**
+  - **Fixed**: 修复日记页面批量智能提取按钮长按选择模型后黑屏的问题 (`lib/pages/diary_page.dart`)：`showDialog<AiConfig>` 改为 `showDialog<String>`，与 `_TimelineModelDialog` 实际返回类型一致；补上免费模型选中状态判断和保存逻辑。
+  - **Changed**: 统一三处重复的模型选择弹窗为共享组件 `ModelSelectionDialog` (`lib/widgets/diary/model_selection_dialog.dart`)，删除 `diary_page.dart`、`diary_input_bar.dart`、`diary_editor_view.dart` 中各自的私有弹窗实现，UI 样式统一为圆形单选框风格。
+
+- **[——]**
+  - **Fixed**: 修复选择固定事件后时间线圆点不高亮的问题 (`lib/widgets/diary/diary_input_bar.dart`)：选择固定事件时清除草稿的跨天 offset，并使用统一的日期计算方式设置 `diaryInputTimeProvider`，避免 `addPostFrameCallback` 用错误日期覆盖。
+
+- **[——]**
   - **Fixed**: 修复桌面小组件偶尔点击无反应的问题 (`android/.../MainActivity.kt`, `lib/app.dart`, `android/.../TodoWidgetProvider.kt`)：
     1. `handleIntent` 始终走 `pendingRoute` 路径，避免 `invokeMethod` 与 Flutter 引擎恢复/Provider 刷新竞态。
     2. `didChangeAppLifecycleState(resumed)` 中增加 `getPendingRoute` 拉取，确保导航在 Provider 刷新之后执行。
