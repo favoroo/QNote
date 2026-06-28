@@ -8,6 +8,10 @@
 
 ## 2026-06-28
 
+- **[——]**
+  - **Added**: 活动标签新增「情绪」类型选项，支持记录心情类事件（如"今天被领导骂了，不开心"）；优化智能提取提示词，使 AI 能识别并提取情绪类表达到活动标签 (`lib/config/defaults.dart`)。
+  - **Changed**: 数据库版本升级至 18，自动为已有用户的活动标签追加「情绪」选项 (`lib/core/storage/database_helper.dart`)。
+
 - **[11:30]**
   - **Changed**: 从 Git 暂存区中取消跟踪大文件 `应用分享.zip` (26MB) 和 Python 编译字节码文件夹 `__pycache__`，同时更新 `.gitignore` 规则，防止此类临时文件和打包产物再次被误提交 (`.gitignore`)。
 

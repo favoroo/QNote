@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
@@ -25,7 +27,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 17,
+      version: 18,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onOpen: (db) async {
@@ -480,6 +482,40 @@ class DatabaseHelper {
       // 为 fixed_event_templates 表添加 time_periods 列
       try {
         await db.execute('ALTER TABLE fixed_event_templates ADD COLUMN time_periods TEXT DEFAULT "[]"');
+      } catch (_) {}
+    }
+
+    if (oldVersion < 18) {
+      // 为活动标签的 type 选项追加"情绪"
+      try {
+        final rows = await db.query(
+          'shortcut_configs',
+          where: 'id = ?',
+          whereArgs: ['activity'],
+        );
+        if (rows.isNotEmpty) {
+          final fieldsJson = rows.first['fields'] as String?;
+          if (fieldsJson != null) {
+            final fieldsList = jsonDecode(fieldsJson) as List;
+            for (var i = 0; i < fieldsList.length; i++) {
+              final field = fieldsList[i] as Map<String, dynamic>;
+              if (field['id'] == 'type') {
+                final options = List<String>.from(field['options'] as List? ?? []);
+                if (!options.contains('情绪')) {
+                  options.add('情绪');
+                  field['options'] = options;
+                }
+                break;
+              }
+            }
+            await db.update(
+              'shortcut_configs',
+              {'fields': jsonEncode(fieldsList)},
+              where: 'id = ?',
+              whereArgs: ['activity'],
+            );
+          }
+        }
       } catch (_) {}
     }
   }
