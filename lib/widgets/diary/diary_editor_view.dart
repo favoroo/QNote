@@ -22,6 +22,7 @@ import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/widgets/diary/ai_extract_helper.dart';
+import 'package:qnote_flutter/widgets/diary/model_selection_dialog.dart';
 import 'package:qnote_flutter/widgets/diary/edit_tag_time_sheet.dart';
 import 'package:qnote_flutter/widgets/time_picker.dart';
 import 'package:qnote_flutter/widgets/time_scroll_picker.dart';
@@ -1041,7 +1042,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     final selectedId = await showDialog<String>(
       context: context,
       builder: (context) =>
-          _ExtractModelDialog(configs: configs, selectedId: currentModelId),
+          ModelSelectionDialog(configs: configs, selectedId: currentModelId),
     );
 
     if (selectedId != null && mounted) {
@@ -2400,182 +2401,5 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
 }
 
 
-class _ExtractModelDialog extends StatelessWidget {
-  final List<AiConfig> configs;
-  final String? selectedId;
 
-  const _ExtractModelDialog({required this.configs, this.selectedId});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isFreeSelected = selectedId == '__free_model__';
-    return Dialog(
-      backgroundColor: theme.colorScheme.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Text(
-                '选择模型',
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Flexible(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    _ExtractFreeModelItem(
-                      isSelected: isFreeSelected,
-                      onTap: () => Navigator.pop(context, '__free_model__'),
-                    ),
-                    ...configs.map(
-                      (config) => _ExtractModelItem(
-                        config: config,
-                        isSelected: config.id == selectedId,
-                        onTap: () => Navigator.pop(context, config.id),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ExtractFreeModelItem extends StatelessWidget {
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _ExtractFreeModelItem({
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        child: Row(
-          children: [
-            Icon(
-              Icons.card_giftcard,
-              size: 20,
-              color: isSelected
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '免费模型',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: isSelected
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                    ),
-                  ),
-                  Text(
-                    '自动切换并重试',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (isSelected)
-              Icon(
-                Icons.check_circle,
-                size: 20,
-                color: theme.colorScheme.primary,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ExtractModelItem extends StatelessWidget {
-  final AiConfig config;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _ExtractModelItem({
-    required this.config,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        child: Row(
-          children: [
-            Icon(
-              Icons.smart_toy,
-              size: 20,
-              color: isSelected
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    config.name,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: isSelected
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                    ),
-                  ),
-                  Text(
-                    config.modelName,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (isSelected)
-              Icon(
-                Icons.check_circle,
-                size: 20,
-                color: theme.colorScheme.primary,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
