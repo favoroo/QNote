@@ -92,10 +92,13 @@ class ExportService {
     return buffer.toString();
   }
 
-  Future<String> exportAllToJson({bool includeImages = true}) async {
-    final startTime = DateTime.now();
-    LoggerService.instance.logExport('开始导出所有数据为JSON...');
-
+  /// 导出所有数据为 Map（不序列化为字符串）。
+  ///
+  /// P1-13: 抽出此方法以便 WebDAV 等下游消费方直接拿到 Map 而非 String，
+  /// 避免「encode→decode→再 encode」的三重序列化反模式。
+  Future<Map<String, dynamic>> exportAllToMap({
+    bool includeImages = true,
+  }) async {
     final db = await DatabaseHelper.instance.database;
     final data = <String, dynamic>{};
 
@@ -199,6 +202,14 @@ class ExportService {
 
     data['export_version'] = 2;
     data['export_time'] = DateTime.now().toIso8601String();
+    return data;
+  }
+
+  Future<String> exportAllToJson({bool includeImages = true}) async {
+    final startTime = DateTime.now();
+    LoggerService.instance.logExport('开始导出所有数据为JSON...');
+
+    final data = await exportAllToMap(includeImages: includeImages);
 
     final jsonStr = const JsonEncoder.withIndent('  ').convert(data);
     final duration = DateTime.now().difference(startTime).inMilliseconds;

@@ -8,6 +8,27 @@
 
 ## 2026-06-28
 
+- **[21:30]**
+  - **Added**: 完成 P1 中等影响性能优化（实施 11 项 + 评估跳过 7 项），主要变化如下：
+    1. **P1-10**: `lib/core/logger/logger_service.dart` `_entriesController.add` 改传引用而非 `List.from` 复制（已确认 entriesStream 无订阅方），3 处通知点消除无效复制。
+    2. **P1-11**: `lib/core/ai/ai_service.dart` `_sanitizeRequestBodyForLogging` 入口加 `if (!kDebugMode) return`，release 模式跳过深拷贝（含 base64 图片时尤其耗时）。
+    3. **P1-12**: `lib/core/storage/database_helper.dart` `_checkAndAddMissingColumns` 加 SharedPreferences 版本化标记 `schema_checked_v{version}`，版本未升级时跳过 PRAGMA 全表扫描。
+    4. **P1-13**: `lib/core/export/export_service.dart` 抽出 `exportAllToMap()` 返回 Map 而非 String；`lib/core/network/webdav_service.dart` 新增顶层函数 `_encodeJsonToBytes` + `_uploadJsonData` 增加 `useIsolate` 参数返回字节数；`uploadSnapshot` 走 `compute()` 在 isolate 中完成大 JSON 编码；`_performFullUpload` 消除「encode→decode→再 encode」三重序列化反模式；`_performDeltaUpload` 移除冗余 encode。
+    5. **P1-15**: `lib/pages/todo_page.dart` `_HistoryDrawer` 改 `ListView.builder` + 混合 Object 列表（header + Todo + spacer），避免一次性构建所有历史项。
+    6. **P1-16**: `lib/pages/todo_page.dart` build 顶部一次遍历分桶 `todayActiveTodos` / `longtermActiveTodos`，避免 `_buildTodoList` 中两次 `where + toList`。
+    7. **P1-17**: `lib/widgets/unified_image.dart` 移除 `headers: Cache-Control: no-cache`，允许 Web 图片走浏览器缓存。
+    8. **P1-18**: `lib/providers/daily_score_provider.dart` `refresh()` 用 `AsyncLoading<T>().copyWithPrevious(state)` 保留旧值，避免 loading 闪烁。
+    9. **P1-19**: `lib/pages/diary_page.dart` 把 `selectedDate` 和 `colorMarks` 的 `ref.watch` 从 build 顶部移到 `Consumer` 子组件内，避免日期/颜色标记变化时整个 DiaryPage（含 ListView.builder）重建。
+    10. **P1-23**: `lib/providers/daily_score_provider.dart` 用 `ref.read(diaryRepositoryProvider)` 注入而非直接 `new DiaryRepository()`。
+    11. **P1-25**: `lib/widgets/diary/diary_batch_manage_view.dart` 每个 record item 包 `RepaintBoundary`，隔离批量选择时的同屏重绘。
+  - **Changed**: P1 评估后跳过 7 项（P1-14 导入导出 batch、P1-20 AI 流式 select、P1-21 FTS5、P1-22 syncImages 增量、P1-24 shortcut 双轨统一、P1-27 note_editor 空 setState、P1-28 DiaryItem 隔离），原因详见各 todo 摘要：当前无 bug / 收益与复杂度比偏低 / 破坏性较大需先验证平台能力。
+
+- **[20:45]**
+  - **Fixed**: 修复桌面小组件点击无反应：App 前台时 `handleIntent` 改为主动 `invokeMethod("navigate", route)` 推送路由给 Flutter，不再仅依赖 `didChangeAppLifecycleState(resumed)` 拉取 (`android/app/src/main/kotlin/.../MainActivity.kt`)。
+  - **Fixed**: 修复快捷记录小组件第二次点击后 `click_action` 丢失：`QuickRecordActivity` 添加 `onNewIntent` 覆写 (`android/app/src/main/kotlin/.../QuickRecordActivity.kt`)。
+  - **Fixed**: 移除 `TodoWidgetProvider` 中未使用的 `ACTION_TODO_CLICK` 死代码及其 Manifest 注册，避免从广播接收器启动 Activity 被 Android 12+ 后台限制拦截 (`TodoWidgetProvider.kt`, `AndroidManifest.xml`)。
+  - **Changed**: `_navigateToRoute` 重试次数从 1 增至 3，间隔从 200ms 增至 300ms (`lib/app.dart`)。
+
 - **[17:35]**
   - **Added**: 完成 P0 高影响性能优化（共 9 项），覆盖生命周期/状态/重绘/重算四个维度，主要变化如下：
     1. **P0-1**: `lib/app.dart` resumed 时基于 `SyncLogRepository.getChangesSince` 检查是否有变更才 refresh，避免无脑全表查询。

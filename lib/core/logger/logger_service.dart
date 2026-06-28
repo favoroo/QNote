@@ -255,7 +255,8 @@ class LoggerService extends ChangeNotifier {
     if (_entries.length > _maxEntries) {
       _entries.removeRange(0, _entries.length - _maxEntries);
     }
-    _entriesController.add(List.from(_entries));
+    // P1-10: entriesStream 无订阅方时 List.from 复制是无效开销；改传引用
+    _entriesController.add(_entries);
     notifyListeners();
     
     _pendingPersistCount++;
@@ -286,7 +287,7 @@ class LoggerService extends ChangeNotifier {
         _entries.addAll(
           list.map((e) => LogEntry.fromMap(e as Map<String, dynamic>)),
         );
-        _entriesController.add(List.from(_entries));
+        _entriesController.add(_entries);
         notifyListeners();
       }
     } catch (e) {
@@ -309,7 +310,7 @@ class LoggerService extends ChangeNotifier {
     _debounceTimer = null;
     _pendingPersistCount = 0;
     _entries.clear();
-    _entriesController.add(List.from(_entries));
+    _entriesController.add(_entries);
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_storageKey);

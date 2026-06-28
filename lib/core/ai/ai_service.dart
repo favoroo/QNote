@@ -1078,6 +1078,8 @@ class AiService {
   }
 
   dynamic _sanitizeRequestBodyForLogging(dynamic body) {
+    // release 模式跳过深拷贝（含 base64 图片时尤其耗时），只记录占位符
+    if (!kDebugMode) return '<release_mode_skipped>';
     try {
       if (body is String) {
         final decoded = jsonDecode(body);

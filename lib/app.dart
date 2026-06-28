@@ -113,7 +113,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
     }
   }
 
-  void _navigateToRoute(String route, {int retryCount = 1}) {
+  void _navigateToRoute(String route, {int retryCount = 3}) {
     try {
       final router = ref.read(routerProvider);
       router.go(route);
@@ -121,7 +121,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
       debugPrint('路由导航失败: $e');
       // 导航可能因路由器正在过渡而失败，延迟重试
       if (retryCount > 0) {
-        Future.delayed(const Duration(milliseconds: 200), () {
+        Future.delayed(const Duration(milliseconds: 300), () {
           _navigateToRoute(route, retryCount: retryCount - 1);
         });
       }

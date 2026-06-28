@@ -136,7 +136,6 @@ class _UnifiedImageState extends State<UnifiedImage> {
                 width: widget.width,
                 height: widget.height,
                 fit: widget.fit,
-                headers: const {'Cache-Control': 'no-cache'},
                 errorBuilder: (context, error, stackTrace) {
                   LoggerService.instance.logUI(
                     '图片加载失败 (Web): $error',
