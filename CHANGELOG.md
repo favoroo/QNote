@@ -8,6 +8,9 @@
 
 ## 2026-06-28
 
+- **[11:30]**
+  - **Changed**: 从 Git 暂存区中取消跟踪大文件 `应用分享.zip` (26MB) 和 Python 编译字节码文件夹 `__pycache__`，同时更新 `.gitignore` 规则，防止此类临时文件和打包产物再次被误提交 (`.gitignore`)。
+
 - **[10:30]**
   - **Fixed**: 修复笔记图片删除后撤回（undo）导致图片无法正常显示的问题 (`lib/widgets/notes/note_editor_view.dart`)。原实现中删除新上传图片会立即物理删除磁盘文件，且已存在图片删除后加入 `_removedPaths` 在 undo 时未被清理，导致退出编辑器时仍被错误删除。现在通过扩展 `_EditorHistoryState` 记录 `removedPaths` / `newlyUploadedPaths` 快照，并统一图片删除为延迟删除，使 undo/redo 都能正确回滚文件级副作用。
 
