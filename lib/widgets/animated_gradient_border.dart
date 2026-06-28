@@ -165,21 +165,24 @@ class _AnimatedGradientBorderState extends State<AnimatedGradientBorder>
       1.0,
     ];
 
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return CustomPaint(
-          foregroundPainter: GradientBorderPainter(
-            animationValue: _controller.value,
-            gradientColors: colors,
-            gradientStops: stops,
-            strokeWidth: widget.strokeWidth,
-            borderRadius: widget.borderRadius,
-          ),
-          child: child,
-        );
-      },
-      child: widget.child,
+    // 隔离流光动画的重绘层，避免每帧触发父级重绘
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          return CustomPaint(
+            foregroundPainter: GradientBorderPainter(
+              animationValue: _controller.value,
+              gradientColors: colors,
+              gradientStops: stops,
+              strokeWidth: widget.strokeWidth,
+              borderRadius: widget.borderRadius,
+            ),
+            child: child,
+          );
+        },
+        child: widget.child,
+      ),
     );
   }
 }

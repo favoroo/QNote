@@ -6,9 +6,8 @@ import 'package:go_router/go_router.dart';
 
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
-import 'package:qnote_flutter/models/diary_record.dart';
-import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
+import 'package:qnote_flutter/providers/stats_provider.dart';
 import 'package:qnote_flutter/widgets/empty_state.dart';
 import 'package:qnote_flutter/widgets/time_range_selector.dart';
 import 'package:qnote_flutter/widgets/statistics/sleep_stats.dart';
@@ -17,8 +16,6 @@ import 'package:qnote_flutter/widgets/statistics/finance_stats.dart';
 import 'package:qnote_flutter/widgets/statistics/mood_stats.dart';
 import 'package:qnote_flutter/widgets/statistics/activity_stats.dart';
 import 'package:qnote_flutter/widgets/statistics/daily_score_stats.dart';
-
-enum StatTab { score, sleep, diet, finance, mood, activity }
 
 class _TabConfig {
   final StatTab tab;
@@ -138,7 +135,6 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final (startDate, endDate) = _getDateRange();
-    final diaryListAsync = ref.watch(diaryListProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -175,20 +171,14 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
               ),
             ),
           Expanded(
-            child: diaryListAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (err, stack) => Center(child: Text('加载失败: $err')),
-              data: (records) {
-                return AnimatedSwitcher(
-                  duration: AppDurations.medium,
-                  switchInCurve: Curves.easeInOut,
-                  switchOutCurve: Curves.easeInOut,
-                  child: KeyedSubtree(
-                    key: ValueKey(_activeTab),
-                    child: _buildContent(records, startDate, endDate),
-                  ),
-                );
-              },
+            child: AnimatedSwitcher(
+              duration: AppDurations.medium,
+              switchInCurve: Curves.easeInOut,
+              switchOutCurve: Curves.easeInOut,
+              child: KeyedSubtree(
+                key: ValueKey(_activeTab),
+                child: _buildContent(startDate, endDate),
+              ),
             ),
           ),
         ],
@@ -196,11 +186,8 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     );
   }
 
-  Widget _buildContent(
-    List<DiaryRecord> records,
-    DateTime startDate,
-    DateTime endDate,
-  ) {
+  Widget _buildContent(DateTime startDate, DateTime endDate) {
+    // score tab 不依赖 statsProvider，由 DailyScoreStats 内部独立处理
     if (_activeTab == StatTab.score) {
       return const SingleChildScrollView(
         padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -208,44 +195,62 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
       );
     }
 
-    final filtered = records.where((r) {
-      final targetStart = DateTime(startDate.year, startDate.month, startDate.day);
-      final targetEnd = DateTime(endDate.year, endDate.month, endDate.day);
-      final effectiveDate = r.getEffectiveDate();
-      return !effectiveDate.isBefore(targetStart) && !effectiveDate.isAfter(targetEnd);
-    }).toList();
+    final query = StatsQuery(
+      start: startDate,
+      end: endDate,
+      tab: _activeTab,
+    );
+    final statsAsync = ref.watch(statsProvider(query));
 
-    if (filtered.isEmpty) {
-      return const EmptyStateWidget(
-        icon: Icons.bar_chart,
-        message: '暂无数据',
-      );
-    }
+    return statsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (err, stack) => Center(child: Text('统计计算失败: $err')),
+      data: (stats) {
+        // 数据为空时返回 EmptyState（依赖 stats 内部 totalRecords 判断）
+        final bool isEmpty;
+        switch (_activeTab) {
+          case StatTab.sleep:
+            isEmpty = (stats as SleepStatistics).totalRecords == 0;
+          case StatTab.diet:
+            isEmpty = (stats as DietStatistics).totalMeals == 0;
+          case StatTab.finance:
+            isEmpty = (stats as FinanceStatistics).totalRecords == 0;
+          case StatTab.mood:
+            isEmpty = (stats as MoodStatistics).totalRecords == 0;
+          case StatTab.activity:
+            isEmpty = (stats as ActivityStatistics).totalActivities == 0;
+          case StatTab.score:
+            isEmpty = true; // 不会执行到这里
+        }
+        if (isEmpty) {
+          return const EmptyStateWidget(
+            icon: Icons.bar_chart,
+            message: '暂无数据',
+          );
+        }
 
-    Widget content;
-    switch (_activeTab) {
-      case StatTab.sleep:
-        final stats = calculateSleepStats(records, startDate, endDate);
-        content = SleepStatsWidget(stats: stats);
-      case StatTab.diet:
-        final stats = calculateDietStats(records, startDate, endDate);
-        content = DietStatsWidget(stats: stats);
-      case StatTab.finance:
-        final stats = calculateFinanceStats(records, startDate, endDate);
-        content = FinanceStatsWidget(stats: stats);
-      case StatTab.mood:
-        final stats = calculateMoodStats(records, startDate, endDate);
-        content = MoodStatsWidget(stats: stats);
-      case StatTab.activity:
-        final stats = calculateActivityStats(records, startDate, endDate);
-        content = ActivityStatsWidget(stats: stats);
-      case StatTab.score:
-        content = const DailyScoreStats();
-    }
+        Widget content;
+        switch (_activeTab) {
+          case StatTab.sleep:
+            content = SleepStatsWidget(stats: stats as SleepStatistics);
+          case StatTab.diet:
+            content = DietStatsWidget(stats: stats as DietStatistics);
+          case StatTab.finance:
+            content = FinanceStatsWidget(stats: stats as FinanceStatistics);
+          case StatTab.mood:
+            content = MoodStatsWidget(stats: stats as MoodStatistics);
+          case StatTab.activity:
+            content = ActivityStatsWidget(stats: stats as ActivityStatistics);
+          case StatTab.score:
+            content = const DailyScoreStats(); // 不会执行
+        }
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: content,
+        // 隔离统计卡片的重绘，fl_chart 动画跑动时不影响外部
+        return SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: RepaintBoundary(child: content),
+        );
+      },
     );
   }
 }

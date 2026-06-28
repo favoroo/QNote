@@ -307,8 +307,6 @@ class _AiPageState extends ConsumerState<AiPage> {
   @override
   Widget build(BuildContext context) {
     final currentChat = ref.watch(currentChatProvider);
-    final sessionsAsync = ref.watch(chatSessionListProvider);
-    final shortcutsAsync = ref.watch(shortcutListProvider);
     final aiConfigsAsync = ref.watch(aiConfigListProvider);
     final theme = Theme.of(context);
 
@@ -351,10 +349,25 @@ class _AiPageState extends ConsumerState<AiPage> {
           ),
         ],
       ),
-      endDrawer: _buildHistoryDrawer(sessionsAsync, currentChat, theme),
+      // 历史抽屉的 sessionsAsync 与 currentChat.id 订阅下沉，避免顶层 rebuild 连带
+      endDrawer: Consumer(
+        builder: (context, ref, _) {
+          final sessionsAsync = ref.watch(chatSessionListProvider);
+          final activeId = ref.watch(
+            currentChatProvider.select((c) => c?.id),
+          );
+          return _buildHistoryDrawer(sessionsAsync, activeId, theme);
+        },
+      ),
       body: Column(
         children: [
-          _buildContextFilterSection(shortcutsAsync, theme),
+          // 过滤区 shortcutsAsync 订阅下沉
+          Consumer(
+            builder: (context, ref, _) {
+              final shortcutsAsync = ref.watch(shortcutListProvider);
+              return _buildContextFilterSection(shortcutsAsync, theme);
+            },
+          ),
           Expanded(child: _buildChatArea(currentChat, theme)),
           _buildInputArea(aiConfigsAsync, theme),
         ],
@@ -685,8 +698,11 @@ class _AiPageState extends ConsumerState<AiPage> {
       padding: const EdgeInsets.all(16),
       itemCount: totalCount,
       itemBuilder: (context, index) {
+        // 隔离每条消息的重绘，流式输出时只重绘最后一条
         if (index < displayMessages.length) {
-          return _ChatBubble(message: displayMessages[index]);
+          return RepaintBoundary(
+            child: _ChatBubble(message: displayMessages[index]),
+          );
         }
         if (showTyping && index == displayMessages.length) {
           return const _TypingBubble();
@@ -945,15 +961,14 @@ class _AiPageState extends ConsumerState<AiPage> {
 
   Widget _buildHistoryDrawer(
     AsyncValue<List<ChatSession>> sessionsAsync,
-    ChatSession? currentChat,
+    String? activeId,
     ThemeData theme,
   ) {
     return Drawer(
       child: sessionsAsync.when(
         data: (sessions) {
-          final activeId = currentChat?.id;
           return Column(
-            children: [
+          children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 8, 0),
                 child: Row(

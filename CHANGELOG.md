@@ -8,6 +8,17 @@
 
 ## 2026-06-28
 
+- **[17:35]**
+  - **Added**: 完成 P0 高影响性能优化（共 9 项），覆盖生命周期/状态/重绘/重算四个维度，主要变化如下：
+    1. **P0-1**: `lib/app.dart` resumed 时基于 `SyncLogRepository.getChangesSince` 检查是否有变更才 refresh，避免无脑全表查询。
+    2. **P0-3+4**: `lib/providers/{diary,todo,note,folder,ai}_provider.dart` 所有列表 CRUD 改为内存增量更新（add → `[...state, item]`；update → `.map(...)`；delete → `.where(...)`），先 await DB 写入成功再更新 state 保证一致性；不再走 `refresh()` 全表重查。
+    3. **P0-5**: `lib/pages/diary_page.dart` `_buildRecordsByDate` 用 `identical` + `_undoRecordsVersion` 计数器缓存分组结果，4 处 undo 修改点调用 `_bumpUndoRecordsVersion()` 失效缓存。
+    4. **P0-6**: `lib/pages/notes_page.dart` `_flattenTree` 结果在 State 中缓存，folders/notes 引用未变时直接返回。
+    5. **P0-7**: `lib/pages/{diary,ai,todo,statistics}_page.dart` 和 `lib/widgets/animated_gradient_border.dart` 5 处关键位置包 `RepaintBoundary`，隔离动画跑动时同屏重绘。
+    6. **P0-8**: `lib/pages/ai_page.dart` watch 数从 4 降到 2，endDrawer 和 _buildContextFilterSection 下沉到 Consumer；用 `.select((c) => c?.id)` / `.select((value) => value != null)` 缩小订阅范围。
+    7. **P0-9**: `lib/providers/diary_provider.dart` 新增 `diaryListByDateRangeProvider` (FutureProvider.family) 走 `DiaryRepository.getByDateRange` 按时间范围拉取，watch diaryListProvider 自动响应增删改；`lib/pages/statistics_page.dart` 移除全量加载改 watch 此 provider。
+    8. **P0-2 + P1-26**: `lib/providers/stats_provider.dart`（新文件）把 5 个统计函数包到 `compute()` 中跑 isolate，不阻塞 UI；`StatTab` 枚举从 `statistics_page.dart` 移到 `lib/core/utils/stats_utils.dart` 避免循环依赖；stats 函数接收按范围拉取的 records，消除冗余过滤。
+
 - **[——]**
   - **Changed**: 优化固定事件管理页列表卡片布局：将多段时间从标题行移到副标题行，避免被右侧开关挤压截断；副标题中仅当备注与名称不同时才显示备注，减少重复信息 (`lib/pages/settings/fixed_events_page.dart`)。
 

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:qnote_flutter/core/router/app_router.dart';
+import 'package:qnote_flutter/core/storage/sync_log_repository.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/theme_provider.dart';
@@ -20,6 +21,9 @@ class QNoteApp extends ConsumerStatefulWidget {
 
 class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver {
   static const _channel = MethodChannel('com.appone.qnote_flutter/widgets');
+
+  /// 最近一次进入后台的时刻，用于在 resume 时判断是否真有数据变更
+  DateTime? _lastPausedTime;
 
   @override
   void initState() {
@@ -36,10 +40,33 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _refreshProviders();
+    if (state == AppLifecycleState.paused) {
+      _lastPausedTime = DateTime.now();
+    } else if (state == AppLifecycleState.resumed) {
+      _refreshProvidersIfNeeded();
       // APP 恢复前台后拉取小组件挂起路由，确保在 Provider 刷新之后执行导航
       _tryNavigatePendingRoute();
+    }
+  }
+
+  /// 仅在数据库自上次切后台以来有 sync_log 变更时才 refresh，
+  /// 避免每次切回前台都触发无谓的 2 次全表查询
+  Future<void> _refreshProvidersIfNeeded() async {
+    try {
+      final baseline = _lastPausedTime;
+      if (baseline == null) {
+        // 冷启动后首次 resume，没有基线，保守 refresh
+        _refreshProviders();
+        return;
+      }
+      final changes = await SyncLogRepository.instance.getChangesSince(baseline);
+      if (changes.isEmpty) {
+        return;
+      }
+      _refreshProviders();
+    } catch (e) {
+      debugPrint('检查 sync_log 失败，回退到 refresh: $e');
+      _refreshProviders();
     }
   }
 

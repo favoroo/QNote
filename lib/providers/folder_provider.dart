@@ -36,28 +36,43 @@ class FolderListNotifier extends AsyncNotifier<List<Folder>> {
       updatedAt: now,
     );
     await repo.insert(folder);
-    await refresh();
+    // 内存增量更新，避免全表重查
+    state = AsyncData([...(state.valueOrNull ?? []), folder]);
     return folder;
   }
 
   Future<void> updateFolder(Folder folder) async {
     final repo = ref.read(folderRepositoryProvider);
     await repo.update(folder);
-    await refresh();
+    // 内存替换目标项
+    state = AsyncData(
+      (state.valueOrNull ?? [])
+          .map((f) => f.id == folder.id ? folder : f)
+          .toList(),
+    );
   }
 
   Future<void> deleteFolder(String id) async {
     final repo = ref.read(folderRepositoryProvider);
     await repo.delete(id);
-    await refresh();
+    // 内存移除当前文件夹；调用方若需级联删除子文件夹应在外部处理
+    state = AsyncData(
+      (state.valueOrNull ?? []).where((f) => f.id != id).toList(),
+    );
   }
 
   Future<void> toggleExpanded(String id, bool isExpanded) async {
     final repo = ref.read(folderRepositoryProvider);
     final folder = await repo.getById(id);
     if (folder != null) {
-      await repo.update(folder.copyWith(isExpanded: isExpanded));
-      await refresh();
+      final updated = folder.copyWith(isExpanded: isExpanded);
+      await repo.update(updated);
+      // 内存替换
+      state = AsyncData(
+        (state.valueOrNull ?? [])
+            .map((f) => f.id == id ? updated : f)
+            .toList(),
+      );
     }
   }
 
@@ -65,11 +80,17 @@ class FolderListNotifier extends AsyncNotifier<List<Folder>> {
     final repo = ref.read(folderRepositoryProvider);
     final folder = await repo.getById(folderId);
     if (folder != null) {
-      await repo.update(folder.copyWith(
+      final updated = folder.copyWith(
         parentId: parentId,
         clearParentId: parentId == null,
-      ));
-      await refresh();
+      );
+      await repo.update(updated);
+      // 内存替换
+      state = AsyncData(
+        (state.valueOrNull ?? [])
+            .map((f) => f.id == folderId ? updated : f)
+            .toList(),
+      );
     }
   }
 
@@ -82,6 +103,5 @@ class FolderListNotifier extends AsyncNotifier<List<Folder>> {
 
     state = AsyncData(updatedList);
     await repo.batchUpdate(reordered);
-    await refresh();
   }
 }
