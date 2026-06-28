@@ -276,10 +276,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
       }
       handledKeys.addAll(['quality', '质量', '睡眠质量']);
 
-      final fallAsleepVal = _getVal(bs, ['fallAsleepTime', '入睡时间']);
-      if (fallAsleepVal != null && fallAsleepVal.toString().isNotEmpty) {
-        tags.add('入睡: ${fallAsleepVal.toString()}');
-      }
+      // 不在卡片底部标签显示，已在顶部时间段中体现
       handledKeys.addAll(['fallAsleepTime', '入睡时间']);
     } else if (entry.name == '饮食') {
       final typeVal = _getVal(bs, ['type', 'item', '种类', '类别']);
@@ -830,6 +827,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
     return Column(
       children: _filteredRecords.map((record) {
         final isSelected = _selectedIds.contains(record.id);
+        final tagColor = _tagColor(record.displayTag);
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: GestureDetector(
@@ -864,19 +862,19 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
-                                color: colorScheme.primary.withValues(alpha: 0.08),
+                                color: tagColor.withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(Icons.access_time, size: 12, color: colorScheme.primary),
+                                  Icon(Icons.access_time, size: 12, color: tagColor),
                                   const SizedBox(width: 4),
                                   Text(
                                     _formatTimeRange(record),
                                     style: theme.textTheme.labelSmall?.copyWith(
                                       fontWeight: FontWeight.bold,
-                                      color: colorScheme.primary,
+                                      color: tagColor,
                                     ),
                                   ),
                                 ],
@@ -1285,18 +1283,18 @@ class _RecordDetailSheetState extends State<_RecordDetailSheet> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: 0.08),
+                  color: tagColor.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.access_time, size: 14, color: colorScheme.primary),
+                    Icon(Icons.access_time, size: 14, color: tagColor),
                     const SizedBox(width: 6),
                     Text(
                       _formatTimeRange(record),
                       style: theme.textTheme.labelSmall?.copyWith(
-                        color: colorScheme.primary,
+                        color: tagColor,
                         fontWeight: FontWeight.bold,
                       ),
                     ),

@@ -6,6 +6,18 @@
 
 ---
 
+## 2026-06-28
+
+- **[10:30]**
+  - **Fixed**: 修复笔记图片删除后撤回（undo）导致图片无法正常显示的问题 (`lib/widgets/notes/note_editor_view.dart`)。原实现中删除新上传图片会立即物理删除磁盘文件，且已存在图片删除后加入 `_removedPaths` 在 undo 时未被清理，导致退出编辑器时仍被错误删除。现在通过扩展 `_EditorHistoryState` 记录 `removedPaths` / `newlyUploadedPaths` 快照，并统一图片删除为延迟删除，使 undo/redo 都能正确回滚文件级副作用。
+
+- **[09:12]**
+  - **Changed**: 微调日记事件卡片中正文与图片的左侧缩进（增加 4 dp），让内容视觉上收在标签 pill 内侧，避免“凸出”在标签外 (`lib/widgets/diary/diary_item.dart`)。
+
+- **[08:40]**
+  - **Changed**: 移除了睡眠日记卡片底部多余的「入睡时间」标签，因为顶部时间段中已能够直观体现 (`lib/widgets/diary/diary_item.dart`, `lib/widgets/diary/diary_batch_manage_view.dart`)。
+  - **Changed**: 统一批量管理页中卡片时间段标签的颜色逻辑，使其不再统一使用全局主题色，而是与主页一致，自动跟随对应日记标签的自定义颜色 (`lib/widgets/diary/diary_batch_manage_view.dart`)。
+
 ## 2026-06-27
 
 - **[——]**

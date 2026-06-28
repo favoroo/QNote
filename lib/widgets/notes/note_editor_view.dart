@@ -86,11 +86,16 @@ class _EditorHistoryState {
   final List<_SegmentState> segments;
   final int focusedSegmentIndex;
   final TextSelection? selection;
+  // 记录历史快照时刻的文件级状态，用于 undo/redo 时回滚图片删除副作用
+  final List<String> removedPaths;
+  final List<String> newlyUploadedPaths;
 
   _EditorHistoryState({
     required this.segments,
     required this.focusedSegmentIndex,
     this.selection,
+    required this.removedPaths,
+    required this.newlyUploadedPaths,
   });
 }
 
@@ -565,6 +570,9 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
       segments: states,
       focusedSegmentIndex: _focusedSegmentIndex,
       selection: selection,
+      // 捕获文件级状态的副本，防止后续 mutate 影响历史快照
+      removedPaths: List<String>.from(_removedPaths),
+      newlyUploadedPaths: List<String>.from(_newlyUploadedPaths),
     );
   }
 
@@ -610,6 +618,14 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         focusedSeg.controller.selection = state.selection!;
       }
     }
+
+    // 5. 恢复文件级状态（覆盖式），保证 undo/redo 时图片删除副作用同步回滚
+    _removedPaths
+      ..clear()
+      ..addAll(state.removedPaths);
+    _newlyUploadedPaths
+      ..clear()
+      ..addAll(state.newlyUploadedPaths);
   }
 
   bool _areStatesEqual(_EditorHistoryState a, _EditorHistoryState b) {
@@ -626,6 +642,18 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
       } else {
         return false;
       }
+    }
+    // 文件级状态不同也视为不同状态，避免 undo/redo 中途的删除副作用被误判为重复
+    if (!_stringListEquals(a.removedPaths, b.removedPaths)) return false;
+    if (!_stringListEquals(a.newlyUploadedPaths, b.newlyUploadedPaths)) return false;
+    return true;
+  }
+
+  /// 简单的 `List<String>` 相等比较，避免引入新依赖
+  bool _stringListEquals(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
     }
     return true;
   }
@@ -801,10 +829,10 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
 
     if (_newlyUploadedPaths.contains(img.path)) {
       _newlyUploadedPaths.remove(img.path);
-      try { _imageRepo.deleteImage(img.path); } catch (_) {}
-    } else {
-      _removedPaths.add(img.path);
     }
+    // 统一延迟删除：不再立即物理删文件，由 _handleBack 退出时按 _removedPaths 处理
+    // 这样 undo/redo 可通过历史栈快照正确回滚文件级状态
+    _removedPaths.add(img.path);
 
     setState(() {
       // 检查图片下方的文本段是否为 AI 提取的引用块（以 > 图： 开头），如果是则一并删除

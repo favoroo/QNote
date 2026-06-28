@@ -65,6 +65,9 @@ class _DiaryItemState extends State<DiaryItem> {
 
   static const _defaultColor = TagColors.defaultTag;
 
+  /// 正文与图片相对标签 pill 的左侧缩进，避免视觉上“凸出”在标签外
+  static const _contentIndent = 4.0;
+
   IconData _tagIcon(String displayTag) => _tagIcons[displayTag] ?? _defaultIcon;
 
   Color _tagColor(String displayTag) => _tagColors[displayTag] ?? _defaultColor;
@@ -96,10 +99,7 @@ class _DiaryItemState extends State<DiaryItem> {
       }
       handledKeys.addAll(['quality', '质量', '睡眠质量']);
 
-      final fallAsleepVal = _getVal(bs, ['fallAsleepTime', '入睡时间']);
-      if (fallAsleepVal != null && fallAsleepVal.toString().isNotEmpty) {
-        tags.add('入睡: ${fallAsleepVal.toString()}');
-      }
+      // 不在卡片底部标签显示，已在顶部时间段中体现
       handledKeys.addAll(['fallAsleepTime', '入睡时间']);
     } else if (entry.name == '饮食') {
       final typeVal = _getVal(bs, ['type', 'item', '种类', '类别']);
@@ -403,14 +403,15 @@ class _DiaryItemState extends State<DiaryItem> {
                                     final screenWidth = MediaQuery.of(
                                       context,
                                     ).size.width;
-                                    final maxWidth = screenWidth - 132;
+                                    final maxWidth =
+                                        screenWidth - 132 - _contentIndent;
                                     final spacing = 6.0;
                                     final itemWidth =
                                         ((maxWidth - spacing * 2 - 2.0) / 3)
                                             .clamp(50.0, 70.0);
                                     return Padding(
                                       padding: const EdgeInsets.only(
-                                        left: 0,
+                                        left: _contentIndent,
                                         top: 4,
                                       ),
                                       child: Wrap(
@@ -866,7 +867,7 @@ class _DiaryItemState extends State<DiaryItem> {
       text: record.content,
       bodyState: record.bodyState,
       tag: record.displayTag,
-      leftPadding: 0,
+      leftPadding: _contentIndent,
       isMultiTag: true,
     );
     if (richContent != null) {
@@ -901,6 +902,7 @@ class _DiaryItemState extends State<DiaryItem> {
               text: record.content,
               bodyState: record.bodyState,
               tag: record.displayTag,
+              leftPadding: _contentIndent,
             ) ??
             const SizedBox.shrink(),
       ],
