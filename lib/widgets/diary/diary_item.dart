@@ -315,7 +315,8 @@ class _DiaryItemState extends State<DiaryItem> {
     final tagColor = _tagColor(record.displayTag);
     final hasMultipleTags = record.tagEntries.length > 1;
 
-    return Row(
+    return IntrinsicHeight(
+      child: Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(
@@ -601,6 +602,7 @@ class _DiaryItemState extends State<DiaryItem> {
           ),
         ),
       ],
+      ),
     );
   }
 

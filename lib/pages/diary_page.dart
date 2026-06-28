@@ -649,6 +649,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     final maxScroll = _scrollController.position.maxScrollExtent;
     final viewportHeight = _scrollController.position.viewportDimension;
 
+    // 如果 maxScroll 比 viewportHeight 还小，说明内容高度不够填满一个屏幕，根本不需要触发滑动窗口加载更多日期。
+    // 这也是防止在初始化或列表内容极少时产生滑动死循环的根本屏障。
+    if (maxScroll <= viewportHeight) return;
+
     if (offset < viewportHeight * 0.5 && _windowStartDate.isBefore(_today)) {
       _shiftWindowBackward();
     } else if (offset > maxScroll - viewportHeight * 0.5) {
@@ -710,14 +714,17 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     _windowStartDate = _windowStartDate.subtract(const Duration(days: 2));
     _shiftTargetOffset = prevOffset + 2 * _dayHeight;
 
-    setState(() {
-      _isShiftingWindow = false;
-    });
+    setState(() {});
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients && _shiftTargetOffset != null) {
         _scrollController.jumpTo(_shiftTargetOffset!);
         _shiftTargetOffset = null;
+      }
+      if (mounted) {
+        setState(() {
+          _isShiftingWindow = false;
+        });
       }
     });
   }
@@ -730,14 +737,18 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     _windowStartDate = _windowStartDate.add(const Duration(days: 2));
     _shiftTargetOffset = prevOffset - 2 * _dayHeight;
 
-    setState(() {
-      _isShiftingWindow = false;
-    });
+    setState(() {});
+
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients && _shiftTargetOffset != null) {
         _scrollController.jumpTo(_shiftTargetOffset!);
         _shiftTargetOffset = null;
+      }
+      if (mounted) {
+        setState(() {
+          _isShiftingWindow = false;
+        });
       }
     });
   }
@@ -1625,7 +1636,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
             0.0,
             _scrollController.position.maxScrollExtent,
           );
+          _isProgrammaticScrolling = true;
           _scrollController.jumpTo(targetOffset);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              _finishProgrammaticScroll();
+            }
+          });
         });
       });
     }
