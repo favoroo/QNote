@@ -6,6 +6,18 @@
 
 ---
 
+## 2026-06-28
+
+- **[21:05]**
+  - **Fixed**: 修复在日记中记录事件后，时间线下方的内容被阻断且不显示圆点和时间，同时事件卡片未能完整渲染的问题 (`lib/widgets/diary/diary_item.dart`)。
+    - **Changed**: 在 `DiaryItem` 的根部 `Row` 外面包裹 `IntrinsicHeight` 组件，防止 `crossAxisAlignment: CrossAxisAlignment.stretch` 在无界高度的 `ListView` 容器中引起 unbounded height 异常而导致渲染崩溃。
+
+- **[20:25]**
+  - **Fixed**: 修复进入日记界面时时间线和圆点在显示后瞬间消失的死循环问题 (`lib/pages/diary_page.dart`)。
+    - **Changed**: 在 `_onScroll` 监听器中增加 `maxScroll <= viewportHeight` 过滤条件，防止在列表数据尚未完全排版加载时产生误判。
+    - **Changed**: 修正 `_shiftWindowBackward` 和 `_shiftWindowForward` 的锁释放时机，在 `addPostFrameCallback` 的 `jumpTo` 滚动事件完全结束后才将 `_isShiftingWindow` 释放，拦截在此期间同步触发的滚动回调。
+    - **Changed**: 在 build 方法里数据初次加载时的 `jumpTo` 前后包裹 `_isProgrammaticScrolling` 程序滚动锁，防止初次定位引起滑动窗口的误触发。
+
 ## 2026-06-29
 
 - **[02:30]**
