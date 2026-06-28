@@ -53,6 +53,7 @@ class DailyScoreNotifier extends AsyncNotifier<DailyScore?> {
         'height': userProfile.height,
         'gender': userProfile.gender,
         'otherInfo': userProfile.otherInfo,
+        'customFields': userProfile.customFields,
       };
       if (userProfile.weightHistory.isNotEmpty) {
         final sorted = [...userProfile.weightHistory]..sort((a, b) => b.time.compareTo(a.time));

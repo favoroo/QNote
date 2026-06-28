@@ -28,7 +28,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 18,
+      version: 19,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onOpen: (db) async {
@@ -118,6 +118,15 @@ class DatabaseHelper {
       }
       if (feColumnNames.isNotEmpty && !feColumnNames.contains('time_periods')) {
         await db.execute('ALTER TABLE fixed_event_templates ADD COLUMN time_periods TEXT DEFAULT "[]"');
+      }
+    } catch (_) {}
+
+    // 兜底：补 user_profiles 缺失 of 列
+    try {
+      final upColumns = await db.rawQuery('PRAGMA table_info(user_profiles)');
+      final upColumnNames = upColumns.map((c) => c['name'] as String).toSet();
+      if (upColumnNames.isNotEmpty && !upColumnNames.contains('custom_fields')) {
+        await db.execute('ALTER TABLE user_profiles ADD COLUMN custom_fields TEXT DEFAULT "{}"');
       }
     } catch (_) {}
 
@@ -243,6 +252,7 @@ class DatabaseHelper {
         weight_history TEXT DEFAULT '[]',
         gender TEXT,
         other_info TEXT,
+        custom_fields TEXT DEFAULT '{}',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
@@ -528,6 +538,13 @@ class DatabaseHelper {
             );
           }
         }
+      } catch (_) {}
+    }
+
+    if (oldVersion < 19) {
+      // 为 user_profiles 表添加 custom_fields 列
+      try {
+        await db.execute('ALTER TABLE user_profiles ADD COLUMN custom_fields TEXT DEFAULT "{}"');
       } catch (_) {}
     }
   }

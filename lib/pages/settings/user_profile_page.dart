@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import 'package:qnote_flutter/core/storage/config_repository.dart';
@@ -32,6 +31,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   final _weightController = TextEditingController();
   final _ageController = TextEditingController();
   final _otherInfoController = TextEditingController();
+  final Map<String, TextEditingController> _customFieldControllers = {};
   DateTime? _birthday;
   String? _gender;
   DateTime _weightDate = DateTime.now();
@@ -41,7 +41,6 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   String _avatarPath = '';
   String _weightUnit = 'kg'; // 体重单位：'kg' 或 '斤'
 
-  final ImagePicker _imagePicker = ImagePicker();
   final ImageRepository _imageRepo = ImageRepository();
 
   @override
@@ -76,6 +75,12 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
         }
         final age = _calculateAge();
         _ageController.text = age > 0 ? '$age' : '';
+
+        _customFieldControllers.forEach((_, controller) => controller.dispose());
+        _customFieldControllers.clear();
+        profile.customFields.forEach((key, value) {
+          _customFieldControllers[key] = TextEditingController(text: value);
+        });
       });
     }
   }
@@ -99,6 +104,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     _weightController.dispose();
     _ageController.dispose();
     _otherInfoController.dispose();
+    _customFieldControllers.forEach((_, controller) => controller.dispose());
     super.dispose();
   }
 
@@ -186,6 +192,10 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     try {
       final notifier = ref.read(userProfileNotifierProvider.notifier);
       final current = ref.read(userProfileNotifierProvider);
+      final customFields = <String, String>{};
+      _customFieldControllers.forEach((key, controller) {
+        customFields[key] = controller.text;
+      });
       final profile =
           (current ??
                   UserProfile(
@@ -204,6 +214,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                 otherInfo: _otherInfoController.text.isEmpty
                     ? null
                     : _otherInfoController.text,
+                customFields: customFields,
                 updatedAt: DateTime.now(),
               );
       await notifier.save(profile);
@@ -312,6 +323,9 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
             _buildHealthCard(theme),
             const SizedBox(height: 20),
             _buildOtherInfoCard(theme),
+            ..._buildCustomFieldCards(theme),
+            const SizedBox(height: 12),
+            _buildAddCustomFieldButton(theme),
             const SizedBox(height: 20),
             _buildAiHint(theme),
           ],
@@ -323,122 +337,118 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   Widget _buildIdentityCard(ThemeData theme) {
     return Container(
       decoration: _cardDecoration(theme),
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Avatar Centered
-          Center(
-            child: GestureDetector(
-              onTap: _pickAvatar,
-              child: Stack(
-                children: [
-                  Container(
-                    width: 90,
-                    height: 90,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: theme.colorScheme.surface,
-                        width: 3,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.08),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: ClipOval(
-                      child: _avatarPath.isNotEmpty
-                          ? UnifiedImage(
-                              imagePath: _avatarPath,
-                              width: 84,
-                              height: 84,
-                              borderRadius: BorderRadius.circular(42),
-                              fit: BoxFit.cover,
-                            )
-                          : Container(
-                              color: theme.colorScheme.primaryContainer.withValues(alpha: 0.2),
-                              child: Icon(
-                                Icons.person_outline,
-                                size: 40,
-                                color: theme.colorScheme.primary,
-                              ),
-                            ),
-                    ),
-                  ),
-                  Positioned(
-                    right: 2,
-                    bottom: 2,
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
+          // 第一行：头像（左） + 姓名/性别（右）
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              GestureDetector(
+                onTap: _pickAvatar,
+                child: Stack(
+                  children: [
+                    Container(
+                      width: 76,
+                      height: 76,
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.primary,
                         shape: BoxShape.circle,
                         border: Border.all(
                           color: theme.colorScheme.surface,
                           width: 2,
                         ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.08),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
-                      child: const Icon(
-                        Icons.camera_alt,
-                        size: 14,
-                        color: Colors.white,
+                      child: ClipOval(
+                        child: _avatarPath.isNotEmpty
+                            ? UnifiedImage(
+                                imagePath: _avatarPath,
+                                width: 72,
+                                height: 72,
+                                borderRadius: BorderRadius.circular(36),
+                                fit: BoxFit.cover,
+                              )
+                            : Container(
+                                color: theme.colorScheme.primaryContainer.withValues(alpha: 0.2),
+                                child: Icon(
+                                  Icons.person_outline,
+                                  size: 32,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          // Nickname Input
-          TextField(
-            controller: _nicknameController,
-            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
-            textInputAction: TextInputAction.next,
-            decoration: const InputDecoration(
-              labelText: '姓名 / 昵称',
-              hintText: '输入您的姓名或昵称',
-              prefixIcon: Icon(Icons.person_outline),
-              floatingLabelBehavior: FloatingLabelBehavior.always,
-            ),
-          ),
-          const SizedBox(height: 16),
-          // Gender Select
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(left: 4, bottom: 8),
-                child: Text(
-                  '性别',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.bold,
-                  ),
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: theme.colorScheme.surface,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.camera_alt,
+                          size: 10,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              Container(
-                height: 48,
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
+              const SizedBox(width: 16),
+              // 姓名与性别选择
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    _buildGenderTab(theme, '男', 'male'),
-                    _buildGenderTab(theme, '女', 'female'),
+                    TextField(
+                      controller: _nicknameController,
+                      style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                      textInputAction: TextInputAction.next,
+                      decoration: const InputDecoration(
+                        labelText: '姓名 / 昵称',
+                        hintText: '输入您的姓名或昵称',
+                        floatingLabelBehavior: FloatingLabelBehavior.always,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        isDense: true,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      height: 38,
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        children: [
+                          _buildGenderTab(theme, '男', 'male'),
+                          _buildGenderTab(theme, '女', 'female'),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          // Birthday & Age Row
+          // 第二行：出生年月 & 年龄 Row
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -458,7 +468,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                     hintText: '选择日期',
                     suffixIcon: Icon(Icons.calendar_today, size: 16),
                     floatingLabelBehavior: FloatingLabelBehavior.always,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                   ),
                 ),
               ),
@@ -473,10 +483,56 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                   textInputAction: TextInputAction.next,
                   decoration: const InputDecoration(
                     labelText: '年龄',
-                    hintText: '输入年龄',
                     suffixText: '岁',
                     floatingLabelBehavior: FloatingLabelBehavior.always,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // 第三行：身高 & 最新体重 Row
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _heightController,
+                  keyboardType: TextInputType.number,
+                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(
+                    labelText: '身高',
+                    hintText: '173',
+                    suffixText: 'cm',
+                    floatingLabelBehavior: FloatingLabelBehavior.always,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: GestureDetector(
+                  onTap: _toggleWeightUnit,
+                  behavior: HitTestBehavior.opaque,
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: '最新体重',
+                      floatingLabelBehavior: FloatingLabelBehavior.always,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    ),
+                    child: Text(
+                      _latestWeight != null
+                          ? '${_weightUnit == '斤' ? (_latestWeight! * 2).toStringAsFixed(1) : _latestWeight!.toStringAsFixed(1)} $_weightUnit'
+                          : '未记录',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w500,
+                        color: _latestWeight != null
+                            ? theme.colorScheme.onSurface
+                            : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -540,62 +596,10 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
 
     return Container(
       decoration: _cardDecoration(theme),
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Height and Weight Fields Side-by-Side
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _heightController,
-                  keyboardType: TextInputType.number,
-                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
-                  textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
-                    labelText: '身高',
-                    hintText: '173',
-                    suffixText: 'cm',
-                    floatingLabelBehavior: FloatingLabelBehavior.always,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: GestureDetector(
-                  onTap: _toggleWeightUnit,
-                  behavior: HitTestBehavior.opaque,
-                  child: InputDecorator(
-                    decoration: const InputDecoration(
-                      labelText: '最新体重',
-                      floatingLabelBehavior: FloatingLabelBehavior.always,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                    ),
-                    child: Text(
-                      _latestWeight != null
-                          ? '${_weightUnit == '斤' ? (_latestWeight! * 2).toStringAsFixed(1) : _latestWeight!.toStringAsFixed(1)} $_weightUnit'
-                          : '未记录',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w500,
-                        color: _latestWeight != null
-                            ? theme.colorScheme.onSurface
-                            : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Divider(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-            thickness: 1,
-          ),
-          const SizedBox(height: 16),
           // Weight Management Header
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -854,7 +858,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   Widget _buildOtherInfoCard(ThemeData theme) {
     return Container(
       decoration: _cardDecoration(theme),
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -888,6 +892,220 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
           ),
         ],
       ),
+    );
+  }
+
+  Iterable<Widget> _buildCustomFieldCards(ThemeData theme) {
+    return _customFieldControllers.keys.map((key) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 20),
+        child: _buildCustomFieldCard(theme, key),
+      );
+    });
+  }
+
+  Widget _buildCustomFieldCard(ThemeData theme, String fieldName) {
+    return Container(
+      decoration: _cardDecoration(theme),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.assignment_outlined,
+                size: 20,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  fieldName,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: theme.colorScheme.onSurface,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              IconButton(
+                icon: Icon(
+                  Icons.edit_outlined,
+                  size: 20,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: () => _showRenameCustomFieldDialog(fieldName),
+                tooltip: '重命名',
+              ),
+              const SizedBox(width: 12),
+              IconButton(
+                icon: Icon(
+                  Icons.delete_outline_rounded,
+                  size: 20,
+                  color: theme.colorScheme.error,
+                ),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: () => _confirmDeleteCustomField(fieldName),
+                tooltip: '删除',
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _customFieldControllers[fieldName],
+            maxLines: 4,
+            minLines: 2,
+            keyboardType: TextInputType.multiline,
+            style: theme.textTheme.bodyMedium?.copyWith(height: 1.4),
+            decoration: InputDecoration(
+              hintText: '请输入$fieldName',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAddCustomFieldButton(ThemeData theme) {
+    return OutlinedButton.icon(
+      onPressed: _showAddCustomFieldDialog,
+      icon: const Icon(Icons.add),
+      label: const Text('添加自定义信息字段'),
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        side: BorderSide(
+          color: theme.colorScheme.primary.withValues(alpha: 0.5),
+          style: BorderStyle.solid,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+        ),
+      ),
+    );
+  }
+
+  void _showAddCustomFieldDialog() {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('添加自定义字段'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              hintText: '例如：工作信息、身体状况',
+              labelText: '字段名称',
+            ),
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () {
+                final name = controller.text.trim();
+                if (name.isNotEmpty) {
+                  if (_customFieldControllers.containsKey(name) || name == '其他信息') {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('该字段名称已存在')),
+                    );
+                    return;
+                  }
+                  setState(() {
+                    _customFieldControllers[name] = TextEditingController();
+                  });
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text('确定'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showRenameCustomFieldDialog(String oldName) {
+    final controller = TextEditingController(text: oldName);
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('重命名字段'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              labelText: '新字段名称',
+            ),
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () {
+                final newName = controller.text.trim();
+                if (newName.isNotEmpty && newName != oldName) {
+                  if (_customFieldControllers.containsKey(newName) || newName == '其他信息') {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('该字段名称已存在')),
+                    );
+                    return;
+                  }
+                  setState(() {
+                    final oldController = _customFieldControllers.remove(oldName);
+                    if (oldController != null) {
+                      _customFieldControllers[newName] = oldController;
+                    }
+                  });
+                  Navigator.pop(context);
+                } else {
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text('确定'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _confirmDeleteCustomField(String name) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('确认删除'),
+          content: Text('确定要删除“$name”这个字段吗？删除后该字段的内容将不会保存。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  final controller = _customFieldControllers.remove(name);
+                  controller?.dispose();
+                });
+                Navigator.pop(context);
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('删除'),
+            ),
+          ],
+        );
+      },
     );
   }
 

@@ -10,6 +10,7 @@ class UserProfile {
   final List<WeightRecord> weightHistory;
   final String? gender;
   final String? otherInfo;
+  final Map<String, String> customFields;
   final String avatarPath;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -23,6 +24,7 @@ class UserProfile {
     this.weightHistory = const [],
     this.gender,
     this.otherInfo,
+    this.customFields = const {},
     this.avatarPath = '',
     required this.createdAt,
     required this.updatedAt,
@@ -38,6 +40,7 @@ class UserProfile {
       'weight_history': jsonEncode(weightHistory.map((w) => w.toMap()).toList()),
       'gender': gender,
       'other_info': otherInfo,
+      'custom_fields': jsonEncode(customFields),
       'avatar_path': avatarPath,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
@@ -58,6 +61,9 @@ class UserProfile {
           : [],
       gender: map['gender'] as String?,
       otherInfo: map['other_info'] as String?,
+      customFields: map['custom_fields'] != null
+          ? Map<String, String>.from(jsonDecode(map['custom_fields'] as String) as Map)
+          : const {},
       avatarPath: map['avatar_path'] as String? ?? '',
       createdAt: DateTime.parse(map['created_at'] as String),
       updatedAt: DateTime.parse(map['updated_at'] as String),
@@ -73,6 +79,7 @@ class UserProfile {
     List<WeightRecord>? weightHistory,
     String? gender,
     String? otherInfo,
+    Map<String, String>? customFields,
     String? avatarPath,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -86,6 +93,7 @@ class UserProfile {
       weightHistory: weightHistory ?? this.weightHistory,
       gender: gender ?? this.gender,
       otherInfo: otherInfo ?? this.otherInfo,
+      customFields: customFields ?? this.customFields,
       avatarPath: avatarPath ?? this.avatarPath,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
