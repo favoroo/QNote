@@ -67,6 +67,17 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   final Map<String, DiaryRecord> _undoRecords = {};
   final Map<String, AnimationController> _undoControllers = {};
 
+  // _buildRecordsByDate 结果缓存，避免每次 rebuild 重算全表分组+排序
+  List<DiaryRecord>? _lastAllRecords;
+  Map<String, List<DiaryRecord>>? _cachedRecordsByDate;
+  int _undoRecordsVersion = 0;
+  int _cachedUndoRecordsVersion = -1;
+
+  /// 标记 _undoRecords 变化，使下次 _buildRecordsByDate 重算而非命中缓存
+  void _bumpUndoRecordsVersion() {
+    _undoRecordsVersion++;
+  }
+
   // Batch extraction state
   bool _isBatchExtracting = false;
   int _batchExtractTotal = 0;
@@ -77,6 +88,12 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   final Set<String> _batchExtractedRecordIds = {};
 
   Map<String, List<DiaryRecord>> _buildRecordsByDate(List<DiaryRecord> allRecords) {
+    // 缓存命中：allRecords 引用相同 + _undoRecords 版本未变
+    if (identical(allRecords, _lastAllRecords) &&
+        _undoRecordsVersion == _cachedUndoRecordsVersion &&
+        _cachedRecordsByDate != null) {
+      return _cachedRecordsByDate!;
+    }
     final Map<String, List<DiaryRecord>> recordsByDate = {};
     for (final r in allRecords) {
       if (r.isDeleted) continue;
@@ -95,6 +112,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
         return displayTimeA.compareTo(displayTimeB);
       });
     });
+    // 写入缓存
+    _lastAllRecords = allRecords;
+    _cachedRecordsByDate = recordsByDate;
+    _cachedUndoRecordsVersion = _undoRecordsVersion;
     return recordsByDate;
   }
 
@@ -1119,6 +1140,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
       // Store pre-extract record and create undo controller
       _undoRecords[record.id] = record;
+      _bumpUndoRecordsVersion();
       if (_isBatchExtracting) {
         _batchExtractedRecordIds.add(record.id);
       } else {
@@ -1159,6 +1181,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     controller?.stop();
     controller?.dispose();
     _undoRecords.remove(recordId);
+    _bumpUndoRecordsVersion();
     _batchExtractedRecordIds.remove(recordId);
     if (_batchExtractedRecordIds.isEmpty && !_isBatchExtracting) {
       _showBatchConfirmButton = false;
@@ -1188,6 +1211,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
         _undoControllers.remove(recordId)?.dispose();
         _undoRecords.remove(recordId);
+        _bumpUndoRecordsVersion();
 
         if (mounted) {
           setState(() {});
@@ -1548,6 +1572,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
         controller?.stop();
         controller?.dispose();
       }
+      _bumpUndoRecordsVersion();
       _batchExtractedRecordIds.clear();
       _showBatchConfirmButton = false;
     });
@@ -2098,23 +2123,26 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                                             _handleNodeDoubleTap(date, now),
                                       ),
                                     ...recordsInInterval.map(
-                                      (record) => DiaryItem(
-                                        record: record,
-                                        onTap: () => _handleEdit(record),
-                                        onEdit: _handleEdit,
-                                        onDelete: _handleDelete,
-                                        onAiExtract: () =>
-                                            _handleAiExtract(record),
-                                        onAiExtractLongPress: () =>
-                                            _handleAiExtractModelSelect(record),
-                                        isExtracting:
-                                            _extractingRecordId == record.id,
-                                        onUndo: () => _undoExtract(record),
-                                        isUndoable: _undoRecords.containsKey(
-                                          record.id,
+                                      (record) => RepaintBoundary(
+                                        // 隔离每条日记项的重绘，避免滚动时同屏项互相干扰
+                                        child: DiaryItem(
+                                          record: record,
+                                          onTap: () => _handleEdit(record),
+                                          onEdit: _handleEdit,
+                                          onDelete: _handleDelete,
+                                          onAiExtract: () =>
+                                              _handleAiExtract(record),
+                                          onAiExtractLongPress: () =>
+                                              _handleAiExtractModelSelect(record),
+                                          isExtracting:
+                                              _extractingRecordId == record.id,
+                                          onUndo: () => _undoExtract(record),
+                                          isUndoable: _undoRecords.containsKey(
+                                            record.id,
+                                          ),
+                                          undoAnimation:
+                                              _undoControllers[record.id],
                                         ),
-                                        undoAnimation:
-                                            _undoControllers[record.id],
                                       ),
                                     ),
                                   ],

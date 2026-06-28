@@ -103,7 +103,8 @@ class DiaryListNotifier extends AsyncNotifier<List<DiaryRecord>> {
       updatedAt: now,
     );
     await repo.insert(record);
-    await refresh();
+    // 内存增量更新，避免全表重查
+    state = AsyncData([...(state.valueOrNull ?? []), record]);
     WidgetUtils.updateHomeWidgets();
     return record;
   }
@@ -111,7 +112,12 @@ class DiaryListNotifier extends AsyncNotifier<List<DiaryRecord>> {
   Future<void> updateDiary(DiaryRecord record) async {
     final repo = ref.read(diaryRepositoryProvider);
     await repo.update(record);
-    await refresh();
+    // 内存替换目标项
+    state = AsyncData(
+      (state.valueOrNull ?? [])
+          .map((r) => r.id == record.id ? record : r)
+          .toList(),
+    );
     WidgetUtils.updateHomeWidgets();
   }
 
@@ -120,7 +126,10 @@ class DiaryListNotifier extends AsyncNotifier<List<DiaryRecord>> {
     final currentList = state.valueOrNull ?? [];
     _lastDeleted = currentList.where((r) => r.id == id).firstOrNull;
     await repo.softDelete(id);
-    await refresh();
+    // 内存移除（软删除后不再展示）
+    state = AsyncData(
+      (state.valueOrNull ?? []).where((r) => r.id != id).toList(),
+    );
     WidgetUtils.updateHomeWidgets();
   }
 
@@ -133,7 +142,8 @@ class DiaryListNotifier extends AsyncNotifier<List<DiaryRecord>> {
     );
     await repo.update(restored);
     _lastDeleted = null;
-    await refresh();
+    // 内存加回（恢复）
+    state = AsyncData([...(state.valueOrNull ?? []), restored]);
     WidgetUtils.updateHomeWidgets();
   }
 
@@ -172,6 +182,16 @@ final diaryDetailProvider = FutureProvider.family<DiaryRecord?, String>((
 ) async {
   final repo = ref.read(diaryRepositoryProvider);
   return repo.getById(id);
+});
+
+/// 按时间范围拉取日记记录（statistics_page 专用，避免全量加载）
+/// 自动响应 diaryListProvider 变更（增删改后 invalidate）
+final diaryListByDateRangeProvider = FutureProvider.family<
+    List<DiaryRecord>, ({DateTime start, DateTime end})>((ref, range) async {
+  // 监听 diaryListProvider：用户增删改日记后，本 provider 自动失效重算
+  ref.watch(diaryListProvider);
+  final repo = ref.read(diaryRepositoryProvider);
+  return repo.getByDateRange(range.start, range.end);
 });
 
 /// 日期颜色标记的异步通知器

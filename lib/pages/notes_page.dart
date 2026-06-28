@@ -26,6 +26,25 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   bool _isConfirming = false;
   Timer? _confirmTimer;
 
+  // _flattenTree 结果缓存：folders/notes 引用未变时直接返回缓存，
+  // 避免每次 rebuild（拖拽 hover、选择模式切换等）重算整棵树
+  List<Folder>? _lastFolders;
+  List<Note>? _lastNotes;
+  List<FlattenedItem>? _cachedFlattened;
+
+  List<FlattenedItem> _getFlattenedItems(List<Folder> folders, List<Note> notes) {
+    if (identical(folders, _lastFolders) &&
+        identical(notes, _lastNotes) &&
+        _cachedFlattened != null) {
+      return _cachedFlattened!;
+    }
+    final result = _flattenTree(null, 0, folders, notes);
+    _lastFolders = folders;
+    _lastNotes = notes;
+    _cachedFlattened = result;
+    return result;
+  }
+
   @override
   void dispose() {
     _confirmTimer?.cancel();
@@ -600,7 +619,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       );
     }
 
-    final flattenedItems = _flattenTree(null, 0, folders, notes);
+    final flattenedItems = _getFlattenedItems(folders, notes);
     final theme = Theme.of(context);
 
     return DragTarget<FlattenedItem>(

@@ -116,20 +116,29 @@ class AiConfigListNotifier extends AsyncNotifier<List<AiConfig>> {
   Future<AiConfig> addConfig(AiConfig config) async {
     final repo = ConfigRepository.instance;
     await repo.insertAiConfig(config);
-    await refresh();
+    // 内存增量更新，避免全表重查
+    state = AsyncData([...(state.valueOrNull ?? []), config]);
     return config;
   }
 
   Future<void> updateConfig(AiConfig config) async {
     final repo = ConfigRepository.instance;
     await repo.updateAiConfig(config);
-    await refresh();
+    // 内存替换目标项
+    state = AsyncData(
+      (state.valueOrNull ?? [])
+          .map((c) => c.id == config.id ? config : c)
+          .toList(),
+    );
   }
 
   Future<void> deleteConfig(String id) async {
     final repo = ConfigRepository.instance;
     await repo.deleteAiConfig(id);
-    await refresh();
+    // 内存移除
+    state = AsyncData(
+      (state.valueOrNull ?? []).where((c) => c.id != id).toList(),
+    );
   }
 }
 
@@ -180,20 +189,29 @@ class ChatSessionListNotifier extends AsyncNotifier<List<ChatSession>> {
       updatedAt: now,
     );
     await repo.insertChatSession(session);
-    await refresh();
+    // 内存增量更新，避免全表重查
+    state = AsyncData([...(state.valueOrNull ?? []), session]);
     return session;
   }
 
   Future<void> updateSession(ChatSession session) async {
     final repo = ConfigRepository.instance;
     await repo.updateChatSession(session);
-    await refresh();
+    // 内存替换目标项
+    state = AsyncData(
+      (state.valueOrNull ?? [])
+          .map((s) => s.id == session.id ? session : s)
+          .toList(),
+    );
   }
 
   Future<void> deleteSession(String id) async {
     final repo = ConfigRepository.instance;
     await repo.softDeleteChatSession(id);
-    await refresh();
+    // 内存移除
+    state = AsyncData(
+      (state.valueOrNull ?? []).where((s) => s.id != id).toList(),
+    );
   }
 }
 

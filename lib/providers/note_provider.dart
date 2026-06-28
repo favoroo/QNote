@@ -41,26 +41,40 @@ class NoteListNotifier extends AsyncNotifier<List<Note>> {
       updatedAt: now,
     );
     await repo.insert(note);
-    await refresh();
+    // 内存增量更新，避免全表重查
+    state = AsyncData([...(state.valueOrNull ?? []), note]);
     return note;
   }
 
   Future<void> updateNote(Note note) async {
     final repo = ref.read(noteRepositoryProvider);
     await repo.update(note);
-    await refresh();
+    // 内存替换目标项
+    state = AsyncData(
+      (state.valueOrNull ?? [])
+          .map((n) => n.id == note.id ? note : n)
+          .toList(),
+    );
   }
 
   Future<void> deleteNote(String id) async {
     final repo = ref.read(noteRepositoryProvider);
     await repo.softDelete(id);
-    await refresh();
+    // 内存移除
+    state = AsyncData(
+      (state.valueOrNull ?? []).where((n) => n.id != id).toList(),
+    );
   }
 
   Future<void> togglePin(String id, bool isPinned) async {
     final repo = ref.read(noteRepositoryProvider);
     await repo.togglePin(id, isPinned);
-    await refresh();
+    // 内存替换：仅更新 isPinned 字段
+    state = AsyncData(
+      (state.valueOrNull ?? [])
+          .map((n) => n.id == id ? n.copyWith(isPinned: isPinned) : n)
+          .toList(),
+    );
   }
 
   Future<void> searchNotes(String keyword) async {
@@ -76,11 +90,17 @@ class NoteListNotifier extends AsyncNotifier<List<Note>> {
     final repo = ref.read(noteRepositoryProvider);
     final note = await repo.getById(noteId);
     if (note != null) {
-      await repo.update(note.copyWith(
+      final updated = note.copyWith(
         folderId: folderId,
         clearFolderId: folderId == null,
-      ));
-      await refresh();
+      );
+      await repo.update(updated);
+      // 内存替换
+      state = AsyncData(
+        (state.valueOrNull ?? [])
+            .map((n) => n.id == noteId ? updated : n)
+            .toList(),
+      );
     }
   }
 
@@ -93,7 +113,6 @@ class NoteListNotifier extends AsyncNotifier<List<Note>> {
 
     state = AsyncData(updatedList);
     await repo.batchUpdate(reordered);
-    await refresh();
   }
 }
 

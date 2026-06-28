@@ -166,30 +166,33 @@ class _TodoPageState extends ConsumerState<TodoPage> {
           },
           itemBuilder: (context, index) {
             final todo = filteredTodos[index];
-            return _TodoItem(
-              key: ValueKey(todo.id),
-              todo: todo,
-              index: index,
-              autoFocus: todo.id == _focusedTodoId,
-              onFocused: () {
-                setState(() {
-                  _focusedTodoId = null;
-                });
-              },
-              onToggleComplete: () {
-                ref.read(todoListProvider.notifier).toggleComplete(todo.id, true);
-              },
-              onTitleChanged: (newTitle) {
-                if (newTitle.trim().isEmpty) return;
-                if (newTitle.trim() == todo.title) return;
-                ref.read(todoListProvider.notifier).updateTodo(
-                      todo.copyWith(title: newTitle.trim()),
-                    );
-              },
-              onShowMenu: (globalKey) {
-                _showActionMenu(context, todo, globalKey);
-              },
-              onSetReminder: () => _setReminder(todo),
+            // 隔离待办项重绘，完成/删除动画跑动时不影响其他项
+            return RepaintBoundary(
+              child: _TodoItem(
+                key: ValueKey(todo.id),
+                todo: todo,
+                index: index,
+                autoFocus: todo.id == _focusedTodoId,
+                onFocused: () {
+                  setState(() {
+                    _focusedTodoId = null;
+                  });
+                },
+                onToggleComplete: () {
+                  ref.read(todoListProvider.notifier).toggleComplete(todo.id, true);
+                },
+                onTitleChanged: (newTitle) {
+                  if (newTitle.trim().isEmpty) return;
+                  if (newTitle.trim() == todo.title) return;
+                  ref.read(todoListProvider.notifier).updateTodo(
+                        todo.copyWith(title: newTitle.trim()),
+                      );
+                },
+                onShowMenu: (globalKey) {
+                  _showActionMenu(context, todo, globalKey);
+                },
+                onSetReminder: () => _setReminder(todo),
+              ),
             );
           },
         );
