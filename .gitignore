@@ -98,3 +98,14 @@ macos/build/
 
 # ---- 文档生成（如果使用）----
 doc/api/
+
+# ---- Python 缓存 ----
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# ---- 大文件和压缩包 ----
+*.zip
+*.tar.gz
+*.rar
