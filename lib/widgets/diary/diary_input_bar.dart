@@ -2292,12 +2292,6 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
           child: Row(
             children: [
-              Icon(
-                Icons.event_repeat,
-                size: 14,
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-              ),
-              const SizedBox(width: 6),
               Expanded(
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
