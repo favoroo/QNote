@@ -59,7 +59,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   Offset? _lastDragPosition;
   bool _isScrollingFromList = false;
   bool _hasPerformedInitialScroll = false;
-  bool _isInitialScrollCompleted = false;
   bool _isProgrammaticScrolling = true;
   String? _extractingRecordId;
   CancelToken? _cancelToken;
@@ -119,43 +118,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     return recordsByDate;
   }
 
-  double _estimateInitialOffset() {
-    final now = DateTime.now();
-    final dayOffset = _dateToDayOffset(now);
-    final nodeIndex = now.hour * 2 + (now.minute >= 30 ? 1 : 0);
-    
-    // Check if we can get the records to estimate the offset more accurately
-    final allRecords = ref.read(diaryListProvider).valueOrNull;
-    double recordExtraHeight = 0.0;
-    if (allRecords != null) {
-      final recordsByDate = _buildRecordsByDate(allRecords);
-      
-      for (int d = 0; d <= dayOffset; d++) {
-        final date = _indexToDate(d);
-        final dateKey = '${date.year}-${date.month}-${date.day}';
-        final dayRecords = recordsByDate[dateKey] ?? [];
-        if (d < dayOffset) {
-          recordExtraHeight += dayRecords.length * _averageRecordExtraHeight;
-        } else {
-          for (final r in dayRecords) {
-            final displayTime = r.getDisplayTime();
-            final rNodeIndex = displayTime.hour * 2 + (displayTime.minute >= 30 ? 1 : 0);
-            if (rNodeIndex < nodeIndex) {
-              recordExtraHeight += _averageRecordExtraHeight;
-            }
-          }
-        }
-      }
-    }
-
-    double offset = dayOffset * (_dividerHeight + 48 * _nodeHeight)
-        + _dividerHeight
-        + nodeIndex * _nodeHeight
-        + recordExtraHeight
-        - 350.0; // Subtracting 350.0 as an estimated half viewport height for centering
-    return offset.clamp(0.0, double.infinity);
-  }
-
   @override
   void initState() {
     super.initState();
@@ -164,21 +126,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     _today = DateTime(now.year, now.month, now.day);
     _windowStartDate = _today.subtract(const Duration(days: 3));
     _hasPerformedInitialScroll = false;
-    _isInitialScrollCompleted = false;
     _itemContexts.clear();
     _itemHeights.clear();
 
     _scrollController = ScrollController(
       keepScrollOffset: false,
-      initialScrollOffset: _estimateInitialOffset(),
     );
     _scrollController.addListener(_onScroll);
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        setState(() {});
-      }
-    });
   }
 
   double _estimateOffsetForIndex(int targetIndex) {
@@ -480,11 +434,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
   void _finishProgrammaticScroll() {
     _isProgrammaticScrolling = false;
-    if (!_isInitialScrollCompleted) {
-      setState(() {
-        _isInitialScrollCompleted = true;
-      });
-    }
   }
 
   void _scrollToCurrentTime({
@@ -1666,9 +1615,18 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       final recordsByDate = _buildRecordsByDate(allRecords);
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _performInitialScrollToCurrentTime(recordsByDate: recordsByDate);
-        }
+        Future.delayed(const Duration(milliseconds: 50), () {
+          if (!mounted || !_scrollController.hasClients) return;
+
+          final now = DateTime.now();
+          final viewportHeight = _scrollController.position.viewportDimension;
+          final estimatedOffset = _estimateOffsetForTimeWithRecords(now, recordsByDate);
+          final targetOffset = (estimatedOffset - viewportHeight * 0.5).clamp(
+            0.0,
+            _scrollController.position.maxScrollExtent,
+          );
+          _scrollController.jumpTo(targetOffset);
+        });
       });
     }
 
@@ -1804,23 +1762,17 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
                     return Stack(
                       children: [
-                        AnimatedOpacity(
-                          opacity: _isInitialScrollCompleted ? 1.0 : 0.0,
-                          duration: AppDurations.normal,
-                          curve: Curves.easeInOut,
-                          child: Stack(
-                            children: [
-                              Positioned(
-                                left: 39,
-                                top: 0,
-                                bottom: 0,
-                                child: Container(
-                                  width: 2,
-                                  color: theme.colorScheme.outlineVariant.withValues(
-                                    alpha: 0.4,
-                                  ),
-                                ),
-                              ),
+                        Positioned(
+                          left: 39,
+                          top: 0,
+                          bottom: 0,
+                          child: Container(
+                            width: 2,
+                            color: theme.colorScheme.outlineVariant.withValues(
+                              alpha: 0.4,
+                            ),
+                          ),
+                        ),
                         GestureDetector(
                           key: _viewportKey,
                           onLongPressStart: _handleDragStart,
@@ -2133,7 +2085,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                                       ),
                                     ...recordsInInterval.map(
                                       (record) => RepaintBoundary(
-                                        // 隔离每条日记项的重绘，避免滚动时同屏项互相干扰
                                         child: DiaryItem(
                                           record: record,
                                           onTap: () => _handleEdit(record),
@@ -2171,13 +2122,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                             },
                           ),
                         ),
-                            ],
-                          ),
-                        ),
-                        if (!_isInitialScrollCompleted)
-                          const Center(
-                            child: CircularProgressIndicator(),
-                          ),
                       ],
                     );
                   },

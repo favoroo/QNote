@@ -65,12 +65,7 @@ class AiService {
         : '$cleanedBaseUrl/';
 
     // 从提供商配置读取默认推理强度
-    if (config.vendorId != null) {
-      final providerConfig = getProviderById(config.vendorId!);
-      _reasoningEffort = providerConfig?.defaultReasoningEffort;
-    } else {
-      _reasoningEffort = null;
-    }
+    _reasoningEffort = _resolveReasoningEffort(config);
 
     _dio.options.headers['Content-Type'] = 'application/json';
     if (config.provider == 'gemini') {
@@ -407,6 +402,42 @@ class AiService {
       body['reasoning_effort'] = _reasoningEffort;
     }
     return body;
+  }
+
+  /// 根据配置推断默认推理强度。
+  ///
+  /// 优先级：vendorId 匹配 > baseUrl 匹配 > modelName 匹配
+  String? _resolveReasoningEffort(AiConfig config) {
+    // 1. 优先通过 vendorId 匹配
+    if (config.vendorId != null && config.vendorId != 'free_model') {
+      final providerConfig = getProviderById(config.vendorId!);
+      if (providerConfig?.defaultReasoningEffort != null) {
+        return providerConfig!.defaultReasoningEffort;
+      }
+    }
+
+    // 2. 通过 baseUrl 匹配
+    final baseUrl = config.baseUrl.toLowerCase();
+    for (final provider in aiProviders) {
+      if (provider.defaultReasoningEffort == null) continue;
+      final providerUrl = provider.defaultBaseUrl.toLowerCase();
+      if (providerUrl.isNotEmpty && baseUrl.contains(providerUrl.replaceAll('https://', '').replaceAll('http://', ''))) {
+        return provider.defaultReasoningEffort;
+      }
+    }
+
+    // 3. 通过 modelName 匹配
+    final modelName = config.modelName.toLowerCase();
+    for (final provider in aiProviders) {
+      if (provider.defaultReasoningEffort == null) continue;
+      for (final model in provider.models) {
+        if (modelName == model.toLowerCase()) {
+          return provider.defaultReasoningEffort;
+        }
+      }
+    }
+
+    return null;
   }
 
   Future<String> generateDiarySummary(String diaryContent) async {

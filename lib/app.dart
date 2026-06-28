@@ -22,6 +22,27 @@ import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/theme_provider.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
 
+/// 关键路径初始化：必须在 runApp 前完成，确保数据库和配置就绪。
+///
+/// 包括：Logger、日期格式化、数据库工厂、打开数据库、默认配置（快捷键/AI配置/AI角色/通知服务初始化）。
+Future<void> preInitializeApp() async {
+  await Future.wait([
+    LoggerService.instance.init(),
+    initializeDateFormatting('zh_CN'),
+    initDatabaseFactory(),
+  ]);
+
+  await DatabaseHelper.instance.database;
+
+  final configRepo = ConfigRepository.instance;
+  await Future.wait([
+    configRepo.ensureDefaultShortcuts(),
+    configRepo.ensureDefaultAiConfigs(),
+    AiRoleService.instance.initAndEnsureDefaults(),
+    NotificationService.instance.init(),
+  ]);
+}
+
 class QNoteApp extends ConsumerStatefulWidget {
   const QNoteApp({super.key});
 
@@ -32,48 +53,22 @@ class QNoteApp extends ConsumerStatefulWidget {
 class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver {
   static const _channel = MethodChannel('com.appone.qnote_flutter/widgets');
 
-  /// 最近一次进入后台的时刻，用于在 resume 时判断是否真有数据变更
   DateTime? _lastPausedTime;
-
-  /// P2-35: 初始化完成标志。false 时显示 splash，true 时显示主应用。
-  bool _initialized = false;
 
   @override
   void initState() {
     super.initState();
-    // P2-35: observer 与导航监听延迟到初始化完成后注册，避免初始化期间
-    // lifecycle 回调或原生导航请求访问未就绪的数据库。
-    _initializeApp();
+    WidgetsBinding.instance.addObserver(this);
+    _initNavigationListener();
+    _runDeferredInitialization();
   }
 
-  /// P2-35: 后台并行初始化。
+  /// 延迟初始化：主界面显示后执行，不阻塞首帧。
   ///
-  /// 第一批并行：Logger / 日期格式化 / 数据库工厂（三者无依赖）。
-  /// 第二批：打开数据库（依赖工厂）。
-  /// 第三批并行：4 个默认配置初始化（依赖数据库）。
-  /// 最后：WebDAV 同步检查 + 通知服务启动。
-  Future<void> _initializeApp() async {
+  /// 包括：WebDAV 自动同步检查、通知提醒启动。
+  Future<void> _runDeferredInitialization() async {
     try {
-      // 第一批：无依赖的初始化并行执行
-      await Future.wait([
-        LoggerService.instance.init(),
-        initializeDateFormatting('zh_CN'),
-        initDatabaseFactory(),
-      ]);
-
-      // 第二批：打开数据库（依赖工厂）
-      await DatabaseHelper.instance.database;
-
-      // 第三批：依赖数据库的默认配置初始化并行执行
       final configRepo = ConfigRepository.instance;
-      await Future.wait([
-        configRepo.ensureDefaultShortcuts(),
-        configRepo.ensureDefaultAiConfigs(),
-        AiRoleService.instance.initAndEnsureDefaults(),
-        NotificationService.instance.init(),
-      ]);
-
-      // 最后：WebDAV 自动同步检查 + 通知提醒启动
       final webdavConfig = await configRepo.getWebdavConfig();
       if (webdavConfig != null && webdavConfig.autoSync) {
         SyncScheduler.instance.syncIfNeeded();
@@ -81,17 +76,10 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
       NotificationService.instance.startReminderCheck();
     } catch (e, stackTrace) {
       LoggerService.instance.error(
-        '应用初始化失败: $e',
+        '延迟初始化失败: $e',
         category: LogCategory.system,
         details: stackTrace.toString(),
       );
-    } finally {
-      if (mounted) {
-        // 初始化完成后注册生命周期观察者和导航监听
-        WidgetsBinding.instance.addObserver(this);
-        _initNavigationListener();
-        setState(() => _initialized = true);
-      }
     }
   }
 
@@ -107,18 +95,14 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
       _lastPausedTime = DateTime.now();
     } else if (state == AppLifecycleState.resumed) {
       _refreshProvidersIfNeeded();
-      // APP 恢复前台后拉取小组件挂起路由，确保在 Provider 刷新之后执行导航
       _tryNavigatePendingRoute();
     }
   }
 
-  /// 仅在数据库自上次切后台以来有 sync_log 变更时才 refresh，
-  /// 避免每次切回前台都触发无谓的 2 次全表查询
   Future<void> _refreshProvidersIfNeeded() async {
     try {
       final baseline = _lastPausedTime;
       if (baseline == null) {
-        // 冷启动后首次 resume，没有基线，保守 refresh
         _refreshProviders();
         return;
       }
@@ -143,7 +127,6 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
   }
 
   void _initNavigationListener() {
-    // Web 端没有原生 MethodChannel，直接跳过
     if (kIsWeb) return;
 
     _channel.setMethodCallHandler((call) async {
@@ -155,13 +138,11 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
       }
     });
 
-    // 冷启动时拉取挂起路由，带延迟重试以等待 MethodChannel 就绪
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _tryNavigatePendingRoute(retryCount: 2);
     });
   }
 
-  /// 从原生侧拉取挂起路由并导航，retryCount 为重试次数
   Future<void> _tryNavigatePendingRoute({int retryCount = 0}) async {
     if (kIsWeb) return;
 
@@ -171,7 +152,6 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
         _navigateToRoute(pending);
       }
     } catch (e) {
-      // MethodChannel 可能尚未就绪，延迟重试
       if (retryCount > 0) {
         await Future.delayed(const Duration(milliseconds: 200));
         await _tryNavigatePendingRoute(retryCount: retryCount - 1);
@@ -187,7 +167,6 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
       router.go(route);
     } catch (e) {
       debugPrint('路由导航失败: $e');
-      // 导航可能因路由器正在过渡而失败，延迟重试
       if (retryCount > 0) {
         Future.delayed(const Duration(milliseconds: 300), () {
           _navigateToRoute(route, retryCount: retryCount - 1);
@@ -198,26 +177,6 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
 
   @override
   Widget build(BuildContext context) {
-    // P2-35: 初始化未完成时显示 splash，不 watch 任何依赖数据库的 Provider
-    if (!_initialized) {
-      return MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.lightTheme(AppTheme.primaryDefault),
-        darkTheme: AppTheme.darkTheme(AppTheme.primaryDefault),
-        home: const _SplashScreen(),
-        // 消除 hot restart 时的 initial route 警告：
-        // Flutter 引擎可能保留之前的路由（如 /diary），但 splash 阶段
-        // 用的是 Navigator 1.0 没有命名路由表，导致 "Could not navigate
-        // to initial route" 警告。这里统一返回 splash 页即可。
-        onGenerateRoute: (settings) {
-          return MaterialPageRoute(
-            builder: (_) => const _SplashScreen(),
-            settings: settings,
-          );
-        },
-      );
-    }
-
     final themeMode = ref.watch(themeModeProvider);
     final accentColor = ref.watch(accentColorProvider);
     final router = ref.watch(routerProvider);
@@ -274,40 +233,3 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
     );
   }
 }
-
-/// P2-35: 启动 splash 页，在后台初始化完成前显示。
-///
-/// 用 AppTheme.primaryDefault 与主应用保持视觉一致，避免主题切换跳变。
-class _SplashScreen extends StatelessWidget {
-  const _SplashScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.auto_stories_rounded,
-              size: 64,
-              color: theme.colorScheme.primary,
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: 28,
-              height: 28,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                valueColor: AlwaysStoppedAnimation(theme.colorScheme.primary),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-

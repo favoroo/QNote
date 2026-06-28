@@ -6,6 +6,22 @@
 
 ---
 
+## 2026-06-29
+
+- **[02:30]**
+  - **Fixed**: 修复日记页面进入时空白、需要切换日期才能显示的问题，同时移除启动时不必要的应用内加载动画：
+    - **Changed**: `lib/main.dart` 在 `runApp()` 前调用 `preInitializeApp()`，确保数据库和核心配置（Logger、日期格式化、数据库、默认快捷键/AI配置/AI角色/通知服务）在首帧渲染前完成初始化，避免日记页面进入时 `diaryListProvider` 处于 loading 状态显示转圈，同时保证初始滚动位置估算准确。
+    - **Changed**: `lib/app.dart` 保留两阶段初始化架构——关键路径在 runApp 前完成，非关键初始化（WebDAV 自动同步检查、通知提醒启动）延迟到首帧后后台执行，不阻塞用户操作。
+    - **Fixed**: `lib/pages/diary_page.dart` 删除 initState 中遗留的无效代码 `_isInitialScrollCompleted = false;`（该变量已在之前的优化中移除，残留代码会导致运行时异常）。
+
+- **[02:40]**
+  - **Fixed**: 修复日记时间线初始进入只显示竖线、看不到圆点/时间/日期分隔线的问题：
+    - **Changed**: `lib/pages/diary_page.dart` 移除 ScrollController 的 `initialScrollOffset`，避免数据未加载时估算的初始偏移导致首次布局位置错误。
+    - **Changed**: `lib/pages/diary_page.dart` 简化初始滚动逻辑——数据加载完成后延迟 50ms（确保 ListView 完成首次布局）直接 `jumpTo` 到估算的当前时间位置，不再使用复杂的多帧重试精确滚动逻辑，避免懒加载 item 未渲染时重试导致位置错乱。估算位置已考虑日记记录额外高度，精度足够用户正常使用，切换日期/手动滚动等场景仍保留精确滚动。
+    - **Changed**: `lib/pages/diary_page.dart` 删除 initState 中无意义的空 `setState(() {})` postFrame 回调，清理未使用的 `_estimateInitialOffset()` 函数。
+
+---
+
 ## 2026-06-28
 
 - **[18:45]**
@@ -13,6 +29,7 @@
     - 新增 `AiProviderConfig.defaultReasoningEffort` 字段，支持按提供商配置默认推理强度 (`lib/config/models.dart`)。
     - 新增 `AiService._reasoningEffort` 字段，在 `updateConfig()` 中根据 `vendorId` 自动从提供商配置读取默认值 (`lib/core/ai/ai_service.dart`)。
     - 抽取 `_buildBaseBody()` 辅助方法，统一注入 `model`/`temperature`/`max_tokens`/`reasoning_effort` 等通用参数，消除 7 处重复代码 (`lib/core/ai/ai_service.dart`)。
+    - 新增 `_resolveReasoningEffort()` 方法，采用三重匹配策略（vendorId > baseUrl > modelName），确保免费模型（如免费 SenseNova）也能正确应用默认推理强度 (`lib/core/ai/ai_service.dart`)。
     - SenseNova 提供商（sensenova-6.7-flash-lite、deepseek-v4-flash）默认使用 `reasoning_effort: "low"`，如需关闭推理可改为 `"none"`。
 
 - **[18:30]**

@@ -216,7 +216,7 @@ final aiProviders = <AiProviderConfig>[
       'deepseek-v4-flash',
     ],
     modelsEndpoint: '/v1/models',
-    defaultReasoningEffort: 'low',
+    defaultReasoningEffort: 'none',
   ),
   const AiProviderConfig(
     id: 'minimax',
