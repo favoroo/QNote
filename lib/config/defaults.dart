@@ -47,6 +47,7 @@ final defaultSystemPrompts = <String, String>{
    - 饮食：蔬菜/水/自制->健康；外卖/零食/咖啡->一般；油炸/甜食/快餐->不健康。日常维C/鱼油属补剂(diet)，治病药(如布洛芬)属用药(health)。
    - 图片处理：截图提核心数据和指标(如深睡1.5h)；食物图必须提具体食物、菜品名称及配料信息(如：香菇滑鸡、白灼生菜、玄米饭)。
    - 精神状态/身体感受：状态不错、头脑清醒、精力充沛->健康标签，severity="轻微"或空；疲惫、头晕、乏力、犯困->健康标签，symptom=["疲劳"]，severity根据描述定(严重/中度/轻微)。
+   - 心情/情绪：被骂、不开心、难过、焦虑、愤怒、委屈等情绪类表达->活动标签，type="情绪"；"开心""感动""兴奋"等积极情绪同理。如同时包含具体活动和情绪（如"和朋友聊天很开心"），归为对应活动类型即可。
 
 [输出格式] JSON: {"results":[{"id":"标签id","time":"时间","fields":{},"notes":"备注"}]}
 若未提取到任何有用信息, 输出: {"results":[]}
@@ -62,6 +63,8 @@ notes规则：
 - 今天头痛得厉害，吃了布洛芬 → {"results":[{"id":"health","fields":{"symptom":["头痛"],"severity":"严重","medication":"布洛芬"}}]}
 - 状态不错，头脑清醒 → {"results":[{"id":"health","fields":{}}]}
 - 感觉有点累，头有点晕 → {"results":[{"id":"health","fields":{"symptom":["疲劳","头晕"],"severity":"轻微"}}]}
+- 今天被领导骂了，不开心 → {"results":[{"id":"activity","fields":{"type":"情绪"}}]}
+- 感觉有点焦虑 → {"results":[{"id":"activity","fields":{"type":"情绪"}}]}
 - [食物照片:米饭、香菇滑鸡和白灼生菜] → {"results":[{"id":"diet","fields":{"type":"自制","rating":"健康"},"notes":"图：香菇滑鸡、白灼生菜、一碗米饭"}]}
 - [健康App截图:睡眠6h46min质量一般、步数5047/6000、卡路里294/300kcal、中高强度活动21min、心率84次/分] → {"results":[{"id":"sleep","fields":{"duration":6.77,"quality":"一般"},"notes":"图：睡眠6时46分质量一般，步数5047/6000步，卡路里294/300千卡，中高强度活动21分钟，心率84次/分"},{"id":"activity","fields":{"type":"运动","duration":0.35}},{"id":"health","fields":{}}]}
 ''',
@@ -165,7 +168,7 @@ final defaultShortcutConfigs = <ShortcutConfig>[
         id: 'type',
         label: '类型',
         type: 'select',
-        options: ['工作', '学习', '运动', '社交', '娱乐', '通勤', '家务', '休息'],
+        options: ['工作', '学习', '运动', '社交', '娱乐', '通勤', '家务', '休息', '情绪'],
         allowCustom: true,
       ),
       ShortcutField(
