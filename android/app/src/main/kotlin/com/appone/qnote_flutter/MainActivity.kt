@@ -16,6 +16,9 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handleIntent(intent)
+        // 升级覆盖安装后系统不会自动触发小组件 onUpdate，冷启动时主动刷新一次，
+        // 避免旧小组件持有失效的 PendingIntent 导致点击无反应
+        updateAllWidgets()
     }
 
     override fun onNewIntent(intent: Intent) {

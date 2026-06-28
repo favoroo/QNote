@@ -8,6 +8,42 @@
 
 ## 2026-06-28
 
+- **[18:45]**
+  - **Added**: 为 SenseNova 提供商配置默认推理强度为 `low`，提升响应速度、降低 token 消耗：
+    - 新增 `AiProviderConfig.defaultReasoningEffort` 字段，支持按提供商配置默认推理强度 (`lib/config/models.dart`)。
+    - 新增 `AiService._reasoningEffort` 字段，在 `updateConfig()` 中根据 `vendorId` 自动从提供商配置读取默认值 (`lib/core/ai/ai_service.dart`)。
+    - 抽取 `_buildBaseBody()` 辅助方法，统一注入 `model`/`temperature`/`max_tokens`/`reasoning_effort` 等通用参数，消除 7 处重复代码 (`lib/core/ai/ai_service.dart`)。
+    - SenseNova 提供商（sensenova-6.7-flash-lite、deepseek-v4-flash）默认使用 `reasoning_effort: "low"`，如需关闭推理可改为 `"none"`。
+
+- **[18:30]**
+  - **Fixed**: 修复图片提取失败（"有图片=false"）的问题：根因是 `timelineOptimization.extractImages` 默认为 `false`，导致用户上传图片后 AI 提取不会发送图片数据，表现为"图片提取失败"。
+    - **Changed**: `AiTemperatures.timelineOptimization` 默认 `extractImages` 从 `false` 改为 `true`，新用户默认开启图片提取 (`lib/models/ai_roles.dart`)。
+    - **Added**: 新增 `_migrateExtractImagesDefault()` 迁移逻辑，已有用户首次启动时自动将 `extractImages` 升级为 `true`，使用 SharedPreferences 版本标记确保只迁移一次 (`lib/core/ai/ai_role_service.dart`)。
+
+- **[18:29]**
+  - **Fixed**: 预防性修复应用升级覆盖安装后桌面小组件点击无反应：在 `MainActivity.onCreate` 中 `handleIntent` 之后主动调用 `updateAllWidgets()`，每次冷启动强制刷新已添加小组件的 `RemoteViews` 与 `PendingIntent`，避免升级后系统未自动触发 `onUpdate` 导致旧小组件持有失效的 PendingIntent (`android/app/src/main/kotlin/com/appone/qnote_flutter/MainActivity.kt`).
+  - **Fixed**: 修复智能提取功能因推理模型 `max_tokens` 不足导致输出截断而失败的问题。根因：`timelineOptimization` 默认 `maxTokens: 512`，推理模型（SenseNova/DeepSeek-R1）的 `reasoning` 思维链消耗大量 token，JSON 输出来不及完整生成就被 `finish_reason: "length"` 截断；同时 `message.content` 为空时代码回退读取 `message.reasoning`（中文思维文本），`_extractJsonString` 的简单括号匹配被中文文本中的 `{` `}` 干扰，提取出无效 JSON 导致解析失败。
+    - **Changed**: `timelineOptimization` 默认 `maxTokens` 从 512 提升到 2048，给推理模型足够的 token 预算 (`lib/models/ai_roles.dart`)。
+    - **Added**: 新增 `_extractFinishReason` 方法并在 `extractUnified` 中检测 `finish_reason: "length"` 截断，输出警告日志 (`lib/core/ai/ai_service.dart`)。
+    - **Added**: 新增 `_findJsonByStructureMarkers` 方法，通过 `{"results":`、`[{"id":` 等 JSON 结构标记定位起始位置并做括号配对，避免中文推理文本中 `type(select:...)` 等非 JSON 括号干扰 (`lib/core/ai/ai_service.dart`)。
+
+- **[23:15]**
+  - **Changed**: 移除时间滑动选择器指示器区域的点击切换手势，并使用 `IgnorePointer` 让事件完全穿透，从而彻底避免由于 `GestureDetector` 手势竞技场竞争导致的滑动不顺畅、滑不动的问题 (`lib/widgets/time_scroll_picker.dart`, `lib/widgets/time_picker.dart`)。现在用户只通过下方的“键盘输入”按钮切换输入模式，滑动操作变得极其灵敏顺畅。
+
+- **[23:00]**
+  - **Fixed**: 修复日记时间线卡片底部 1px 溢出（BOTTOM OVERFLOWED BY 1.00 PIXELS）：移除 `DiaryItem` 最外层多余的 `IntrinsicHeight`，直接使用 `Row(crossAxisAlignment: CrossAxisAlignment.stretch)` 即可实现左侧时间线与右侧卡片等高，既消除了 `IntrinsicHeight` 两次布局带来的像素精度误差，又提升了列表滚动性能 (`lib/widgets/diary/diary_item.dart`)。
+  - **Fixed**: 优化 Web 端启动时控制台两个警告：
+    1. `getPendingRoute` MissingPluginException：`_initNavigationListener` 和 `_tryNavigatePendingRoute` 增加 `kIsWeb` 判断，Web 端直接跳过原生 MethodChannel 调用，避免无意义的异常捕获和错误日志 (`lib/app.dart`)。
+    2. "Could not navigate to initial route '/diary'：splash 屏阶段的 `MaterialApp` 增加 `onGenerateRoute` 兜底，统一返回 splash 页面，消除 hot restart 时因 Flutter 引擎保留路由状态导致的初始路由警告 (`lib/app.dart`)。
+
+- **[22:30]**
+  - **Changed**: 深度美化系统整体 UI 视觉和交互体验：
+    1. **EmptyStateWidget**: 增加了半透明的渐变圆形底色与细致边框层级，优化了标题字重与辅助描述，提升空状态的精致感 (`lib/widgets/empty_state.dart`)。
+    2. **AI 消息气泡**: 将 AI 的气泡背景由深色的 `surfaceContainerHighest` 升级为更清爽柔和的 `surfaceContainer`，并添加了微投影和边框。气泡圆角重构为左右不对称的现代卡片风格；Markdown 渲染增加了代码块（Code Block）的圆角背景、边框以及引用块（Blockquote）的左侧主题色粗线与淡背景色 (`lib/pages/ai_page.dart`)。
+    3. **AI 输入框**: 输入区域升级为带有轮廓线与淡色背景（`surfaceContainerLow`）的精美输入面板，提供极佳的文字录入质感 (`lib/pages/ai_page.dart`)。
+    4. **日记时间轴与卡片**: 时间线圆点背后增加了一条贯穿整日的垂直连接线（Timeline Connector Line），呈现更完整的时间轴形态；日记卡片背景升级为纯白/卡片原色并搭配分类标签色 Tint 的柔和阴影，提供细腻的微立体层次感 (`lib/widgets/diary/diary_item.dart`)。
+    5. **底部导航栏主题**: 将底部导航栏选中态的实心大色块改为了更轻量优雅的淡主题色半透明背景，并将选中的图标从反白改为主品牌色，整体设计更加符合现代轻量化 Material 3 标准 (`lib/core/theme/app_theme.dart`)。
+
 - **[22:00]**
   - **Added**: 完成 P2 长期/架构优化（实施 3 项 + 1 项审查通过 + 7 项评估跳过），主要变化如下：
     1. **P2-35**: `lib/main.dart` 精简为仅 `WidgetsFlutterBinding` + `SystemChrome` + `runApp`；`lib/app.dart` 新增 `_initialized` 状态字段 + `_initializeApp()` 方法（三批并行初始化：LoggerService/initializeDateFormatting/initDatabaseFactory → database → configRepo + AiRoleService + NotificationService），未完成时显示 `_SplashScreen`，完成后切换到主应用；observer 与导航监听延迟到初始化完成后注册，避免初始化期间 watch 依赖数据库的 Provider 触发不必要重建。

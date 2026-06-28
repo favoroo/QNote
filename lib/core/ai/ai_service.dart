@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:qnote_flutter/config/defaults.dart';
+import 'package:qnote_flutter/config/models.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
@@ -30,6 +31,7 @@ class AiService {
   AiConfig? _config;
   double _temperature = 0.7;
   int _maxTokens = 2048;
+  String? _reasoningEffort;
 
   AiConfig? get config => _config;
 
@@ -61,6 +63,14 @@ class AiService {
     _dio.options.baseUrl = cleanedBaseUrl.endsWith('/')
         ? cleanedBaseUrl
         : '$cleanedBaseUrl/';
+
+    // 从提供商配置读取默认推理强度
+    if (config.vendorId != null) {
+      final providerConfig = getProviderById(config.vendorId!);
+      _reasoningEffort = providerConfig?.defaultReasoningEffort;
+    } else {
+      _reasoningEffort = null;
+    }
 
     _dio.options.headers['Content-Type'] = 'application/json';
     if (config.provider == 'gemini') {
@@ -146,12 +156,7 @@ class AiService {
           }
         }).toList();
 
-        final bodyMap = <String, dynamic>{
-          'model': _config!.modelName,
-          'messages': formattedMessages,
-          'temperature': _temperature,
-          'max_tokens': _maxTokens,
-        };
+        final bodyMap = _buildBaseBody(messages: formattedMessages);
 
         if (isOmni) {
           bodyMap['sessionId'] = DateTime.now().millisecondsSinceEpoch
@@ -274,13 +279,7 @@ class AiService {
         }
       }).toList();
 
-      final bodyMap = <String, dynamic>{
-        'model': _config!.modelName,
-        'messages': formattedMessages,
-        'temperature': _temperature,
-        'max_tokens': _maxTokens,
-        'stream': true,
-      };
+      final bodyMap = _buildBaseBody(messages: formattedMessages, stream: true);
 
       if (isOmni) {
         bodyMap['sessionId'] = DateTime.now().millisecondsSinceEpoch.toString();
@@ -388,6 +387,26 @@ class AiService {
       return 'chat/completions';
     }
     return 'v1/chat/completions';
+  }
+
+  /// 构建 OpenAI 兼容接口的基础请求体，统一注入通用参数。
+  Map<String, dynamic> _buildBaseBody({
+    required List<dynamic> messages,
+    bool stream = false,
+    Map<String, dynamic>? responseFormat,
+  }) {
+    final body = <String, dynamic>{
+      'model': _config!.modelName,
+      'messages': messages,
+      'temperature': _temperature,
+      'max_tokens': _maxTokens,
+    };
+    if (stream) body['stream'] = true;
+    if (responseFormat != null) body['response_format'] = responseFormat;
+    if (_reasoningEffort != null) {
+      body['reasoning_effort'] = _reasoningEffort;
+    }
+    return body;
   }
 
   Future<String> generateDiarySummary(String diaryContent) async {
@@ -602,13 +621,10 @@ class AiService {
           ],
         ];
 
-        final bodyMap = <String, dynamic>{
-          'model': _config!.modelName,
-          'messages': formattedMessages,
-          'temperature': _temperature,
-          'max_tokens': _maxTokens,
-          'response_format': {'type': 'json_object'},
-        };
+        final bodyMap = _buildBaseBody(
+          messages: formattedMessages,
+          responseFormat: {'type': 'json_object'},
+        );
 
         if (isOmni) {
           bodyMap['sessionId'] = DateTime.now().millisecondsSinceEpoch
@@ -631,6 +647,15 @@ class AiService {
         data: requestBody,
         cancelToken: cancelToken,
       );
+      // 检测推理模型是否因 max_tokens 不足导致输出截断
+      final finishReason = _extractFinishReason(response.data);
+      if (finishReason == 'length') {
+        LoggerService.instance.logAI(
+          '⚠️ AI响应被截断 (finish_reason: length)，当前 max_tokens=$_maxTokens 可能不够推理模型使用',
+          level: LogLevel.warning,
+        );
+      }
+
       final content = _extractTextFromResponse(response.data);
       LoggerService.instance.logAI(
         'AI统一提取响应:\n${_formatJsonForLogging(response.data)}',
@@ -832,9 +857,8 @@ class AiService {
       };
     }
 
-    return {
-      'model': _config!.modelName,
-      'messages': [
+    return _buildBaseBody(
+      messages: [
         {'role': 'system', 'content': systemPrompt},
         {
           'role': 'user',
@@ -848,9 +872,7 @@ class AiService {
           ],
         },
       ],
-      'temperature': _temperature,
-      'max_tokens': _maxTokens,
-    };
+    );
   }
 
   Map<String, dynamic> _buildMultimodalRequestBody({
@@ -919,9 +941,8 @@ class AiService {
       };
     }
 
-    return {
-      'model': _config!.modelName,
-      'messages': [
+    return _buildBaseBody(
+      messages: [
         {'role': 'system', 'content': systemPrompt},
         {
           'role': 'user',
@@ -934,10 +955,8 @@ class AiService {
           ],
         },
       ],
-      'temperature': _temperature,
-      'max_tokens': _maxTokens,
-      'response_format': {'type': 'json_object'},
-    };
+      responseFormat: {'type': 'json_object'},
+    );
   }
 
   String _extractTextFromResponse(dynamic data) {
@@ -991,6 +1010,16 @@ class AiService {
     return '';
   }
 
+  /// 从响应数据中提取 finish_reason，用于检测 max_tokens 截断
+  String? _extractFinishReason(dynamic data) {
+    if (data is! Map<String, dynamic>) return null;
+    final choices = data['choices'];
+    if (choices is List && choices.isNotEmpty) {
+      return choices[0]?['finish_reason']?.toString();
+    }
+    return null;
+  }
+
   dynamic _parseJsonFromAiContent(String content) {
     final stripped = _stripMarkdownCodeBlock(content);
     try {
@@ -1016,6 +1045,14 @@ class AiService {
     }
   }
 
+  /// 从含中文推理文本中提取 JSON 子串。
+  ///
+  /// 推理模型（SenseNova/DeepSeek-R1）的 reasoning 字段混有中文思考文本和 JSON，
+  /// 简单括号匹配会被中文文本中的 `{` `}` 干扰。本方法按优先级尝试：
+  /// 1. 提取 ```json ... ``` 包裹的代码块
+  /// 2. 提取普通的 ``` ... ``` 代码块
+  /// 3. 按 JSON 结构标记（{"results":  / {"tags": / [{"id":）定位并做括号配对
+  /// 4. 兜底：简单首 `{` 尾 `}` 匹配
   String? _extractJsonString(String text) {
     // 1. 优先尝试提取 ```json ... ``` 包裹的块
     final jsonBlockReg = RegExp(r'```json\s*([\s\S]*?)\s*```');
@@ -1031,7 +1068,12 @@ class AiService {
       return match.group(1)!.trim();
     }
 
-    // 3. 通过定位最外层的 { } 或 [ ] 提取 JSON 子串
+    // 3. 按 JSON 结构标记定位真正的 JSON 起始位置，做括号配对
+    //    推理模型的 reasoning 中常有 `{"results":[{"id":...}]}` 这样的输出
+    final candidate = _findJsonByStructureMarkers(text);
+    if (candidate != null) return candidate;
+
+    // 4. 兜底：简单首 { 尾 } 匹配
     final firstBrace = text.indexOf('{');
     final firstBracket = text.indexOf('[');
     final lastBrace = text.lastIndexOf('}');
@@ -1041,7 +1083,6 @@ class AiService {
     int end = -1;
 
     if (firstBrace != -1 && firstBracket != -1) {
-      // 哪个括号最先出现，就以哪个作为最外层边界
       if (firstBrace < firstBracket) {
         start = firstBrace;
         end = lastBrace;
@@ -1059,6 +1100,76 @@ class AiService {
 
     if (start != -1 && end != -1 && end > start) {
       return text.substring(start, end + 1);
+    }
+
+    return null;
+  }
+
+  /// 通过 JSON 结构标记（如 `{"results":`、`[{"id":`）定位起始位置，
+  /// 然后做括号配对提取完整 JSON 子串。
+  ///
+  /// 这能避免中文推理文本中 `type(select:...)` 等非 JSON 括号的干扰。
+  String? _findJsonByStructureMarkers(String text) {
+    // 常见的 JSON 输出开头模式
+    final markerPatterns = [
+      RegExp(r'\{"results"\s*:\s*\[', multiLine: true),
+      RegExp(r'\{"tags"\s*:\s*\[', multiLine: true),
+      RegExp(r'\{"message"\s*:', multiLine: true),
+      RegExp(r'\[{"id"\s*:', multiLine: true),
+    ];
+
+    int? bestStart;
+    for (final pattern in markerPatterns) {
+      final m = pattern.firstMatch(text);
+      if (m != null) {
+        final pos = m.start;
+        if (bestStart == null || pos < bestStart) {
+          bestStart = pos;
+        }
+      }
+    }
+
+    if (bestStart == null) return null;
+
+    // 从 bestStart 开始做括号配对
+    final firstChar = text[bestStart];
+    final openChar = firstChar;
+    final closeChar = firstChar == '{' ? '}' : ']';
+
+    int depth = 0;
+    bool inString = false;
+    bool escaped = false;
+
+    for (int i = bestStart; i < text.length; i++) {
+      final ch = text[i];
+
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch == '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch == '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+
+      if (ch == openChar) {
+        depth++;
+      } else if (ch == closeChar) {
+        depth--;
+        if (depth == 0) {
+          return text.substring(bestStart, i + 1);
+        }
+      }
+    }
+
+    // 配对失败（可能是截断的），尝试返回从头到尾的内容
+    if (depth > 0 && text.length > bestStart + 1) {
+      return text.substring(bestStart);
     }
 
     return null;
@@ -1256,13 +1367,10 @@ class AiService {
         ],
       ];
 
-      final bodyMap = <String, dynamic>{
-        'model': _config!.modelName,
-        'messages': formattedMessages,
-        'temperature': _temperature,
-        'max_tokens': _maxTokens,
-        'response_format': {'type': 'json_object'},
-      };
+      final bodyMap = _buildBaseBody(
+        messages: formattedMessages,
+        responseFormat: {'type': 'json_object'},
+      );
 
       if (isOmni) {
         bodyMap['sessionId'] = DateTime.now().millisecondsSinceEpoch.toString();
@@ -1358,17 +1466,16 @@ class AiService {
         ];
       }
 
-      requestBody = {
-        'model': config.modelName,
-        'messages': [
+      requestBody = _buildBaseBody(
+        messages: [
           {
             'role': 'user',
             'content': contentList,
           },
         ],
-        'temperature': 0.1,
-        'max_tokens': 200,
-      };
+      );
+      requestBody['temperature'] = 0.1;
+      requestBody['max_tokens'] = 200;
     }
 
     final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);

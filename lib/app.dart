@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -142,6 +143,9 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
   }
 
   void _initNavigationListener() {
+    // Web 端没有原生 MethodChannel，直接跳过
+    if (kIsWeb) return;
+
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'navigate') {
         final route = call.arguments as String?;
@@ -159,6 +163,8 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
 
   /// 从原生侧拉取挂起路由并导航，retryCount 为重试次数
   Future<void> _tryNavigatePendingRoute({int retryCount = 0}) async {
+    if (kIsWeb) return;
+
     try {
       final pending = await _channel.invokeMethod<String>('getPendingRoute');
       if (pending != null) {
@@ -199,6 +205,16 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
         theme: AppTheme.lightTheme(AppTheme.primaryDefault),
         darkTheme: AppTheme.darkTheme(AppTheme.primaryDefault),
         home: const _SplashScreen(),
+        // 消除 hot restart 时的 initial route 警告：
+        // Flutter 引擎可能保留之前的路由（如 /diary），但 splash 阶段
+        // 用的是 Navigator 1.0 没有命名路由表，导致 "Could not navigate
+        // to initial route" 警告。这里统一返回 splash 页即可。
+        onGenerateRoute: (settings) {
+          return MaterialPageRoute(
+            builder: (_) => const _SplashScreen(),
+            settings: settings,
+          );
+        },
       );
     }
 

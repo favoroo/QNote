@@ -104,7 +104,10 @@ class AiTemperatures {
     this.assistant = const AiRoleSettings(),
     this.timelineOptimization = const AiRoleSettings(
       temperature: 0.01,
-      maxTokens: 512,
+      // 推理模型（如 SenseNova、DeepSeek-R1）需要足够 token 预算给思维链 + JSON 输出
+      // 512 不够，会被 reasoning 耗尽导致 finish_reason: "length" 截断
+      maxTokens: 2048,
+      extractImages: true,
     ),
   });
 

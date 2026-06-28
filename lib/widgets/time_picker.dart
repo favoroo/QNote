@@ -359,17 +359,7 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
     return Stack(
       alignment: Alignment.center,
       children: [
-        GestureDetector(
-          onTap: () {
-            setState(() {
-              _isKeyboardMode = true;
-              _hourInputController.text = _selectedHour.toString().padLeft(2, '0');
-              _minuteInputController.text = _selectedMinute.toString().padLeft(2, '0');
-            });
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              _hourFocusNode.requestFocus();
-            });
-          },
+        IgnorePointer(
           child: Container(
             height: 36,
             margin: const EdgeInsets.symmetric(horizontal: 16),

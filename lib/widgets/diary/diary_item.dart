@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
@@ -316,274 +315,292 @@ class _DiaryItemState extends State<DiaryItem> {
     final tagColor = _tagColor(record.displayTag);
     final hasMultipleTags = record.tagEntries.length > 1;
 
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            width: 48,
-            child: Stack(
-              alignment: Alignment.topCenter,
-              children: [
-                Positioned(
-                  top: 12,
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surface,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Center(
-                      child: Container(
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          color: tagColor.withValues(alpha: 0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          _tagIcon(record.displayTag),
-                          size: 14,
-                          color: tagColor,
-                        ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          width: 48,
+          child: Stack(
+            alignment: Alignment.topCenter,
+            children: [
+              Positioned(
+                top: 0,
+                bottom: 0,
+                child: Container(
+                  width: 2,
+                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
+                ),
+              ),
+              Positioned(
+                top: 12,
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: tagColor.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        _tagIcon(record.displayTag),
+                        size: 14,
+                        color: tagColor,
                       ),
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 16, right: 12),
-              child: GestureDetector(
-                onTap: onTap,
-                behavior: HitTestBehavior.opaque,
-                child: AnimatedGradientBorder(
-                  isAnimating: isExtracting,
-                  borderRadius: 16,
-                  strokeWidth: 2,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: tagColor.withValues(alpha: 0.04),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: isExtracting
-                            ? Colors.transparent
-                            : tagColor.withValues(alpha: 0.15),
-                      ),
+        ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 16, right: 12),
+            child: GestureDetector(
+              onTap: onTap,
+              behavior: HitTestBehavior.opaque,
+              child: AnimatedGradientBorder(
+                isAnimating: isExtracting,
+                borderRadius: 16,
+                strokeWidth: 2,
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isExtracting
+                          ? Colors.transparent
+                          : tagColor.withValues(alpha: 0.15),
                     ),
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(right: 12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildHeader(theme, tagColor),
-                              if (hasMultipleTags)
-                                _buildMultiTagSections(theme)
-                              else ...[
-                                _buildTagAndFieldsRow(theme, tagColor),
-                                _buildSingleTagContent(theme, tagColor),
-                              ],
-                              if (record.photos.isNotEmpty)
-                                Builder(
-                                  builder: (context) {
-                                    final screenWidth = MediaQuery.of(
-                                      context,
-                                    ).size.width;
-                                    final maxWidth =
-                                        screenWidth - 132 - _contentIndent;
-                                    final spacing = 6.0;
-                                    final itemWidth =
-                                        ((maxWidth - spacing * 2 - 2.0) / 3)
-                                            .clamp(50.0, 70.0);
-                                    return Padding(
-                                      padding: const EdgeInsets.only(
-                                        left: _contentIndent,
-                                        top: 4,
-                                      ),
-                                      child: Wrap(
-                                        spacing: spacing,
-                                        runSpacing: spacing,
-                                        children: record.photos.asMap().entries.map((entry) {
-                                          final index = entry.key;
-                                          final photo = entry.value;
-                                          return GestureDetector(
-                                            behavior: HitTestBehavior.opaque,
-                                            onTap: () {
-                                              Navigator.of(context).push(
-                                                MaterialPageRoute(
-                                                  builder: (_) => FullScreenImageGallery(
-                                                    images: record.photos,
-                                                    initialIndex: index,
-                                                  ),
-                                                ),
-                                              );
-                                            },
-                                            child: UnifiedImage(
-                                              imagePath: photo,
-                                              width: itemWidth,
-                                              height: itemWidth,
-                                              borderRadius: BorderRadius.circular(
-                                                8,
-                                              ),
-                                            ),
-                                          );
-                                        }).toList(),
-                                      ),
-                                    );
-                                  },
-                                ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: tagColor.withValues(alpha: 0.03),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.01),
+                        blurRadius: 4,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildHeader(theme, tagColor),
+                            if (hasMultipleTags)
+                              _buildMultiTagSections(theme)
+                            else ...[
+                              _buildTagAndFieldsRow(theme, tagColor),
+                              _buildSingleTagContent(theme, tagColor),
                             ],
-                          ),
-                        ),
-                        Positioned(
-                          top: 0,
-                          right: -14,
-                          child: IconButton(
-                            key: _actionMenuKey,
-                            icon: Icon(
-                              Icons.more_vert,
-                              size: 18,
-                              color: theme.colorScheme.outline,
-                            ),
-                            onPressed: () {
-                              ActionMenu.show(
-                                context: context,
-                                key: _actionMenuKey,
-                                items: [
-                                  ActionMenuItem(
-                                    icon: Icons.edit,
-                                    label: '编辑',
-                                    onTap: () => onEdit?.call(record),
-                                  ),
-                                  ActionMenuItem(
-                                    icon: Icons.delete_outline,
-                                    label: '删除',
-                                    isDestructive: true,
-                                    onTap: () => onDelete?.call(record),
-                                  ),
-                                ],
-                              );
-                            },
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(
-                              minWidth: 32,
-                              minHeight: 32,
-                            ),
-                          ),
-                        ),
-                        if (onAiExtract != null)
-                          Positioned(
-                            bottom: -22,
-                            right: -24,
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: isUndoable ? onUndo : onAiExtract,
-                              onLongPress: isUndoable
-                                  ? null
-                                  : (isExtracting
-                                        ? null
-                                        : onAiExtractLongPress),
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Container(
-                                  width: 32,
-                                  height: 32,
-                                  decoration: BoxDecoration(
-                                    color: theme.colorScheme.surface,
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: (isUndoable
-                                                ? theme.colorScheme.error
-                                                : tagColor)
-                                            .withValues(alpha: 0.2),
-                                        blurRadius: 6,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ],
-                                  ),
-                                  child: isUndoable
-                                      ? (undoAnimation != null
-                                            ? AnimatedBuilder(
-                                                animation: undoAnimation!,
-                                                builder: (context, child) {
-                                                  return Stack(
-                                                    alignment: Alignment.center,
-                                                    children: [
-                                                      SizedBox(
-                                                        width: 28,
-                                                        height: 28,
-                                                        child: CustomPaint(
-                                                          painter:
-                                                              _UndoCountdownPainter(
-                                                                progress:
-                                                                    undoAnimation!
-                                                                        .value,
-                                                                color: theme
-                                                                    .colorScheme
-                                                                    .error,
-                                                              ),
-                                                        ),
-                                                      ),
-                                                      child!,
-                                                    ],
-                                                  );
-                                                },
-                                                child: Icon(
-                                                  Icons.undo,
-                                                  size: 14,
-                                                  color:
-                                                      theme.colorScheme.error,
+                            if (record.photos.isNotEmpty)
+                              Builder(
+                                builder: (context) {
+                                  final screenWidth = MediaQuery.of(
+                                    context,
+                                  ).size.width;
+                                  final maxWidth =
+                                      screenWidth - 132 - _contentIndent;
+                                  final spacing = 6.0;
+                                  final itemWidth =
+                                      ((maxWidth - spacing * 2 - 2.0) / 3)
+                                          .clamp(50.0, 70.0);
+                                  return Padding(
+                                    padding: const EdgeInsets.only(
+                                      left: _contentIndent,
+                                      top: 4,
+                                    ),
+                                    child: Wrap(
+                                      spacing: spacing,
+                                      runSpacing: spacing,
+                                      children: record.photos.asMap().entries.map((entry) {
+                                        final index = entry.key;
+                                        final photo = entry.value;
+                                        return GestureDetector(
+                                          behavior: HitTestBehavior.opaque,
+                                          onTap: () {
+                                            Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                builder: (_) => FullScreenImageGallery(
+                                                  images: record.photos,
+                                                  initialIndex: index,
                                                 ),
-                                              )
-                                            : Icon(
-                                                Icons.undo,
-                                                size: 14,
-                                                color: theme.colorScheme.error,
-                                              ))
-                                      : isExtracting
-                                      ? Center(
-                                          child: SizedBox(
-                                            width: 16,
-                                            height: 16,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2.0,
-                                              color: tagColor,
+                                              ),
+                                            );
+                                          },
+                                          child: UnifiedImage(
+                                            imagePath: photo,
+                                            width: itemWidth,
+                                            height: itemWidth,
+                                            borderRadius: BorderRadius.circular(
+                                              8,
                                             ),
                                           ),
-                                        )
-                                      : Icon(
-                                          Icons.auto_awesome,
-                                          size: 16,
-                                          color: tagColor,
-                                        ),
+                                        );
+                                      }).toList(),
+                                    ),
+                                  );
+                                },
+                              ),
+                          ],
+                        ),
+                      ),
+                      Positioned(
+                        top: 0,
+                        right: -14,
+                        child: IconButton(
+                          key: _actionMenuKey,
+                          icon: Icon(
+                            Icons.more_vert,
+                            size: 18,
+                            color: theme.colorScheme.outline,
+                          ),
+                          onPressed: () {
+                            ActionMenu.show(
+                              context: context,
+                              key: _actionMenuKey,
+                              items: [
+                                ActionMenuItem(
+                                  icon: Icons.edit,
+                                  label: '编辑',
+                                  onTap: () => onEdit?.call(record),
                                 ),
+                                ActionMenuItem(
+                                  icon: Icons.delete_outline,
+                                  label: '删除',
+                                  isDestructive: true,
+                                  onTap: () => onDelete?.call(record),
+                                ),
+                              ],
+                            );
+                          },
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
+                        ),
+                      ),
+                      if (onAiExtract != null)
+                        Positioned(
+                          bottom: -22,
+                          right: -24,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: isUndoable ? onUndo : onAiExtract,
+                            onLongPress: isUndoable
+                                ? null
+                                : (isExtracting
+                                      ? null
+                                      : onAiExtractLongPress),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.surface,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: (isUndoable
+                                              ? theme.colorScheme.error
+                                              : tagColor)
+                                          .withValues(alpha: 0.2),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: isUndoable
+                                    ? (undoAnimation != null
+                                          ? AnimatedBuilder(
+                                              animation: undoAnimation!,
+                                              builder: (context, child) {
+                                                return Stack(
+                                                  alignment: Alignment.center,
+                                                  children: [
+                                                    SizedBox(
+                                                      width: 28,
+                                                      height: 28,
+                                                      child: CustomPaint(
+                                                        painter:
+                                                            _UndoCountdownPainter(
+                                                          progress:
+                                                              undoAnimation!
+                                                                  .value,
+                                                          color: theme
+                                                              .colorScheme
+                                                              .error,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    child!,
+                                                  ],
+                                                );
+                                              },
+                                              child: Icon(
+                                                Icons.undo,
+                                                size: 14,
+                                                color:
+                                                    theme.colorScheme.error,
+                                              ),
+                                            )
+                                          : Icon(
+                                              Icons.undo,
+                                              size: 14,
+                                              color: theme.colorScheme.error,
+                                            ))
+                                    : isExtracting
+                                    ? Center(
+                                        child: SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2.0,
+                                            color: tagColor,
+                                          ),
+                                        ),
+                                      )
+                                    : Icon(
+                                        Icons.auto_awesome,
+                                        size: 16,
+                                        color: tagColor,
+                                      ),
                               ),
                             ),
                           ),
-                      ],
-                    ),
+                        ),
+                    ],
                   ),
                 ),
               ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 

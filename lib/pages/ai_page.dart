@@ -875,8 +875,12 @@ class _AiPageState extends ConsumerState<AiPage> {
     return Container(
       constraints: const BoxConstraints(maxHeight: 120),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(AppRadius.large),
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
+          width: 1,
+        ),
       ),
       child: Stack(
         alignment: Alignment.bottomRight,
@@ -1406,8 +1410,8 @@ class _ChatBubble extends StatelessWidget {
           child: Container(
             margin: const EdgeInsets.only(bottom: 16),
             padding: EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: isUser ? 10 : 8,
+              horizontal: 16,
+              vertical: isUser ? 10 : 12,
             ),
             constraints: BoxConstraints(
               maxWidth: MediaQuery.of(context).size.width * 0.82,
@@ -1415,13 +1419,28 @@ class _ChatBubble extends StatelessWidget {
             decoration: BoxDecoration(
               color: isUser
                   ? theme.colorScheme.primary
-                  : theme.colorScheme.surfaceContainerHighest,
+                  : theme.colorScheme.surfaceContainer,
               borderRadius: BorderRadius.only(
                 topLeft: const Radius.circular(16),
                 topRight: const Radius.circular(16),
-                bottomLeft: isUser ? const Radius.circular(16) : Radius.zero,
-                bottomRight: isUser ? Radius.zero : const Radius.circular(16),
+                bottomLeft: isUser ? const Radius.circular(16) : const Radius.circular(4),
+                bottomRight: isUser ? const Radius.circular(4) : const Radius.circular(16),
               ),
+              border: isUser
+                  ? null
+                  : Border.all(
+                      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                      width: 1,
+                    ),
+              boxShadow: isUser
+                  ? null
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.03),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
             ),
             child: isUser
                 ? Text(
@@ -1446,19 +1465,52 @@ class _ChatBubble extends StatelessWidget {
                             fontSize: 14,
                             height: 1.5,
                           ),
+                          h1: TextStyle(
+                            color: theme.colorScheme.onSurface,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            height: 1.6,
+                          ),
                           h2: TextStyle(
                             color: theme.colorScheme.onSurface,
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
+                            height: 1.5,
                           ),
                           h3: TextStyle(
                             color: theme.colorScheme.onSurface,
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
+                            height: 1.4,
                           ),
                           code: TextStyle(
-                            color: theme.colorScheme.onSurface,
-                            backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                            fontFamily: 'monospace',
+                            fontSize: 13,
+                            color: theme.colorScheme.primary,
+                            backgroundColor: Colors.transparent,
+                          ),
+                          codeblockDecoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerLow,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                            ),
+                          ),
+                          blockquoteDecoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerLow,
+                            border: Border(
+                              left: BorderSide(
+                                color: theme.colorScheme.primary,
+                                width: 4,
+                              ),
+                            ),
+                            borderRadius: const BorderRadius.horizontal(
+                              right: Radius.circular(6),
+                            ),
+                          ),
+                          blockquotePadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
                           ),
                           listBullet: TextStyle(color: theme.colorScheme.onSurface),
                         ),
@@ -1519,14 +1571,26 @@ class _TypingBubble extends StatelessWidget {
           alignment: Alignment.centerLeft,
           child: Container(
             margin: const EdgeInsets.only(bottom: 16),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest,
+              color: theme.colorScheme.surfaceContainer,
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(16),
                 topRight: Radius.circular(16),
+                bottomLeft: Radius.circular(4),
                 bottomRight: Radius.circular(16),
               ),
+              border: Border.all(
+                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
             child: const _TypingDots(),
           ),
