@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -168,6 +170,9 @@ Future<AiExtractResult?> extractExistingRecord({
         ));
       }
 
+      // 合并 AI 返回的完全重复标签（相同 shortcut + 相同字段值），避免同一类型出现多次
+      final mergedTagEntries = _mergeDuplicateTagEntries(tagEntriesList);
+
       final firstResult = results.first;
       final firstFields = Map<String, dynamic>.from(firstResult['fields'] as Map? ?? {});
       final firstShortcutId = firstResult['shortcutId'] as String?;
@@ -178,7 +183,7 @@ Future<AiExtractResult?> extractExistingRecord({
         time: Map<String, dynamic>.from(firstResult['time'] as Map? ?? {}),
         fields: firstFields,
         notes: cleanExtractedNotes(firstResult['notes'] as String? ?? '', firstFields, firstShortcut),
-        tagEntries: tagEntriesList,
+        tagEntries: mergedTagEntries,
       );
     }
     if (context.mounted) {
@@ -349,4 +354,20 @@ String cleanExtractedNotes(String rawNotes, Map<String, dynamic> fields, Shortcu
   }
 
   return cleanLines.join('\n');
+}
+
+/// 合并 AI 返回的完全重复标签。
+///
+/// 当 shortcut id 与 fields 内容完全一致时视为重复，只保留第一个；
+/// 字段值不同（如 type=学习 vs type=工作）则保留为独立标签。
+List<TagEntry> _mergeDuplicateTagEntries(List<TagEntry> entries) {
+  final seen = <String>{};
+  final merged = <TagEntry>[];
+  for (final entry in entries) {
+    final key = '${entry.id}:${jsonEncode(entry.fields)}';
+    if (seen.add(key)) {
+      merged.add(entry);
+    }
+  }
+  return merged;
 }

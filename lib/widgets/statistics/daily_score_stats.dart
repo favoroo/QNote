@@ -570,10 +570,15 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
         btnDate.month == activeDate.month &&
         btnDate.day == activeDate.day;
 
+    final activeForegroundColor = isActive ? theme.colorScheme.onPrimary : theme.colorScheme.primary;
+    final activeBackgroundColor = isActive ? theme.colorScheme.primary : Colors.transparent;
+
     return OutlinedButton(
       style: OutlinedButton.styleFrom(
-        foregroundColor: isActive ? theme.colorScheme.onPrimary : theme.colorScheme.primary,
-        backgroundColor: isActive ? theme.colorScheme.primary : Colors.transparent,
+        foregroundColor: activeForegroundColor,
+        backgroundColor: activeBackgroundColor,
+        disabledForegroundColor: activeForegroundColor,
+        disabledBackgroundColor: activeBackgroundColor,
         side: BorderSide(
           color: isActive ? Colors.transparent : theme.colorScheme.outlineVariant,
         ),
