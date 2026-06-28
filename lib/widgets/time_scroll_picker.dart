@@ -307,18 +307,8 @@ class _TimeScrollPickerState extends State<TimeScrollPicker> {
   }
 
   Widget _buildCenterIndicator(ThemeData theme, double height) {
-    return Center(
-      child: GestureDetector(
-        onTap: () {
-          setState(() {
-            _isKeyboardMode = true;
-            _hourInputController.text = _selectedHour.toString().padLeft(2, '0');
-            _minuteInputController.text = _selectedMinute.toString().padLeft(2, '0');
-          });
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _hourFocusNode.requestFocus();
-          });
-        },
+    return IgnorePointer(
+      child: Center(
         child: Container(
           height: _itemExtent,
           decoration: BoxDecoration(

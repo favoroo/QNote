@@ -12,6 +12,7 @@ class AiProviderConfig {
   final String modelsEndpoint;       // 模型列表接口路径
   final String authType;             // 'bearer' | 'query' | 'none'
   final bool requiresApiKeyForFetch; // 获取模型列表是否需要 API Key
+  final String? defaultReasoningEffort; // 默认推理强度（low/medium/high/none）
 
   const AiProviderConfig({
     required this.id,
@@ -25,6 +26,7 @@ class AiProviderConfig {
     this.modelsEndpoint = '',
     this.authType = 'bearer',
     this.requiresApiKeyForFetch = true,
+    this.defaultReasoningEffort,
   });
 }
 
@@ -214,6 +216,7 @@ final aiProviders = <AiProviderConfig>[
       'deepseek-v4-flash',
     ],
     modelsEndpoint: '/v1/models',
+    defaultReasoningEffort: 'low',
   ),
   const AiProviderConfig(
     id: 'minimax',

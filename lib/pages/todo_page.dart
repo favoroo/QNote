@@ -182,8 +182,8 @@ class _TodoPageState extends ConsumerState<TodoPage> {
             final todo = filteredTodos[index];
             // 隔离待办项重绘，完成/删除动画跑动时不影响其他项
             return RepaintBoundary(
+              key: ValueKey(todo.id),
               child: _TodoItem(
-                key: ValueKey(todo.id),
                 todo: todo,
                 index: index,
                 autoFocus: todo.id == _focusedTodoId,

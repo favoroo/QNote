@@ -102,12 +102,12 @@ class AppTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: colorScheme.surface,
-        indicatorColor: accentColor,
+        indicatorColor: accentColor.withValues(alpha: 0.12),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return const IconThemeData(color: Colors.white);
+            return IconThemeData(color: accentColor);
           }
-          return IconThemeData(color: const Color(0xFF727785));
+          return const IconThemeData(color: Color(0xFF727785));
         }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
@@ -303,12 +303,12 @@ class AppTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: colorScheme.surface,
-        indicatorColor: accentColor,
+        indicatorColor: accentColor.withValues(alpha: 0.15),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return const IconThemeData(color: Colors.white);
+            return IconThemeData(color: accentColor);
           }
-          return IconThemeData(color: const Color(0xFF8E94A3));
+          return const IconThemeData(color: Color(0xFF8E94A3));
         }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {

@@ -948,7 +948,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                   ),
                 ),
               const SizedBox(height: 24),
-              if (_rolesLoaded && configs.isNotEmpty) ...[
+              if (_rolesLoaded) ...[
                 Text(
                   '角色绑定',
                   style: theme.textTheme.titleSmall?.copyWith(
@@ -1227,10 +1227,6 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       key: ValueKey(config.id),
       direction: DismissDirection.endToStart,
       confirmDismiss: (_) async {
-        if (allConfigs.length <= 1) {
-          Toast.warning(context, '至少保留一个');
-          return false;
-        }
         return showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
@@ -1251,6 +1247,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       },
       onDismissed: (_) {
         ref.read(aiConfigListProvider.notifier).deleteConfig(config.id);
+        _cleanupRoleBindingsForDeletedConfig(config.id);
         if (mounted) setState(() => _latencyMap.remove(config.id));
       },
       background: Container(
@@ -1337,10 +1334,6 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                 ),
                 tooltip: '删除',
                 onPressed: () async {
-                  if (allConfigs.length <= 1) {
-                    Toast.warning(context, '至少保留一个');
-                    return;
-                  }
                   final confirmed = await showDialog<bool>(
                     context: context,
                     builder: (ctx) => AlertDialog(
@@ -1362,6 +1355,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                     ref
                         .read(aiConfigListProvider.notifier)
                         .deleteConfig(config.id);
+                    _cleanupRoleBindingsForDeletedConfig(config.id);
                     if (mounted) setState(() => _latencyMap.remove(config.id));
                   }
                 },
@@ -1371,6 +1365,30 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         ),
       ),
     );
+  }
+
+  /// 删除模型后，清理指向该模型的角色绑定
+  Future<void> _cleanupRoleBindingsForDeletedConfig(String configId) async {
+    var roles = _roles;
+    var changed = false;
+    if (roles.assistant == configId) {
+      roles = roles.copyWith(
+        assistant: null,
+        assistantUseFreeModel: true,
+      );
+      changed = true;
+    }
+    if (roles.timelineOptimization == configId) {
+      roles = roles.copyWith(
+        timelineOptimization: null,
+        timelineOptimizationUseFreeModel: true,
+      );
+      changed = true;
+    }
+    if (changed) {
+      await AiRoleService.instance.saveRoles(roles);
+      if (mounted) setState(() => _roles = roles);
+    }
   }
 
   AiRoleSettings _getSettingsForRole(String roleKey) {
@@ -1456,7 +1474,11 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String?>(
                       isExpanded: true,
-                      value: useFreeModel ? freeModelValue : currentId,
+                      value: useFreeModel
+                          ? freeModelValue
+                          : (currentId != null && configs.any((c) => c.id == currentId))
+                              ? currentId
+                              : null,
                       hint: const Text(
                         '未设置',
                         style: TextStyle(fontSize: 12),
