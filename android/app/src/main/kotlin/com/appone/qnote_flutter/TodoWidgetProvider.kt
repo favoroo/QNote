@@ -19,7 +19,6 @@ import java.util.TimeZone
 class TodoWidgetProvider : AppWidgetProvider() {
     companion object {
         const val ACTION_TODO_TOGGLE = "com.appone.qnote_flutter.TODO_TOGGLE"
-        const val ACTION_TODO_CLICK = "com.appone.qnote_flutter.TODO_CLICK"
         const val ACTION_TODO_REFRESH = "com.appone.qnote_flutter.TODO_REFRESH"
         const val EXTRA_TODO_ID = "extra_todo_id"
         const val EXTRA_TODO_STATUS = "extra_todo_status"
@@ -34,21 +33,6 @@ class TodoWidgetProvider : AppWidgetProvider() {
                 if (todoId != null) {
                     toggleTodoStatus(context, todoId, currentStatus == 1)
                 }
-            }
-            ACTION_TODO_CLICK -> {
-                val route = intent.getStringExtra("route") ?: "/todo"
-                val startAppIntent = Intent(context, MainActivity::class.java).apply {
-                    putExtra("route", route)
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                }
-                // 使用 PendingIntent 发送，兼容 Android 12+ 后台启动限制
-                val pendingIntent = PendingIntent.getActivity(
-                    context,
-                    0,
-                    startAppIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-                pendingIntent.send()
             }
             ACTION_TODO_REFRESH -> {
                 val appWidgetManager = AppWidgetManager.getInstance(context)

@@ -40,6 +40,20 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     final isLongTerm = ref.watch(isLongTermFilterProvider);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final todosAsync = ref.watch(todoListProvider);
+
+    // P1-16: 一次遍历分桶，避免 _buildTodoList 中两次 where+toList
+    final allTodos = todosAsync.valueOrNull ?? const <Todo>[];
+    final todayActiveTodos = <Todo>[];
+    final longtermActiveTodos = <Todo>[];
+    for (final t in allTodos) {
+      if (t.isCompleted) continue;
+      if (t.isLongTerm) {
+        longtermActiveTodos.add(t);
+      } else {
+        todayActiveTodos.add(t);
+      }
+    }
 
     return Scaffold(
       key: _scaffoldKey,
@@ -111,8 +125,8 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                   ref.read(isLongTermFilterProvider.notifier).state = (index == 1);
                 },
                 children: [
-                  _buildTodoList(context, false),
-                  _buildTodoList(context, true),
+                  _buildTodoList(context, false, todosAsync, todayActiveTodos),
+                  _buildTodoList(context, true, todosAsync, longtermActiveTodos),
                 ],
               ),
             ),
@@ -122,17 +136,17 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     );
   }
 
-  Widget _buildTodoList(BuildContext context, bool isLongTerm) {
-    final todosAsync = ref.watch(todoListProvider);
+  Widget _buildTodoList(
+    BuildContext context,
+    bool isLongTerm,
+    AsyncValue<List<Todo>> todosAsync,
+    List<Todo> filteredTodos,
+  ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
     return todosAsync.when(
-      data: (allTodos) {
-        final filteredTodos = allTodos
-            .where((t) => t.isLongTerm == isLongTerm && !t.isCompleted)
-            .toList();
-
+      data: (_) {
         if (filteredTodos.isEmpty) {
           return Center(
             child: Column(
@@ -796,52 +810,72 @@ class _HistoryDrawer extends ConsumerWidget {
                 final todayCompleted = completedTodos.where((t) => !t.isLongTerm).toList();
                 final longtermCompleted = completedTodos.where((t) => t.isLongTerm).toList();
 
-                return ListView(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  children: [
-                    if (todayCompleted.isNotEmpty) ...[
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 10, left: 4, top: 8),
-                        child: Row(
-                          children: [
-                            Icon(Icons.calendar_today, size: 12, color: theme.colorScheme.onSurfaceVariant),
-                            const SizedBox(width: 4),
-                             Text(
-                              '今日已完成',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: theme.colorScheme.outline,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      ...todayCompleted.map((todo) => _HistoryTodoItem(todo: todo)),
-                      const SizedBox(height: 12),
-                    ],
-                    if (longtermCompleted.isNotEmpty) ...[
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 6, left: 4),
-                        child: Row(
-                          children: [
-                            Icon(Icons.access_time, size: 12, color: theme.colorScheme.onSurfaceVariant),
-                            const SizedBox(width: 4),
-                            Text(
-                              '长期已完成',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: theme.colorScheme.onSurfaceVariant,
-                                letterSpacing: 1,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      ...longtermCompleted.map((todo) => _HistoryTodoItem(todo: todo)),
-                    ],
+                // P1-15: 改用 ListView.builder 懒加载，避免全量 map 展开
+                // 用 Object 列表混合 header 标识和 Todo，按 index 渲染
+                final items = <Object>[
+                  if (todayCompleted.isNotEmpty) ...[
+                    'header_today',
+                    ...todayCompleted,
+                    'spacer',
                   ],
+                  if (longtermCompleted.isNotEmpty) ...[
+                    'header_longterm',
+                    ...longtermCompleted,
+                  ],
+                ];
+
+                return ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    if (item is Todo) {
+                      return _HistoryTodoItem(todo: item);
+                    }
+                    switch (item as String) {
+                      case 'header_today':
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10, left: 4, top: 8),
+                          child: Row(
+                            children: [
+                              Icon(Icons.calendar_today, size: 12, color: theme.colorScheme.onSurfaceVariant),
+                              const SizedBox(width: 4),
+                              Text(
+                                '今日已完成',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.colorScheme.outline,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      case 'header_longterm':
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 6, left: 4),
+                          child: Row(
+                            children: [
+                              Icon(Icons.access_time, size: 12, color: theme.colorScheme.onSurfaceVariant),
+                              const SizedBox(width: 4),
+                              Text(
+                                '长期已完成',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                  letterSpacing: 1,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      case 'spacer':
+                        return const SizedBox(height: 12);
+                      default:
+                        return const SizedBox.shrink();
+                    }
+                  },
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),

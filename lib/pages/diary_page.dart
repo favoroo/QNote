@@ -1656,9 +1656,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     });
 
     final theme = Theme.of(context);
-    final selectedDate = ref.watch(selectedDateProvider);
     final diaryListAsync = ref.watch(diaryListProvider);
-    final colorMarks = ref.watch(diaryColorMarkProvider).valueOrNull ?? [];
     final selectEvent = ref.watch(diaryInputTimeProvider);
     final currentInputTime = ref.watch(currentInputTimeProvider);
 
@@ -1674,36 +1672,98 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       });
     }
 
-    final dateStr = DateFormat('yyyy-MM-dd').format(selectedDate);
-    final currentColorMark = colorMarks.where((m) {
-      final markDateStr = DateFormat('yyyy-MM-dd').format(m.date);
-      return markDateStr == dateStr;
-    }).firstOrNull;
-
+    // P1-19: selectedDate / colorMarks 改在 Consumer 内局部 watch，
+    // 避免日期或颜色标记变化时整个 DiaryPage（含 ListView.builder）重建
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       body: Column(
         children: [
-          Container(
-            color: theme.colorScheme.surface,
-            child: SafeArea(
-              bottom: false,
-              child: SizedBox(
-                height: 56,
-                child: Row(
-                  children: [
-                    const SizedBox(width: 4),
-                    IconButton(
-                      icon: const Icon(Icons.menu),
-                      onPressed: () =>
-                          rootScaffoldKey.currentState?.openDrawer(),
-                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                      constraints: const BoxConstraints(),
-                    ),
-                    const SizedBox(width: 2),
-                    Stack(
-                      clipBehavior: Clip.none,
+          Consumer(
+            builder: (context, ref, _) {
+              final selectedDate = ref.watch(selectedDateProvider);
+              final colorMarks =
+                  ref.watch(diaryColorMarkProvider).valueOrNull ?? [];
+              final dateStr = DateFormat('yyyy-MM-dd').format(selectedDate);
+              final currentColorMark = colorMarks.where((m) {
+                final markDateStr = DateFormat('yyyy-MM-dd').format(m.date);
+                return markDateStr == dateStr;
+              }).firstOrNull;
+
+              return Container(
+                color: theme.colorScheme.surface,
+                child: SafeArea(
+                  bottom: false,
+                  child: SizedBox(
+                    height: 56,
+                    child: Row(
                       children: [
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: const Icon(Icons.menu),
+                          onPressed: () =>
+                              rootScaffoldKey.currentState?.openDrawer(),
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          constraints: const BoxConstraints(),
+                        ),
+                        const SizedBox(width: 2),
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.primaryContainer,
+                                shape: BoxShape.circle,
+                              ),
+                              child: IconButton(
+                                icon:
+                                    const Icon(Icons.palette_outlined, size: 18),
+                                color: theme.colorScheme.primary,
+                                onPressed: _showColorMarkDialog,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                              ),
+                            ),
+                            if (currentColorMark != null)
+                              Positioned(
+                                right: -1,
+                                top: -1,
+                                child: Container(
+                                  width: 9,
+                                  height: 9,
+                                  decoration: BoxDecoration(
+                                    color: _hexToColor(currentColorMark.color),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: theme.colorScheme.surface,
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: _showDatePicker,
+                            child: Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 8.0),
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  _formatDateTitle(selectedDate),
+                                  textAlign: TextAlign.center,
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                         Container(
                           width: 36,
                           height: 36,
@@ -1712,78 +1772,27 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                             shape: BoxShape.circle,
                           ),
                           child: IconButton(
-                            icon: const Icon(Icons.palette_outlined, size: 18),
+                            icon: const Icon(Icons.list_alt_rounded, size: 18),
                             color: theme.colorScheme.primary,
-                            onPressed: _showColorMarkDialog,
+                            onPressed: _navigateToBatchManage,
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(),
                           ),
                         ),
-                        if (currentColorMark != null)
-                          Positioned(
-                            right: -1,
-                            top: -1,
-                            child: Container(
-                              width: 9,
-                              height: 9,
-                              decoration: BoxDecoration(
-                                color: _hexToColor(currentColorMark.color),
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: theme.colorScheme.surface,
-                                  width: 1.5,
-                                ),
-                              ),
-                            ),
-                          ),
+                        const SizedBox(width: 2),
+                        IconButton(
+                          icon: const Icon(Icons.search_rounded),
+                          onPressed: _navigateToSearch,
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          constraints: const BoxConstraints(),
+                        ),
+                        const SizedBox(width: 4),
                       ],
                     ),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: _showDatePicker,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              _formatDateTitle(selectedDate),
-                              textAlign: TextAlign.center,
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primaryContainer,
-                        shape: BoxShape.circle,
-                      ),
-                      child: IconButton(
-                        icon: const Icon(Icons.list_alt_rounded, size: 18),
-                        color: theme.colorScheme.primary,
-                        onPressed: _navigateToBatchManage,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                    ),
-                    const SizedBox(width: 2),
-                    IconButton(
-                      icon: const Icon(Icons.search_rounded),
-                      onPressed: _navigateToSearch,
-                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                      constraints: const BoxConstraints(),
-                    ),
-                    const SizedBox(width: 4),
-                  ],
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
           const Divider(height: 1),
           Expanded(

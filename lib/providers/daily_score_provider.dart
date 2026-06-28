@@ -7,6 +7,7 @@ import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/models/daily_score.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
+import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/selected_date_provider.dart';
 export 'package:qnote_flutter/providers/selected_date_provider.dart';
 
@@ -20,7 +21,8 @@ final dailyScoreProvider = AsyncNotifierProvider<DailyScoreNotifier, DailyScore?
 
 class DailyScoreNotifier extends AsyncNotifier<DailyScore?> {
   DailyScoreRepository get _repository => ref.read(dailyScoreRepositoryProvider);
-  DiaryRepository get _diaryRepository => DiaryRepository();
+  // 通过 Provider 注入，遵循 AGENTS.md「Repository 通过 Provider 注入保持单例」约定
+  DiaryRepository get _diaryRepository => ref.read(diaryRepositoryProvider);
 
   @override
   Future<DailyScore?> build() async {
@@ -30,7 +32,8 @@ class DailyScoreNotifier extends AsyncNotifier<DailyScore?> {
 
   Future<void> refresh() async {
     final date = ref.read(selectedDateProvider);
-    state = const AsyncLoading();
+    // 保留旧值：copyWithPrevious 会让 UI 继续显示旧数据，避免 loading 闪烁
+    state = const AsyncLoading<DailyScore?>().copyWithPrevious(state);
     state = await AsyncValue.guard(() => _repository.getByDate(date));
   }
 
@@ -106,6 +109,6 @@ final dailyScoreHeatmapProvider = FutureProvider<List<DailyScore>>((ref) async {
 
 final dailyRecordsProvider = FutureProvider<List<DiaryRecord>>((ref) async {
   final date = ref.watch(selectedDateProvider);
-  final repo = DiaryRepository();
+  final repo = ref.read(diaryRepositoryProvider);
   return repo.getByDateWithSleepByEndTime(date);
 });

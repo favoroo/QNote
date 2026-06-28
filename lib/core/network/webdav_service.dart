@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/models/webdav_config.dart';
 import 'package:qnote_flutter/core/export/export_service.dart';
@@ -9,6 +11,16 @@ import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:qnote_flutter/core/storage/database_helper.dart';
+
+/// P1-13: 把 JSON 序列化 + UTF8 编码移到 isolate 的顶层函数。
+///
+/// 必须是顶层函数（不能是闭包或实例方法），否则 isolate 无法访问。
+/// 适用于大快照（MB 级）的序列化，避免主线程卡顿。
+Uint8List _encodeJsonToBytes(Map<String, dynamic> data) {
+  return Uint8List.fromList(
+    utf8.encode(const JsonEncoder.withIndent('  ').convert(data)),
+  );
+}
 
 class SyncResult {
   final bool success;
@@ -300,16 +312,31 @@ class WebdavService {
     }
   }
 
-  Future<bool> _uploadJsonData(Map<String, dynamic> data, String filename) async {
-    if (_config == null) return false;
+  /// 上传 JSON 数据。返回成功上传的字节数；失败返回 -1。
+  ///
+  /// P1-13: 新增 `useIsolate` 参数，对大快照（MB 级）走 compute 在 isolate 中
+  /// 完成 JSON 序列化 + UTF8 编码，避免阻塞 UI 线程。manifest/delta 通常很小，
+  /// 默认走主线程避免 isolate 启动开销（~150ms）。
+  Future<int> _uploadJsonData(
+    Map<String, dynamic> data,
+    String filename, {
+    bool useIsolate = false,
+  }) async {
+    if (_config == null) return -1;
     try {
-      final jsonStr = const JsonEncoder.withIndent('  ').convert(data);
-      final bytes = utf8.encode(jsonStr);
+      // P1-13: 大快照走 isolate 编码，小数据走主线程
+      final Uint8List bytes;
+      if (useIsolate) {
+        bytes = await compute(_encodeJsonToBytes, data);
+      } else {
+        bytes = _encodeJsonToBytes(data);
+      }
       final remotePath = '${_config!.remotePath}$filename';
 
       LoggerService.instance.logSync(
         '上传JSON数据',
-        details: '文件=$filename, 大小≈${(bytes.length / 1024).toStringAsFixed(1)}KB',
+        details: '文件=$filename, 大小≈${(bytes.length / 1024).toStringAsFixed(1)}KB'
+            '${useIsolate ? ' (isolate)' : ''}',
       );
 
       await _dio.put(
@@ -319,14 +346,14 @@ class WebdavService {
       );
 
       LoggerService.instance.logSync('JSON数据上传成功', details: filename);
-      return true;
+      return bytes.length;
     } catch (e, stackTrace) {
       LoggerService.instance.logSync(
         'JSON数据上传失败: $e',
         level: LogLevel.error,
         details: stackTrace.toString(),
       );
-      return false;
+      return -1;
     }
   }
 
@@ -358,15 +385,22 @@ class WebdavService {
 
   Future<Map<String, dynamic>?> downloadManifest() => _downloadJsonData(_manifestFile);
 
-  Future<bool> uploadManifest(Map<String, dynamic> manifest) => _uploadJsonData(manifest, _manifestFile);
+  Future<bool> uploadManifest(Map<String, dynamic> manifest) async =>
+      (await _uploadJsonData(manifest, _manifestFile)) >= 0;
 
   Future<Map<String, dynamic>?> downloadSnapshot() => _downloadJsonData(_snapshotFile);
 
-  Future<bool> uploadSnapshot(Map<String, dynamic> data) => _uploadJsonData(data, _snapshotFile);
+  /// P1-13: 快照通常 MB 级，序列化走 isolate 避免阻塞 UI
+  Future<int> uploadSnapshotSized(Map<String, dynamic> data) =>
+      _uploadJsonData(data, _snapshotFile, useIsolate: true);
+
+  Future<bool> uploadSnapshot(Map<String, dynamic> data) async =>
+      (await uploadSnapshotSized(data)) >= 0;
 
   Future<Map<String, dynamic>?> downloadDelta() => _downloadJsonData(_deltaFile);
 
-  Future<bool> uploadDelta(Map<String, dynamic> delta) => _uploadJsonData(delta, _deltaFile);
+  Future<bool> uploadDelta(Map<String, dynamic> delta) async =>
+      (await _uploadJsonData(delta, _deltaFile)) >= 0;
 
   Future<Map<String, dynamic>?> getLatestBackup() async {
     if (_config == null) return null;
@@ -456,9 +490,10 @@ class WebdavService {
   ) async {
     LoggerService.instance.logSync('执行全量快照上传...');
 
+    // P1-13: 直接拿 Map 而非 String，消除「exportAllToJson 内 encode →
+    // 此处 jsonDecode → uploadSnapshot 内再 encode」的三重序列化反模式。
     final exportService = ExportService();
-    final jsonStr = await exportService.exportAllToJson(includeImages: false);
-    final data = jsonDecode(jsonStr) as Map<String, dynamic>;
+    final data = await exportService.exportAllToMap(includeImages: false);
 
     final now = DateTime.now();
     final snapshotVersion = (currentDeltaCount + 1);
@@ -466,11 +501,10 @@ class WebdavService {
     data['snapshot_version'] = snapshotVersion;
     data['snapshot_time'] = now.toIso8601String();
 
-    final jsonBytes = utf8.encode(const JsonEncoder.withIndent('  ').convert(data));
-    final uploadSize = jsonBytes.length;
-
-    final snapshotResult = await uploadSnapshot(data);
-    if (!snapshotResult) {
+    // P1-13: 快照序列化走 isolate，uploadSnapshotSized 内部用 compute
+    // 完成大 JSON 编码，返回字节数避免此处重复 encode 算 uploadSize。
+    final uploadSize = await uploadSnapshotSized(data);
+    if (uploadSize < 0) {
       return SyncResult(success: false, error: '快照上传失败');
     }
 
@@ -535,11 +569,9 @@ class WebdavService {
       delta = _mergeDeltas(existingDelta, delta);
     }
 
-    final jsonBytes = utf8.encode(const JsonEncoder.withIndent('  ').convert(delta));
-    final uploadSize = jsonBytes.length;
-
-    final deltaResult = await uploadDelta(delta);
-    if (!deltaResult) {
+    // P1-13: 直接复用 _uploadJsonData 返回的字节数，避免此处再 encode 一次算 uploadSize
+    final uploadSize = await _uploadJsonData(delta, _deltaFile);
+    if (uploadSize < 0) {
       return SyncResult(success: false, error: '增量数据上传失败');
     }
 

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 
 class DatabaseHelper {
@@ -37,6 +38,14 @@ class DatabaseHelper {
   }
 
   Future<void> _checkAndAddMissingColumns(Database db) async {
+    // 用 SharedPreferences 缓存 schema 已检查标记，避免每次启动都执行 PRAGMA 检查
+    // 标记中包含数据库版本号，版本升级时自动重新检查一次
+    final prefs = await SharedPreferences.getInstance();
+    final checkedKey = 'schema_checked_v${await db.getVersion()}';
+    if (prefs.getBool(checkedKey) == true) {
+      return;
+    }
+
     final columns = await db.rawQuery('PRAGMA table_info(diary_records)');
     final columnNames = columns.map((c) => c['name'] as String).toSet();
 
@@ -111,6 +120,9 @@ class DatabaseHelper {
         await db.execute('ALTER TABLE fixed_event_templates ADD COLUMN time_periods TEXT DEFAULT "[]"');
       }
     } catch (_) {}
+
+    // 标记本次检查已完成，后续启动直接跳过 PRAGMA 检查
+    await prefs.setBool(checkedKey, true);
   }
 
   Future<void> _onCreate(Database db, int version) async {

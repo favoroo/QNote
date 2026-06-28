@@ -64,6 +64,12 @@ class QuickRecordActivity : Activity() {
         handleIncomingIntent(intent)
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingIntent(intent)
+    }
+
     private fun initViews() {
         editContent = findViewById(R.id.edit_record_content)
         containerPhotos = findViewById(R.id.container_photos_preview)

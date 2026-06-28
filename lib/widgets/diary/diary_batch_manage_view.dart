@@ -828,123 +828,126 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
       children: _filteredRecords.map((record) {
         final isSelected = _selectedIds.contains(record.id);
         final tagColor = _tagColor(record.displayTag);
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: GestureDetector(
-            onTap: () => _toggleSelect(record.id),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? colorScheme.primary.withValues(alpha: 0.05)
-                    : colorScheme.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
+        // P1-25: 隔离每条记录的重绘，选中态变化时不影响其他记录
+        return RepaintBoundary(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: GestureDetector(
+              onTap: () => _toggleSelect(record.id),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
                   color: isSelected
-                      ? colorScheme.primary
-                      : colorScheme.outlineVariant.withValues(alpha: 0.3),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    isSelected ? Icons.check_box : Icons.check_box_outline_blank,
-                    color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
-                    size: 20,
+                      ? colorScheme.primary.withValues(alpha: 0.05)
+                      : colorScheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: isSelected
+                        ? colorScheme.primary
+                        : colorScheme.outlineVariant.withValues(alpha: 0.3),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: tagColor.withValues(alpha: 0.08),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.access_time, size: 12, color: tagColor),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    _formatTimeRange(record),
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                      color: tagColor,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      isSelected ? Icons.check_box : Icons.check_box_outline_blank,
+                      color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: tagColor.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.access_time, size: 12, color: tagColor),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      _formatTimeRange(record),
+                                      style: theme.textTheme.labelSmall?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                        color: tagColor,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          _buildTagAndFieldsRow(theme, record, colorScheme),
+                          const SizedBox(height: 6),
+                          Padding(
+                            padding: const EdgeInsets.only(left: 6),
+                            child: Text(
+                              record.content.isNotEmpty ? record.content : '无备注内容',
+                              maxLines: 8,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: record.content.isNotEmpty
+                                    ? colorScheme.onSurface
+                                    : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                              ),
+                            ),
+                          ),
+                          if (record.photos.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Padding(
+                              padding: const EdgeInsets.only(left: 6),
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () {}, // Prevent card tap selection
+                                child: Row(
+                                  children: record.photos.asMap().entries.map((entry) {
+                                    final idx = entry.key;
+                                    final photo = entry.value;
+                                    return GestureDetector(
+                                      onTap: () => _openGallery(record, idx),
+                                      child: Padding(
+                                        padding: const EdgeInsets.only(right: 8),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: UnifiedImage(
+                                            imagePath: photo,
+                                            width: 48,
+                                            height: 48,
+                                            fit: BoxFit.cover,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }).toList(),
+                                ),
                               ),
                             ),
                           ],
-                        ),
-                        _buildTagAndFieldsRow(theme, record, colorScheme),
-                        const SizedBox(height: 6),
-                        Padding(
-                          padding: const EdgeInsets.only(left: 6),
-                          child: Text(
-                            record.content.isNotEmpty ? record.content : '无备注内容',
-                            maxLines: 8,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: record.content.isNotEmpty
-                                  ? colorScheme.onSurface
-                                  : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                            ),
-                          ),
-                        ),
-                        if (record.photos.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Padding(
-                            padding: const EdgeInsets.only(left: 6),
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: () {}, // Prevent card tap selection
-                              child: Row(
-                                children: record.photos.asMap().entries.map((entry) {
-                                  final idx = entry.key;
-                                  final photo = entry.value;
-                                  return GestureDetector(
-                                    onTap: () => _openGallery(record, idx),
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(right: 8),
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(8),
-                                        child: UnifiedImage(
-                                          imagePath: photo,
-                                          width: 48,
-                                          height: 48,
-                                          fit: BoxFit.cover,
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
-                            ),
-                          ),
                         ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => _editRecord(record),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-                      child: Icon(
-                        Icons.edit_outlined,
-                        color: colorScheme.primary,
-                        size: 20,
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => _editRecord(record),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                        child: Icon(
+                          Icons.edit_outlined,
+                          color: colorScheme.primary,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
