@@ -8,6 +8,15 @@
 
 ## 2026-06-28
 
+- **[22:34]**
+  - **Added**: 在 AI 统一提取结果处理中增加重复标签自动合并 (`lib/widgets/diary/ai_extract_helper.dart`)。
+    - **Changed**: 新增 `_mergeDuplicateTagEntries` 辅助函数，当多个提取结果的 shortcut id 与 fields 完全一致时只保留一个，避免同一标签类型重复显示。
+    - **Note**: 字段值不同的标签（如 `type=学习` 与 `type=工作`）仍会作为独立标签保留。
+
+- **[22:33]**
+  - **Fixed**: 修复了在数据统计评分页面点击“开始 AI 智能评分”时，由于 OutlinedButton 被禁用导致“今天”等时间选择按钮的前景色变为暗灰色、对比度低看不清的问题 (`lib/widgets/statistics/daily_score_stats.dart`)。
+    - **Changed**: 在 `_buildQuickDateBtn` 中显式指定 `disabledForegroundColor` 和 `disabledBackgroundColor`，使其与启用状态下的颜色保持一致。
+
 - **[21:05]**
   - **Fixed**: 修复在日记中记录事件后，时间线下方的内容被阻断且不显示圆点和时间，同时事件卡片未能完整渲染的问题 (`lib/widgets/diary/diary_item.dart`)。
     - **Changed**: 在 `DiaryItem` 的根部 `Row` 外面包裹 `IntrinsicHeight` 组件，防止 `crossAxisAlignment: CrossAxisAlignment.stretch` 在无界高度的 `ListView` 容器中引起 unbounded height 异常而导致渲染崩溃。
