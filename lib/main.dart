@@ -5,10 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
 
-/// P2-35: 启动优化——先 runApp 渲染首帧（splash），初始化在 QNoteApp 内部后台并行完成。
+/// 应用启动入口
 ///
-/// 原实现串行 await 8 个初始化步骤（Logger/日期/数据库工厂/数据库/4 个配置/WebDAV/通知），
-/// 用户看到黑屏直到全部完成。现改为 runApp 立即显示 splash，初始化完成后切换到主应用。
+/// 初始化流程分两阶段：
+/// 1. 关键路径（本函数内 await）：Logger、日期格式化、数据库、核心配置——必须在 runApp 前完成，
+///    确保首帧渲染时数据库就绪，避免日记页面出现 loading 圈或白屏。
+/// 2. 延迟初始化（QNoteApp.initState 内）：WebDAV 同步检查、通知提醒启动——首帧后后台执行，不阻塞用户。
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
@@ -16,5 +18,6 @@ void main() async {
     statusBarIconBrightness: Brightness.dark,
     statusBarBrightness: Brightness.light,
   ));
+  await preInitializeApp();
   runApp(const ProviderScope(child: QNoteApp()));
 }
