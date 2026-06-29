@@ -152,9 +152,19 @@ class _UnifiedImageState extends State<UnifiedImage> {
                 fit: widget.fit,
                 // Downsample image decoding sizes on mobile to prevent memory spikes (OOM) and black screen freezes.
                 // We use 2.0x display width to match device pixel ratios for sharp rendering.
-                cacheWidth: widget.width != null 
-                    ? (widget.width! * 2.0).clamp(100.0, 1080.0).round() 
+                cacheWidth: widget.width != null
+                    ? (widget.width! * 2.0).clamp(100.0, 1080.0).round()
                     : 720,
+                // 解码期间显示 loading，解码完成后淡入，消除首次解码的空白闪烁
+                frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                  if (wasSynchronouslyLoaded) return child;
+                  return AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 250),
+                    child: frame == null
+                        ? SizedBox(key: const ValueKey('loading'), child: _buildLoading(context))
+                        : SizedBox(key: const ValueKey('image'), child: child),
+                  );
+                },
                 errorBuilder: (context, error, stackTrace) {
                   LoggerService.instance.logUI(
                     '图片加载失败: $error',

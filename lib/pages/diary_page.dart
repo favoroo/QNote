@@ -1718,17 +1718,17 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                                       ),
                                     ),
                                   ),
-                                  if (currentColorMark != null) ...[
-                                    const SizedBox(height: 4),
-                                    Container(
-                                      width: 24,
-                                      height: 3,
-                                      decoration: BoxDecoration(
-                                        color: _hexToColor(currentColorMark.color),
-                                        borderRadius: BorderRadius.circular(1.5),
-                                      ),
+                                  const SizedBox(height: 4),
+                                  Container(
+                                    width: 24,
+                                    height: 3,
+                                    decoration: BoxDecoration(
+                                      color: currentColorMark != null
+                                          ? _hexToColor(currentColorMark.color)
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(1.5),
                                     ),
-                                  ],
+                                  ),
                                 ],
                               ),
                             ),
