@@ -52,8 +52,7 @@ class _TextSegment extends _Segment {
 
 class _ImageSegment extends _Segment {
   final String path;
-  final bool loading; // true 表示图片正在处理（压缩/保存中），渲染占位动画
-  _ImageSegment(this.path, {this.loading = false});
+  _ImageSegment(this.path);
 }
 
 class _LinkSegment extends _Segment {
@@ -751,51 +750,22 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     }
     if (image == null) return;
 
-    // 先插入"加载中"占位段，给用户即时反馈，避免压缩期间界面"卡住"无响应
-    final placeholder = _ImageSegment('', loading: true);
-    _insertImageSegment(placeholder, transient: true);
-
-    // 异步处理图片（Web base64 / 移动端压缩保存），期间占位段显示加载动画
     String savedPath;
-    try {
-      if (kIsWeb) {
-        final bytes = await image.readAsBytes();
-        final base64Str = base64Encode(bytes);
-        final ext = image.path.toLowerCase().contains('.png') ? 'png' : 'jpeg';
-        savedPath = 'data:image/$ext;base64,$base64Str';
-      } else {
-        final file = File(image.path);
-        savedPath = await _imageRepo.saveImage(file, subfolder: 'note');
-      }
-    } catch (_) {
-      // 处理失败：移除占位段，不残留空图片段
-      if (mounted) {
-        setState(() {
-          _segments.removeWhere((s) => identical(s, placeholder));
-        });
-      }
-      return;
+    if (kIsWeb) {
+      final bytes = await image.readAsBytes();
+      final base64Str = base64Encode(bytes);
+      final ext = image.path.toLowerCase().contains('.png') ? 'png' : 'jpeg';
+      savedPath = 'data:image/$ext;base64,$base64Str';
+    } else {
+      final file = File(image.path);
+      savedPath = await _imageRepo.saveImage(file, subfolder: 'note');
     }
 
-    // 处理完成：用真实路径替换占位段，进历史栈并触发自动保存
     _newlyUploadedPaths.add(savedPath);
-    if (mounted) {
-      _historyTimer?.cancel();
-      _saveHistoryState();
-      setState(() {
-        final i = _segments.indexWhere((s) => identical(s, placeholder));
-        if (i >= 0) {
-          _segments[i] = _ImageSegment(savedPath);
-        }
-      });
-      _triggerAutoSave();
-    }
+    _insertImageAtFocusedSegment(savedPath);
   }
 
-  /// 插入图片段到当前聚焦文本段的光标位置。
-  /// [transient] 为 true 时表示插入的是临时占位段（如压缩中的 loading 段），
-  /// 不进撤销历史栈、不触发自动保存，待后续替换为真实路径后再统一处理。
-  void _insertImageSegment(_ImageSegment imgSeg, {bool transient = false}) {
+  void _insertImageAtFocusedSegment(String path) {
     // Find the currently focused text segment dynamically
     int targetIndex = -1;
     for (int i = 0; i < _segments.length; i++) {
@@ -815,10 +785,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     }
     if (targetIndex < 0) return;
 
-    if (!transient) {
-      _historyTimer?.cancel();
-      _saveHistoryState();
-    }
+    _historyTimer?.cancel();
+    _saveHistoryState();
 
     final seg = _segments[targetIndex] as _TextSegment;
     final cursor = seg.controller.selection.baseOffset;
@@ -829,6 +797,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     final textAfter = text.substring(splitAt);
 
     final before = _TextSegment(context: context, text: textBefore);
+    final imgSeg = _ImageSegment(path);
     final after = _TextSegment(context: context, text: textAfter);
 
     seg.dispose();
@@ -846,10 +815,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
       if (afterIdx < _segments.length && _segments[afterIdx] is _TextSegment) {
         (_segments[afterIdx] as _TextSegment).focusNode.requestFocus();
       }
-      if (!transient) {
-        _saveHistoryState();
-        _triggerAutoSave();
-      }
+      _saveHistoryState();
+      _triggerAutoSave();
     });
   }
 
@@ -883,12 +850,35 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         (_segments[prevIdx] as _TextSegment).dispose();
       }
 
+      // 如果有 AI 提取的引用块，仅删除该图片提取的内容，保留同段落内下方的其他内容
+      String remainingExtractText = '';
+      if (hasNextExtract) {
+        final text = (_segments[nextIdx] as _TextSegment).controller.text;
+        final doubleNewlineIdx = text.indexOf('\n\n');
+        if (doubleNewlineIdx != -1) {
+          remainingExtractText = text.substring(doubleNewlineIdx + 2).trim();
+        } else {
+          final newlineIdx = text.indexOf('\n');
+          if (newlineIdx != -1) {
+            remainingExtractText = text.substring(newlineIdx + 1).trim();
+          }
+        }
+      }
+
+      if (remainingExtractText.isNotEmpty) {
+        if (mergedText.isNotEmpty) mergedText += '\n\n';
+        mergedText += remainingExtractText;
+      }
+
       // 再下一个文本段（跳过 AI 提取引用块后）
       final afterExtractIdx = hasNextExtract ? nextIdx + 1 : nextIdx;
       if (afterExtractIdx < _segments.length && _segments[afterExtractIdx] is _TextSegment) {
         final afterText = (_segments[afterExtractIdx] as _TextSegment).controller.text.trimLeft();
-        if (mergedText.isNotEmpty && afterText.isNotEmpty) mergedText += '\n';
-        mergedText += afterText;
+        if (mergedText.isNotEmpty && afterText.isNotEmpty) {
+          mergedText += (mergedText.endsWith('\n') ? '' : '\n') + afterText;
+        } else {
+          mergedText += afterText;
+        }
         (_segments[afterExtractIdx] as _TextSegment).dispose();
       }
 
@@ -1684,43 +1674,6 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   }
 
   Widget _buildImageSegment(_ImageSegment seg, int index, ThemeData theme) {
-    // 图片处理中（压缩/保存）：渲染加载占位卡片，不响应手势/操作，避免与压缩完成回调竞态
-    if (seg.loading) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Container(
-          width: double.infinity,
-          height: 200,
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  '正在处理图片...',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
     final isExtracting = _extractingImageIndex == index;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),

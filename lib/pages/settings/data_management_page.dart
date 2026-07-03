@@ -69,7 +69,7 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
     if (confirmed != true) return;
 
     if (!mounted) return;
-    final result = await FilePicker.pickFiles(
+    final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['json'],
       dialogTitle: '选择 JSON 备份文件',

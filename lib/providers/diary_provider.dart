@@ -35,6 +35,15 @@ final colorMarkProvider = FutureProvider<DateColorMark?>((ref) async {
 
 final diaryInputTimeProvider = StateProvider<TimelineTimeSelectEvent?>((ref) => null);
 
+enum WidgetAction {
+  input,
+  photo,
+  camera,
+  send,
+}
+
+final pendingWidgetActionProvider = StateProvider<WidgetAction?>((ref) => null);
+
 final currentInputTimeProvider = StateProvider<TimeOfDay>((ref) => TimeOfDay.now());
 
 final diaryDraftsProvider = StateProvider<List<DiaryRecord>>((ref) => []);

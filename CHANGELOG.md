@@ -6,6 +6,35 @@
 
 ---
 
+## 2026-07-02
+
+- **#123**
+  - **Fixed**: 修复笔记删除图片时，误将图片下方原本存在的其他内容也一并删除的 bug (`lib/widgets/notes/note_editor_view.dart`)。
+    - **Changed**: 在 `_removeImage` 中，若图片下方是 AI 提取段（以 `> 图：` 开头），检查该文本段内是否存在后续段落/其他内容，如果有则保留并合并到更新后的文本段中，不再盲目 `dispose` 掉整段文字。
+
+- **#122**
+  - **Fixed**: 修复数据统计中活动类型始终显示为"其他"及跨天记录被错误丢弃的问题 (`lib/core/utils/stats_utils.dart`)。
+    - **Fixed**: `calculateActivityStats` 的字段键列表缺少 `'type'`（实际存储的字段 ID），导致活动类型永远匹配不到，全部回退为"其他"；同时正则回退仅匹配 `'项目：'` 而非内容实际使用的 `'类型：'`，现已同时兼容两种格式。
+    - **Fixed**: `calculateActivityStats`/`calculateDietStats`/`calculateFinanceStats`/`calculateMoodStats` 内部使用 `_filterByDateRange`（按 `r.time` 过滤）与 Repository 的 `getEffectiveDate()` 过滤不一致，导致跨午夜记录在统计范围边界被错误丢弃；现已移除冗余的内部日期过滤（Repository 已正确处理），并删除 `_filterByDateRange` 函数。`calculateSleepStats` 的日期过滤也同步简化。
+
+- **#121**
+  - **Fixed**: 修复 iOS 桌面小组件点击按钮显示 "Page not found" 的问题 (`lib/core/router/app_router.dart`, `lib/widgets/diary/diary_input_bar.dart`, `lib/providers/diary_provider.dart`, `ios/Runner/Info.plist`)。
+    - **Changed**: 在 `ios/Runner/Info.plist` 中注册 URL Schemes `qnote`，使得可以通过该 URL Scheme 打开 App。
+    - **Changed**: 在 `lib/providers/diary_provider.dart` 中新增 `WidgetAction` 枚举与 `pendingWidgetActionProvider` 状态。
+    - **Changed**: 在 `lib/core/router/app_router.dart` 中新增 `/quick_record` 路由规则并实现重定向到 `/diary`，且在重定向时提取 `action` 保存至 `pendingWidgetActionProvider`。
+    - **Changed**: 在 `lib/widgets/diary/diary_input_bar.dart` 中监听并读取 `pendingWidgetActionProvider`，实现小组件按钮点击后在 Flutter 端自动展开对应的输入、相册或相机行为。
+
+## 2026-06-30
+
+- **#120**
+  - **Fixed**: 修复 iOS 17+ 桌面小组件显示 "please adopt containerBackground API" 提示的问题，将背景设置迁移到 WidgetKit 的 `containerBackground(for:alignment:)` API (`ios/QuickRecordWidget/QuickRecordWidget.swift`)。
+    - **Changed**: 新增 `View.widgetBackground()` 扩展，iOS 17+ 使用 `.containerBackground(.fill.tertiary, for: .widget)`，iOS 16 回退到 `.background(Color(.systemBackground))`。
+    - **Changed**: 重写 `QuickRecordWidget.swift` 为 QNote 快速记录小组件：左侧输入框 + 右侧相册/相机/发送三个按钮，点击通过 `qnote://quick_record` URL scheme 打开 App (`ios/QuickRecordWidget/QuickRecordWidget.swift`)。
+    - **Changed**: 简化 `QuickRecordWidgetBundle.swift` 仅注册快速记录小组件，避免引用未使用的 Control / Live Activity 示例代码 (`ios/QuickRecordWidget/QuickRecordWidgetBundle.swift`).
+    - **Changed**: 调整 Runner target 的 Build Phases 顺序，将 `Embed Foundation Extensions` 提前到 `Thin Binary` 之前，消除 Widget Extension 导致的构建循环错误 (`ios/Runner.xcodeproj/project.pbxproj`).
+    - **Changed**: 将 `QuickRecordWidgetExtension` 的部署目标从 26.5 降至 16.0，与主 App 最低版本对齐 (`ios/Runner.xcodeproj/project.pbxproj`).
+    - **Added**: 为 Widget Extension 添加 `QuickRecordWidgetExtension.entitlements` 并配置 App Groups `group.com.appone.qnote_flutter`，与 Runner 保持一致 (`ios/QuickRecordWidget/QuickRecordWidgetExtension.entitlements`, `ios/Runner.xcodeproj/project.pbxproj`).
+
 ## 2026-06-29
 
 - **#119**

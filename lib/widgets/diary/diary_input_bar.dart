@@ -809,6 +809,26 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     _updateActiveDraft(tagEntries: newTagEntries);
   }
 
+  void _handleWidgetAction(WidgetAction action) {
+    if (!_isExpanded) {
+      setState(() {
+        _isExpanded = true;
+      });
+    }
+    _textFocusNode.requestFocus();
+    switch (action) {
+      case WidgetAction.input:
+      case WidgetAction.send:
+        break;
+      case WidgetAction.photo:
+        _pickImageFromGallery();
+        break;
+      case WidgetAction.camera:
+        _pickImageFromCamera();
+        break;
+    }
+  }
+
   Future<void> _pickImageFromGallery() async {
     if (_activeDraft.selectedPhotos.length >= 3) return;
     try {
@@ -2028,6 +2048,22 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<WidgetAction?>(pendingWidgetActionProvider, (previous, next) {
+      if (next != null) {
+        ref.read(pendingWidgetActionProvider.notifier).state = null;
+        _handleWidgetAction(next);
+      }
+    });
+
+    final pendingAction = ref.read(pendingWidgetActionProvider);
+    if (pendingAction != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ref.read(pendingWidgetActionProvider.notifier).state = null;
+        _handleWidgetAction(pendingAction);
+      });
+    }
+
     final selectedDate = ref.watch(selectedDateProvider);
     ref.listen<TimelineTimeSelectEvent?>(diaryInputTimeProvider, (
       previous,
