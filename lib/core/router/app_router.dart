@@ -20,6 +20,7 @@ import 'package:qnote_flutter/widgets/notes/note_editor_view.dart';
 import 'package:qnote_flutter/widgets/bottom_nav_bar.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/note.dart';
+import 'package:qnote_flutter/providers/diary_provider.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -155,6 +156,22 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/settings/about',
         parentNavigatorKey: _rootNavigatorKey,
         pageBuilder: (context, state) => _fadeTransitionPage(const AboutPage()),
+      ),
+      GoRoute(
+        path: '/quick_record',
+        redirect: (context, state) {
+          final actionStr = state.uri.queryParameters['action'];
+          WidgetAction? action;
+          if (actionStr == 'input') action = WidgetAction.input;
+          else if (actionStr == 'photo') action = WidgetAction.photo;
+          else if (actionStr == 'camera') action = WidgetAction.camera;
+          else if (actionStr == 'send') action = WidgetAction.send;
+
+          if (action != null) {
+            ref.read(pendingWidgetActionProvider.notifier).state = action;
+          }
+          return '/diary';
+        },
       ),
     ],
   );

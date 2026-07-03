@@ -72,5 +72,18 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.appone.qnote</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>qnote</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

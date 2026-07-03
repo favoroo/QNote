@@ -96,16 +96,6 @@ class ActivityStatistics {
   });
 }
 
-List<DiaryRecord> _filterByDateRange(
-  List<DiaryRecord> records,
-  DateTime startDate,
-  DateTime endDate,
-) {
-  return records.where((r) {
-    return !r.time.isBefore(startDate) && !r.time.isAfter(endDate);
-  }).toList();
-}
-
 String _formatDate(DateTime dt) {
   final m = dt.month.toString().padLeft(2, '0');
   final d = dt.day.toString().padLeft(2, '0');
@@ -224,13 +214,9 @@ SleepStatistics calculateSleepStats(
   DateTime startDate,
   DateTime endDate,
 ) {
-  final targetStart = DateTime(startDate.year, startDate.month, startDate.day);
-  final targetEnd = DateTime(endDate.year, endDate.month, endDate.day);
-
+  // Repository 已通过 getEffectiveDate() 按日期范围过滤，无需再过滤
   final sleepRecords = records.where((r) {
-    if (r.displayTag != '睡眠' || r.startTime == null || r.endTime == null) return false;
-    final effectiveDate = r.getEffectiveDate();
-    return !effectiveDate.isBefore(targetStart) && !effectiveDate.isAfter(targetEnd);
+    return r.displayTag == '睡眠' && r.startTime != null && r.endTime != null;
   }).toList();
 
   final rawDaily = <SleepDailyData>[];
@@ -309,8 +295,8 @@ FinanceStatistics calculateFinanceStats(
   DateTime startDate,
   DateTime endDate,
 ) {
-  final filtered = _filterByDateRange(records, startDate, endDate);
-  final financeRecords = filtered.where((r) => r.displayTag == '记账').toList();
+  // Repository 已通过 getEffectiveDate() 按日期范围过滤，无需再过滤
+  final financeRecords = records.where((r) => r.displayTag == '记账').toList();
 
   final expenseByType = <String, double>{};
   final incomeByType = <String, double>{};
@@ -414,8 +400,8 @@ DietStatistics calculateDietStats(
   DateTime startDate,
   DateTime endDate,
 ) {
-  final filtered = _filterByDateRange(records, startDate, endDate);
-  final dietRecords = filtered.where((r) => r.displayTag == '饮食').toList();
+  // Repository 已通过 getEffectiveDate() 按日期范围过滤，无需再过滤
+  final dietRecords = records.where((r) => r.displayTag == '饮食').toList();
 
   final typeDistribution = <String, int>{};
   final healthDistribution = <String, int>{'健康': 0, '一般': 0, '不健康': 0};
@@ -476,8 +462,8 @@ MoodStatistics calculateMoodStats(
   DateTime startDate,
   DateTime endDate,
 ) {
-  final filtered = _filterByDateRange(records, startDate, endDate);
-  final moodRecords = filtered
+  // Repository 已通过 getEffectiveDate() 按日期范围过滤，无需再过滤
+  final moodRecords = records
       .where((r) => (r.displayTag == '状态' || r.displayTag == '健康') && r.bodyState != null)
       .toList();
 
@@ -552,8 +538,8 @@ ActivityStatistics calculateActivityStats(
   DateTime startDate,
   DateTime endDate,
 ) {
-  final filtered = _filterByDateRange(records, startDate, endDate);
-  final activityRecords = filtered.where((r) => r.displayTag == '活动').toList();
+  // Repository 已通过 getEffectiveDate() 按日期范围过滤，无需再过滤
+  final activityRecords = records.where((r) => r.displayTag == '活动').toList();
 
   final typeDistribution = <String, int>{};
   final durationByType = <String, double>{};
@@ -569,7 +555,9 @@ ActivityStatistics calculateActivityStats(
     for (final entry in r.tagEntries) {
       if (entry.name == '活动' || entry.id == 'activity') {
         final fields = entry.fields;
+        // 优先匹配字段 ID 'type'，再匹配中文标签 '类型'（与饮食统计对齐）
         final rawItem = _getValFromMap(fields, [
+          'type',
           'item',
           '项目',
           '类型',
@@ -582,7 +570,8 @@ ActivityStatistics calculateActivityStats(
     }
 
     if (type == null) {
-      final typeMatch = RegExp(r'项目[：:]\s*([^ \n，,]+)').firstMatch(r.content);
+      // 同时匹配 '类型：' 和 '项目：'，兼容不同内容格式
+      final typeMatch = RegExp(r'(?:类型|项目)[：:]\s*([^ \n，,]+)').firstMatch(r.content);
       if (typeMatch != null)
         type = _resolveActivityItem(typeMatch.group(1)!.trim());
     }
