@@ -6,6 +6,15 @@
 
 ---
 
+## 2026-09-09
+
+- **#124**
+  - **Added**: 将项目首次同步至 GitHub 公开仓库 `favoroo/QNote`，推送 72 个本地 commit 与 408 个文件 (`.git/config`)。
+    - **Changed**: 本地分支 `master` 重命名为 `main`，与远端默认分支统一。
+    - **Changed**: 合并远端既有的 `free_models.json` 提交（`--allow-unrelated-histories`，因两边历史无共同祖先）；合并后对该文件设置 `skip-worktree`，使本地改动不被 `git add -A` 捕获，同时保留远端文件不被删除。
+    - **Changed**: 新增 `origin` 远程指向 `https://github.com/favoroo/QNote.git`，并设置 `http.postBuffer=524288000` 以支持大体积推送。
+    - **Added**: 创建 `backup-before-github` 分支作为同步前的回滚点。
+
 ## 2026-07-02
 
 - **#123**
