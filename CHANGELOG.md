@@ -6,6 +6,13 @@
 
 ---
 
+## 2026-09-10
+
+- **#125**
+  - **Added**: 发布首个 Android 版本 `v1.0.0`，构建 64 位单架构 APK 并上传至 GitHub Release (`.gitignore`, `CHANGELOG.md`)。
+    - **Changed**: `.gitignore` 新增 `.workbuddy/`，避免工作目录污染 `git status`。
+    - **Changed**: 构建参数使用 `--target-platform android-arm64`，APK 体积由全架构的 83.9MB 降至 30.4MB（约 -64%），产物位于 `build/app/outputs/flutter-apk/QNote-v1.0.0-arm64-v8a.apk`。
+
 ## 2026-09-09
 
 - **#124**

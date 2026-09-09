@@ -54,6 +54,7 @@ skills-lock.json
 # ---- IDE/工具特定目录 ----
 .trae/
 .agents/
+.workbuddy/
 
 # ---- 参考文档（旧架构，体积较大）----
 01旧架构数据/
