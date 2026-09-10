@@ -13,6 +13,12 @@ const String kRepoOwner = 'favoroo';
 /// GitHub 仓库名称，用于拉取 Release 更新信息。
 const String kRepoName = 'QNote';
 
+/// Gitee 仓库所有者，用于国内首选 Release 更新信息。
+const String kGiteeOwner = 'favo9';
+
+/// Gitee 仓库名称，用于国内首选 Release 更新信息。
+const String kGiteeRepo = 'qnote';
+
 /// 应用版本号工具类。
 ///
 /// 在应用启动时调用 [init] 一次，之后直接读取 [version] 即可。

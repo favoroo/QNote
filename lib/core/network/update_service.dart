@@ -109,8 +109,12 @@ class UpdateService {
   /// 服务单例。
   static final UpdateService instance = UpdateService._();
 
-  /// GitHub Releases 最新版本官方接口地址。
-  static const String _directReleaseUrl =
+  /// Gitee Releases 最新版本接口地址（国内首选主源）。
+  static const String _giteeReleaseUrl =
+      'https://gitee.com/api/v5/repos/$kGiteeOwner/$kGiteeRepo/releases/latest';
+
+  /// GitHub Releases 最新版本官方接口地址（备选源）。
+  static const String _githubReleaseUrl =
       'https://api.github.com/repos/$kRepoOwner/$kRepoName/releases/latest';
 
   /// 国内 GitHub 加速镜像前缀（末尾带斜杠）。
@@ -173,10 +177,11 @@ class UpdateService {
   Future<UpdateCheckResult> checkForUpdate({String? currentVersion}) async {
     final localVersion = currentVersion ?? AppVersion.version;
 
-    // 组合候选接口地址：官方直连优先，失败后依次尝试国内镜像
+    // 组合候选接口地址：国内 Gitee 优先，其次 GitHub 官方，最后国内加速镜像兜底
     final candidateEndpoints = <String>[
-      _directReleaseUrl,
-      ...kGithubProxies.map((proxy) => '$proxy$_directReleaseUrl'),
+      _giteeReleaseUrl,
+      _githubReleaseUrl,
+      ...kGithubProxies.map((proxy) => '$proxy$_githubReleaseUrl'),
     ];
 
     Map<String, dynamic>? releaseData;
@@ -242,15 +247,29 @@ class UpdateService {
       final releaseUrl = releaseData['html_url']?.toString() ?? '';
       final hasApk = rawApkUrl != null && rawApkUrl.isNotEmpty;
 
-      // 构建下载候选列表：优先国内镜像加速直链，末尾兜底原始链接
+      // 构建下载候选列表：Gitee 国内高速直链排在最前，其次 GitHub 国内加速代理镜像，最后兜底 GitHub 直连
       final candidateDownloadUrls = <String>[];
       if (hasApk) {
-        if (rawApkUrl.startsWith('https://github.com/')) {
+        if (rawApkUrl.contains('gitee.com')) {
+          // Gitee 国内 CDN 直链首选
+          candidateDownloadUrls.add(rawApkUrl);
+          // 备选推断 GitHub 对应的加速镜像与直链
+          final fileName = rawApkUrl.split('/').last;
+          final ghDirectUrl =
+              'https://github.com/$kRepoOwner/$kRepoName/releases/download/$tagName/$fileName';
+          for (final proxy in kGithubProxies) {
+            candidateDownloadUrls.add('$proxy$ghDirectUrl');
+          }
+          candidateDownloadUrls.add(ghDirectUrl);
+        } else if (rawApkUrl.startsWith('https://github.com/')) {
+          // GitHub 源时：优先国内加速代理镜像，再兜底官方直连
           for (final proxy in kGithubProxies) {
             candidateDownloadUrls.add('$proxy$rawApkUrl');
           }
+          candidateDownloadUrls.add(rawApkUrl);
+        } else {
+          candidateDownloadUrls.add(rawApkUrl);
         }
-        candidateDownloadUrls.add(rawApkUrl);
       } else {
         candidateDownloadUrls.add(releaseUrl);
       }
