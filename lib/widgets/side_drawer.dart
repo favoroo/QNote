@@ -7,8 +7,7 @@ import 'package:qnote_flutter/pages/settings/personalization_page.dart';
 import 'package:qnote_flutter/pages/settings/ai_config_page.dart';
 import 'package:qnote_flutter/pages/settings/shortcuts_page.dart';
 import 'package:qnote_flutter/pages/settings/fixed_events_page.dart';
-import 'package:qnote_flutter/pages/settings/data_management_page.dart';
-import 'package:qnote_flutter/pages/settings/sync_settings_page.dart';
+import 'package:qnote_flutter/pages/settings/data_sync_page.dart';
 import 'package:qnote_flutter/pages/settings/about_page.dart';
 
 class SideDrawer extends ConsumerStatefulWidget {
@@ -145,18 +144,11 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
                     onTap: () => _navigateTo(context, const FixedEventsPage()),
                   ),
                   _DrawerMenuItem(
-                    icon: Icons.cloud_outlined,
-                    iconBgColor: itemBgColor,
-                    iconColor: itemColor,
-                    label: '数据管理',
-                    onTap: () => _navigateTo(context, const DataManagementPage()),
-                  ),
-                  _DrawerMenuItem(
                     icon: Icons.sync_rounded,
                     iconBgColor: itemBgColor,
                     iconColor: itemColor,
-                    label: '同步设置',
-                    onTap: () => _navigateTo(context, const SyncSettingsPage()),
+                    label: '数据与同步',
+                    onTap: () => _navigateTo(context, const DataSyncPage()),
                   ),
                   _DrawerMenuItem(
                     icon: Icons.palette_outlined,

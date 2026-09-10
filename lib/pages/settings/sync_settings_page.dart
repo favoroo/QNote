@@ -9,30 +9,29 @@ import 'package:qnote_flutter/core/network/webdav_service.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/webdav_config.dart';
-import 'package:qnote_flutter/providers/ai_provider.dart';
-import 'package:qnote_flutter/providers/diary_provider.dart';
-import 'package:qnote_flutter/providers/folder_provider.dart';
-import 'package:qnote_flutter/providers/note_provider.dart';
-import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/providers/sync_provider.dart';
-import 'package:qnote_flutter/providers/todo_provider.dart';
-import 'package:qnote_flutter/providers/user_profile_provider.dart';
 
-/// 同步设置页面
+/// 云同步设置视图
+///
+/// 作为「数据与同步」页面的「云同步」分区被嵌入，自身不含 Scaffold/AppBar，
+/// 未保存拦截与保存入口统一交由宿主页面 DataSyncPage 处理。
 ///
 /// 遵循轻量化与新用户友好原则：
 /// 1. WebDAV 服务器配置置顶，并内置“测试连接”功能；
 /// 2. 简化日常同步选项，自动同步集成后台与启动时机制；
 /// 3. 提供醒目的“立即同步”核心主操作；
-/// 4. 将低频运维与高危“从远程恢复”收纳进“高级与数据恢复”折叠面板中。
-class SyncSettingsPage extends ConsumerStatefulWidget {
-  const SyncSettingsPage({super.key});
+/// 4. 低频运维收纳入“高级选项”折叠面板（数据恢复已移至“备份与恢复”分区）。
+class SyncSettingsView extends ConsumerStatefulWidget {
+  const SyncSettingsView({super.key, this.onDirtyChanged});
+
+  /// 当出现/消除未保存改动时回调，供宿主页面决定是否展示保存按钮
+  final ValueChanged<bool>? onDirtyChanged;
 
   @override
-  ConsumerState<SyncSettingsPage> createState() => _SyncSettingsPageState();
+  ConsumerState<SyncSettingsView> createState() => SyncSettingsViewState();
 }
 
-class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
+class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
   final _serverUrlController = TextEditingController();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -57,6 +56,9 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
   bool _initialSyncImages = true;
   int _initialSyncInterval = 15;
 
+  // 上一次已通知宿主的脏状态，避免重复回调
+  bool _lastNotifiedDirty = false;
+
   static const _syncIntervalOptions = <MapEntry<String, int>>[
     MapEntry('5 分钟', 5),
     MapEntry('15 分钟', 15),
@@ -68,6 +70,11 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
   @override
   void initState() {
     super.initState();
+    // 文本改动不会触发 setState，需单独监听以保证脏状态实时同步给宿主
+    _serverUrlController.addListener(_notifyDirtyChange);
+    _usernameController.addListener(_notifyDirtyChange);
+    _passwordController.addListener(_notifyDirtyChange);
+    _remotePathController.addListener(_notifyDirtyChange);
     _loadConfig();
     _statusSubscription = SyncScheduler.instance.statusStream.listen((_) {
       if (mounted) setState(() {});
@@ -97,7 +104,8 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
     _initialSyncInterval = _syncInterval;
   }
 
-  bool _hasUnsavedChanges() {
+  /// 是否存在未保存的同步配置改动
+  bool hasUnsavedChanges() {
     return _serverUrlController.text.trim() != _initialServerUrl ||
         _usernameController.text.trim() != _initialUsername ||
         _passwordController.text != _initialPassword ||
@@ -108,7 +116,17 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
         _syncInterval != _initialSyncInterval;
   }
 
-  Future<bool> _showUnsavedChangesDialog() async {
+  /// 将当前脏状态同步给宿主页面（仅在状态翻转时回调）
+  void _notifyDirtyChange() {
+    if (!mounted) return;
+    final dirty = hasUnsavedChanges();
+    if (dirty == _lastNotifiedDirty) return;
+    _lastNotifiedDirty = dirty;
+    widget.onDirtyChanged?.call(dirty);
+  }
+
+  /// 存在未保存改动时弹出确认框；返回 true 表示可以继续离开
+  Future<bool> confirmUnsavedChanges() async {
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -132,7 +150,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
     );
 
     if (result == 'save') {
-      await _saveConfig();
+      await saveConfig();
       return true;
     } else if (result == 'discard') {
       return true;
@@ -186,7 +204,8 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
     }
   }
 
-  Future<void> _saveConfig({bool silent = false}) async {
+  /// 保存同步配置。宿主页面的保存按钮与离开拦截均调用此方法
+  Future<void> saveConfig({bool silent = false}) async {
     final existing = await ref.read(webdavConfigProvider.future).catchError((_) => null);
 
     final config = WebdavConfig(
@@ -209,6 +228,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
     await ConfigRepository.instance.setAppConfig('webdav_sync_images', _syncImages ? 'true' : 'false');
 
     _updateInitialValues();
+    _notifyDirtyChange();
 
     if (!silent && mounted) {
       _showNotification('配置已保存', isSuccess: true);
@@ -243,7 +263,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
       if (mounted) {
         if (success) {
           _showNotification('连接成功！配置已自动保存', isSuccess: true);
-          await _saveConfig(silent: true);
+          await saveConfig(silent: true);
         } else {
           _showNotification('连接失败，请检查服务器地址与账号密码', isError: true);
         }
@@ -277,135 +297,6 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
       _showNotification('同步成功！$sizeInfo', isSuccess: true);
     } else if (scheduler.status == SyncStatus.error) {
       _showNotification('同步失败: ${scheduler.lastError ?? "请查看运行日志"}', isError: true);
-    }
-  }
-
-  Future<void> _performFullSync() async {
-    final config = await ref.read(webdavConfigProvider.future).catchError((_) => null);
-    if (!mounted) return;
-    if (config == null || config.serverUrl.isEmpty) {
-      _showNotification('请先配置并保存 WebDAV 服务器信息', isError: true);
-      return;
-    }
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('强制全量同步'),
-        content: const Text('将把本地完整数据快照强制上传并覆盖云端快照，可能耗时稍长。是否继续？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('确认同步'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-
-    WebdavService.instance.updateConfig(config);
-    await SyncScheduler.instance.fullSync();
-
-    if (!mounted) return;
-    final scheduler = SyncScheduler.instance;
-    if (scheduler.status == SyncStatus.success) {
-      _showNotification('全量同步成功！', isSuccess: true);
-    } else if (scheduler.status == SyncStatus.error) {
-      _showNotification('全量同步失败: ${scheduler.lastError ?? "请查看日志"}', isError: true);
-    }
-  }
-
-  Future<void> _cleanupOldBackups() async {
-    final config = await ref.read(webdavConfigProvider.future).catchError((_) => null);
-    if (!mounted) return;
-    if (config == null || config.serverUrl.isEmpty) {
-      _showNotification('请先配置并保存 WebDAV 服务器信息', isError: true);
-      return;
-    }
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('清理旧备份文件'),
-        content: const Text('将清理云端历史遗留的按日期命名的旧格式备份文件，保留最新的快照与增量数据。是否继续？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('清理'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-
-    WebdavService.instance.updateConfig(config);
-    final deletedCount = await SyncScheduler.instance.cleanupRemoteBackups();
-
-    if (!mounted) return;
-    _showNotification('已清理 $deletedCount 个旧备份文件', isSuccess: true);
-  }
-
-  Future<void> _restoreFromBackup() async {
-    final config = await ref.read(webdavConfigProvider.future).catchError((_) => null);
-    if (!mounted) return;
-    if (config == null || config.serverUrl.isEmpty) {
-      _showNotification('请先配置并保存 WebDAV 服务器信息', isError: true);
-      return;
-    }
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('从云端恢复本地数据', style: TextStyle(color: Colors.red)),
-        content: const Text(
-          '警告：此操作将从云端下载最新备份，并完全覆盖当前的本地数据！\n适用于换机或重新安装应用时的恢复。确认要继续吗？',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('确认覆盖恢复'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-
-    WebdavService.instance.updateConfig(config);
-    await SyncScheduler.instance.restoreFromBackup();
-
-    if (!mounted) return;
-    final scheduler = SyncScheduler.instance;
-    if (scheduler.status == SyncStatus.success) {
-      // 恢复成功后主动失效并刷新所有相关 Provider
-      ref.invalidate(diaryListProvider);
-      ref.invalidate(noteListProvider);
-      ref.invalidate(todoListProvider);
-      ref.invalidate(folderListProvider);
-      ref.invalidate(aiConfigListProvider);
-      ref.invalidate(aiRolesProvider);
-      ref.invalidate(aiTemperaturesProvider);
-      ref.invalidate(shortcutListProvider);
-      ref.invalidate(userProfileProvider);
-      ref.invalidate(chatSessionListProvider);
-      ref.invalidate(webdavConfigProvider);
-      ref.invalidate(diaryColorMarkProvider);
-
-      _showNotification('本地数据已成功从云端恢复！', isSuccess: true);
-    } else if (scheduler.status == SyncStatus.error) {
-      _showNotification('恢复失败: ${scheduler.lastError ?? "请确认云端是否存在有效备份"}', isError: true);
     }
   }
 
@@ -449,91 +340,40 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    // 兜底：配置异步加载完成后再同步一次脏状态
+    WidgetsBinding.instance.addPostFrameCallback((_) => _notifyDirtyChange());
+
     final syncStatus = SyncScheduler.instance.status;
     final lastSyncTime = SyncScheduler.instance.lastSyncTime;
     final lastError = SyncScheduler.instance.lastError;
     final isSyncing = syncStatus == SyncStatus.syncing;
 
-    return PopScope(
-      canPop: !_hasUnsavedChanges(),
-      onPopInvokedWithResult: (didPop, _) async {
-        if (didPop) return;
-        final shouldPop = await _showUnsavedChangesDialog();
-        if (shouldPop && context.mounted) {
-          Navigator.of(context).pop();
-        }
-      },
-      child: Scaffold(
-        backgroundColor: colorScheme.surfaceContainerLowest,
-        appBar: AppBar(
-          title: const Text('同步设置'),
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () async {
-              if (_hasUnsavedChanges()) {
-                final shouldPop = await _showUnsavedChangesDialog();
-                if (shouldPop && context.mounted) {
-                  Navigator.of(context).pop();
-                }
-              } else {
-                Navigator.of(context).pop();
-              }
-            },
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 1. 服务器配置卡片（最顶层）
+          _buildServerConfigCard(context),
+
+          const SizedBox(height: 16),
+
+          // 2. 同步偏好设置卡片（精简后的开关）
+          _buildSyncPreferencesCard(context),
+
+          const SizedBox(height: 16),
+
+          // 3. 同步状态概览与立即同步主操作卡片
+          _buildSyncActionCard(
+            context,
+            syncStatus: syncStatus,
+            lastSyncTime: lastSyncTime,
+            lastError: lastError,
+            isSyncing: isSyncing,
           ),
-          actions: [
-            Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: FilledButton(
-                onPressed: () => _saveConfig(),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                ),
-                child: const Text('保存', style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-            ),
-          ],
-        ),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // 1. 服务器配置卡片（最顶层）
-              _buildServerConfigCard(context),
 
-              const SizedBox(height: 16),
-
-              // 2. 同步偏好设置卡片（精简后的开关）
-              _buildSyncPreferencesCard(context),
-
-              const SizedBox(height: 16),
-
-              // 3. 同步状态概览与立即同步主操作卡片
-              _buildSyncActionCard(
-                context,
-                syncStatus: syncStatus,
-                lastSyncTime: lastSyncTime,
-                lastError: lastError,
-                isSyncing: isSyncing,
-              ),
-
-              const SizedBox(height: 16),
-
-              // 4. 高级维护与数据恢复（折叠收拢）
-              _buildAdvancedMaintenanceCard(context, isSyncing: isSyncing),
-
-              const SizedBox(height: 32),
-            ],
-          ),
-        ),
+          const SizedBox(height: 32),
+        ],
       ),
     );
   }
@@ -698,6 +538,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
                     if (_syncInterval <= 0) _syncInterval = 15;
                   }
                 });
+                _notifyDirtyChange();
               },
             ),
           ),
@@ -728,7 +569,10 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
                           ))
                       .toList(),
                   onChanged: (val) {
-                    if (val != null) setState(() => _syncInterval = val);
+                    if (val != null) {
+                      setState(() => _syncInterval = val);
+                      _notifyDirtyChange();
+                    }
                   },
                 ),
               ),
@@ -745,7 +589,10 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
             description: '备份与同步日记、笔记中的插图文件',
             trailing: Switch(
               value: _syncImages,
-              onChanged: (val) => setState(() => _syncImages = val),
+              onChanged: (val) {
+                setState(() => _syncImages = val);
+                _notifyDirtyChange();
+              },
             ),
           ),
         ],
@@ -875,67 +722,6 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  /// 4. 高级维护与数据恢复（折叠收拢）
-  Widget _buildAdvancedMaintenanceCard(BuildContext context, {required bool isSyncing}) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-      ),
-      child: Theme(
-        data: theme.copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          leading: Icon(Icons.tune_rounded, color: theme.hintColor, size: 20),
-          title: Text(
-            '高级选项与数据恢复',
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: theme.hintColor,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          childrenPadding: const EdgeInsets.only(bottom: 12),
-          children: [
-            const Divider(height: 1, indent: 16, endIndent: 16),
-            ListTile(
-              dense: true,
-              leading: Icon(Icons.cloud_upload_outlined, color: colorScheme.primary, size: 20),
-              title: const Text('强制全量同步', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-              subtitle: const Text('忽略本地增量，重新上传完整数据快照', style: TextStyle(fontSize: 11)),
-              trailing: const Icon(Icons.chevron_right, size: 18),
-              onTap: isSyncing ? null : _performFullSync,
-            ),
-            const Divider(height: 1, indent: 56, endIndent: 16),
-            ListTile(
-              dense: true,
-              leading: Icon(Icons.cleaning_services_outlined, color: colorScheme.primary, size: 20),
-              title: const Text('清理旧备份文件', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-              subtitle: const Text('清理云端早期历史格式备份，释放网盘空间', style: TextStyle(fontSize: 11)),
-              trailing: const Icon(Icons.chevron_right, size: 18),
-              onTap: isSyncing ? null : _cleanupOldBackups,
-            ),
-            const Divider(height: 1, indent: 56, endIndent: 16),
-            ListTile(
-              dense: true,
-              leading: Icon(Icons.settings_backup_restore_rounded, color: Colors.red.shade400, size: 20),
-              title: Text(
-                '从云端恢复到本地',
-                style: TextStyle(color: Colors.red.shade400, fontSize: 13, fontWeight: FontWeight.bold),
-              ),
-              subtitle: const Text('从云端下载并覆盖本地数据（换机或重新安装时使用）', style: TextStyle(fontSize: 11)),
-              trailing: Icon(Icons.chevron_right, size: 18, color: Colors.red.shade300),
-              onTap: isSyncing ? null : _restoreFromBackup,
-            ),
-          ],
-        ),
       ),
     );
   }

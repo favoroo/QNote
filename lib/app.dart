@@ -37,6 +37,9 @@ Future<void> preInitializeApp() async {
 
   await DatabaseHelper.instance.database;
 
+  // 版本号从构建产物读取，在任何 widget 引用前完成初始化
+  await AppVersion.init();
+
   final configRepo = ConfigRepository.instance;
   await Future.wait([
     configRepo.ensureDefaultShortcuts(),
@@ -112,7 +115,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
       await showUpdateDialog(
         context: dialogContext,
         updateInfo: updateInfo,
-        currentVersion: kAppVersion,
+        currentVersion: AppVersion.version,
       );
     } catch (e, stackTrace) {
       LoggerService.instance.warning(

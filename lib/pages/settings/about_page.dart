@@ -35,7 +35,7 @@ class _AboutPageState extends State<AboutPage> {
           await showUpdateDialog(
             context: context,
             updateInfo: updateInfo,
-            currentVersion: kAppVersion,
+            currentVersion: AppVersion.version,
           );
           break;
         case UpdateCheckStatus.upToDate:
@@ -189,7 +189,7 @@ class _AboutPageState extends State<AboutPage> {
                     title: const Text('版本', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                     trailing: GestureDetector(
                       onTap: _handleVersionTap,
-                      child: Text(kAppVersion, style: TextStyle(color: theme.hintColor, fontSize: 13)),
+                      child: Text(AppVersion.version, style: TextStyle(color: theme.hintColor, fontSize: 13)),
                     ),
                     onTap: _handleVersionTap,
                   ),

@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import 'package:qnote_flutter/core/storage/folder_repository.dart';
+import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/models/folder.dart';
 
 final folderRepositoryProvider = Provider<FolderRepository>((ref) {
@@ -15,13 +16,21 @@ final folderListProvider =
 class FolderListNotifier extends AsyncNotifier<List<Folder>> {
   @override
   Future<List<Folder>> build() async {
+    // 笔记页可见的文件夹：普通笔记文件夹 + 日记体系（根目录与月份子文件夹）
     final repo = ref.read(folderRepositoryProvider);
-    return repo.getByType('note');
+    await JournalService.instance.ensureRootFolder();
+    // 顺带清理历史残留的空日记与空月份文件夹（会话级仅执行一次）
+    await JournalService.instance.cleanupEmptyJournalsIfNeeded();
+    return repo.getByTypes(['note', JournalService.rootFolderType, JournalService.monthFolderType]);
   }
 
   Future<void> refresh() async {
     final repo = ref.read(folderRepositoryProvider);
-    state = AsyncData(await repo.getByType('note'));
+    await JournalService.instance.ensureRootFolder();
+    await JournalService.instance.cleanupEmptyJournalsIfNeeded();
+    state = AsyncData(
+      await repo.getByTypes(['note', JournalService.rootFolderType, JournalService.monthFolderType]),
+    );
   }
 
   Future<Folder> addFolder(String name, [String? parentId]) async {

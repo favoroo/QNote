@@ -19,11 +19,13 @@ import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
+import 'package:qnote_flutter/providers/journal_provider.dart';
 import 'package:qnote_flutter/widgets/diary/ai_extract_helper.dart';
 import 'package:qnote_flutter/widgets/search_view.dart';
 import 'package:qnote_flutter/widgets/diary/diary_item.dart';
 import 'package:qnote_flutter/widgets/diary/model_selection_dialog.dart';
 import 'package:qnote_flutter/widgets/diary/diary_input_bar.dart';
+import 'package:qnote_flutter/widgets/diary/journal_editor_view.dart';
 import 'package:qnote_flutter/widgets/diary/custom_date_picker.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
 import 'package:qnote_flutter/widgets/animated_gradient_border.dart';
@@ -1419,6 +1421,65 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     }
   }
 
+  /// 时间线"每日日记"悬浮按钮：位于智能提取按钮左侧。
+  /// 当天已写日记时呈实心书本态，未写时呈描边记录态
+  Widget _buildJournalFAB(ThemeData theme) {
+    return Consumer(
+      builder: (context, ref, _) {
+        final selectedDate = ref.watch(selectedDateProvider);
+        final note = ref.watch(journalByDateProvider(selectedDate)).valueOrNull;
+        final hasJournal = note != null && note.content.trim().isNotEmpty;
+
+        return GestureDetector(
+          onTap: _handleJournalTap,
+          child: AnimatedContainer(
+            duration: AppDurations.medium,
+            curve: Curves.easeOutCubic,
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: hasJournal
+                  ? theme.colorScheme.tertiary
+                  : theme.colorScheme.surface,
+              shape: BoxShape.circle,
+              border: hasJournal
+                  ? null
+                  : Border.all(
+                      color: theme.colorScheme.outlineVariant,
+                      width: 1.5,
+                    ),
+              boxShadow: [
+                BoxShadow(
+                  color: theme.colorScheme.shadow.withValues(alpha: 0.06),
+                  blurRadius: 6,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Icon(
+              hasJournal ? Icons.menu_book : Icons.edit_note,
+              size: 20,
+              color: hasJournal
+                  ? theme.colorScheme.onTertiary
+                  : theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _handleJournalTap() async {
+    final selectedDate = ref.read(selectedDateProvider);
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => JournalEditorView(date: selectedDate),
+      ),
+    );
+    // 编辑器内部保存时会失效缓存，这里兜底返回后刷新按钮状态
+    ref.invalidate(journalByDateProvider(selectedDate));
+  }
+
   /// Build the smart extract floating action button
   Widget _buildSmartExtractFAB(ThemeData theme) {
     if (_showBatchConfirmButton) return const SizedBox.shrink();
@@ -2145,6 +2206,12 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                   loading: () =>
                       const Center(child: CircularProgressIndicator()),
                   error: (e, _) => Center(child: Text('加载失败: $e')),
+                ),
+                // 每日日记 FAB（智能提取按钮左侧）
+                Positioned(
+                  right: 72,
+                  bottom: 12,
+                  child: _buildJournalFAB(theme),
                 ),
                 // Smart Extract FAB
                 Positioned(

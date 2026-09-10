@@ -27,6 +27,17 @@ class FolderRepository {
     return maps.map((m) => Folder.fromMap(m)).toList();
   }
 
+  Future<List<Folder>> getByTypes(List<String> types) async {
+    final db = await _dbHelper.database;
+    final maps = await db.query(
+      'folders',
+      where: 'type IN (${List.filled(types.length, '?').join(',')})',
+      whereArgs: types,
+      orderBy: 'sort_order ASC, name ASC',
+    );
+    return maps.map((m) => Folder.fromMap(m)).toList();
+  }
+
   Future<List<Folder>> getSubFolders(String parentId) async {
     final db = await _dbHelper.database;
     final maps = await db.query(

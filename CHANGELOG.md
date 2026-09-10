@@ -8,6 +8,31 @@
 
 ## 2026-09-10
 
+- **#131**
+  - **[16:55]**
+    - **Changed**: 版本号统一至 `pubspec.yaml` 单一来源，版本降至 `0.1.0`。引入 `package_info_plus` 在运行时从构建产物读取版本号，消除 `app_version.dart` 中的硬编码副本，后续只需修改 `pubspec.yaml` 一处 (`pubspec.yaml`, `lib/config/app_version.dart`, `lib/app.dart`, `lib/pages/settings/about_page.dart`, `lib/core/network/update_service.dart`)。
+    - **Added**: 发布 `v0.1.0`，构建 64 位单架构 APK 并上传至 GitHub Release。
+
+- **#130**
+  - **Changed**: 侧边栏「数据管理」与「同步设置」合并为单一入口「数据与同步」，页面内按操作性质分「云同步 / 备份恢复 / 维护诊断」三个分区 (`lib/pages/settings/data_sync_page.dart`, `lib/widgets/side_drawer.dart`, `lib/core/router/app_router.dart`)。
+    - **Added**: 新增 `data_sync_page.dart` 容器页：自绘分段切换器（可在切换前拦截未保存的同步配置）、统一 AppBar 与仅在有未保存改动时出现的「保存」按钮，返回时同样校验。
+    - **Changed**: `sync_settings_page.dart` 由整页 `SyncSettingsPage` 改为可嵌入的 `SyncSettingsView`（去掉 Scaffold/AppBar/PopScope），对外暴露 `hasUnsavedChanges` / `saveConfig` / `confirmUnsavedChanges` 与 `onDirtyChanged` 回调；「从云端恢复」移至备份与恢复分区，「强制全量同步」「清理旧备份」移至维护与诊断分区。
+    - **Added**: `log_viewer_page.dart` 由数据管理页内的私有组件独立为公开的 `LogViewerPage`，供维护与诊断分区复用。
+    - **Changed**: 路由 `/settings/sync` 保留并重定向到 `/settings/data?tab=sync`；`/settings/data` 支持 `?tab=sync|backup|maintenance` 直接定位分区。
+    - **Removed**: 删除 `data_management_page.dart`，其导出/导入/清空数据能力分别并入备份与恢复、维护与诊断分区。
+
+- **#129**
+  - **[18:20]**
+    - **Changed**: 空日记不再落库：清空内容保存时直接删除当天日记（hardDelete），该月全部日记删除后连带移除空月份子文件夹，笔记板块不再出现空日记与空文件夹 (`lib/core/storage/journal_service.dart`)。
+      - **Added**: `getNoteForDate` 读取时自愈清理历史残留空日记；`cleanupEmptyJournalsIfNeeded` 会话级一次性全量清理，挂在 `folderListProvider` 构建时执行 (`lib/providers/folder_provider.dart`)。
+  - **Added**: 新增时间线"每日日记"功能，在智能提取悬浮按钮左侧增加日记悬浮按钮，点击进入当天日记编辑页，按钮按"当天已写/未写"呈现实心书本/描边两种状态 (`lib/pages/diary_page.dart`, `lib/widgets/diary/journal_editor_view.dart`)。
+    - **Added**: `journal_editor_view.dart` 沉浸式日记编辑页：日期大标题 + 星期 + "今天"角标、多行正文、字数统计、800ms 防抖自动保存与"已保存/保存中"状态指示，PopScope 拦截返回并落库。
+    - **Added**: `journal_service.dart` 日记数据服务：复用 notes/folders 表，固定 id（`journal_root` / `journal_month_YYYY-MM` / `journal_note_YYYY-MM-DD`）保证结构幂等、可直接按 id 识别日记数据，无需数据库迁移；月份子文件夹与日记笔记用负序号实现"新的在上"。
+    - **Added**: `journal_provider.dart` 按日期查询日记与统一失效缓存（`journalByDateProvider`）。
+  - **Changed**: 笔记板块展示日记文件夹体系：日记根文件夹固定排在最前、图标 `auto_stories` + 青色（colorScheme.tertiary）区分，月份子文件夹为日历图标，日记笔记点击直达日记编辑页 (`lib/pages/notes_page.dart`)。
+    - **Changed**: 日记文件夹与月份子文件夹受保护：不可拖动调整顺序、不可拖出、不可被拖入（before/inside/after 三向拦截）、无操作菜单、不可删除、不参与批量选择与全选；普通笔记/文件夹的"移动到文件夹"对话框排除日记体系目标；`_handleDrop` 与批量删除另加防御性兜底。
+    - **Changed**: `folderListProvider` 加载范围扩展为 `note + journal + journal_month` 类型并在 build 时幂等创建日记根文件夹；`FolderRepository` 新增 `getByTypes` 批量类型查询 (`lib/providers/folder_provider.dart`, `lib/core/storage/folder_repository.dart`)。
+
 - **#128**
   - **Changed**: 深度重构与轻量化侧边栏「同步设置」页面 UI 结构与交互流程 (`lib/pages/settings/sync_settings_page.dart`)。
     - **Changed**: 结构调整：将核心的「WebDAV 服务器」配置卡片置顶，符合新用户先配服再使用的直觉；内嵌「测试连接」按钮并支持测试通过自动保存配置；将次要的「备份存储目录」收拢为可折叠项。

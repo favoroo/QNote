@@ -86,7 +86,7 @@ class UpdateInfo {
 
 /// 应用更新检查服务。
 ///
-/// 数据源为 GitHub Releases 的 latest 接口，与本地版本号 [kAppVersion] 做语义化比较。
+/// 数据源为 GitHub Releases 的 latest 接口，与本地版本号 [AppVersion.version] 做语义化比较。
 /// 该接口匿名访问限额为每 IP 每小时 60 次，对单次启动检查足够。
 class UpdateService {
   UpdateService._();
@@ -107,11 +107,11 @@ class UpdateService {
 
   /// 检查是否存在新版本。
   ///
-  /// [currentVersion] 为当前版本号，缺省取 [kAppVersion]。
+  /// [currentVersion] 为当前版本号，缺省取 [AppVersion.version]。
   /// 本方法不向外抛异常：失败原因通过 [UpdateCheckResult.errorMessage] 返回，
   /// 便于「静默检查」与「手动检查」两种场景复用同一份逻辑。
   Future<UpdateCheckResult> checkForUpdate({String? currentVersion}) async {
-    final localVersion = currentVersion ?? kAppVersion;
+    final localVersion = currentVersion ?? AppVersion.version;
 
     try {
       final response = await _dio.get<dynamic>(_latestReleaseUrl);

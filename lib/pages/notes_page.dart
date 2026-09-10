@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/models/folder.dart';
+import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/providers/note_provider.dart';
 import 'package:qnote_flutter/providers/folder_provider.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
 import 'package:qnote_flutter/widgets/search_view.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/widgets/notes/note_editor_view.dart';
+import 'package:qnote_flutter/widgets/diary/journal_editor_view.dart';
 import 'package:qnote_flutter/widgets/empty_state.dart';
 
 class NotesPage extends ConsumerStatefulWidget {
@@ -82,6 +84,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
 
     Future<void> deleteFolderAndContents(String folderId) async {
       if (deletedFolderIds.contains(folderId)) return;
+      // 日记文件夹不允许被删除（选择入口已屏蔽，此处防御性兜底）
+      if (folderId == JournalService.rootFolderId) return;
       deletedFolderIds.add(folderId);
 
       final allNotes = ref.read(noteListProvider).value ?? [];
@@ -127,6 +131,14 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     final notes = noteListAsync.value ?? [];
     final folders = folderListAsync.value ?? [];
 
+    // 日记体系节点不参与批量选择与全选
+    final selectableNoteIds =
+        notes.where((n) => !JournalService.isJournalNote(n.id)).map((n) => n.id).toSet();
+    final selectableFolderIds =
+        folders.where((f) => !JournalService.isJournalFolder(f)).map((f) => f.id).toSet();
+    final isAllSelected = _selectedNoteIds.length == selectableNoteIds.length &&
+        _selectedFolderIds.length == selectableFolderIds.length;
+
     return Scaffold(
       appBar: AppBar(
         leading: _isSelectionMode
@@ -147,23 +159,18 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           if (_isSelectionMode)
             TextButton(
               onPressed: () {
-                final isAllSelected = _selectedNoteIds.length == notes.length &&
-                    _selectedFolderIds.length == folders.length;
                 setState(() {
                   if (isAllSelected) {
                     _selectedNoteIds.clear();
                     _selectedFolderIds.clear();
                   } else {
-                    _selectedNoteIds = notes.map((n) => n.id).toSet();
-                    _selectedFolderIds = folders.map((f) => f.id).toSet();
+                    _selectedNoteIds = Set<String>.from(selectableNoteIds);
+                    _selectedFolderIds = Set<String>.from(selectableFolderIds);
                   }
                 });
               },
               child: Text(
-                _selectedNoteIds.length == notes.length &&
-                        _selectedFolderIds.length == folders.length
-                    ? '取消全选'
-                    : '全选',
+                isAllSelected ? '取消全选' : '全选',
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.primary,
                   fontWeight: FontWeight.bold,
@@ -379,6 +386,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
         depth: depth,
         parentId: parentId,
         isPinned: true,
+        isJournal: JournalService.isJournalNote(note.id),
       ));
     }
 
@@ -392,6 +400,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           depth: depth,
           parentId: parentId,
           isPinned: false,
+          isJournal: JournalService.isJournalNote(item.id),
         ));
       } else {
         final folder = item as Folder;
@@ -402,6 +411,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           depth: depth,
           parentId: parentId,
           isPinned: false,
+          isJournal: JournalService.isJournalFolder(folder),
         ));
         // 如果文件夹展开，递归将其子孙节点也加入展平列表
         if (folder.isExpanded) {
@@ -726,6 +736,16 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   }
 
   void _editNote(Note note) {
+    // 日记笔记统一走日记编辑器，与时间线入口保持一致体验
+    if (JournalService.isJournalNote(note.id)) {
+      final date = DateTime.tryParse(note.title);
+      if (date != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => JournalEditorView(date: date)),
+        );
+        return;
+      }
+    }
     Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => NoteEditorView(note: note)));
@@ -764,6 +784,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       final children = allFolders.where((f) => f.parentId == parentId).toList()
         ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
       for (final child in children) {
+        // 日记文件夹不可作为普通笔记/文件夹的移动目标
+        if (JournalService.isJournalFolder(child)) continue;
         flattened.add({'folder': child, 'depth': depth});
         traverse(child.id, depth + 1);
       }
@@ -977,6 +999,10 @@ class FlattenedItem {
   final String? parentId;
   final bool isPinned;
 
+  /// 是否为日记体系节点（日记根文件夹/月份子文件夹/日记笔记）
+  /// 此类节点不可拖拽、不可删除、不可作为拖拽目标
+  final bool isJournal;
+
   FlattenedItem({
     required this.id,
     required this.isFolder,
@@ -985,6 +1011,7 @@ class FlattenedItem {
     required this.depth,
     this.parentId,
     required this.isPinned,
+    this.isJournal = false,
   });
 }
 
@@ -1030,6 +1057,13 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
   final _menuKey = GlobalKey();
   String? _hoverPosition; // 'before' | 'inside' | 'after' | null
 
+  /// 日记体系节点不作为拖拽目标；日记节点自身不可拖出（双保险）
+  bool _acceptsDrop(FlattenedItem dragged) {
+    if (widget.item.isJournal) return false;
+    if (dragged.isJournal) return false;
+    return dragged.id != widget.item.id;
+  }
+
   void _setHoverPosition(String? position) {
     if (_hoverPosition != position) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1042,10 +1076,34 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
     }
   }
 
+  /// 节点图标：日记体系用书本/日历图标并统一青色，普通节点维持原样式
+  Widget _buildLeadingIcon(ThemeData theme, bool isFolder, bool isJournal) {
+    if (isJournal) {
+      if (!isFolder) {
+        return Icon(Icons.menu_book, size: 18, color: theme.colorScheme.tertiary);
+      }
+      final isRoot = widget.item.folder!.type == JournalService.rootFolderType;
+      return Icon(
+        isRoot ? Icons.auto_stories : Icons.calendar_month_outlined,
+        size: 18,
+        color: theme.colorScheme.tertiary,
+      );
+    }
+    if (isFolder) {
+      return Icon(
+        widget.item.folder!.isExpanded ? Icons.folder_open : Icons.folder,
+        size: 18,
+        color: theme.colorScheme.primary,
+      );
+    }
+    return Icon(Icons.description, size: 18, color: theme.colorScheme.primary);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isFolder = widget.item.isFolder;
+    final isJournal = widget.item.isJournal;
 
     Widget tileContent = Container(
       padding: EdgeInsets.only(
@@ -1059,7 +1117,8 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
           : Colors.transparent,
       child: Row(
         children: [
-          if (widget.isSelectionMode)
+          // 日记体系节点不参与批量选择，不渲染复选框
+          if (widget.isSelectionMode && !isJournal)
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: SizedBox(
@@ -1098,18 +1157,14 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withValues(
-                alpha: isFolder ? 0.08 : 0.1,
-              ),
+              color: isJournal
+                  ? theme.colorScheme.tertiary.withValues(alpha: 0.12)
+                  : theme.colorScheme.primary.withValues(
+                      alpha: isFolder ? 0.08 : 0.1,
+                    ),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(
-              isFolder
-                  ? (widget.item.folder!.isExpanded ? Icons.folder_open : Icons.folder)
-                  : Icons.description,
-              size: 18,
-              color: theme.colorScheme.primary,
-            ),
+            child: _buildLeadingIcon(theme, isFolder, isJournal),
           ),
           const SizedBox(width: 12),
 
@@ -1125,7 +1180,7 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
           Expanded(
             child: GestureDetector(
               onTap: widget.isSelectionMode
-                  ? widget.onToggleSelection
+                  ? (isJournal ? null : widget.onToggleSelection)
                   : (isFolder
                       ? () => widget.onToggleFolder(widget.item.folder!)
                       : () => widget.onEditNote(widget.item.note!)),
@@ -1135,6 +1190,7 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: isFolder ? FontWeight.bold : FontWeight.w500,
                   letterSpacing: 0.2,
+                  color: isJournal ? theme.colorScheme.tertiary : null,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -1142,7 +1198,8 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
             ),
           ),
 
-          if (!widget.isSelectionMode) ...[
+          // 日记体系节点为系统管理结构，不提供操作菜单
+          if (!widget.isSelectionMode && !isJournal) ...[
             const SizedBox(width: 4),
             SizedBox(
               key: _menuKey,
@@ -1167,10 +1224,10 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
       ),
     );
 
-    // 长按触发拖动排序；选择模式下禁用拖动
+    // 长按触发拖动排序；选择模式下禁用拖动；日记体系节点不可拖动
     Widget tileWithDraggable = LongPressDraggable<FlattenedItem>(
       data: widget.item,
-      maxSimultaneousDrags: widget.isSelectionMode ? 0 : 1,
+      maxSimultaneousDrags: (widget.isSelectionMode || isJournal) ? 0 : 1,
       feedback: Material(
         color: Colors.transparent,
         child: Container(
@@ -1250,7 +1307,7 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
                 flex: 1,
                 child: DragTarget<FlattenedItem>(
                   onWillAcceptWithDetails: (details) {
-                    if (details.data.id == widget.item.id) return false;
+                    if (!_acceptsDrop(details.data)) return false;
                     _setHoverPosition('before');
                     return true;
                   },
@@ -1272,7 +1329,7 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
                   flex: 2,
                   child: DragTarget<FlattenedItem>(
                     onWillAcceptWithDetails: (details) {
-                      if (details.data.id == widget.item.id) return false;
+                      if (!_acceptsDrop(details.data)) return false;
                       if (details.data.isFolder) {
                         final allFolders = ref.read(folderListProvider).value ?? [];
                         if (_checkIsDescendant(widget.item.id, details.data.id, allFolders)) {
@@ -1301,7 +1358,7 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
                 flex: 1,
                 child: DragTarget<FlattenedItem>(
                   onWillAcceptWithDetails: (details) {
-                    if (details.data.id == widget.item.id) return false;
+                    if (!_acceptsDrop(details.data)) return false;
                     _setHoverPosition('after');
                     return true;
                   },

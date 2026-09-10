@@ -10,8 +10,7 @@ import 'package:qnote_flutter/pages/settings/user_profile_page.dart';
 import 'package:qnote_flutter/pages/settings/ai_config_page.dart';
 import 'package:qnote_flutter/pages/settings/shortcuts_page.dart';
 import 'package:qnote_flutter/pages/settings/fixed_events_page.dart';
-import 'package:qnote_flutter/pages/settings/data_management_page.dart';
-import 'package:qnote_flutter/pages/settings/sync_settings_page.dart';
+import 'package:qnote_flutter/pages/settings/data_sync_page.dart';
 import 'package:qnote_flutter/pages/settings/personalization_page.dart';
 import 'package:qnote_flutter/pages/settings/about_page.dart';
 import 'package:qnote_flutter/widgets/diary/diary_editor_view.dart';
@@ -145,12 +144,20 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/settings/data',
         parentNavigatorKey: rootNavigatorKey,
-        pageBuilder: (context, state) => _fadeTransitionPage(const DataManagementPage()),
+        pageBuilder: (context, state) {
+          // tab: sync(默认) / backup / maintenance
+          final tab = switch (state.uri.queryParameters['tab']) {
+            'backup' => 1,
+            'maintenance' => 2,
+            _ => 0,
+          };
+          return _fadeTransitionPage(DataSyncPage(initialTab: tab));
+        },
       ),
       GoRoute(
+        // 旧同步设置路径保留，统一重定向到数据与同步页的云同步分区
         path: '/settings/sync',
-        parentNavigatorKey: rootNavigatorKey,
-        pageBuilder: (context, state) => _fadeTransitionPage(const SyncSettingsPage()),
+        redirect: (context, state) => '/settings/data?tab=sync',
       ),
       GoRoute(
         path: '/settings/personalization',
