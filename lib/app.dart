@@ -102,7 +102,14 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
       await Future.delayed(const Duration(seconds: 3));
       if (!mounted) return;
 
+      // 检查用户是否开启自动更新，以及 24 小时频次节流
+      final shouldCheck = await UpdateService.instance.shouldRunStartupCheck();
+      if (!shouldCheck || !mounted) return;
+
       final result = await UpdateService.instance.checkForUpdate();
+      // 记录本次检查时间，保证 24 小时频次节流生效
+      await UpdateService.instance.recordCheckTime();
+
       if (!mounted || result.status != UpdateCheckStatus.available) return;
 
       final updateInfo = result.updateInfo;

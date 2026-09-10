@@ -18,6 +18,25 @@ class _AboutPageState extends State<AboutPage> {
   int _tapCount = 0;
   DateTime? _lastTapTime;
   bool _checkingUpdate = false;
+  bool _autoCheckUpdate = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAutoCheckSetting();
+  }
+
+  Future<void> _loadAutoCheckSetting() async {
+    final enabled = await UpdateService.instance.isAutoCheckEnabled();
+    if (mounted) {
+      setState(() => _autoCheckUpdate = enabled);
+    }
+  }
+
+  Future<void> _toggleAutoCheck(bool value) async {
+    setState(() => _autoCheckUpdate = value);
+    await UpdateService.instance.setAutoCheckEnabled(value);
+  }
 
   /// 手动检查更新：有更新弹窗，无更新或失败用 Toast 反馈。
   Future<void> _checkUpdate() async {
@@ -26,6 +45,7 @@ class _AboutPageState extends State<AboutPage> {
     setState(() => _checkingUpdate = true);
     try {
       final result = await UpdateService.instance.checkForUpdate();
+      await UpdateService.instance.recordCheckTime();
       if (!mounted) return;
 
       switch (result.status) {
@@ -204,6 +224,14 @@ class _AboutPageState extends State<AboutPage> {
                           )
                         : Icon(Icons.refresh_rounded, size: 18, color: theme.hintColor),
                     onTap: _checkUpdate,
+                  ),
+                  const Divider(height: 1, indent: 16, endIndent: 16),
+                  SwitchListTile(
+                    title: const Text('自动检查更新', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                    subtitle: Text('启动时静默检查新版本（每天至多一次）', style: TextStyle(fontSize: 12, color: theme.hintColor)),
+                    value: _autoCheckUpdate,
+                    onChanged: _toggleAutoCheck,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                   ),
                   const Divider(height: 1, indent: 16, endIndent: 16),
                   ListTile(
