@@ -271,7 +271,7 @@ class _TabSwitcher extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(
@@ -281,47 +281,48 @@ class _TabSwitcher extends StatelessWidget {
         ),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: tabs.map((config) {
-          final isActive = config.tab == activeTab;
-          return Padding(
-            padding: const EdgeInsets.only(right: 2),
-            child: GestureDetector(
-              onTap: () {
-                HapticFeedback.selectionClick();
-                onTabChanged(config.tab);
-              },
-              child: AnimatedContainer(
-                duration: AppDurations.normal,
-                curve: Curves.easeInOut,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: isActive
-                      ? colorScheme.primary
-                      : colorScheme.surfaceContainerHigh,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Center(
-                  child: Text(
-                    config.label,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: isActive
-                          ? FontWeight.bold
-                          : FontWeight.w600,
-                      color: isActive
-                          ? colorScheme.onPrimary
-                          : colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          );
-        }).toList(),
+        children: [
+          for (var i = 0; i < tabs.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            Expanded(child: _buildTabChip(context, tabs[i])),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 单个分类按钮：整块区域可点，高度 42 满足移动端触控尺寸。
+  Widget _buildTabChip(BuildContext context, _TabConfig config) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isActive = config.tab == activeTab;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTabChanged(config.tab);
+      },
+      child: AnimatedContainer(
+        duration: AppDurations.normal,
+        curve: Curves.easeInOut,
+        height: 42,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: isActive
+              ? colorScheme.primary
+              : colorScheme.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          config.label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
+            color: isActive
+                ? colorScheme.onPrimary
+                : colorScheme.onSurfaceVariant,
+          ),
+        ),
       ),
     );
   }

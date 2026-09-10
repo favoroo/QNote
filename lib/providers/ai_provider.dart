@@ -10,6 +10,7 @@ import 'package:qnote_flutter/core/ai/free_model_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/storage/diary_repository.dart';
+import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
@@ -236,7 +237,11 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
     state = session;
   }
 
-  Future<String> exportContext() async {
+  Future<String> exportContext({
+    List<String>? attachNoteIds,
+    List<String>? attachTodoIds,
+    List<String>? attachJournalIds,
+  }) async {
     final filter = _ref.read(contextFilterProvider);
     final diaryRepo = DiaryRepository();
     final buffer = StringBuffer();
@@ -244,78 +249,114 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
     if (filter.scope == 'none') return '';
 
     List<DiaryRecord> filteredDiary = [];
-    if (filter.scope == 'all' ||
-        filter.scope == 'date' ||
-        filter.scope == 'mixed') {
-      List<DiaryRecord> records;
-      if (filter.startDate != null && filter.endDate != null) {
-        final start = DateTime(
-          filter.startDate!.year,
-          filter.startDate!.month,
-          filter.startDate!.day,
-        );
-        final end = DateTime(
-          filter.endDate!.year,
-          filter.endDate!.month,
-          filter.endDate!.day,
-          23,
-          59,
-          59,
-          999,
-        );
-        records = await diaryRepo.getByDateRange(start, end);
-      } else {
-        records = await diaryRepo.getAll();
-      }
+    List<DiaryRecord> records;
+    if (filter.startDate != null && filter.endDate != null) {
+      final start = DateTime(
+        filter.startDate!.year,
+        filter.startDate!.month,
+        filter.startDate!.day,
+      );
+      final end = DateTime(
+        filter.endDate!.year,
+        filter.endDate!.month,
+        filter.endDate!.day,
+        23,
+        59,
+        59,
+        999,
+      );
+      records = await diaryRepo.getByDateRange(start, end);
+    } else {
+      records = await diaryRepo.getAll();
+    }
 
-      if (filter.selectedTags.isNotEmpty) {
-        filteredDiary = records.where((r) {
-          return r.tags.any((t) => filter.selectedTags.contains(t));
-        }).toList();
-      } else {
-        filteredDiary = records;
-      }
-    } else if (filter.selectedTags.isNotEmpty) {
-      for (final tag in filter.selectedTags) {
-        final records = await diaryRepo.getByTag(tag);
-        for (final r in records) {
-          if (!filteredDiary.any((exist) => exist.id == r.id)) {
-            filteredDiary.add(r);
+    if (filter.selectedTags.isNotEmpty) {
+      filteredDiary = records.where((r) {
+        return r.tags.any((t) => filter.selectedTags.contains(t));
+      }).toList();
+    } else {
+      filteredDiary = records;
+    }
+
+    // 1. 自动获取日期范围内的每日长文日记（Journal Notes），并合并手动附加分享的日记
+    final journalService = JournalService.instance;
+    List<Note> rangeJournals = [];
+    if (filter.startDate != null && filter.endDate != null) {
+      rangeJournals = await journalService.getJournalsByDateRange(
+        filter.startDate!,
+        filter.endDate!,
+      );
+    } else {
+      rangeJournals = await journalService.getAllJournals();
+    }
+
+    final allJournalNotes = <Note>[...rangeJournals];
+    if (attachJournalIds != null && attachJournalIds.isNotEmpty) {
+      final noteRepo = NoteRepository();
+      for (final jId in attachJournalIds) {
+        if (!allJournalNotes.any((n) => n.id == jId)) {
+          final jNote = await noteRepo.getById(jId);
+          if (jNote != null && !jNote.isDeleted && jNote.content.trim().isNotEmpty) {
+            allJournalNotes.add(jNote);
           }
         }
       }
     }
+    allJournalNotes.sort((a, b) => b.title.compareTo(a.title));
 
+    // 2. 收集所有需要关联的普通笔记（排除日记，避免重复展示）
+    final allNoteIds = <String>{
+      if (filter.scope == 'notes' || filter.scope == 'mixed')
+        ...filter.selectedNoteIds,
+      if (attachNoteIds != null) ...attachNoteIds,
+    };
     List<Note> filteredNotes = [];
-    if (filter.scope == 'notes' || filter.scope == 'mixed') {
-      if (filter.selectedNoteIds.isNotEmpty) {
-        final noteRepo = NoteRepository();
-        for (final id in filter.selectedNoteIds) {
-          final note = await noteRepo.getById(id);
-          if (note != null) {
-            filteredNotes.add(note);
-          }
+    if (allNoteIds.isNotEmpty) {
+      final noteRepo = NoteRepository();
+      for (final id in allNoteIds) {
+        if (JournalService.isJournalNote(id)) continue;
+        final note = await noteRepo.getById(id);
+        if (note != null && !note.isDeleted) {
+          filteredNotes.add(note);
         }
       }
     }
 
+    // 3. 收集所有需要关联的待办（包含上下文过滤与当次附加分享的待办）
+    final allTodoIds = <String>{
+      if (filter.scope == 'todos' || filter.scope == 'mixed')
+        ...filter.selectedTodoIds,
+      if (attachTodoIds != null) ...attachTodoIds,
+    };
     List<Todo> filteredTodos = [];
-    if (filter.scope == 'todos' || filter.scope == 'mixed') {
-      if (filter.selectedTodoIds.isNotEmpty) {
-        final todoRepo = TodoRepository();
-        for (final id in filter.selectedTodoIds) {
-          final todo = await todoRepo.getById(id);
-          if (todo != null) {
-            filteredTodos.add(todo);
-          }
+    if (allTodoIds.isNotEmpty) {
+      final todoRepo = TodoRepository();
+      for (final id in allTodoIds) {
+        final todo = await todoRepo.getById(id);
+        if (todo != null && !todo.isDeleted) {
+          filteredTodos.add(todo);
         }
       }
     }
 
     buffer.writeln('请基于以下数据回答我的问题：\n');
 
+    // 拼接每日长篇日记
+    if (allJournalNotes.isNotEmpty) {
+      buffer.writeln('### 每日长篇日记\n');
+      for (int i = 0; i < allJournalNotes.length; i++) {
+        final j = allJournalNotes[i];
+        buffer.writeln('#### 日记 ${i + 1} (${j.title})');
+        if (j.tags.isNotEmpty) {
+          buffer.writeln('- **标签**: ${j.tags}');
+        }
+        buffer.writeln('- **内容**:\n${j.content.trim()}\n');
+      }
+    }
+
+    // 拼接时间线日记流水记录
     if (filteredDiary.isNotEmpty) {
-      buffer.writeln('### 日记记录\n');
+      buffer.writeln('### 时间线流水记录\n');
       for (int i = 0; i < filteredDiary.length; i++) {
         final r = filteredDiary[i];
         buffer.writeln('#### 条目 ${i + 1}');
@@ -325,6 +366,13 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         }
         if (r.endTime != null) {
           buffer.writeln('- **结束时间**: ${_formatDateTime(r.endTime!)}');
+        }
+        if (r.weather.trim().isNotEmpty) {
+          buffer.writeln('- **天气**: ${r.weather.trim()}');
+        }
+        if (r.mood > 0) {
+          final stars = '⭐' * r.mood;
+          buffer.writeln('- **心情**: $stars (${r.mood}分)');
         }
         if (r.displayTag.isNotEmpty) {
           buffer.writeln('- **类型**: ${r.displayTag}');
@@ -349,6 +397,19 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
           if (notes.isNotEmpty) bsDesc += ', 备注: $notes';
 
           buffer.writeln('- **身体状态**: $bsDesc');
+        }
+        if (r.tagEntries.isNotEmpty) {
+          for (final te in r.tagEntries) {
+            if (te.fields.isNotEmpty) {
+              final fieldParts = te.fields.entries
+                  .where((e) => e.value != null && e.value.toString().isNotEmpty)
+                  .map((e) => '${e.key}: ${e.value}')
+                  .join(', ');
+              if (fieldParts.isNotEmpty) {
+                buffer.writeln('- **${te.name}**: $fieldParts');
+              }
+            }
+          }
         }
         if (r.content.isNotEmpty) {
           buffer.writeln('- **内容**: ${r.content}');
@@ -443,17 +504,24 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
     return DateFormat('yyyy-MM-dd HH:mm').format(dt);
   }
 
-  Future<void> sendMessage(String content) async {
+  Future<void> sendMessage(
+    String content, {
+    List<String>? images,
+    List<String>? noteIds,
+    List<String>? todoIds,
+    List<String>? journalIds,
+  }) async {
     if (state == null) return;
 
     final now = DateTime.now();
     final repo = ConfigRepository.instance;
 
-    // 1. Append user message with raw content to active display/save history immediately
+    // 1. Append user message with raw content and optional images to active display/save history immediately
     final userMessage = ChatMessage(
       role: 'user',
       content: content,
       timestamp: now,
+      images: images,
     );
     final updatedMessages = [...state!.messages, userMessage];
 
@@ -522,7 +590,11 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       final filter = _ref.read(contextFilterProvider);
       String? dataContext;
       if (filter.scope != 'none') {
-        final context = await exportContext();
+        final context = await exportContext(
+          attachNoteIds: noteIds,
+          attachTodoIds: todoIds,
+          attachJournalIds: journalIds,
+        );
         if (context.isNotEmpty) {
           dataContext = context.trim();
         }
@@ -558,12 +630,13 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       for (int i = 0; i < updatedMessages.length - 1; i++) {
         messagesToSend.add(updatedMessages[i]);
       }
-      // Add the contextualized last user message
+      // Add the contextualized last user message (carrying images for vision understanding)
       messagesToSend.add(
         ChatMessage(
           role: 'user',
           content: userContent,
           timestamp: userMessage.timestamp,
+          images: userMessage.images,
         ),
       );
 

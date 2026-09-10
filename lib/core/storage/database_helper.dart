@@ -28,7 +28,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 19,
+      version: 20,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onOpen: (db) async {
@@ -130,6 +130,14 @@ class DatabaseHelper {
       }
     } catch (_) {}
 
+    try {
+      final todoColumns = await db.rawQuery('PRAGMA table_info(todos)');
+      final todoColNames = todoColumns.map((c) => c['name'] as String).toSet();
+      if (todoColNames.isNotEmpty && !todoColNames.contains('repeat_rule')) {
+        await db.execute("ALTER TABLE todos ADD COLUMN repeat_rule TEXT DEFAULT 'none'");
+      }
+    } catch (_) {}
+
     // 标记本次检查已完成，后续启动直接跳过 PRAGMA 检查
     await prefs.setBool(checkedKey, true);
   }
@@ -200,6 +208,7 @@ class DatabaseHelper {
         is_long_term INTEGER DEFAULT 0,
         reminder_time TEXT,
         deadline TEXT,
+        repeat_rule TEXT DEFAULT 'none',
         sort_order INTEGER DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
@@ -545,6 +554,64 @@ class DatabaseHelper {
       // 为 user_profiles 表添加 custom_fields 列
       try {
         await db.execute('ALTER TABLE user_profiles ADD COLUMN custom_fields TEXT DEFAULT "{}"');
+      } catch (_) {}
+    }
+
+    if (oldVersion < 20) {
+      // 1. todos 表新增 repeat_rule 列
+      try {
+        await db.execute("ALTER TABLE todos ADD COLUMN repeat_rule TEXT DEFAULT 'none'");
+      } catch (_) {}
+
+      // 2. 初始化待办默认分类（今日、长期）并迁移存量待办的 folder_id
+      try {
+        final existingTodoFolders = await db.query(
+          'folders',
+          where: "type = 'todo'",
+        );
+        final nowStr = DateTime.now().toIso8601String();
+        String todayFolderId = 'todo_default_today';
+        String longtermFolderId = 'todo_default_longterm';
+
+        if (existingTodoFolders.isEmpty) {
+          await db.insert('folders', {
+            'id': todayFolderId,
+            'name': '今日',
+            'parent_id': null,
+            'type': 'todo',
+            'sort_order': 0,
+            'is_expanded': 1,
+            'created_at': nowStr,
+            'updated_at': nowStr,
+          });
+          await db.insert('folders', {
+            'id': longtermFolderId,
+            'name': '长期',
+            'parent_id': null,
+            'type': 'todo',
+            'sort_order': 1,
+            'is_expanded': 1,
+            'created_at': nowStr,
+            'updated_at': nowStr,
+          });
+        } else {
+          todayFolderId = existingTodoFolders.first['id'] as String;
+          longtermFolderId = existingTodoFolders.length > 1
+              ? (existingTodoFolders[1]['id'] as String)
+              : todayFolderId;
+        }
+
+        // 存量数据平滑迁移：folder_id 为空的数据根据 is_long_term 绑定默认分类
+        await db.execute('''
+          UPDATE todos 
+          SET folder_id = '$longtermFolderId' 
+          WHERE (folder_id IS NULL OR folder_id = '') AND is_long_term = 1
+        ''');
+        await db.execute('''
+          UPDATE todos 
+          SET folder_id = '$todayFolderId' 
+          WHERE (folder_id IS NULL OR folder_id = '') AND (is_long_term = 0 OR is_long_term IS NULL)
+        ''');
       } catch (_) {}
     }
   }

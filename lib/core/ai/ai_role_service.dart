@@ -1,3 +1,4 @@
+import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/free_model_service.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
@@ -21,26 +22,13 @@ class AiRoleService {
   Future<void> initAndEnsureDefaults() async {
     final existing = await _repo.getAiRoles();
     if (existing == null) {
-      // 初次进入应用：自动配置使用免费模型
+      // 初次进入应用：自动配置使用内置模型（开箱即用）
       await saveRoles(
         const AiRoles(
           assistantUseFreeModel: true,
           timelineOptimizationUseFreeModel: true,
         ),
       );
-
-      // 自动刷新（拉取）免费模型列表，不阻塞 UI
-      FreeModelService.instance.fetchRemoteManifest().catchError((e) {
-        return FreeModelsManifest(models: [], updatedAt: DateTime.now());
-      });
-    } else {
-      // 如果已有配置，但缓存为空，也静默拉取一次
-      final cached = await FreeModelService.instance.getCachedModels();
-      if (cached.isEmpty) {
-        FreeModelService.instance.fetchRemoteManifest().catchError((e) {
-          return FreeModelsManifest(models: [], updatedAt: DateTime.now());
-        });
-      }
     }
 
     // 迁移：将 timelineOptimization.extractImages 默认值从 false 升级为 true
@@ -84,6 +72,41 @@ class AiRoleService {
 
   Future<void> saveRoles(AiRoles roles) async {
     await _repo.saveAiRoles(roles);
+  }
+
+  /// 清理指向已删除配置的角色绑定，返回清理后的角色配置
+  ///
+  /// 历史遗留：旧版 `AiRoles.copyWith` 无法把字段置回 null，删除配置后角色里
+  /// 会残留失效 id。虽然 `getEffectiveConfigForRole` 会回退到默认配置、功能不受影响，
+  /// 但绑定值与实际生效模型不一致，界面也无法反映真实状态。这里一次性归位到内置模型。
+  Future<AiRoles> pruneStaleRoleBindings() async {
+    final roles = await getRoles();
+    final configs = await _repo.getAllAiConfigs();
+    final validIds = configs.map((c) => c.id).toSet();
+
+    var updated = roles;
+    var changed = false;
+
+    if (roles.assistant != null && !validIds.contains(roles.assistant)) {
+      updated = updated.copyWith(
+        assistant: null,
+        assistantUseFreeModel: true,
+      );
+      changed = true;
+    }
+    if (roles.timelineOptimization != null &&
+        !validIds.contains(roles.timelineOptimization)) {
+      updated = updated.copyWith(
+        timelineOptimization: null,
+        timelineOptimizationUseFreeModel: true,
+      );
+      changed = true;
+    }
+
+    if (changed) {
+      await saveRoles(updated);
+    }
+    return updated;
   }
 
   Future<AiTemperatures> getTemperatures() async {
@@ -192,16 +215,30 @@ class AiRoleService {
         models,
         preferredId,
       );
-      return FreeModelService.instance.toAiConfig(ordered.first);
+      final rawConfig = FreeModelService.instance.toAiConfig(ordered.first);
+      final normalizedModel = AiService.normalizeModelName(rawConfig.modelName, baseUrl: rawConfig.baseUrl);
+      return normalizedModel != rawConfig.modelName
+          ? rawConfig.copyWith(modelName: normalizedModel)
+          : rawConfig;
     }
 
     // 原有逻辑
     final roleConfig = await getConfigForRole(role);
-    if (roleConfig != null) return roleConfig;
+    if (roleConfig != null) {
+      final normalized = AiService.normalizeModelName(roleConfig.modelName, baseUrl: roleConfig.baseUrl);
+      return normalized != roleConfig.modelName ? roleConfig.copyWith(modelName: normalized) : roleConfig;
+    }
     final configs = await _repo.getAllAiConfigs();
     final defaultConfig = configs.where((c) => c.isDefault).firstOrNull;
-    if (defaultConfig != null) return defaultConfig;
-    if (configs.isNotEmpty) return configs.first;
+    if (defaultConfig != null) {
+      final normalized = AiService.normalizeModelName(defaultConfig.modelName, baseUrl: defaultConfig.baseUrl);
+      return normalized != defaultConfig.modelName ? defaultConfig.copyWith(modelName: normalized) : defaultConfig;
+    }
+    if (configs.isNotEmpty) {
+      final first = configs.first;
+      final normalized = AiService.normalizeModelName(first.modelName, baseUrl: first.baseUrl);
+      return normalized != first.modelName ? first.copyWith(modelName: normalized) : first;
+    }
     throw Exception('No AI config available');
   }
 }

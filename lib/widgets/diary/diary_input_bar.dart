@@ -1423,10 +1423,19 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           errorMessage = 'API密钥无效，请检查AI配置';
         } else if (e.response?.statusCode == 403) {
           errorMessage = '访问被拒绝，可能是CORS限制或权限问题';
+        } else if (e.response?.statusCode == 404) {
+          final respStr = e.response?.data?.toString() ?? '';
+          if (respStr.contains('model') || respStr.contains('route')) {
+            errorMessage = '当前AI模型已下线或不存在，请在设置中切换模型';
+          } else {
+            errorMessage = '请求的AI服务地址不存在(404)，请检查Base URL';
+          }
+        } else if (e.response?.statusCode == 429) {
+          errorMessage = 'AI服务调用频次超限，请稍后重试';
         }
       } else if (e is ArgumentError &&
           e.message.toString().contains('apiKey')) {
-        errorMessage = 'AI配置不完整，请在设置中完善API密钥 and 地址';
+        errorMessage = 'AI配置不完整，请在设置中完善API密钥和地址';
       }
 
       LoggerService.instance.logAI(

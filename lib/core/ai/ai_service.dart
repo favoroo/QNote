@@ -6,6 +6,7 @@ import 'package:qnote_flutter/config/defaults.dart';
 import 'package:qnote_flutter/config/models.dart';
 import 'package:qnote_flutter/core/ai/builtin_free_keys.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/models/daily_score.dart';
@@ -36,6 +37,20 @@ class AiService {
 
   AiConfig? get config => _config;
 
+  /// 规范化与升级模型名称（自动防御已下线废弃模型，避免网关 404 等故障）
+  static String normalizeModelName(String? modelName, {String? baseUrl}) {
+    if (modelName == null) return '';
+    final trimmed = modelName.trim();
+    // SenseNova 6.7 系列已在商汤官方网关全面下线并报错 404 (model route not found)，自动迁移至 6.8
+    if (trimmed == 'sensenova-6.7-flash-lite' ||
+        trimmed == 'sensenova-6.7' ||
+        trimmed == 'SenseChat-6.7' ||
+        trimmed.startsWith('sensenova-6.7')) {
+      return 'sensenova-6.8-flash-lite';
+    }
+    return trimmed;
+  }
+
   void updateConfig(AiConfig config, {double? temperature, int? maxTokens}) {
     String cleanedBaseUrl = _cleanUrl(config.baseUrl);
 
@@ -58,7 +73,13 @@ class AiService {
       throw ArgumentError('Base URL格式无效: $cleanedBaseUrl');
     }
 
-    _config = config;
+    // 自动规范化模型名称，防御历史配置或旧缓存导致调用已下线模型
+    final normalizedModel = normalizeModelName(config.modelName, baseUrl: cleanedBaseUrl);
+    final effectiveConfig = normalizedModel != config.modelName
+        ? config.copyWith(modelName: normalizedModel)
+        : config;
+
+    _config = effectiveConfig;
     if (temperature != null) _temperature = temperature;
     if (maxTokens != null) _maxTokens = maxTokens;
     _dio.options.baseUrl = cleanedBaseUrl.endsWith('/')
@@ -66,21 +87,22 @@ class AiService {
         : '$cleanedBaseUrl/';
 
     // 从提供商配置读取默认推理强度
-    _reasoningEffort = _resolveReasoningEffort(config);
+    _reasoningEffort = _resolveReasoningEffort(effectiveConfig);
 
     _dio.options.headers['Content-Type'] = 'application/json';
-    if (config.provider == 'gemini') {
-      _dio.options.headers['x-goog-api-key'] = config.apiKey;
+    if (effectiveConfig.provider == 'gemini') {
+      _dio.options.headers['x-goog-api-key'] = effectiveConfig.apiKey;
       _dio.options.headers.remove('Authorization');
     } else {
-      _dio.options.headers['Authorization'] = 'Bearer ${config.apiKey}';
+      _dio.options.headers['Authorization'] = 'Bearer ${effectiveConfig.apiKey}';
       _dio.options.headers.remove('x-goog-api-key');
     }
 
     LoggerService.instance.logAI(
-      '更新AI配置: 提供商=${config.provider}, 模型=${config.modelName}',
+      '更新AI配置: 提供商=${effectiveConfig.provider}, 模型=${effectiveConfig.modelName}',
       details:
-          '原始URL=${config.baseUrl}, 清理后URL=$cleanedBaseUrl, endpoint=$_generateContentEndpoint',
+          '原始URL=${effectiveConfig.baseUrl}, 清理后URL=$cleanedBaseUrl, endpoint=$_generateContentEndpoint'
+          '${normalizedModel != config.modelName ? ', 模型自动从 ${config.modelName} 迁移为 $normalizedModel' : ''}',
     );
   }
 
@@ -123,67 +145,12 @@ class AiService {
 
     while (true) {
       try {
-      dynamic requestBody;
-      String endpoint = _chatEndpoint;
-
-      if (_config!.provider == 'gemini') {
-        String? systemInstruction;
-        final List<Map<String, dynamic>> contents = [];
-
-        for (final m in messages) {
-          if (m.role == 'system') {
-            systemInstruction = m.content;
-          } else {
-            final role = m.role == 'user' ? 'user' : 'model';
-            contents.add({
-              'role': role,
-              'parts': [
-                {'text': m.content},
-              ],
-            });
-          }
+        String endpoint = _chatEndpoint;
+        final bodyMap = await _prepareChatRequestBody(messages, stream: false);
+        if (_config!.provider == 'gemini') {
+          endpoint = '/v1beta/models/${_config!.modelName}:generateContent';
         }
-
-        requestBody = {
-          'contents': contents,
-          'generationConfig': {
-            'temperature': _temperature,
-            'maxOutputTokens': _maxTokens,
-          },
-        };
-        if (systemInstruction != null) {
-          requestBody['systemInstruction'] = {
-            'parts': [
-              {'text': systemInstruction},
-            ],
-          };
-        }
-        endpoint = '/v1beta/models/${_config!.modelName}:generateContent';
-      } else {
-        final isOmni = _config!.modelName.toLowerCase().contains('omni');
-        final formattedMessages = messages.map((m) {
-          if (isOmni) {
-            return {
-              'role': m.role,
-              'content': [
-                {'type': 'text', 'text': m.content},
-              ],
-            };
-          } else {
-            return {'role': m.role, 'content': m.content};
-          }
-        }).toList();
-
-        final bodyMap = _buildBaseBody(messages: formattedMessages);
-
-        if (isOmni) {
-          bodyMap['sessionId'] = DateTime.now().millisecondsSinceEpoch
-              .toString();
-          bodyMap['output_modalities'] = ['text'];
-        }
-
-        requestBody = bodyMap;
-      }
+        final dynamic requestBody = bodyMap;
 
       final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
       LoggerService.instance.logAI(
@@ -263,64 +230,8 @@ class AiService {
       details: '模型=${_config!.modelName}, 消息数=${messages.length}',
     );
 
-    dynamic requestBody;
-    if (_config!.provider == 'gemini') {
-      String? systemInstruction;
-      final List<Map<String, dynamic>> contents = [];
-
-      for (final m in messages) {
-        if (m.role == 'system') {
-          systemInstruction = m.content;
-        } else {
-          final role = m.role == 'user' ? 'user' : 'model';
-          contents.add({
-            'role': role,
-            'parts': [
-              {'text': m.content},
-            ],
-          });
-        }
-      }
-
-      final bodyMap = <String, dynamic>{
-        'contents': contents,
-        'generationConfig': {
-          'temperature': _temperature,
-          'maxOutputTokens': _maxTokens,
-        },
-      };
-      if (systemInstruction != null) {
-        bodyMap['systemInstruction'] = {
-          'parts': [
-            {'text': systemInstruction},
-          ],
-        };
-      }
-      requestBody = jsonEncode(bodyMap);
-    } else {
-      final isOmni = _config!.modelName.toLowerCase().contains('omni');
-      final formattedMessages = messages.map((m) {
-        if (isOmni) {
-          return {
-            'role': m.role,
-            'content': [
-              {'type': 'text', 'text': m.content},
-            ],
-          };
-        } else {
-          return {'role': m.role, 'content': m.content};
-        }
-      }).toList();
-
-      final bodyMap = _buildBaseBody(messages: formattedMessages, stream: true);
-
-      if (isOmni) {
-        bodyMap['sessionId'] = DateTime.now().millisecondsSinceEpoch.toString();
-        bodyMap['output_modalities'] = ['text'];
-      }
-
-      requestBody = jsonEncode(bodyMap);
-    }
+    final dynamic bodyMap = await _prepareChatRequestBody(messages, stream: true);
+    final dynamic requestBody = jsonEncode(bodyMap);
 
     final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
     LoggerService.instance.logAI(
@@ -420,6 +331,168 @@ class AiService {
       return 'chat/completions';
     }
     return 'v1/chat/completions';
+  }
+
+  /// 统一构建普通对话与流式对话的请求体，兼容多模态图片输入与不同供应商协议
+  Future<dynamic> _prepareChatRequestBody(
+    List<ChatMessage> messages, {
+    bool stream = false,
+  }) async {
+    final imageRepo = ImageRepository();
+
+    if (_config!.provider == 'gemini') {
+      String? systemInstruction;
+      final List<Map<String, dynamic>> contents = [];
+
+      for (final m in messages) {
+        if (m.role == 'system') {
+          systemInstruction = m.content;
+        } else {
+          final role = m.role == 'user' ? 'user' : 'model';
+          final parts = <Map<String, dynamic>>[
+            {'text': m.content},
+          ];
+
+          if (m.images != null && m.images!.isNotEmpty) {
+            for (final imgPath in m.images!) {
+              try {
+                String b64 = '';
+                String mime = ImageRepository.getMimeType(imgPath);
+                if (imgPath.startsWith('data:')) {
+                  final commaIdx = imgPath.indexOf(',');
+                  if (commaIdx != -1) {
+                    b64 = imgPath.substring(commaIdx + 1);
+                    final header = imgPath.substring(5, commaIdx);
+                    if (header.contains(';')) {
+                      mime = header.split(';').first;
+                    }
+                  }
+                } else {
+                  b64 = await imageRepo.getBase64Image(imgPath);
+                }
+                if (b64.isNotEmpty) {
+                  parts.add({
+                    'inline_data': {'mime_type': mime, 'data': b64},
+                  });
+                }
+              } catch (e) {
+                LoggerService.instance.logAI(
+                  '加载Gemini多模态图片失败: $imgPath, error=$e',
+                  level: LogLevel.warning,
+                );
+              }
+            }
+          }
+
+          contents.add({
+            'role': role,
+            'parts': parts,
+          });
+        }
+      }
+
+      final bodyMap = <String, dynamic>{
+        'contents': contents,
+        'generationConfig': {
+          'temperature': _temperature,
+          'maxOutputTokens': _maxTokens,
+        },
+      };
+      if (systemInstruction != null) {
+        bodyMap['systemInstruction'] = {
+          'parts': [
+            {'text': systemInstruction},
+          ],
+        };
+      }
+      return bodyMap;
+    }
+
+    final isOmni = _config!.modelName.toLowerCase().contains('omni');
+    final formattedMessages = <Map<String, dynamic>>[];
+
+    for (final m in messages) {
+      final hasImages = m.images != null && m.images!.isNotEmpty;
+      if (isOmni) {
+        final contentList = <Map<String, dynamic>>[
+          {'type': 'text', 'text': m.content},
+        ];
+        if (hasImages) {
+          final b64List = <String>[];
+          for (final imgPath in m.images!) {
+            try {
+              String b64 = '';
+              if (imgPath.startsWith('data:')) {
+                final commaIdx = imgPath.indexOf(',');
+                if (commaIdx != -1) b64 = imgPath.substring(commaIdx + 1);
+              } else {
+                b64 = await imageRepo.getBase64Image(imgPath);
+              }
+              if (b64.isNotEmpty) b64List.add(b64);
+            } catch (_) {}
+          }
+          if (b64List.isNotEmpty) {
+            contentList.add({
+              'type': 'input_image',
+              'input_image': {
+                'type': 'base64',
+                'data': b64List,
+              },
+            });
+          }
+        }
+        formattedMessages.add({
+          'role': m.role,
+          'content': contentList,
+        });
+      } else if (hasImages) {
+        final contentList = <Map<String, dynamic>>[
+          if (m.content.isNotEmpty) {'type': 'text', 'text': m.content},
+        ];
+        for (final imgPath in m.images!) {
+          try {
+            String b64 = '';
+            String mime = ImageRepository.getMimeType(imgPath);
+            if (imgPath.startsWith('data:')) {
+              final commaIdx = imgPath.indexOf(',');
+              if (commaIdx != -1) {
+                b64 = imgPath.substring(commaIdx + 1);
+                final header = imgPath.substring(5, commaIdx);
+                if (header.contains(';')) {
+                  mime = header.split(';').first;
+                }
+              }
+            } else {
+              b64 = await imageRepo.getBase64Image(imgPath);
+            }
+            if (b64.isNotEmpty) {
+              contentList.add({
+                'type': 'image_url',
+                'image_url': {'url': 'data:$mime;base64,$b64'},
+              });
+            }
+          } catch (e) {
+            LoggerService.instance.logAI(
+              '加载图片失败: $imgPath, error=$e',
+              level: LogLevel.warning,
+            );
+          }
+        }
+        formattedMessages.add({
+          'role': m.role,
+          'content': contentList,
+        });
+      } else {
+        formattedMessages.add({'role': m.role, 'content': m.content});
+      }
+    }
+
+    final bodyMap = _buildBaseBody(messages: formattedMessages, stream: stream);
+    if (isOmni) {
+      bodyMap['sessionId'] = DateTime.now().millisecondsSinceEpoch.toString();
+      bodyMap['output_modalities'] = ['text'];
+    }
+    return bodyMap;
   }
 
   /// 构建 OpenAI 兼容接口的基础请求体，统一注入通用参数。

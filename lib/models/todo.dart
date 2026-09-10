@@ -10,6 +10,7 @@ class Todo {
   final bool isLongTerm;
   final String? reminderTime;
   final DateTime? deadline;
+  final String repeatRule;
   final int sortOrder;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -27,11 +28,33 @@ class Todo {
     this.isLongTerm = false,
     this.reminderTime,
     this.deadline,
+    this.repeatRule = 'none',
     this.sortOrder = 0,
     required this.createdAt,
     required this.updatedAt,
     this.isDeleted = false,
   });
+
+  /// 是否为重复任务
+  bool get isRecurring => repeatRule != 'none' && repeatRule.isNotEmpty;
+
+  /// 重复周期的中文展示标签
+  String get repeatRuleLabel {
+    switch (repeatRule) {
+      case 'daily':
+        return '每天';
+      case 'workday':
+        return '工作日';
+      case 'weekly':
+        return '每周';
+      case 'monthly':
+        return '每月';
+      case 'yearly':
+        return '每年';
+      default:
+        return '';
+    }
+  }
 
   Map<String, dynamic> toMap() {
     return {
@@ -46,6 +69,7 @@ class Todo {
       'is_long_term': isLongTerm ? 1 : 0,
       'reminder_time': reminderTime,
       'deadline': deadline?.toIso8601String(),
+      'repeat_rule': repeatRule,
       'sort_order': sortOrder,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
@@ -70,6 +94,7 @@ class Todo {
       deadline: map['deadline'] != null
           ? DateTime.parse(map['deadline'] as String)
           : null,
+      repeatRule: map['repeat_rule'] as String? ?? 'none',
       sortOrder: map['sort_order'] as int? ?? 0,
       createdAt: DateTime.parse(map['created_at'] as String),
       updatedAt: DateTime.parse(map['updated_at'] as String),
@@ -89,6 +114,7 @@ class Todo {
     bool? isLongTerm,
     String? reminderTime,
     DateTime? deadline,
+    String? repeatRule,
     int? sortOrder,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -108,6 +134,7 @@ class Todo {
       isLongTerm: isLongTerm ?? this.isLongTerm,
       reminderTime: clearReminderTime ? null : (reminderTime ?? this.reminderTime),
       deadline: deadline ?? this.deadline,
+      repeatRule: repeatRule ?? this.repeatRule,
       sortOrder: sortOrder ?? this.sortOrder,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

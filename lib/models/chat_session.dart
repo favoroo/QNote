@@ -4,11 +4,13 @@ class ChatMessage {
   final String role;
   final String content;
   final DateTime? timestamp;
+  final List<String>? images;
 
   ChatMessage({
     required this.role,
     required this.content,
     this.timestamp,
+    this.images,
   });
 
   Map<String, dynamic> toMap() {
@@ -16,16 +18,38 @@ class ChatMessage {
       'role': role,
       'content': content,
       'timestamp': timestamp?.toIso8601String(),
+      if (images != null && images!.isNotEmpty) 'images': images,
     };
   }
 
   factory ChatMessage.fromMap(Map<String, dynamic> map) {
+    List<String>? images;
+    if (map['images'] != null) {
+      if (map['images'] is List) {
+        images = (map['images'] as List).map((e) => e.toString()).toList();
+      }
+    }
     return ChatMessage(
       role: map['role'] as String,
       content: map['content'] as String,
       timestamp: map['timestamp'] != null
           ? DateTime.parse(map['timestamp'] as String)
           : null,
+      images: images,
+    );
+  }
+
+  ChatMessage copyWith({
+    String? role,
+    String? content,
+    DateTime? timestamp,
+    List<String>? images,
+  }) {
+    return ChatMessage(
+      role: role ?? this.role,
+      content: content ?? this.content,
+      timestamp: timestamp ?? this.timestamp,
+      images: images ?? this.images,
     );
   }
 }

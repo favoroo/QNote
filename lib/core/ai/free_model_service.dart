@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/builtin_free_keys.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
@@ -69,13 +70,30 @@ class FreeModelService {
     throw Exception('拉取免费模型清单失败: $lastError');
   }
 
-  /// 获取本地缓存的免费模型列表（若本地无缓存则自动回退至内置加密模型）
+  /// 获取内置模型列表（直接使用加密内置的 SenseNova 6.8 配置，杜绝远端配置干扰）
   Future<List<FreeModelConfig>> getCachedModels() async {
-    final manifest = await getCachedManifest();
-    if (manifest == null || manifest.models.isEmpty) {
-      return [BuiltinFreeKeys.createDefaultConfig()];
-    }
-    return manifest.models;
+    return [BuiltinFreeKeys.createDefaultConfig()];
+  }
+
+  /// 规范化并迁移清单中的模型（修复旧版下线模型名称，如 6.7 迁移为 6.8）
+  FreeModelsManifest _migrateManifest(FreeModelsManifest manifest) {
+    bool hasChanges = false;
+    final migratedModels = manifest.models.map((m) {
+      final normalizedModelName = AiService.normalizeModelName(m.modelName, baseUrl: m.baseUrl);
+      if (normalizedModelName != m.modelName) {
+        hasChanges = true;
+        return m.copyWith(modelName: normalizedModelName);
+      }
+      return m;
+    }).toList();
+
+    if (!hasChanges) return manifest;
+
+    return FreeModelsManifest(
+      version: manifest.version,
+      updatedAt: manifest.updatedAt,
+      models: migratedModels,
+    );
   }
 
   /// 获取本地缓存的清单元数据（默认回退内置数据）
@@ -91,7 +109,13 @@ class FreeModelService {
           models: [BuiltinFreeKeys.createDefaultConfig()],
         );
       }
-      return FreeModelsManifest.fromJson(jsonStr);
+      final parsed = FreeModelsManifest.fromJson(jsonStr);
+      final migrated = _migrateManifest(parsed);
+      // 若缓存中存在旧模型（如 sensenova-6.7），自动写回升级后的缓存
+      if (migrated != parsed) {
+        await prefs.setString(_cacheKey, migrated.toJson());
+      }
+      return migrated;
     } catch (e) {
       LoggerService.instance.logAI(
         '读取免费模型缓存失败，使用内置配置',

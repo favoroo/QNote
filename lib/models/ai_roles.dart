@@ -38,15 +38,26 @@ class AiRoles {
   static AiRoles fromJson(String json) =>
       AiRoles.fromMap(jsonDecode(json) as Map<String, dynamic>);
 
+  /// 哨兵值：区分「未传参（保持原值）」与「显式传 null（清空绑定）」
+  static const Object _unset = Object();
+
+  /// 复制并修改角色绑定
+  ///
+  /// [assistant] / [timelineOptimization] 不传时保持原值，显式传 `null` 则清空绑定。
+  /// 早前用 `?? this.x` 实现，导致传 null 被当成"不修改"，绑定永远清不掉。
   AiRoles copyWith({
-    String? assistant,
-    String? timelineOptimization,
+    Object? assistant = _unset,
+    Object? timelineOptimization = _unset,
     bool? assistantUseFreeModel,
     bool? timelineOptimizationUseFreeModel,
   }) {
     return AiRoles(
-      assistant: assistant ?? this.assistant,
-      timelineOptimization: timelineOptimization ?? this.timelineOptimization,
+      assistant: identical(assistant, _unset)
+          ? this.assistant
+          : assistant as String?,
+      timelineOptimization: identical(timelineOptimization, _unset)
+          ? this.timelineOptimization
+          : timelineOptimization as String?,
       assistantUseFreeModel:
           assistantUseFreeModel ?? this.assistantUseFreeModel,
       timelineOptimizationUseFreeModel:

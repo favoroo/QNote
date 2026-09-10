@@ -413,7 +413,8 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   }
 
   Future<void> _loadRoles() async {
-    final roles = await AiRoleService.instance.getRoles();
+    // 加载时顺带清理历史残留的失效绑定，保证下拉解析到的是真实存在的配置
+    final roles = await AiRoleService.instance.pruneStaleRoleBindings();
     final settings = await AiRoleService.instance.getTemperatures();
     if (mounted) {
       setState(() {
@@ -1410,6 +1411,21 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         useFreeModel = _roles.timelineOptimizationUseFreeModel;
     }
 
+    // 解析当前实际生效的配置：角色未绑定（或绑定的配置已被删除）时，
+    // 按「标记为默认 → 列表首个」回退，与 AiRoleService.getEffectiveConfigForRole 保持一致。
+    // 这样下拉永远显示一个确定的模型，不再出现含义模糊的「未设置」状态。
+    String? effectiveId;
+    if (!useFreeModel) {
+      final boundValid =
+          currentId != null && configs.any((c) => c.id == currentId);
+      if (boundValid) {
+        effectiveId = currentId;
+      } else if (configs.isNotEmpty) {
+        effectiveId =
+            (configs.where((c) => c.isDefault).firstOrNull ?? configs.first).id;
+      }
+    }
+
     // 免费模型选项的特殊值
     const freeModelValue = '__free_model__';
 
@@ -1499,26 +1515,14 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String?>(
                       isExpanded: true,
-                      value: useFreeModel
-                          ? freeModelValue
-                          : (currentId != null && configs.any((c) => c.id == currentId))
-                              ? currentId
-                              : null,
+                      value: useFreeModel ? freeModelValue : effectiveId,
                       hint: const Text(
-                        '未设置（跟随默认）',
+                        '暂无可用模型',
                         style: TextStyle(fontSize: 12),
                         overflow: TextOverflow.ellipsis,
                       ),
                       style: theme.textTheme.bodyMedium?.copyWith(fontSize: 12),
                       items: [
-                        const DropdownMenuItem<String?>(
-                          value: null,
-                          child: Text(
-                            '未设置（跟随默认）',
-                            style: TextStyle(fontSize: 12),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
                         DropdownMenuItem<String?>(
                           value: freeModelValue,
                           child: Row(
@@ -1554,6 +1558,8 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                         ),
                       ],
                       onChanged: (value) async {
+                        // 下拉已无 null 项，这里仅作防御
+                        if (value == null) return;
                         AiRoles newRoles;
                         final isFree = value == freeModelValue;
                         switch (roleKey) {

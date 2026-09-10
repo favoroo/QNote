@@ -1083,8 +1083,11 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
         return Icon(Icons.menu_book, size: 18, color: theme.colorScheme.tertiary);
       }
       final isRoot = widget.item.folder!.type == JournalService.rootFolderType;
+      final isExpanded = widget.item.folder!.isExpanded;
       return Icon(
-        isRoot ? Icons.auto_stories : Icons.calendar_month_outlined,
+        isRoot
+            ? (isExpanded ? Icons.auto_stories : Icons.auto_stories_outlined)
+            : (isExpanded ? Icons.calendar_month : Icons.calendar_month_outlined),
         size: 18,
         color: theme.colorScheme.tertiary,
       );
@@ -1097,6 +1100,62 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
       );
     }
     return Icon(Icons.description, size: 18, color: theme.colorScheme.primary);
+  }
+
+  /// 前置图标容器：32×32 圆角底色 + 图标。
+  /// 文件夹在右下角叠加迷你展开箭头（原独立箭头并入此处，节省行首宽度）
+  Widget _buildLeadingIconBox(ThemeData theme, bool isFolder, bool isJournal) {
+    return SizedBox(
+      width: 32,
+      height: 32,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: isJournal
+                  ? theme.colorScheme.tertiary.withValues(alpha: 0.12)
+                  : theme.colorScheme.primary.withValues(
+                      alpha: isFolder ? 0.08 : 0.1,
+                    ),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: _buildLeadingIcon(theme, isFolder, isJournal),
+          ),
+          if (isFolder)
+            Positioned(
+              right: -3,
+              bottom: -3,
+              child: Container(
+                width: 14,
+                height: 14,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: theme.colorScheme.surface,
+                  border: Border.all(
+                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.7),
+                    width: 0.8,
+                  ),
+                ),
+                child: AnimatedRotation(
+                  // 展开朝下，收起朝右（-0.25 圈 = 逆时针 90°）
+                  turns: widget.item.folder!.isExpanded ? 0 : -0.25,
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOut,
+                  child: Icon(
+                    Icons.keyboard_arrow_down,
+                    size: 11,
+                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -1137,28 +1196,11 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
                   activeColor: theme.colorScheme.primary,
                 ),
               ),
-            )
-          else
-            const SizedBox(width: 8),
+            ),
 
-          if (isFolder)
-            GestureDetector(
-              onTap: () => widget.onToggleFolder(widget.item.folder!),
-              behavior: HitTestBehavior.opaque,
-              child: SizedBox(
-                width: 28,
-                height: 28,
-                child: Icon(
-                  widget.item.folder!.isExpanded
-                      ? Icons.keyboard_arrow_down
-                      : Icons.keyboard_arrow_right,
-                  size: 16,
-                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-                ),
-              ),
-            )
-          else
-            const SizedBox(width: 8),
+          // 展开箭头已并入前置图标（图标容器右下角徽标），此处统一留 16px，
+          // 使同层级文件夹与笔记的左边界对齐
+          const SizedBox(width: 16),
 
           Expanded(
             child: GestureDetector(
@@ -1166,19 +1208,7 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
               behavior: HitTestBehavior.opaque,
               child: Row(
                 children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: isJournal
-                          ? theme.colorScheme.tertiary.withValues(alpha: 0.12)
-                          : theme.colorScheme.primary.withValues(
-                              alpha: isFolder ? 0.08 : 0.1,
-                            ),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: _buildLeadingIcon(theme, isFolder, isJournal),
-                  ),
+                  _buildLeadingIconBox(theme, isFolder, isJournal),
                   const SizedBox(width: 12),
                   if (!isFolder && widget.item.isPinned) ...[
                     Icon(

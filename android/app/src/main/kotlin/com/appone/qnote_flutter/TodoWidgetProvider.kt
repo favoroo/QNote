@@ -191,7 +191,7 @@ class TodoWidgetProvider : AppWidgetProvider() {
             if (dbFile.exists()) {
                 db = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
                 val cursor = db.rawQuery(
-                    "SELECT id, title, is_completed, priority FROM todos WHERE is_deleted = 0 AND is_completed = 0 AND is_long_term = 0 ORDER BY sort_order ASC, created_at ASC",
+                    "SELECT id, title, is_completed, priority FROM todos WHERE is_deleted = 0 AND is_completed = 0 AND is_long_term = 0 AND TRIM(title) != '' ORDER BY sort_order ASC, created_at ASC",
                     null
                 )
                 pendingCount = cursor.count

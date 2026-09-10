@@ -154,6 +154,34 @@ class TodoRepository {
     );
   }
 
+  /// 清理所有标题为空的存量待办记录（软删除），避免脏数据残留
+  Future<int> cleanEmptyTodos() async {
+    final db = await _dbHelper.database;
+    final emptyRows = await db.query(
+      'todos',
+      where: "(TRIM(title) = '' OR title IS NULL) AND is_deleted = 0",
+    );
+    if (emptyRows.isEmpty) return 0;
+
+    final nowStr = DateTime.now().toIso8601String();
+    for (final row in emptyRows) {
+      final id = row['id'] as String;
+      await db.update(
+        'todos',
+        {'is_deleted': 1, 'updated_at': nowStr},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      await _syncLog.logChange(
+        tableName: 'todos',
+        recordId: id,
+        operation: 'update',
+        data: {...row, 'is_deleted': 1, 'updated_at': nowStr},
+      );
+    }
+    return emptyRows.length;
+  }
+
   Future<void> toggleComplete(String id, bool isCompleted) async {
     final db = await _dbHelper.database;
     final existing = await getById(id);
@@ -224,6 +252,56 @@ class TodoRepository {
       operation: 'update',
       data: updated.toMap(),
     );
+  }
+
+  /// 将待办移动到指定分类
+  Future<Todo?> moveToFolder(String id, String folderId) async {
+    final db = await _dbHelper.database;
+    final existing = await getById(id);
+    if (existing == null) return null;
+
+    final nowStr = DateTime.now().toIso8601String();
+    await db.update(
+      'todos',
+      {'folder_id': folderId, 'updated_at': nowStr},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    final updated = existing.copyWith(
+      folderId: folderId,
+      updatedAt: DateTime.parse(nowStr),
+    );
+    await _syncLog.logChange(
+      tableName: 'todos',
+      recordId: id,
+      operation: 'update',
+      data: updated.toMap(),
+    );
+    return updated;
+  }
+
+  /// 软删除指定分类下的所有待办
+  Future<int> deleteByFolder(String folderId) async {
+    final db = await _dbHelper.database;
+    final todos = await getByFolder(folderId);
+    if (todos.isEmpty) return 0;
+
+    final nowStr = DateTime.now().toIso8601String();
+    for (final todo in todos) {
+      await db.update(
+        'todos',
+        {'is_deleted': 1, 'updated_at': nowStr},
+        where: 'id = ?',
+        whereArgs: [todo.id],
+      );
+      await _syncLog.logChange(
+        tableName: 'todos',
+        recordId: todo.id,
+        operation: 'update',
+        data: {...todo.toMap(), 'is_deleted': 1, 'updated_at': nowStr},
+      );
+    }
+    return todos.length;
   }
 
   Future<void> batchUpdate(List<Todo> todos) async {

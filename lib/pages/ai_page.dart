@@ -2,23 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
-import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
-import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/models/todo.dart';
+import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/config/defaults.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/widgets/empty_state.dart';
+import 'package:qnote_flutter/widgets/unified_image.dart';
 
 class AiPage extends ConsumerStatefulWidget {
   const AiPage({super.key});
@@ -33,35 +35,37 @@ class _AiPageState extends ConsumerState<AiPage> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
 
   bool _isTyping = false;
-  String _activeScope = '全量';
-  List<String> _selectedNoteIds = [];
-  List<String> _selectedTodoIds = [];
-  List<String> _selectedTags = [];
   DateTime? _filterStartDate;
   DateTime? _filterEndDate;
+  String? _selectedPeriodPreset; // '今日', '本周', '本月', '全部', '自定义'
+  String get _periodPreset => _selectedPeriodPreset ?? '本周';
   bool _isBatchMode = false;
   List<String> _selectedSessionIds = [];
   String? _activeModelId;
 
-  static const _scopes = ['全量', '日期', '笔记', '待办', '混合', '无'];
-
-  static String _scopeToProvider(String scope) {
-    return const {
-          '全量': 'all',
-          '日期': 'date',
-          '笔记': 'notes',
-          '待办': 'todos',
-          '混合': 'mixed',
-          '无': 'none',
-        }[scope] ??
-        'all';
-  }
+  // 豆包式附件状态（图片、分享给AI的日记、笔记与待办）
+  final List<String> _attachedImages = [];
+  final List<String> _attachedJournalIds = [];
+  final List<String> _attachedNoteIds = [];
+  final List<String> _attachedTodoIds = [];
+  final Map<String, String> _journalTitles = {};
+  final Map<String, String> _noteTitles = {};
+  final Map<String, String> _todoTitles = {};
 
   @override
   void initState() {
     super.initState();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    // 默认本周（周一至今天）
+    _filterStartDate = today.subtract(Duration(days: today.weekday - 1));
+    _filterEndDate = today;
+    _selectedPeriodPreset = '本周';
     _initActiveModelId();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncContextFilter();
+      _scrollToBottom();
+    });
   }
 
   Future<void> _initActiveModelId() async {
@@ -120,55 +124,43 @@ class _AiPageState extends ConsumerState<AiPage> {
 
   void _syncContextFilter() {
     ref.read(contextFilterProvider.notifier).state = AiContextFilter(
-      scope: _scopeToProvider(_activeScope),
+      scope: 'all',
       startDate: _filterStartDate,
       endDate: _filterEndDate,
-      selectedNoteIds: _selectedNoteIds,
-      selectedTodoIds: _selectedTodoIds,
-      selectedTags: _selectedTags,
+      selectedNoteIds: const [],
+      selectedTodoIds: const [],
+      selectedTags: const [],
     );
-  }
-
-  void _handleScopeTap(String scope) {
-    setState(() => _activeScope = scope);
-    _syncContextFilter();
-    if (scope == '日期') {
-      _openDateRangePicker();
-    } else if (scope == '笔记') {
-      _openNoteSelector();
-    } else if (scope == '待办') {
-      _openTodoSelector();
-    } else if (scope == '混合') {
-      _openDateRangePicker();
-    }
-  }
-
-  void _handleTemplateTap(String label, String prompt) {
-    _inputController.text = prompt;
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    setState(() {
-      _activeScope = '日期';
-      if (label == '今日复盘') {
-        _filterStartDate = today;
-        _filterEndDate = today;
-      } else if (label == '周复盘') {
-        _filterStartDate = today.subtract(const Duration(days: 6));
-        _filterEndDate = today;
-      } else if (label == '月复盘') {
-        _filterStartDate = today.subtract(const Duration(days: 29));
-        _filterEndDate = today;
-      }
-    });
-    _syncContextFilter();
   }
 
   Future<void> _sendMessage() async {
     final text = _inputController.text.trim();
-    if (text.isEmpty || _isTyping) return;
+    final hasImages = _attachedImages.isNotEmpty;
+    final hasNotes = _attachedNoteIds.isNotEmpty;
+    final hasTodos = _attachedTodoIds.isNotEmpty;
+    final hasJournals = _attachedJournalIds.isNotEmpty;
+
+    if ((text.isEmpty && !hasImages && !hasNotes && !hasTodos && !hasJournals) || _isTyping) {
+      return;
+    }
+
+    final content = text.isNotEmpty
+        ? text
+        : (hasImages ? '请结合图片进行分析' : '请结合我分享的内容进行分析');
+
+    final imagesToSend = hasImages ? List<String>.from(_attachedImages) : null;
+    final notesToSend = hasNotes ? List<String>.from(_attachedNoteIds) : null;
+    final todosToSend = hasTodos ? List<String>.from(_attachedTodoIds) : null;
+    final journalsToSend = hasJournals ? List<String>.from(_attachedJournalIds) : null;
 
     HapticFeedback.lightImpact();
     _inputController.clear();
+    setState(() {
+      _attachedImages.clear();
+      _attachedNoteIds.clear();
+      _attachedTodoIds.clear();
+      _attachedJournalIds.clear();
+    });
     FocusScope.of(context).unfocus();
     setState(() => _isTyping = true);
     _syncContextFilter();
@@ -182,7 +174,13 @@ class _AiPageState extends ConsumerState<AiPage> {
         ref.read(currentChatProvider.notifier).setSession(session);
       }
 
-      await ref.read(currentChatProvider.notifier).sendMessage(text);
+      await ref.read(currentChatProvider.notifier).sendMessage(
+            content,
+            images: imagesToSend,
+            noteIds: notesToSend,
+            todoIds: todosToSend,
+            journalIds: journalsToSend,
+          );
     } catch (e) {
       debugPrint('发送消息失败: $e');
     } finally {
@@ -193,77 +191,400 @@ class _AiPageState extends ConsumerState<AiPage> {
     }
   }
 
-  Future<void> _openDateRangePicker() async {
-    final result = await showDatePicker(
+  Future<void> _openDatePicker() async {
+    final theme = Theme.of(context);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final startOfWeek = today.subtract(Duration(days: today.weekday - 1));
+    final startOfMonth = DateTime(today.year, today.month, 1);
+
+    showModalBottomSheet(
       context: context,
-      initialDate: _filterStartDate ?? DateTime.now(),
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
-      locale: const Locale('zh', 'CN'),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            splashFactory: NoSplash.splashFactory,
-            splashColor: Colors.transparent,
-            highlightColor: Colors.transparent,
-            colorScheme: ColorScheme.light(
-              primary: Theme.of(context).colorScheme.primary,
-              onPrimary: Colors.white,
-              onSurface: Theme.of(context).colorScheme.onSurface,
-            ),
-            dialogTheme: DialogThemeData(
-              barrierColor: Colors.black.withValues(alpha: 0.2),
+      backgroundColor: theme.colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.calendar_view_week, size: 20),
+                  title: const Text('本周（默认）', style: TextStyle(fontSize: 14)),
+                  trailing: _periodPreset == '本周'
+                      ? Icon(Icons.check, color: theme.colorScheme.primary, size: 20)
+                      : null,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    setState(() {
+                      _filterStartDate = startOfWeek;
+                      _filterEndDate = today;
+                      _selectedPeriodPreset = '本周';
+                    });
+                    _syncContextFilter();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.today, size: 20),
+                  title: const Text('今日', style: TextStyle(fontSize: 14)),
+                  trailing: _periodPreset == '今日'
+                      ? Icon(Icons.check, color: theme.colorScheme.primary, size: 20)
+                      : null,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    setState(() {
+                      _filterStartDate = today;
+                      _filterEndDate = today;
+                      _selectedPeriodPreset = '今日';
+                    });
+                    _syncContextFilter();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.calendar_month, size: 20),
+                  title: const Text('本月', style: TextStyle(fontSize: 14)),
+                  trailing: _periodPreset == '本月'
+                      ? Icon(Icons.check, color: theme.colorScheme.primary, size: 20)
+                      : null,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    setState(() {
+                      _filterStartDate = startOfMonth;
+                      _filterEndDate = today;
+                      _selectedPeriodPreset = '本月';
+                    });
+                    _syncContextFilter();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.all_inclusive, size: 20),
+                  title: const Text('全部', style: TextStyle(fontSize: 14)),
+                  trailing: _periodPreset == '全部'
+                      ? Icon(Icons.check, color: theme.colorScheme.primary, size: 20)
+                      : null,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    setState(() {
+                      _filterStartDate = null;
+                      _filterEndDate = null;
+                      _selectedPeriodPreset = '全部';
+                    });
+                    _syncContextFilter();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.calendar_today_outlined, size: 20),
+                  title: const Text('选择特定单日...', style: TextStyle(fontSize: 14)),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _filterStartDate ?? today,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                      locale: const Locale('zh', 'CN'),
+                    );
+                    if (picked != null) {
+                      setState(() {
+                        _filterStartDate = picked;
+                        _filterEndDate = picked;
+                        _selectedPeriodPreset = '自定义';
+                      });
+                      _syncContextFilter();
+                    }
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.date_range_outlined, size: 20),
+                  title: const Text('选择自定义范围...', style: TextStyle(fontSize: 14)),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    final picked = await showDateRangePicker(
+                      context: context,
+                      initialDateRange: _filterStartDate != null && _filterEndDate != null
+                          ? DateTimeRange(start: _filterStartDate!, end: _filterEndDate!)
+                          : null,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                      locale: const Locale('zh', 'CN'),
+                    );
+                    if (picked != null) {
+                      setState(() {
+                        _filterStartDate = picked.start;
+                        _filterEndDate = picked.end;
+                        _selectedPeriodPreset = '自定义';
+                      });
+                      _syncContextFilter();
+                    }
+                  },
+                ),
+              ],
             ),
           ),
-          child: child!,
         );
       },
     );
-    if (result != null) {
-      setState(() {
-        _filterStartDate = result;
-        _filterEndDate = result;
-      });
-      _syncContextFilter();
-      if (_activeScope == '混合') {
-        _openNoteSelector();
+  }
+
+  Future<void> _pickFromCamera() async {
+    try {
+      final picker = ImagePicker();
+      final image = await picker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1200,
+        maxHeight: 1200,
+        imageQuality: 80,
+      );
+      if (image != null && mounted) {
+        setState(() {
+          _attachedImages.add(image.path);
+        });
       }
+    } catch (e) {
+      debugPrint('拍照失败: $e');
     }
   }
 
-  Future<void> _openNoteSelector() async {
+  Future<void> _pickFromGallery() async {
+    try {
+      final images = await GalleryHelper.pickMultiImages(
+        context,
+        maxAssets: 9,
+      );
+      if (images.isNotEmpty && mounted) {
+        setState(() {
+          for (final img in images) {
+            if (!_attachedImages.contains(img.path)) {
+              _attachedImages.add(img.path);
+            }
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('相册选图失败: $e');
+    }
+  }
+
+  Future<void> _pickJournals() async {
+    final journals = await JournalService.instance.getAllJournals();
+    if (!mounted) return;
+    if (journals.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('暂无已写日记，可在时间线左下角撰写日记')),
+      );
+      return;
+    }
+    final result = await showDialog<List<String>>(
+      context: context,
+      builder: (ctx) => _MultiJournalSelectorDialog(
+        journals: journals,
+        initialSelected: _attachedJournalIds,
+      ),
+    );
+    if (result != null && mounted) {
+      setState(() {
+        _attachedJournalIds.clear();
+        _attachedJournalIds.addAll(result);
+        for (final j in journals) {
+          _journalTitles[j.id] = '${j.title} 日记';
+        }
+      });
+    }
+  }
+
+  Future<void> _pickNotes() async {
     final notes = await NoteRepository().getAll();
     if (!mounted) return;
+    // 排除日记笔记，保持普通笔记专属
+    final validNotes = notes
+        .where((n) => !n.isDeleted && !JournalService.isJournalNote(n.id))
+        .toList();
     final result = await showDialog<List<String>>(
       context: context,
       builder: (ctx) => _MultiNoteSelectorDialog(
-        notes: notes,
-        initialSelected: _selectedNoteIds,
+        notes: validNotes,
+        initialSelected: _attachedNoteIds,
       ),
     );
-    if (result != null) {
-      setState(() => _selectedNoteIds = result);
-      _syncContextFilter();
-      if (_activeScope == '混合') {
-        _openTodoSelector();
-      }
+    if (result != null && mounted) {
+      setState(() {
+        _attachedNoteIds.clear();
+        _attachedNoteIds.addAll(result);
+        for (final n in validNotes) {
+          _noteTitles[n.id] = n.title.isNotEmpty ? n.title : '无标题笔记';
+        }
+      });
     }
   }
 
-  Future<void> _openTodoSelector() async {
+  Future<void> _pickTodos() async {
     final todos = await TodoRepository().getAll();
     if (!mounted) return;
+    final validTodos = todos.where((t) => !t.isDeleted).toList();
     final result = await showDialog<List<String>>(
       context: context,
       builder: (ctx) => _MultiTodoSelectorDialog(
-        todos: todos.where((t) => !t.isDeleted).toList(),
-        initialSelected: _selectedTodoIds,
+        todos: validTodos,
+        initialSelected: _attachedTodoIds,
       ),
     );
-    if (result != null) {
-      setState(() => _selectedTodoIds = result);
-      _syncContextFilter();
+    if (result != null && mounted) {
+      setState(() {
+        _attachedTodoIds.clear();
+        _attachedTodoIds.addAll(result);
+        for (final t in validTodos) {
+          _todoTitles[t.id] = t.title.isNotEmpty ? t.title : '无标题待办';
+        }
+      });
     }
+  }
+
+  void _showAttachmentMenu(BuildContext context, ThemeData theme) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: theme.colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 20),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildAttachmentOption(
+                        icon: Icons.camera_alt_rounded,
+                        label: '相机',
+                        iconColor: const Color(0xFF3F51B5),
+                        bgColor: const Color(0xFF3F51B5).withValues(alpha: 0.12),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _pickFromCamera();
+                        },
+                        theme: theme,
+                      ),
+                      const SizedBox(width: 18),
+                      _buildAttachmentOption(
+                        icon: Icons.photo_library_rounded,
+                        label: '相册',
+                        iconColor: const Color(0xFF009688),
+                        bgColor: const Color(0xFF009688).withValues(alpha: 0.12),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _pickFromGallery();
+                        },
+                        theme: theme,
+                      ),
+                      const SizedBox(width: 18),
+                      _buildAttachmentOption(
+                        icon: Icons.auto_stories_rounded,
+                        label: '日记',
+                        iconColor: const Color(0xFFE91E63),
+                        bgColor: const Color(0xFFE91E63).withValues(alpha: 0.12),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _pickJournals();
+                        },
+                        theme: theme,
+                      ),
+                      const SizedBox(width: 18),
+                      _buildAttachmentOption(
+                        icon: Icons.description_rounded,
+                        label: '笔记',
+                        iconColor: const Color(0xFFFF9800),
+                        bgColor: const Color(0xFFFF9800).withValues(alpha: 0.12),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _pickNotes();
+                        },
+                        theme: theme,
+                      ),
+                      const SizedBox(width: 18),
+                      _buildAttachmentOption(
+                        icon: Icons.check_circle_outline_rounded,
+                        label: '待办',
+                        iconColor: const Color(0xFF4CAF50),
+                        bgColor: const Color(0xFF4CAF50).withValues(alpha: 0.12),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _pickTodos();
+                        },
+                        theme: theme,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildAttachmentOption({
+    required IconData icon,
+    required String label,
+    required Color iconColor,
+    required Color bgColor,
+    required VoidCallback onTap,
+    required ThemeData theme,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(icon, color: iconColor, size: 28),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _openExportDialog() async {
@@ -361,246 +682,9 @@ class _AiPageState extends ConsumerState<AiPage> {
       ),
       body: Column(
         children: [
-          // 过滤区 shortcutsAsync 订阅下沉
-          Consumer(
-            builder: (context, ref, _) {
-              final shortcutsAsync = ref.watch(shortcutListProvider);
-              return _buildContextFilterSection(shortcutsAsync, theme);
-            },
-          ),
+          _buildDateFilterBar(theme),
           Expanded(child: _buildChatArea(currentChat, theme)),
           _buildInputArea(aiConfigsAsync, theme),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildContextFilterSection(
-    AsyncValue<List<ShortcutConfig>> shortcutsAsync,
-    ThemeData theme,
-  ) {
-    final tags = shortcutsAsync.valueOrNull
-            ?.where((s) => s.isVisible)
-            .map((s) => s.name)
-            .toList() ??
-        [];
-    final showTags =
-        tags.isNotEmpty && _activeScope != '笔记' && _activeScope != '无';
-
-    return Material(
-      color: theme.colorScheme.surface,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (_filterStartDate != null || _selectedNoteIds.isNotEmpty || _selectedTodoIds.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
-              child: Wrap(
-                spacing: 4,
-                runSpacing: 2,
-                children: [
-                  if (_filterStartDate != null)
-                    Chip(
-                      avatar: Icon(
-                        Icons.calendar_today,
-                        size: 10,
-                        color: theme.colorScheme.primary,
-                      ),
-                      label: Text(
-                        _filterEndDate != null &&
-                                !_isSameDay(_filterStartDate!, _filterEndDate!)
-                            ? '日期: ${DateFormat('MM/dd').format(_filterStartDate!)}-${DateFormat('MM/dd').format(_filterEndDate!)}'
-                            : '日期: ${DateFormat('MM/dd').format(_filterStartDate!)}',
-                        style: TextStyle(
-                          fontSize: 9,
-                          color: theme.colorScheme.primary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      deleteIcon: Icon(
-                        Icons.close,
-                        size: 10,
-                        color: theme.colorScheme.primary,
-                      ),
-                      onDeleted: () {
-                        setState(() {
-                          _filterStartDate = null;
-                          _filterEndDate = null;
-                        });
-                        _syncContextFilter();
-                      },
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      padding: EdgeInsets.zero,
-                    ),
-                  if (_selectedNoteIds.isNotEmpty)
-                    Chip(
-                      avatar: Icon(
-                        Icons.description_outlined,
-                        size: 10,
-                        color: theme.colorScheme.primary,
-                      ),
-                      label: Text(
-                        '已选 ${_selectedNoteIds.length} 篇笔记',
-                        style: TextStyle(
-                          fontSize: 9,
-                          color: theme.colorScheme.primary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      deleteIcon: Icon(
-                        Icons.close,
-                        size: 10,
-                        color: theme.colorScheme.primary,
-                      ),
-                      onDeleted: () {
-                        setState(() => _selectedNoteIds = []);
-                        _syncContextFilter();
-                      },
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      padding: EdgeInsets.zero,
-                    ),
-                  if (_selectedTodoIds.isNotEmpty)
-                    Chip(
-                      avatar: Icon(
-                        Icons.check_box_outlined,
-                        size: 10,
-                        color: theme.colorScheme.primary,
-                      ),
-                      label: Text(
-                        '已选 ${_selectedTodoIds.length} 项待办',
-                        style: TextStyle(
-                          fontSize: 9,
-                          color: theme.colorScheme.primary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      deleteIcon: Icon(
-                        Icons.close,
-                        size: 10,
-                        color: theme.colorScheme.primary,
-                      ),
-                      onDeleted: () {
-                        setState(() => _selectedTodoIds = []);
-                        _syncContextFilter();
-                      },
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      padding: EdgeInsets.zero,
-                    ),
-                ],
-              ),
-            ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 3, 4, 3),
-            child: Row(
-              children: [
-                Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: _scopes
-                          .map((s) => _buildScopeChip(s, theme))
-                          .toList(),
-                    ),
-                  ),
-                ),
-                IconButton(
-                  icon: Icon(
-                    Icons.ios_share,
-                    size: 14,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                  onPressed: _openExportDialog,
-                  tooltip: '导出分享',
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.all(4),
-                  constraints: const BoxConstraints(),
-                ),
-              ],
-            ),
-          ),
-          if (showTags)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    ...tags.map((tag) {
-                      final isSelected = _selectedTags.contains(tag);
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 4),
-                        child: InkWell(
-                          onTap: () {
-                            setState(() {
-                              if (isSelected) {
-                                _selectedTags = _selectedTags
-                                    .where((t) => t != tag)
-                                    .toList();
-                              } else {
-                                _selectedTags = [..._selectedTags, tag];
-                              }
-                            });
-                            _syncContextFilter();
-                          },
-                          borderRadius: BorderRadius.circular(14),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? theme.colorScheme.primary
-                                  : Colors.transparent,
-                              border: Border.all(
-                                color: isSelected
-                                    ? Colors.transparent
-                                    : theme.colorScheme.outlineVariant,
-                              ),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: Text(
-                              tag,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: isSelected
-                                    ? theme.colorScheme.onPrimary
-                                    : theme.colorScheme.onSurface,
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    }),
-                    if (_selectedTags.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 4),
-                        child: TextButton(
-                          onPressed: () {
-                            setState(() => _selectedTags = []);
-                            _syncContextFilter();
-                          },
-                          style: TextButton.styleFrom(
-                            foregroundColor: theme.colorScheme.error,
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(horizontal: 6),
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          child: const Text(
-                            '清除',
-                            style: TextStyle(
-                              fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
         ],
       ),
     );
@@ -609,65 +693,139 @@ class _AiPageState extends ConsumerState<AiPage> {
   bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
 
-  Widget _buildScopeChip(String scope, ThemeData theme) {
-    final isActive = _activeScope == scope;
-    String suffix = '';
-    if (scope == '笔记' && _selectedNoteIds.isNotEmpty) {
-      suffix = ' (${_selectedNoteIds.length})';
-    }
-    if (scope == '待办' && _selectedTodoIds.isNotEmpty) {
-      suffix = ' (${_selectedTodoIds.length})';
-    }
-    if (scope == '日期' && _filterStartDate != null) {
-      suffix = ' (${DateFormat('MM/dd').format(_filterStartDate!)})';
-    }
-    if (scope == '混合') {
-      final parts = <String>[];
-      if (_filterStartDate != null) {
-        parts.add(DateFormat('MM/dd').format(_filterStartDate!));
+  Widget _buildDateFilterBar(ThemeData theme) {
+    String dateText;
+    if (_periodPreset == '今日') {
+      dateText = '今日';
+    } else if (_periodPreset == '本周') {
+      dateText = '本周';
+    } else if (_periodPreset == '本月') {
+      dateText = '本月';
+    } else if (_periodPreset == '全部') {
+      dateText = '全部';
+    } else if (_filterStartDate != null) {
+      if (_filterEndDate != null && !_isSameDay(_filterStartDate!, _filterEndDate!)) {
+        dateText =
+            '${DateFormat('MM/dd').format(_filterStartDate!)}-${DateFormat('MM/dd').format(_filterEndDate!)}';
+      } else {
+        dateText = DateFormat('yyyy/MM/dd').format(_filterStartDate!);
       }
-      if (_selectedNoteIds.isNotEmpty) parts.add('${_selectedNoteIds.length}篇');
-      if (_selectedTodoIds.isNotEmpty) parts.add('${_selectedTodoIds.length}项');
-      if (parts.isNotEmpty) suffix = ' (${parts.join('+')})';
+    } else {
+      dateText = '全部';
     }
-    final showArrow =
-        isActive && (scope == '日期' || scope == '笔记' || scope == '待办' || scope == '混合');
 
-    return Padding(
-      padding: const EdgeInsets.only(right: 5),
-      child: InkWell(
-        onTap: () => _handleScopeTap(scope),
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-          decoration: BoxDecoration(
-            color: isActive
-                ? theme.colorScheme.primary
-                : theme.colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                scope + suffix,
-                style: TextStyle(
-                  color: isActive
-                      ? theme.colorScheme.onPrimary
-                      : theme.colorScheme.onSurface,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              if (showArrow)
-                Icon(
-                  Icons.arrow_drop_down,
-                  size: 12,
-                  color: theme.colorScheme.onPrimary,
-                ),
-            ],
+    final isDefaultWeek = _periodPreset == '本周';
+    final hasActiveFilter = _periodPreset != '全部';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.25),
+            width: 0.8,
           ),
         ),
+      ),
+      child: Row(
+        children: [
+          InkWell(
+            onTap: _openDatePicker,
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: hasActiveFilter
+                    ? theme.colorScheme.primary.withValues(alpha: 0.12)
+                    : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: hasActiveFilter
+                      ? theme.colorScheme.primary.withValues(alpha: 0.3)
+                      : theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _periodPreset == '今日'
+                        ? Icons.today
+                        : (_periodPreset == '本月'
+                            ? Icons.calendar_month
+                            : (_periodPreset == '全部'
+                                ? Icons.all_inclusive
+                                : Icons.calendar_view_week)),
+                    size: 14,
+                    color: hasActiveFilter
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    dateText,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: hasActiveFilter ? FontWeight.w600 : FontWeight.normal,
+                      color: hasActiveFilter
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(
+                    Icons.arrow_drop_down,
+                    size: 16,
+                    color: hasActiveFilter
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (!isDefaultWeek) ...[
+            const SizedBox(width: 6),
+            InkWell(
+              onTap: () {
+                final now = DateTime.now();
+                final today = DateTime(now.year, now.month, now.day);
+                setState(() {
+                  _filterStartDate = today.subtract(Duration(days: today.weekday - 1));
+                  _filterEndDate = today;
+                  _selectedPeriodPreset = '本周';
+                });
+                _syncContextFilter();
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Tooltip(
+                  message: '恢复为默认本周',
+                  child: Icon(
+                    Icons.refresh,
+                    size: 16,
+                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                  ),
+                ),
+              ),
+            ),
+          ],
+          const Spacer(),
+          IconButton(
+            icon: Icon(
+              Icons.ios_share,
+              size: 16,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            onPressed: _openExportDialog,
+            tooltip: '导出上下文与Prompt',
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.all(6),
+            constraints: const BoxConstraints(),
+          ),
+        ],
       ),
     );
   }
@@ -680,7 +838,7 @@ class _AiPageState extends ConsumerState<AiPage> {
         ? [
             ChatMessage(
               role: 'assistant',
-              content: defaultSystemPrompts['assistant_greeting'] ?? '你可以切换顶部的分析范围（日期/笔记）来获得更精准的专业建议，或直接提问',
+              content: defaultSystemPrompts['assistant_greeting'] ?? '你可以直接向我提问，或点击底部的“+”分享笔记、待办和图片给我，顶部也可以按日期筛选日记分析',
               timestamp: DateTime.now(),
             )
           ]
@@ -718,47 +876,34 @@ class _AiPageState extends ConsumerState<AiPage> {
   ) {
     final configs = aiConfigsAsync.valueOrNull ?? [];
     final activeName = _getActiveConfigName(configs);
+    final hasAttachments = _attachedImages.isNotEmpty ||
+        _attachedJournalIds.isNotEmpty ||
+        _attachedNoteIds.isNotEmpty ||
+        _attachedTodoIds.isNotEmpty;
 
     return Material(
       color: theme.colorScheme.surface,
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          padding: const EdgeInsets.fromLTRB(10, 4, 10, 8),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          _buildTemplateChip('今日复盘', Icons.schedule, theme),
-                          _buildTemplateChip(
-                            '周复盘',
-                            Icons.calendar_view_week,
-                            theme,
-                          ),
-                          _buildTemplateChip(
-                            '月复盘',
-                            Icons.calendar_month,
-                            theme,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  if (configs.length > 1)
-                    GestureDetector(
+              // 1. 多模型切换胶囊（仅配置了多个模型时精简展示在右侧）
+              if (configs.length > 1)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4, right: 2),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: GestureDetector(
                       onTap: _openModelSelector,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 8,
-                          vertical: 4,
+                          vertical: 3,
                         ),
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceContainerHighest,
+                          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Row(
@@ -782,38 +927,65 @@ class _AiPageState extends ConsumerState<AiPage> {
                         ),
                       ),
                     ),
-                ],
-              ),
-              const SizedBox(height: 6),
+                  ),
+                ),
+
+              // 2. 豆包式附件挂载条（图片缩略图、分享的笔记、分享的待办）
+              if (hasAttachments) ...[
+                _buildAttachmentBar(theme),
+                const SizedBox(height: 6),
+              ],
+
+              // 3. 底部输入栏与操作按钮
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
+                  // 附件/分享加号按钮（类似豆包）
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 2, right: 6),
+                    child: InkWell(
+                      onTap: () => _showAttachmentMenu(context, theme),
+                      borderRadius: BorderRadius.circular(22),
+                      child: Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.add_rounded,
+                          size: 26,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ),
                   Expanded(child: _buildInputField(theme)),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
                   ValueListenableBuilder<TextEditingValue>(
                     valueListenable: _inputController,
                     builder: (context, value, _) {
-                      final isEmpty = value.text.trim().isEmpty;
+                      final hasText = value.text.trim().isNotEmpty;
+                      final canSend = (hasText || hasAttachments) && !_isTyping;
                       return GestureDetector(
-                        onTap: _isTyping || isEmpty
-                            ? null
-                            : _sendMessage,
+                        onTap: canSend ? _sendMessage : null,
                         child: Container(
-                          width: 48,
-                          height: 48,
+                          width: 44,
+                          height: 44,
                           decoration: BoxDecoration(
-                            color: _isTyping || isEmpty
-                                ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
-                                : theme.colorScheme.primary.withValues(alpha: 0.15),
+                            color: canSend
+                                ? theme.colorScheme.primary
+                                : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                             shape: BoxShape.circle,
                           ),
                           child: Center(
                             child: Icon(
                               Icons.send_rounded,
-                              size: 24,
-                              color: _isTyping || isEmpty
-                                  ? theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3)
-                                  : theme.colorScheme.primary,
+                              size: 22,
+                              color: canSend
+                                  ? theme.colorScheme.onPrimary
+                                  : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
                             ),
                           ),
                         ),
@@ -829,43 +1001,255 @@ class _AiPageState extends ConsumerState<AiPage> {
     );
   }
 
-  Widget _buildTemplateChip(String label, IconData icon, ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 6),
-      child: InkWell(
-        onTap: () {
-          final prompts = {
-            '今日复盘': '分析我今天的行踪，给出建议。',
-            '周复盘': '分析我本周的数据，给出建议。',
-            '月复盘': '总结我最近一月的数据记录，分析我的生活趋势并给出建议。',
-          };
-          _handleTemplateTap(label, prompts[label]!);
-        },
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 14, color: theme.colorScheme.primary),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: theme.colorScheme.onSurface,
+  Widget _buildAttachmentBar(ThemeData theme) {
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 64),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            // 已选图片缩略图
+            ..._attachedImages.map((imgPath) {
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: SizedBox(
+                        width: 52,
+                        height: 52,
+                        child: UnifiedImage(
+                          imagePath: imgPath,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: -4,
+                      right: -4,
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _attachedImages.remove(imgPath);
+                          });
+                        },
+                        child: Container(
+                          width: 18,
+                          height: 18,
+                          decoration: const BoxDecoration(
+                            color: Colors.black54,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.close,
+                            size: 12,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+
+            // 已选分享日记
+            ..._attachedJournalIds.map((jId) {
+              final title = _journalTitles[jId] ?? '日记';
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.auto_stories_outlined,
+                        size: 14,
+                        color: Color(0xFFE91E63),
+                      ),
+                      const SizedBox(width: 4),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 100),
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _attachedJournalIds.remove(jId);
+                          });
+                        },
+                        child: Icon(
+                          Icons.close,
+                          size: 14,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+
+            // 已选分享笔记
+            ..._attachedNoteIds.map((noteId) {
+              final title = _noteTitles[noteId] ?? '笔记';
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.description_outlined,
+                        size: 14,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 4),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 100),
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _attachedNoteIds.remove(noteId);
+                          });
+                        },
+                        child: Icon(
+                          Icons.close,
+                          size: 14,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+
+            // 已选分享待办
+            ..._attachedTodoIds.map((todoId) {
+              final title = _todoTitles[todoId] ?? '待办';
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.check_box_outlined,
+                        size: 14,
+                        color: theme.colorScheme.secondary,
+                      ),
+                      const SizedBox(width: 4),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 100),
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _attachedTodoIds.remove(todoId);
+                          });
+                        },
+                        child: Icon(
+                          Icons.close,
+                          size: 14,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+
+            // 继续添加小卡片按钮
+            InkWell(
+              onTap: () => _showAttachmentMenu(context, theme),
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.add,
+                      size: 14,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: 2),
+                    Text(
+                      '添加',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -889,7 +1273,7 @@ class _AiPageState extends ConsumerState<AiPage> {
             controller: _inputController,
             minLines: 1,
             maxLines: 4,
-            decoration: InputDecoration(
+            decoration: const InputDecoration(
               filled: false,
               hintText: '输入问题或指令...',
               border: InputBorder.none,
@@ -897,7 +1281,7 @@ class _AiPageState extends ConsumerState<AiPage> {
               focusedBorder: InputBorder.none,
               errorBorder: InputBorder.none,
               disabledBorder: InputBorder.none,
-              contentPadding: const EdgeInsets.only(
+              contentPadding: EdgeInsets.only(
                 left: 16,
                 top: 10,
                 bottom: 10,
@@ -1102,7 +1486,7 @@ class _AiPageState extends ConsumerState<AiPage> {
               const Divider(height: 1),
               Expanded(
                 child: sessions.isEmpty
-                    ? EmptyStateWidget(icon: Icons.chat_bubble_outline, message: '暂无对话')
+                    ? const EmptyStateWidget(icon: Icons.chat_bubble_outline, message: '暂无对话')
                     : ListView.builder(
                         itemCount: sessions.length,
                         itemBuilder: (ctx, i) => _buildSessionTile(
@@ -1443,12 +1827,21 @@ class _ChatBubble extends StatelessWidget {
                     ],
             ),
             child: isUser
-                ? Text(
-                    message.content,
-                    style: TextStyle(
-                      color: theme.colorScheme.onPrimary,
-                      fontSize: 14,
-                    ),
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (message.images != null && message.images!.isNotEmpty)
+                        _buildImagesGrid(context, message.images!),
+                      if (message.content.isNotEmpty)
+                        Text(
+                          message.content,
+                          style: TextStyle(
+                            color: theme.colorScheme.onPrimary,
+                            fontSize: 14,
+                          ),
+                        ),
+                    ],
                   )
                 : message.content.isEmpty
                 ? const _TypingDots()
@@ -1522,6 +1915,86 @@ class _ChatBubble extends StatelessWidget {
         ),
       ],
     ),
+    );
+  }
+
+  Widget _buildImagesGrid(BuildContext context, List<String> images) {
+    if (images.length == 1) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: GestureDetector(
+          onTap: () => _showFullImageDialog(context, images.first),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: 200,
+                maxHeight: 200,
+              ),
+              child: UnifiedImage(
+                imagePath: images.first,
+                fit: BoxFit.cover,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Wrap(
+        spacing: 4,
+        runSpacing: 4,
+        children: images.map((imgPath) {
+          return GestureDetector(
+            onTap: () => _showFullImageDialog(context, imgPath),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                width: 68,
+                height: 68,
+                child: UnifiedImage(
+                  imagePath: imgPath,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  void _showFullImageDialog(BuildContext context, String imagePath) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.black87,
+        insetPadding: EdgeInsets.zero,
+        child: Stack(
+          alignment: Alignment.topRight,
+          children: [
+            InteractiveViewer(
+              child: Center(
+                child: UnifiedImage(
+                  imagePath: imagePath,
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white, size: 28),
+                  onPressed: () => Navigator.pop(ctx),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -2250,4 +2723,129 @@ class _MultiTodoSelectorDialogState extends State<_MultiTodoSelectorDialog> {
     );
   }
 }
+
+class _MultiJournalSelectorDialog extends StatefulWidget {
+  final List<Note> journals;
+  final List<String> initialSelected;
+  const _MultiJournalSelectorDialog({
+    required this.journals,
+    required this.initialSelected,
+  });
+
+  @override
+  State<_MultiJournalSelectorDialog> createState() =>
+      _MultiJournalSelectorDialogState();
+}
+
+class _MultiJournalSelectorDialogState
+    extends State<_MultiJournalSelectorDialog> {
+  late List<String> _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = List.from(widget.initialSelected);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isAllSelected =
+        _selected.length == widget.journals.length && widget.journals.isNotEmpty;
+
+    return AlertDialog(
+      title: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text('选择日记'),
+          if (widget.journals.isNotEmpty)
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  if (isAllSelected) {
+                    _selected.clear();
+                  } else {
+                    _selected = widget.journals.map((j) => j.id).toList();
+                  }
+                });
+              },
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+              ),
+              child: Text(
+                isAllSelected ? '取消全选' : '全选',
+                style: const TextStyle(fontSize: 14),
+              ),
+            ),
+        ],
+      ),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: widget.journals.isEmpty
+            ? const Center(child: Text('暂无日记'))
+            : ListView.builder(
+                shrinkWrap: true,
+                itemCount: widget.journals.length,
+                itemBuilder: (ctx, i) {
+                  final journal = widget.journals[i];
+                  final isSelected = _selected.contains(journal.id);
+                  return CheckboxListTile(
+                    value: isSelected,
+                    title: Row(
+                      children: [
+                        const Icon(
+                          Icons.auto_stories_outlined,
+                          size: 16,
+                          color: Color(0xFFE91E63),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${journal.title} 日记',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        journal.content.trim(),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    onChanged: (v) {
+                      setState(() {
+                        if (v == true) {
+                          _selected.add(journal.id);
+                        } else {
+                          _selected.remove(journal.id);
+                        }
+                      });
+                    },
+                  );
+                },
+              ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _selected),
+          child: Text('确定 (${_selected.length})'),
+        ),
+      ],
+    );
+  }
+}
+
 

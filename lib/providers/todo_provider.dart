@@ -26,7 +26,8 @@ final filteredTodoListProvider =
 
 final completedTodoListProvider = FutureProvider<List<Todo>>((ref) async {
   final repo = ref.read(todoRepositoryProvider);
-  return repo.getCompleted();
+  final completed = await repo.getCompleted();
+  return completed.where((t) => t.title.trim().isNotEmpty).toList();
 });
 
 final upcomingRemindersProvider = FutureProvider<List<Todo>>((ref) async {
@@ -38,11 +39,14 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
   @override
   Future<List<Todo>> build() async {
     final repo = ref.read(todoRepositoryProvider);
+    // 启动初始化时自动清理存量空待办脏数据
+    await repo.cleanEmptyTodos();
     return repo.getAll();
   }
 
   Future<void> refresh() async {
     final repo = ref.read(todoRepositoryProvider);
+    await repo.cleanEmptyTodos();
     state = AsyncData(await repo.getAll());
     // Invalidate other providers to force them to reload from the database
     ref.invalidate(completedTodoListProvider);
@@ -67,6 +71,7 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     String tags = '',
     String? folderId,
     bool isLongTerm = false,
+    String repeatRule = 'none',
   }) async {
     final repo = ref.read(todoRepositoryProvider);
     final now = DateTime.now();
@@ -79,6 +84,7 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
       tags: tags,
       folderId: folderId,
       isLongTerm: isLongTerm,
+      repeatRule: repeatRule,
       sortOrder: now.millisecondsSinceEpoch,
       createdAt: now,
       updatedAt: now,
@@ -120,21 +126,148 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     WidgetUtils.updateHomeWidgets();
   }
 
+  /// 根据周期规则推算下一个周期的日期
+  static DateTime calculateNextRecurringDate(DateTime baseDate, String repeatRule) {
+    switch (repeatRule) {
+      case 'daily':
+        return baseDate.add(const Duration(days: 1));
+      case 'workday':
+        var next = baseDate.add(const Duration(days: 1));
+        while (next.weekday == DateTime.saturday || next.weekday == DateTime.sunday) {
+          next = next.add(const Duration(days: 1));
+        }
+        return next;
+      case 'weekly':
+        return baseDate.add(const Duration(days: 7));
+      case 'monthly':
+        final newYear = baseDate.month == 12 ? baseDate.year + 1 : baseDate.year;
+        final newMonth = baseDate.month == 12 ? 1 : baseDate.month + 1;
+        final daysInNextMonth = DateTime(newYear, newMonth + 1, 0).day;
+        final newDay = baseDate.day > daysInNextMonth ? daysInNextMonth : baseDate.day;
+        return DateTime(newYear, newMonth, newDay, baseDate.hour, baseDate.minute, baseDate.second);
+      case 'yearly':
+        final newYear = baseDate.year + 1;
+        final daysInMonth = DateTime(newYear, baseDate.month + 1, 0).day;
+        final newDay = baseDate.day > daysInMonth ? daysInMonth : baseDate.day;
+        return DateTime(newYear, baseDate.month, newDay, baseDate.hour, baseDate.minute, baseDate.second);
+      default:
+        return baseDate;
+    }
+  }
+
+  /// 推算下一次提醒时间字符串（格式形如 "MM-dd HH:mm"）
+  static String? computeNextReminderTime(String currentReminderStr, String repeatRule) {
+    try {
+      final parts = currentReminderStr.split(' ');
+      final dateParts = parts[0].split('-');
+      final timeParts = parts[1].split(':');
+      final now = DateTime.now();
+      final base = DateTime(
+        now.year,
+        int.parse(dateParts[0]),
+        int.parse(dateParts[1]),
+        int.parse(timeParts[0]),
+        int.parse(timeParts[1]),
+      );
+      var next = calculateNextRecurringDate(base, repeatRule);
+      while (next.isBefore(now)) {
+        next = calculateNextRecurringDate(next, repeatRule);
+      }
+      final mm = next.month.toString().padLeft(2, '0');
+      final dd = next.day.toString().padLeft(2, '0');
+      final hh = next.hour.toString().padLeft(2, '0');
+      final min = next.minute.toString().padLeft(2, '0');
+      return '$mm-$dd $hh:$min';
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> toggleComplete(String id, bool isCompleted) async {
     final repo = ref.read(todoRepositoryProvider);
     await repo.toggleComplete(id, isCompleted);
-    final todo = await repo.getById(id);
-    if (todo != null) {
-      await NotificationService.instance.scheduleTodoReminder(todo);
+    final completedTodo = await repo.getById(id);
+    if (completedTodo != null) {
+      await NotificationService.instance.scheduleTodoReminder(completedTodo);
     }
-    // 内存替换：优先用 DB 查询结果（含触发器可能改动的字段），缺失时退回本地副本
+
+    Todo? nextRecurringTodo;
+    // 依据用户选择：重复任务完成时，归档当期并自动生成下一周期的新待办
+    if (isCompleted && completedTodo != null && completedTodo.isRecurring) {
+      final now = DateTime.now();
+      DateTime? nextDueDate;
+      if (completedTodo.dueDate != null) {
+        nextDueDate = calculateNextRecurringDate(completedTodo.dueDate!, completedTodo.repeatRule);
+      }
+      String? nextReminder;
+      if (completedTodo.reminderTime != null) {
+        nextReminder = computeNextReminderTime(completedTodo.reminderTime!, completedTodo.repeatRule);
+      }
+
+      nextRecurringTodo = Todo(
+        id: const Uuid().v4(),
+        title: completedTodo.title,
+        description: completedTodo.description,
+        priority: completedTodo.priority,
+        dueDate: nextDueDate,
+        tags: completedTodo.tags,
+        folderId: completedTodo.folderId,
+        isLongTerm: completedTodo.isLongTerm,
+        reminderTime: nextReminder,
+        repeatRule: completedTodo.repeatRule,
+        sortOrder: now.millisecondsSinceEpoch,
+        createdAt: now,
+        updatedAt: now,
+      );
+      await repo.insert(nextRecurringTodo);
+      if (nextReminder != null) {
+        await NotificationService.instance.scheduleTodoReminder(nextRecurringTodo);
+      }
+    }
+
+    // 内存替换与增量同步
+    final currentList = state.valueOrNull ?? [];
+    final updatedList = currentList
+        .map((t) => t.id == id ? (completedTodo ?? t.copyWith(isCompleted: isCompleted)) : t)
+        .toList();
+    if (nextRecurringTodo != null) {
+      updatedList.add(nextRecurringTodo);
+    }
+
+    state = AsyncData(updatedList);
+    ref.invalidate(completedTodoListProvider);
+    ref.invalidate(upcomingRemindersProvider);
+    WidgetUtils.updateHomeWidgets();
+  }
+
+  /// 更新待办重复规则
+  Future<void> setRepeatRule(String id, String repeatRule) async {
+    final repo = ref.read(todoRepositoryProvider);
+    final todo = await repo.getById(id);
+    if (todo == null) return;
+    final updated = todo.copyWith(repeatRule: repeatRule);
+    await repo.update(updated);
     state = AsyncData(
       (state.valueOrNull ?? [])
-          .map((t) => t.id == id ? (todo ?? t.copyWith(isCompleted: isCompleted)) : t)
+          .map((t) => t.id == id ? updated : t)
           .toList(),
     );
     ref.invalidate(completedTodoListProvider);
-    ref.invalidate(upcomingRemindersProvider);
+    WidgetUtils.updateHomeWidgets();
+  }
+
+  /// 移动待办至指定分类
+  Future<void> moveToFolder(String id, String folderId) async {
+    final repo = ref.read(todoRepositoryProvider);
+    final updated = await repo.moveToFolder(id, folderId);
+    if (updated != null) {
+      state = AsyncData(
+        (state.valueOrNull ?? [])
+            .map((t) => t.id == id ? updated : t)
+            .toList(),
+      );
+    }
+    ref.invalidate(completedTodoListProvider);
     WidgetUtils.updateHomeWidgets();
   }
 
@@ -178,10 +311,20 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
   Future<void> moveToLongTerm(String id) async {
     final repo = ref.read(todoRepositoryProvider);
     await repo.moveToLongTerm(id);
-    // 从待办列表移除（isLongTerm=true 后归长期视图）
-    state = AsyncData(
-      (state.valueOrNull ?? []).where((t) => t.id != id).toList(),
-    );
+    // 重新查询单条并以内存增量更新，确保长期标签页能正确读取
+    final todo = await repo.getById(id);
+    if (todo != null) {
+      final exists = (state.valueOrNull ?? []).any((t) => t.id == id);
+      if (exists) {
+        state = AsyncData(
+          (state.valueOrNull ?? [])
+              .map((t) => t.id == id ? todo : t)
+              .toList(),
+        );
+      } else {
+        state = AsyncData([...(state.valueOrNull ?? []), todo]);
+      }
+    }
     ref.invalidate(completedTodoListProvider);
     ref.invalidate(upcomingRemindersProvider);
     WidgetUtils.updateHomeWidgets();

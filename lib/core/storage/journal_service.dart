@@ -177,4 +177,28 @@ class JournalService {
       await _cleanupMonthFolderById(month.id);
     }
   }
+
+  /// 获取所有有效（未删除且非空）的每日日记，按日期倒序
+  Future<List<Note>> getAllJournals() async {
+    final allNotes = await _noteRepo.getAll();
+    final list = allNotes.where((n) {
+      return !n.isDeleted &&
+          isJournalNote(n.id) &&
+          n.content.trim().isNotEmpty;
+    }).toList();
+    list.sort((a, b) => b.title.compareTo(a.title));
+    return list;
+  }
+
+  /// 获取指定日期范围内的所有有效每日日记，按日期倒序
+  Future<List<Note>> getJournalsByDateRange(DateTime start, DateTime end) async {
+    final journals = await getAllJournals();
+    final startDateStr = _ymd(DateTime(start.year, start.month, start.day));
+    final endDateStr = _ymd(DateTime(end.year, end.month, end.day));
+
+    return journals.where((j) {
+      return j.title.compareTo(startDateStr) >= 0 &&
+          j.title.compareTo(endDateStr) <= 0;
+    }).toList();
+  }
 }
