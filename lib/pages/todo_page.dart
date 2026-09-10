@@ -22,6 +22,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   String? _focusedTodoId;
   late PageController _pageController;
+  final Map<String, ScrollController> _scrollControllers = {};
 
   @override
   void initState() {
@@ -32,7 +33,15 @@ class _TodoPageState extends ConsumerState<TodoPage> {
   @override
   void dispose() {
     _pageController.dispose();
+    for (final controller in _scrollControllers.values) {
+      controller.dispose();
+    }
+    _scrollControllers.clear();
     super.dispose();
+  }
+
+  ScrollController _getScrollController(String folderId) {
+    return _scrollControllers.putIfAbsent(folderId, () => ScrollController());
   }
 
   @override
@@ -48,7 +57,15 @@ class _TodoPageState extends ConsumerState<TodoPage> {
       backgroundColor: colorScheme.surface,
       endDrawer: const _HistoryDrawer(),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _addNewTodo(selectedFolderId),
+        onPressed: () {
+          final folders = foldersAsync.valueOrNull;
+          final currentFolderId = (selectedFolderId != null &&
+                  folders != null &&
+                  folders.any((f) => f.id == selectedFolderId))
+              ? selectedFolderId
+              : (folders != null && folders.isNotEmpty ? folders.first.id : null);
+          _addNewTodo(currentFolderId);
+        },
         backgroundColor: colorScheme.primary,
         foregroundColor: colorScheme.onPrimary,
         elevation: 2,
@@ -198,7 +215,9 @@ class _TodoPageState extends ConsumerState<TodoPage> {
             ),
           );
         }
+        final scrollController = _getScrollController(folderId);
         return ReorderableListView.builder(
+          scrollController: scrollController,
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 88),
           itemCount: filteredTodos.length,
           onReorderItem: (oldIndex, newIndex) {
@@ -219,10 +238,12 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                 todo: todo,
                 index: index,
                 autoFocus: todo.id == _focusedTodoId,
-                onFocused: () {
-                  setState(() {
-                    _focusedTodoId = null;
-                  });
+                onEditingComplete: () {
+                  if (mounted && _focusedTodoId == todo.id) {
+                    setState(() {
+                      _focusedTodoId = null;
+                    });
+                  }
                 },
                 onToggleComplete: () {
                   ref.read(todoListProvider.notifier).toggleComplete(todo.id, true);
@@ -252,12 +273,33 @@ class _TodoPageState extends ConsumerState<TodoPage> {
   }
 
   void _addNewTodo(String? folderId) {
+    var targetFolderId = folderId;
+    if (targetFolderId == null) {
+      final folders = ref.read(todoFolderListProvider).valueOrNull;
+      if (folders != null && folders.isNotEmpty) {
+        targetFolderId = folders.first.id;
+      }
+    }
+    if (targetFolderId == null) return;
+
     ref.read(todoListProvider.notifier).addTodo(
           title: '',
-          folderId: folderId,
+          folderId: targetFolderId,
         ).then((todo) {
+      if (!mounted) return;
       setState(() {
         _focusedTodoId = todo.id;
+      });
+      // 自动滚动到底部，确保新建的输入框立即可见
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final sc = _scrollControllers[targetFolderId];
+        if (sc != null && sc.hasClients) {
+          sc.animateTo(
+            sc.position.maxScrollExtent,
+            duration: AppDurations.normal,
+            curve: Curves.easeOut,
+          );
+        }
       });
     });
   }
@@ -830,7 +872,7 @@ class _TodoItem extends StatefulWidget {
   final Todo todo;
   final int index;
   final bool autoFocus;
-  final VoidCallback? onFocused;
+  final VoidCallback? onEditingComplete;
   final VoidCallback onToggleComplete;
   final ValueChanged<String> onTitleChanged;
   final VoidCallback? onDeleteEmpty;
@@ -842,7 +884,7 @@ class _TodoItem extends StatefulWidget {
     required this.todo,
     required this.index,
     this.autoFocus = false,
-    this.onFocused,
+    this.onEditingComplete,
     required this.onToggleComplete,
     required this.onTitleChanged,
     this.onDeleteEmpty,
@@ -905,7 +947,6 @@ class _TodoItemState extends State<_TodoItem> with SingleTickerProviderStateMixi
         if (_focusNode.canRequestFocus) {
           _focusNode.requestFocus();
         }
-        widget.onFocused?.call();
       });
     }
   }
@@ -962,6 +1003,7 @@ class _TodoItemState extends State<_TodoItem> with SingleTickerProviderStateMixi
         _titleController.text = widget.todo.title;
       }
     }
+    widget.onEditingComplete?.call();
   }
 
   void _handleToggleComplete() {
