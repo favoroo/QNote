@@ -1,1 +1,0 @@
-Orchestrates a multi-platform productivity suite by unifying modular feature domains through a shared Riverpod state layer, centralized SQLite persistence, and a declarative navigation shell.

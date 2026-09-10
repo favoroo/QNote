@@ -1,1 +1,0 @@
-Uses `flutter_riverpod` for state management (AsyncNotifier, StateNotifierProvider) and `uuid` for ID generation.

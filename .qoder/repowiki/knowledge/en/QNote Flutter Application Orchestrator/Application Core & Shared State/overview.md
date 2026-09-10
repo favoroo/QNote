@@ -1,1 +1,0 @@
-Orchestrates application initialization, global state management via Riverpod, and defines core data models for navigation and tagging.

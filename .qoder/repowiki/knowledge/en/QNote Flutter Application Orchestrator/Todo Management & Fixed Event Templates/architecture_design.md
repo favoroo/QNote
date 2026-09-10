@@ -1,5 +1,0 @@
-- Follows a Model-View-Provider (Riverpod) architecture.
-- Models (`Todo`, `FixedEventTemplate`) handle data serialization via `toMap`/`fromMap` and immutability via `copyWith`.
-- Providers (`TodoListNotifier`, `FixedEventNotifier`) encapsulate business logic, interacting with external repositories (`TodoRepository`, `FixedEventRepository`) and services (`NotificationService`).
-- The View (`TodoPage`) uses `ConsumerStatefulWidget` to react to state changes, implementing a segmented control for 'Today' vs 'Long-term' views and a `ReorderableListView` for interactive sorting.
-- Dependency direction flows from UI -> Providers -> Repositories/Services.

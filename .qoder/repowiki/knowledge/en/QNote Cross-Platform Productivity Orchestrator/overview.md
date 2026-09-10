@@ -1,1 +1,0 @@
-Unifies a legacy web codebase and a modern Flutter application into a cohesive multi-platform productivity suite through shared persistence contracts and platform-channel navigation.

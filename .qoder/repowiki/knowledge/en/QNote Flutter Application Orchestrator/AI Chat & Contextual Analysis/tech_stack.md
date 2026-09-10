@@ -1,1 +1,0 @@
-Riverpod for state management (AsyncNotifier/StateNotifier pattern), flutter_markdown for rendering AI responses, and a custom AiService abstraction for LLM interactions.

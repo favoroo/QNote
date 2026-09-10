@@ -1,4 +1,0 @@
-- Use of `AsyncValue.guard` in Riverpod notifiers to uniformly handle asynchronous errors and loading states.
-- Implementation of `toMap` and `fromMap` methods in model classes for consistent serialization and deserialization from database records.
-- Adoption of a repository pattern for data access, isolating database logic from business logic in providers.
-- Conditional UI rendering based on `AsyncValue` states (loading, error, data) to provide robust user feedback during data fetching.

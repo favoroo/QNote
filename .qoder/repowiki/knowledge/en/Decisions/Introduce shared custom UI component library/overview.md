@@ -1,1 +1,0 @@
-Introduce shared custom UI component library — Create a set of shared widgets in `lib/widgets/`: `q_card.

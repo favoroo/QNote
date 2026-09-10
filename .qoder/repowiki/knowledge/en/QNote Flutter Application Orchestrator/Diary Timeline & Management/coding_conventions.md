@@ -1,2 +1,0 @@
-- Immutable data models utilize a `copyWith` method for creating updated instances, ensuring state consistency in Riverpod providers.
-- Asynchronous data operations are encapsulated within `AsyncNotifier` subclasses, exposing `refresh` and specific mutation methods like `addDiary` or `deleteDiary`.

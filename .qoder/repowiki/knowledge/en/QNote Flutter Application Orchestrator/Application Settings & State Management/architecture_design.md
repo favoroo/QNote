@@ -1,4 +1,0 @@
-- Adopts a Provider-Model separation where `lib/providers/` contains Riverpod notifiers (e.g., `ThemeModeNotifier`, `UserProfileNotifier`) that orchestrate state changes.
-- Delegates persistence to a shared `ConfigRepository` singleton in `lib/core/storage/`, which abstracts SQLite operations for settings like WebDAV configs and user profiles.
-- Defines immutable data models in `lib/models/` (e.g., `WebdavConfig`, `ShortcutConfig`) with standardized `toMap`/`fromMap` serialization logic for database interaction.
-- Implements a unidirectional data flow where providers trigger repository updates, which then refresh the provider state to notify UI listeners.

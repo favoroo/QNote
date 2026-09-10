@@ -1,3 +1,0 @@
-- State notifiers extend AsyncNotifier or StateNotifier to encapsulate business logic and persistence, exposing providers via the AsyncNotifierProvider or StateNotifierProvider pattern.
-- Data models implement immutable value semantics with required named constructors, copyWith methods, and map/JSON serialization factories.
-- UI components use ConsumerWidget or ConsumerStatefulWidget to access Riverpod providers, with ref.watch for reactive updates and ref.read for imperative actions.

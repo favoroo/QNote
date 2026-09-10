@@ -1,5 +1,0 @@
-- **State Management**: Uses `flutter_riverpod` with `AsyncNotifierProvider` (`NoteListNotifier`) to handle asynchronous data fetching and state updates for notes.
-- **Data Model**: `Note` class provides immutable data structures with JSON serialization/deserialization support via `toMap` and `fromMap`.
-- **UI Architecture**: `NotesPage` implements a complex tree-view UI using a flattened list strategy (`_flattenTree`) to render nested folders and notes in a single `ListView`.
-- **Interaction Layer**: Drag-and-drop functionality is implemented using `LongPressDraggable` and `DragTarget` widgets within `_FlattenedTile`, supporting reordering and moving items between folders without explicit drag handles (as per recent intent to remove `drag_indicator`).
-- **Dependency Direction**: The page depends on `note_provider` for business logic, which in turn depends on an external `NoteRepository` for persistence.

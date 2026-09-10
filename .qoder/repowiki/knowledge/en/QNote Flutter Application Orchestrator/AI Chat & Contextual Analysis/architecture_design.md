@@ -1,4 +1,0 @@
-- **UI Layer**: `AiPage` implements a responsive chat UI with a top-level context filter bar (scope: all, date, notes, todos, mixed) and a bottom input area with model selection.
-- **State Management**: Uses Riverpod for reactive state. `CurrentChatNotifier` (StateNotifier) manages the active session and handles message streaming via `aiStreamingMessageProvider`. `ChatSessionListNotifier` and `AiConfigListNotifier` (AsyncNotifiers) handle persistence of sessions and configurations.
-- **Context Aggregation**: The `exportContext` method in `CurrentChatNotifier` dynamically aggregates data from diaries, notes, and todos based on the `AiContextFilter`, formatting it into a structured prompt for the LLM.
-- **Data Models**: Immutable models (`ChatSession`, `ChatMessage`, `AiConfig`, `AiRoles`) with `copyWith` and serialization support ensure consistent state transitions and storage compatibility.

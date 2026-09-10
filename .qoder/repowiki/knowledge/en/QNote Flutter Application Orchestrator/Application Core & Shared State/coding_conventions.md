@@ -1,2 +1,0 @@
-- Data models implement `toMap()` and `fromMap()` factories for consistent database serialization.
-- Riverpod providers are used to expose repository instances and manage asynchronous data loading states.

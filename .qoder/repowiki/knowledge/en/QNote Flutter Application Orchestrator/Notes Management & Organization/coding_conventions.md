@@ -1,3 +1,0 @@
-- Immutable data models use a `copyWith` method for creating updated instances, often with specialized flags like `clearFolderId` to handle nullability semantics.
-- Asynchronous state mutations in providers follow a pattern of executing the repository action followed by a full `refresh()` to synchronize the local state with the persistent store.
-- UI components for list items are extracted into private `ConsumerStatefulWidget` subclasses (e.g., `_FlattenedTile`) to manage local interaction state like hover effects and drag feedback.
