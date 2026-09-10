@@ -100,6 +100,9 @@ macos/build/
 # ---- 文档生成（如果使用）----
 doc/api/
 
+# ---- ZCode 本地会话文件 ----
+.zcode/
+
 # ---- Python 缓存 ----
 __pycache__/
 *.pyc
