@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+
+import 'package:qnote_flutter/config/app_version.dart';
+import 'package:qnote_flutter/core/network/update_service.dart';
+import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/widgets/debug_console.dart';
+import 'package:qnote_flutter/widgets/update_dialog.dart';
 
 class AboutPage extends StatefulWidget {
   const AboutPage({super.key});
@@ -12,6 +17,38 @@ class AboutPage extends StatefulWidget {
 class _AboutPageState extends State<AboutPage> {
   int _tapCount = 0;
   DateTime? _lastTapTime;
+  bool _checkingUpdate = false;
+
+  /// 手动检查更新：有更新弹窗，无更新或失败用 Toast 反馈。
+  Future<void> _checkUpdate() async {
+    if (_checkingUpdate) return;
+
+    setState(() => _checkingUpdate = true);
+    try {
+      final result = await UpdateService.instance.checkForUpdate();
+      if (!mounted) return;
+
+      switch (result.status) {
+        case UpdateCheckStatus.available:
+          final updateInfo = result.updateInfo;
+          if (updateInfo == null) break;
+          await showUpdateDialog(
+            context: context,
+            updateInfo: updateInfo,
+            currentVersion: kAppVersion,
+          );
+          break;
+        case UpdateCheckStatus.upToDate:
+          Toast.success(context, '已是最新版本');
+          break;
+        case UpdateCheckStatus.failed:
+          Toast.error(context, result.errorMessage ?? '检查更新失败');
+          break;
+      }
+    } finally {
+      if (mounted) setState(() => _checkingUpdate = false);
+    }
+  }
 
   void _handleVersionTap() {
     final now = DateTime.now();
@@ -152,9 +189,21 @@ class _AboutPageState extends State<AboutPage> {
                     title: const Text('版本', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                     trailing: GestureDetector(
                       onTap: _handleVersionTap,
-                      child: Text('1.2.0', style: TextStyle(color: theme.hintColor, fontSize: 13)),
+                      child: Text(kAppVersion, style: TextStyle(color: theme.hintColor, fontSize: 13)),
                     ),
                     onTap: _handleVersionTap,
+                  ),
+                  const Divider(height: 1, indent: 16, endIndent: 16),
+                  ListTile(
+                    title: const Text('检查更新', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                    trailing: _checkingUpdate
+                        ? SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: theme.hintColor),
+                          )
+                        : Icon(Icons.refresh_rounded, size: 18, color: theme.hintColor),
+                    onTap: _checkUpdate,
                   ),
                   const Divider(height: 1, indent: 16, endIndent: 16),
                   ListTile(

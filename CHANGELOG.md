@@ -13,6 +13,15 @@
     - **Changed**: `.gitignore` 新增 `.workbuddy/`，避免工作目录污染 `git status`。
     - **Changed**: 构建参数使用 `--target-platform android-arm64`，APK 体积由全架构的 83.9MB 降至 30.4MB（约 -64%），产物位于 `build/app/outputs/flutter-apk/QNote-v1.0.0-arm64-v8a.apk`。
 
+- **#126**
+  - **Added**: 新增应用「检查更新」功能，支持启动自动检查与「关于」页手动检查 (`lib/core/network/update_service.dart`, `lib/widgets/update_dialog.dart`, `lib/core/utils/version_utils.dart`, `lib/config/app_version.dart`, `lib/app.dart`, `lib/pages/settings/about_page.dart`)。
+    - **Added**: `UpdateService` 请求 GitHub Releases latest 接口，按语义化版本比对并返回结构化结果（已是最新 / 有更新 / 检查失败）；自动跳过 draft 与 prerelease，优先取 `.apk` 附件，缺失时回退到 Release 页面。
+    - **Added**: `update_dialog.dart` 更新弹窗，展示 `当前版本 → 最新版本` 对比、包体积与 Markdown 渲染的更新说明，「更新」按钮通过 `url_launcher` 拉起下载，「取消」关闭弹窗。
+    - **Added**: `version_utils.dart` 提供版本号解析与比较工具，兼容 `v` 前缀、build 号、预发布后缀与位数不一致的情况，并补充单元测试 `test/core/utils/version_utils_test.dart`。
+    - **Changed**: 版本号集中到 `lib/config/app_version.dart` 的 `kAppVersion`，「关于」页不再硬编码；同时按需求将展示的版本号由 1.2.0 更正为 1.0.0（与该 commit 的 `pubspec.yaml` 保持一致）。
+    - **Changed**: `app_router.dart` 的根导航键由私有 `_rootNavigatorKey` 改为公开的 `rootNavigatorKey`，使全局弹窗能拿到 Navigator 之下的有效 context（MaterialApp 自身的 context 无法用于 showDialog）。
+    - **Changed**: `app.dart` 启动后延迟 3 秒静默检查更新，仅 Android 生效（iOS 走 App Store、Web 无 APK 更新）；无更新或请求失败一律静默，不打扰用户。
+
 ## 2026-09-09
 
 - **#124**

@@ -7,9 +7,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
+import 'package:qnote_flutter/config/app_version.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/network/sync_scheduler.dart';
+import 'package:qnote_flutter/core/network/update_service.dart';
 import 'package:qnote_flutter/core/notification/notification_service.dart';
 import 'package:qnote_flutter/core/router/app_router.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
@@ -21,6 +23,7 @@ import 'package:qnote_flutter/database_init.dart'
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/theme_provider.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
+import 'package:qnote_flutter/widgets/update_dialog.dart';
 
 /// 关键路径初始化：必须在 runApp 前完成，确保数据库和配置就绪。
 ///
@@ -61,6 +64,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
     WidgetsBinding.instance.addObserver(this);
     _initNavigationListener();
     _runDeferredInitialization();
+    _runStartupUpdateCheck();
   }
 
   /// 延迟初始化：主界面显示后执行，不阻塞首帧。
@@ -77,6 +81,42 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
     } catch (e, stackTrace) {
       LoggerService.instance.error(
         '延迟初始化失败: $e',
+        category: LogCategory.system,
+        details: stackTrace.toString(),
+      );
+    }
+  }
+
+  /// 启动时静默检查应用更新。
+  ///
+  /// 仅 Android 生效：iOS 走 App Store 分发，Web 端不存在 APK 更新。
+  /// 无更新或请求失败一律静默处理，不打扰用户。
+  Future<void> _runStartupUpdateCheck() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+
+    try {
+      // 延后执行，避免与首帧渲染、WebDAV 自动同步抢占资源
+      await Future.delayed(const Duration(seconds: 3));
+      if (!mounted) return;
+
+      final result = await UpdateService.instance.checkForUpdate();
+      if (!mounted || result.status != UpdateCheckStatus.available) return;
+
+      final updateInfo = result.updateInfo;
+      if (updateInfo == null) return;
+
+      // showDialog 需要 Navigator 之下的 context，根节点 key 是唯一稳定来源
+      final dialogContext = rootNavigatorKey.currentContext;
+      if (dialogContext == null || !dialogContext.mounted) return;
+
+      await showUpdateDialog(
+        context: dialogContext,
+        updateInfo: updateInfo,
+        currentVersion: kAppVersion,
+      );
+    } catch (e, stackTrace) {
+      LoggerService.instance.warning(
+        '启动检查更新失败: $e',
         category: LogCategory.system,
         details: stackTrace.toString(),
       );

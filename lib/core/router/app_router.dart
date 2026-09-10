@@ -22,11 +22,16 @@ import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 
-final _rootNavigatorKey = GlobalKey<NavigatorState>();
+/// 根导航键。
+///
+/// 对外暴露是因为「检查更新」弹窗等全局 UI 需要在任意位置弹出对话框，
+/// 而 MaterialApp 自身的 context 位于 Navigator 之上，无法直接 showDialog。
+/// 通过该 key 的 currentContext 可以拿到有效的 Navigator context。
+final rootNavigatorKey = GlobalKey<NavigatorState>();
 
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
-    navigatorKey: _rootNavigatorKey,
+    navigatorKey: rootNavigatorKey,
     initialLocation: '/diary',
     routes: [
       StatefulShellRoute.indexedStack(
@@ -42,7 +47,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                 routes: [
                   GoRoute(
                     path: 'editor',
-                    parentNavigatorKey: _rootNavigatorKey,
+                    parentNavigatorKey: rootNavigatorKey,
                     pageBuilder: (context, state) {
                       final record = state.extra as DiaryRecord?;
                       // P2-37: 复用 _fadeTransitionPage helper，避免重复 transitionsBuilder
@@ -53,7 +58,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                   ),
                   GoRoute(
                     path: 'batch',
-                    parentNavigatorKey: _rootNavigatorKey,
+                    parentNavigatorKey: rootNavigatorKey,
                     pageBuilder: (context, state) {
                       final extra = state.extra as Map<String, dynamic>?;
                       final initialTags = extra?['initialTags'] as List<String>?;
@@ -78,7 +83,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                 routes: [
                   GoRoute(
                     path: 'editor',
-                    parentNavigatorKey: _rootNavigatorKey,
+                    parentNavigatorKey: rootNavigatorKey,
                     pageBuilder: (context, state) {
                       final note = state.extra as Note?;
                       // P2-37: 复用 _fadeTransitionPage helper
@@ -119,42 +124,42 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/settings/profile',
-        parentNavigatorKey: _rootNavigatorKey,
+        parentNavigatorKey: rootNavigatorKey,
         pageBuilder: (context, state) => _fadeTransitionPage(const UserProfilePage()),
       ),
       GoRoute(
         path: '/settings/ai-config',
-        parentNavigatorKey: _rootNavigatorKey,
+        parentNavigatorKey: rootNavigatorKey,
         pageBuilder: (context, state) => _fadeTransitionPage(const AiConfigPage()),
       ),
       GoRoute(
         path: '/settings/shortcuts',
-        parentNavigatorKey: _rootNavigatorKey,
+        parentNavigatorKey: rootNavigatorKey,
         pageBuilder: (context, state) => _fadeTransitionPage(const ShortcutsPage()),
       ),
       GoRoute(
         path: '/settings/fixed-events',
-        parentNavigatorKey: _rootNavigatorKey,
+        parentNavigatorKey: rootNavigatorKey,
         pageBuilder: (context, state) => _fadeTransitionPage(const FixedEventsPage()),
       ),
       GoRoute(
         path: '/settings/data',
-        parentNavigatorKey: _rootNavigatorKey,
+        parentNavigatorKey: rootNavigatorKey,
         pageBuilder: (context, state) => _fadeTransitionPage(const DataManagementPage()),
       ),
       GoRoute(
         path: '/settings/sync',
-        parentNavigatorKey: _rootNavigatorKey,
+        parentNavigatorKey: rootNavigatorKey,
         pageBuilder: (context, state) => _fadeTransitionPage(const SyncSettingsPage()),
       ),
       GoRoute(
         path: '/settings/personalization',
-        parentNavigatorKey: _rootNavigatorKey,
+        parentNavigatorKey: rootNavigatorKey,
         pageBuilder: (context, state) => _fadeTransitionPage(const PersonalizationPage()),
       ),
       GoRoute(
         path: '/settings/about',
-        parentNavigatorKey: _rootNavigatorKey,
+        parentNavigatorKey: rootNavigatorKey,
         pageBuilder: (context, state) => _fadeTransitionPage(const AboutPage()),
       ),
       GoRoute(
