@@ -51,7 +51,7 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                 : ReorderableListView.builder(
                     padding: const EdgeInsets.all(16),
                     itemCount: shortcuts.length,
-                    onReorder: (oldIndex, newIndex) {
+                    onReorderItem: (oldIndex, newIndex) {
                       ref.read(shortcutListNotifierProvider.notifier).reorder(oldIndex, newIndex);
                     },
                     itemBuilder: (context, index) {

@@ -319,7 +319,7 @@ class AiService {
                 .difference(startTime)
                 .inMilliseconds;
             LoggerService.instance.logAI(
-              'AI流式响应完成 [总输出=$totalChars字符]:\n$accumulatedResponse',
+              'AI流式响应完成 [总输出=$totalChars字符] [耗时=${duration}ms]:\n$accumulatedResponse',
             );
             return;
           }
@@ -343,7 +343,7 @@ class AiService {
 
       final duration = DateTime.now().difference(startTime).inMilliseconds;
       LoggerService.instance.logAI(
-        'AI流式响应结束 [总输出=$totalChars字符]:\n$accumulatedResponse',
+        'AI流式响应结束 [总输出=$totalChars字符] [耗时=${duration}ms]:\n$accumulatedResponse',
       );
     } catch (e, stackTrace) {
       String details = stackTrace.toString();

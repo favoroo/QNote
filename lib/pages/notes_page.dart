@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/models/folder.dart';
 import 'package:qnote_flutter/providers/note_provider.dart';
@@ -741,14 +740,14 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   void _showMoveToFolderDialog(BuildContext context, {Note? note, Folder? folder}) {
     assert(note != null || folder != null);
     final isFolder = folder != null;
-    final title = isFolder ? '移动文件夹 "${folder!.name}"' : '移动笔记 "${note!.title}"';
+    final title = isFolder ? '移动文件夹 "${folder.name}"' : '移动笔记 "${note!.title}"';
 
     final folderListAsync = ref.read(folderListProvider);
     final allFolders = folderListAsync.value ?? [];
 
     final invalidIds = <String>{};
     if (isFolder) {
-      invalidIds.add(folder!.id);
+      invalidIds.add(folder.id);
       void addDescendants(String parentId) {
         for (final f in allFolders) {
           if (f.parentId == parentId) {
@@ -757,7 +756,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           }
         }
       }
-      addDescendants(folder!.id);
+      addDescendants(folder.id);
     }
 
     final flattened = <Map<String, dynamic>>[];
@@ -785,21 +784,21 @@ class _NotesPageState extends ConsumerState<NotesPage> {
               ListTile(
                 leading: Icon(
                   Icons.folder_open,
-                  color: (isFolder ? folder!.parentId == null : note!.folderId == null)
+                  color: (isFolder ? folder.parentId == null : note!.folderId == null)
                       ? theme.colorScheme.primary
                       : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
                 ),
                 title: Text(
                   '根目录',
                   style: TextStyle(
-                    fontWeight: (isFolder ? folder!.parentId == null : note!.folderId == null)
+                    fontWeight: (isFolder ? folder.parentId == null : note!.folderId == null)
                         ? FontWeight.bold
                         : FontWeight.normal,
                   ),
                 ),
                 onTap: () {
                   if (isFolder) {
-                    ref.read(folderListProvider.notifier).moveFolderToParent(folder!.id, null);
+                    ref.read(folderListProvider.notifier).moveFolderToParent(folder.id, null);
                   } else {
                     ref.read(noteListProvider.notifier).moveNoteToFolder(note!.id, null);
                   }
@@ -811,7 +810,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                 final Folder f = item['folder'];
                 final int depth = item['depth'];
                 final isInvalid = invalidIds.contains(f.id);
-                final isCurrentParent = isFolder ? folder!.parentId == f.id : note!.folderId == f.id;
+                final isCurrentParent = isFolder ? folder.parentId == f.id : note!.folderId == f.id;
 
                 return ListTile(
                   contentPadding: EdgeInsets.only(left: 16.0 + depth * 16.0),
@@ -833,7 +832,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                   ),
                   onTap: () {
                     if (isFolder) {
-                      ref.read(folderListProvider.notifier).moveFolderToParent(folder!.id, f.id);
+                      ref.read(folderListProvider.notifier).moveFolderToParent(folder.id, f.id);
                     } else {
                       ref.read(noteListProvider.notifier).moveNoteToFolder(note!.id, f.id);
                     }

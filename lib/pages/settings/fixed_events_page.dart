@@ -149,7 +149,7 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
           : ReorderableListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: templates.length,
-              onReorder: (oldIndex, newIndex) {
+              onReorderItem: (oldIndex, newIndex) {
                 ref
                     .read(fixedEventNotifierProvider.notifier)
                     .reorder(oldIndex, newIndex);
@@ -401,6 +401,7 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                                             final endParts = period.endTime.split(':');
                                             final eh = int.tryParse(endParts[0]) ?? (startRes.hour + 1) % 24;
                                             final em = endParts.length > 1 ? int.tryParse(endParts[1]) ?? 0 : 0;
+                                            if (!context.mounted) return;
                                             final endRes = await showTimeScrollPicker(
                                               context: context,
                                               initialHour: eh,
@@ -497,6 +498,7 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                               final newStart = '${startRes.hour.toString().padLeft(2, '0')}:${startRes.minute.toString().padLeft(2, '0')}';
                               String newEnd = '';
                               if (!isTimePoint) {
+                                if (!context.mounted) return;
                                 final endRes = await showTimeScrollPicker(
                                   context: context,
                                   initialHour: (startRes.hour + 1) % 24,

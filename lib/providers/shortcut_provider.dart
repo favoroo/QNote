@@ -40,7 +40,6 @@ class ShortcutListNotifier extends StateNotifier<List<ShortcutConfig>> {
 
   Future<void> reorder(int oldIndex, int newIndex) async {
     final list = [...state];
-    if (oldIndex < newIndex) newIndex -= 1;
     final item = list.removeAt(oldIndex);
     list.insert(newIndex, item);
     for (int i = 0; i < list.length; i++) {

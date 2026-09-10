@@ -159,6 +159,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     if (image == null) return;
 
     // Add cropping step
+    if (!mounted) return;
     final croppedFile = await GalleryHelper.cropImage(context, image.path);
     if (croppedFile == null) return;
 

@@ -1524,6 +1524,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         timelineOptimizationUseFreeModel: isFree,
       );
       await AiRoleService.instance.saveRoles(newRoles);
+      if (!mounted) return;
       final displayName = isFree ? '免费模型' : (configs.firstWhere((c) => c.id == selectedId, orElse: () => configs.first).name);
       Toast.success(
         context,

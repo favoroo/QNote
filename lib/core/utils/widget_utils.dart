@@ -8,7 +8,7 @@ class WidgetUtils {
   static Future<void> updateHomeWidgets() async {
     try {
       await _channel.invokeMethod('updateWidgets');
-    } on PlatformException catch (e) {
+    } on PlatformException catch (_) {
       // 捕获异常，防止非 Android 平台或通道未准备就绪时崩溃
       // 实际开发中也可以在原生端捕获未实现的方法
     }

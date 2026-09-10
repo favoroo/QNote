@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'dart:math' as math;
 import 'dart:async';
@@ -1374,7 +1375,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       configs = await ref.read(aiConfigListProvider.future);
     } catch (_) {}
 
-    if (!mounted || configs.isEmpty) {
+    // mounted 为 false 时不能再用 context，必须先返回再提示
+    if (!mounted) return;
+    if (configs.isEmpty) {
       Toast.warning(context, '无可用模型');
       return;
     }
@@ -1489,7 +1492,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       configs = await ref.read(aiConfigListProvider.future);
     } catch (_) {}
 
-    if (!mounted || configs.isEmpty) {
+    // mounted 为 false 时不能再用 context，必须先返回再提示
+    if (!mounted) return;
+    if (configs.isEmpty) {
       Toast.warning(context, '无可用模型');
       return;
     }
@@ -1791,7 +1796,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                           onLongPressMoveUpdate: _handleDragUpdate,
                           onLongPressEnd: _handleDragEnd,
                           child: ListView.builder(
-                            cacheExtent: 1500,
+                            scrollCacheExtent: ScrollCacheExtent.pixels(1500),
                             controller: _scrollController,
                             padding: const EdgeInsets.symmetric(
                               horizontal: 16,

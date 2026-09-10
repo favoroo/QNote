@@ -22,6 +22,18 @@
     - **Changed**: `app_router.dart` 的根导航键由私有 `_rootNavigatorKey` 改为公开的 `rootNavigatorKey`，使全局弹窗能拿到 Navigator 之下的有效 context（MaterialApp 自身的 context 无法用于 showDialog）。
     - **Changed**: `app.dart` 启动后延迟 3 秒静默检查更新，仅 Android 生效（iOS 走 App Store、Web 无 APK 更新）；无更新或请求失败一律静默，不打扰用户。
 
+- **#127**
+  - **Fixed**: 修复 7 处 `BuildContext` 跨异步间隙使用导致的潜在崩溃 (`lib/pages/diary_page.dart`, `lib/widgets/diary/diary_editor_view.dart`, `lib/widgets/diary/diary_input_bar.dart`, `lib/pages/settings/fixed_events_page.dart`, `lib/pages/settings/user_profile_page.dart`)。
+    - **Fixed**: 其中 3 处存在逻辑错误——原写法为 `if (!mounted || configs.isEmpty) { Toast.warning(context, ...); }`，页面已销毁时仍会用 context 弹 Toast；已拆分为先判 `mounted` 直接返回、再判空提示。
+  - **Removed**: 删除 3 个未使用 import (`lib/pages/notes_page.dart`, `lib/pages/todo_page.dart`, `lib/widgets/birthday_picker.dart`) 与 10 处多余空断言 `!` (`lib/pages/notes_page.dart`, `lib/pages/settings/ai_config_page.dart`)。
+  - **Changed**: 迁移 6 处已废弃 Flutter API (`lib/pages/todo_page.dart`, `lib/pages/settings/shortcuts_page.dart`, `lib/pages/settings/fixed_events_page.dart`, `lib/providers/shortcut_provider.dart`, `lib/providers/fixed_event_provider.dart`, `lib/pages/diary_page.dart`)。
+    - **Changed**: `ReorderableListView.onReorder` → `onReorderItem`。新回调会自动修正 `newIndex`（等同于旧写法手动 `newIndex -= 1`），因此**同步删除了 3 处手动修正**（todo 页在 UI 层，快捷指令与固定日程在各自的 provider 内），否则会双重修正导致拖拽排序错位。
+    - **Changed**: `ListView.cacheExtent: 1500` → `scrollCacheExtent: ScrollCacheExtent.pixels(1500)`（新属性类型为 `ScrollCacheExtent` 而非 `double`，需额外导入 `package:flutter/rendering.dart`）。
+    - **Changed**: `SizeTransition.axisAlignment: -1.0` → `alignment: Alignment(-1.0, -1.0)`，按官方迁移公式（Axis.vertical 时为 `Alignment(-1.0, axisAlignment)`）等价替换。
+  - **Added**: AI 流式响应日志补上耗时字段 (`lib/core/ai/ai_service.dart`)。原先两处 `duration` 变量已计算但从未使用，属遗漏。
+  - **Fixed**: 桌面小组件通道的异常变量未使用，`catch (e)` 改为 `catch (_)` (`lib/core/utils/widget_utils.dart`)。
+  - **Note**: 静态分析问题数由 128 降至 102，其中 error 0 个、warning 由 20 降至 4（剩余 4 项为死代码与 Widget 标准 `key` 参数，未删除）。`DropdownButtonFormField.value` 的废弃警告**保留未迁移**：该下拉框由外部状态驱动，改用 `initialValue` 会导致选项不刷新。
+
 ## 2026-09-09
 
 - **#124**

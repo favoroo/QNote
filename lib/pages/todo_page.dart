@@ -6,7 +6,6 @@ import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
 import 'package:qnote_flutter/models/todo.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
-import 'package:qnote_flutter/widgets/empty_state.dart';
 import 'package:qnote_flutter/widgets/time_picker.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 
@@ -168,8 +167,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
         return ReorderableListView.builder(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 88),
           itemCount: filteredTodos.length,
-          onReorder: (oldIndex, newIndex) {
-            if (newIndex > oldIndex) newIndex -= 1;
+          onReorderItem: (oldIndex, newIndex) {
             final list = List<Todo>.from(filteredTodos);
             final item = list.removeAt(oldIndex);
             list.insert(newIndex, item);
@@ -574,7 +572,7 @@ class _TodoItemState extends State<_TodoItem> with SingleTickerProviderStateMixi
 
     return SizeTransition(
       sizeFactor: _heightFactor,
-      axisAlignment: -1.0,
+      alignment: Alignment(-1.0, -1.0),
       child: FadeTransition(
         opacity: _opacityAnimation,
         child: ScaleTransition(
