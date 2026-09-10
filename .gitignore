@@ -16,6 +16,7 @@ assets/fonts/SarasaMonoSC-*.ttf
 # ---- IDE 和编辑器配置 ----
 .idea/
 .vscode/
+*.iml
 *.swp
 *.swo
 *~
@@ -59,6 +60,22 @@ skills-lock.json
 .agents/
 .workbuddy/
 .qoder/
+.codebuddy/
+.claude/
+.codegraph/
+.mcp.json
+AGENTS.md
+CHANGELOG.md
+
+# ---- 个人开发/本地运维脚本与私有文档 ----
+01构建到手机命令.md
+send_email*.ps1
+sync_to_share.ps1
+一键归纳更新.bat
+test_ai_extract.py
+contest_registration.md
+免费模型配置操作手册.md
+tool/
 
 # ---- 参考文档（旧架构，体积较大）----
 01旧架构数据/
@@ -71,7 +88,6 @@ skills-lock.json
 *.key
 secrets.yaml
 email_config.json
-free_models.json
 
 # ---- Android 构建产物 ----
 android/app/build/
