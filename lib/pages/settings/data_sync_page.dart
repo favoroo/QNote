@@ -144,7 +144,7 @@ class _DataSyncPageState extends ConsumerState<DataSyncPage> {
     final colorScheme = theme.colorScheme;
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      margin: const EdgeInsets.fromLTRB(16, 6, 16, 10),
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
@@ -162,6 +162,15 @@ class _DataSyncPageState extends ConsumerState<DataSyncPage> {
                 decoration: BoxDecoration(
                   color: selected ? colorScheme.surface : Colors.transparent,
                   borderRadius: BorderRadius.circular(10),
+                  boxShadow: selected
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          ),
+                        ]
+                      : null,
                 ),
                 child: Text(
                   _tabLabels[index],
@@ -364,7 +373,7 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
             ),
           ],
         ),
-        const SizedBox(height: 28),
+        const SizedBox(height: 20),
         _SectionTitle(title: '云端恢复', theme: theme),
         _ActionGroup(
           children: [
@@ -372,7 +381,7 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
               icon: Icons.settings_backup_restore_rounded,
               title: '从云端恢复到本地',
               subtitle: '下载云端最新备份并覆盖本地（换机或重装时使用）',
-              color: Colors.red.shade400,
+              color: Colors.orange.shade700,
               onTap: _isRestoring ? null : _handleRestoreFromCloud,
               isLoading: _isRestoring,
             ),
@@ -565,6 +574,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final isSyncing = SyncScheduler.instance.status == SyncStatus.syncing;
 
     return ListView(
@@ -583,31 +593,34 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
               icon: Icons.cleaning_services_outlined,
               title: '清理旧备份文件',
               subtitle: '清理云端早期历史格式备份，释放网盘空间',
+              color: Colors.teal.shade600,
               onTap: isSyncing ? null : _cleanupOldBackups,
             ),
           ],
         ),
-        const SizedBox(height: 28),
+        const SizedBox(height: 20),
         _SectionTitle(title: '诊断', theme: theme),
         _ActionGroup(
           children: [
             _ActionTile(
-              icon: Icons.terminal,
+              icon: Icons.terminal_rounded,
               title: '查看运行日志',
               subtitle: '按级别筛选、复制日志，便于排查同步与导入导出问题',
+              color: colorScheme.onSurfaceVariant,
               onTap: _openLogViewer,
             ),
           ],
         ),
-        const SizedBox(height: 28),
+        const SizedBox(height: 20),
         _SectionTitle(title: '危险操作', theme: theme),
         _ActionGroup(
           children: [
             _ActionTile(
-              icon: Icons.delete_outline,
+              icon: Icons.delete_outline_rounded,
               title: '清空所有本地数据',
               subtitle: '删除全部日记、笔记、待办与配置，且不可恢复',
-              color: Colors.red,
+              color: colorScheme.error,
+              isDestructive: true,
               onTap: _isClearing ? null : _handleClearData,
               isLoading: _isClearing,
             ),
@@ -628,12 +641,13 @@ class _SectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 12),
+      padding: const EdgeInsets.only(left: 4, bottom: 8, top: 4),
       child: Text(
         title,
-        style: theme.textTheme.bodyMedium?.copyWith(
+        style: theme.textTheme.titleSmall?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,
           fontWeight: FontWeight.w600,
+          fontSize: 13,
         ),
       ),
     );
@@ -651,14 +665,32 @@ class _ActionGroup extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
+    final List<Widget> dividedChildren = [];
+    for (int i = 0; i < children.length; i++) {
+      dividedChildren.add(children[i]);
+      if (i < children.length - 1) {
+        dividedChildren.add(
+          Divider(
+            height: 1,
+            thickness: 0.8,
+            indent: 64,
+            endIndent: 16,
+            color: colorScheme.outlineVariant.withValues(alpha: 0.35),
+          ),
+        );
+      }
+    }
+
     return Container(
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: theme.cardColor,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
-      padding: const EdgeInsets.all(12),
-      child: Column(children: children),
+      child: Column(
+        children: dividedChildren,
+      ),
     );
   }
 }
@@ -671,6 +703,7 @@ class _ActionTile extends StatelessWidget {
     required this.subtitle,
     required this.onTap,
     this.color,
+    this.isDestructive = false,
     this.isLoading = false,
   });
 
@@ -679,64 +712,86 @@ class _ActionTile extends StatelessWidget {
   final String subtitle;
   final VoidCallback? onTap;
   final Color? color;
+  final bool isDestructive;
   final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final effectiveColor = color ?? colorScheme.primary;
+    final effectiveColor = color ?? (isDestructive ? colorScheme.error : colorScheme.primary);
     final enabled = onTap != null;
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: effectiveColor.withValues(alpha: enabled ? 0.08 : 0.04),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: effectiveColor.withValues(alpha: enabled ? 1 : 0.5), size: 20),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: effectiveColor.withValues(alpha: enabled ? 1 : 0.5),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant.withValues(alpha: enabled ? 0.8 : 0.4),
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              // 精致图标徽标
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: effectiveColor.withValues(alpha: enabled ? 0.1 : 0.05),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  icon,
+                  color: effectiveColor.withValues(alpha: enabled ? 1.0 : 0.4),
+                  size: 20,
+                ),
               ),
-            ),
-            if (isLoading)
-              SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2, color: effectiveColor),
-              )
-            else
-              Icon(
-                Icons.chevron_right,
-                color: effectiveColor.withValues(alpha: enabled ? 1 : 0.4),
-                size: 20,
+              const SizedBox(width: 14),
+              // 文本区域
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: isDestructive
+                            ? effectiveColor.withValues(alpha: enabled ? 1.0 : 0.5)
+                            : colorScheme.onSurface.withValues(alpha: enabled ? 1.0 : 0.5),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: enabled ? 0.8 : 0.4),
+                        fontSize: 12,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-          ],
+              const SizedBox(width: 8),
+              // 状态尾部
+              if (isLoading)
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation(effectiveColor),
+                  ),
+                )
+              else
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: (isDestructive ? effectiveColor : colorScheme.onSurfaceVariant)
+                      .withValues(alpha: enabled ? 0.4 : 0.2),
+                  size: 20,
+                ),
+            ],
+          ),
         ),
       ),
     );

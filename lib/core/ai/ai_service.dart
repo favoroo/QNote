@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:qnote_flutter/config/defaults.dart';
 import 'package:qnote_flutter/config/models.dart';
+import 'package:qnote_flutter/core/ai/builtin_free_keys.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
@@ -90,6 +91,22 @@ class AiService {
         .replaceAll(RegExp(r'/+$'), ''); // 去除末尾多余斜杠
   }
 
+  /// 为免费模型自动切换下一个备用 Key，并更新请求头
+  bool switchFreeModelKey() {
+    if (_config?.vendorId != 'free_model') return false;
+    final oldKey = _config!.apiKey;
+    final nextKey = FreeModelKeyManager.instance.rotateKeyOnFailure(oldKey);
+    if (nextKey == oldKey) {
+      return false;
+    }
+    _config = _config!.copyWith(apiKey: nextKey);
+    _dio.options.headers['Authorization'] = 'Bearer $nextKey';
+    LoggerService.instance.logAI(
+      '已成功自动切换 SenseNova 免费模型备用 API Key 并准备重试',
+    );
+    return true;
+  }
+
   Future<String> chat(List<ChatMessage> messages) async {
     if (_config == null) throw Exception('AI config not set');
 
@@ -99,7 +116,13 @@ class AiService {
       details: '模型=${_config!.modelName}, 消息数=${messages.length}',
     );
 
-    try {
+    int retryCount = 0;
+    final maxRetries = _config?.vendorId == 'free_model'
+        ? FreeModelKeyManager.instance.totalKeysCount
+        : 1;
+
+    while (true) {
+      try {
       dynamic requestBody;
       String endpoint = _chatEndpoint;
 
@@ -187,32 +210,47 @@ class AiService {
       );
 
       return result;
-    } catch (e, stackTrace) {
-      String details = stackTrace.toString();
-      if (e is DioException) {
-        final respData = e.response?.data;
-        final reqData = e.requestOptions.data;
-        final reqHeaders = e.requestOptions.headers;
-        final sanitizedReqData = _sanitizeRequestBodyForLogging(reqData);
-        debugPrint('=== AI REQUEST ERROR DIAGNOSTICS ===');
-        debugPrint('URL: ${e.requestOptions.uri}');
-        debugPrint('Headers: $reqHeaders');
-        debugPrint('Payload: ${_formatJsonForLogging(sanitizedReqData)}');
-        debugPrint('Response Status: ${e.response?.statusCode}');
-        if (respData != null) {
-          debugPrint('Response Data: ${_formatJsonForLogging(respData)}');
+      } catch (e, stackTrace) {
+        if (_config?.vendorId == 'free_model' &&
+            retryCount < maxRetries - 1 &&
+            FreeModelKeyManager.instance.isRecoverableError(e)) {
+          retryCount++;
+          final switched = switchFreeModelKey();
+          if (switched) {
+            LoggerService.instance.logAI(
+              '免费模型对话遭遇限速/鉴权异常，已自动切换 API Key 并发起第 $retryCount 次重试',
+              level: LogLevel.warning,
+            );
+            continue;
+          }
         }
-        debugPrint('====================================');
-        if (respData != null) {
-          details = 'Response Body: $respData\n\n$details';
+
+        String details = stackTrace.toString();
+        if (e is DioException) {
+          final respData = e.response?.data;
+          final reqData = e.requestOptions.data;
+          final reqHeaders = e.requestOptions.headers;
+          final sanitizedReqData = _sanitizeRequestBodyForLogging(reqData);
+          debugPrint('=== AI REQUEST ERROR DIAGNOSTICS ===');
+          debugPrint('URL: ${e.requestOptions.uri}');
+          debugPrint('Headers: $reqHeaders');
+          debugPrint('Payload: ${_formatJsonForLogging(sanitizedReqData)}');
+          debugPrint('Response Status: ${e.response?.statusCode}');
+          if (respData != null) {
+            debugPrint('Response Data: ${_formatJsonForLogging(respData)}');
+          }
+          debugPrint('====================================');
+          if (respData != null) {
+            details = 'Response Body: $respData\n\n$details';
+          }
         }
+        LoggerService.instance.logAI(
+          '同步对话失败: $e',
+          level: LogLevel.error,
+          details: details,
+        );
+        rethrow;
       }
-      LoggerService.instance.logAI(
-        '同步对话失败: $e',
-        level: LogLevel.error,
-        details: details,
-      );
-      rethrow;
     }
   }
 
@@ -672,85 +710,105 @@ class AiService {
       'AI统一提取请求 [${_config!.provider}] [${_config!.modelName}] $_generateContentEndpoint:\n${_formatJsonForLogging(sanitizedBody)}',
     );
 
-    try {
-      final response = await _dio.post(
-        _generateContentEndpoint,
-        data: requestBody,
-        cancelToken: cancelToken,
-      );
-      // 检测推理模型是否因 max_tokens 不足导致输出截断
-      final finishReason = _extractFinishReason(response.data);
-      if (finishReason == 'length') {
-        LoggerService.instance.logAI(
-          '⚠️ AI响应被截断 (finish_reason: length)，当前 max_tokens=$_maxTokens 可能不够推理模型使用',
-          level: LogLevel.warning,
+    int retryCount = 0;
+    final maxRetries = _config?.vendorId == 'free_model'
+        ? FreeModelKeyManager.instance.totalKeysCount
+        : 1;
+
+    while (true) {
+      try {
+        final response = await _dio.post(
+          _generateContentEndpoint,
+          data: requestBody,
+          cancelToken: cancelToken,
         );
-      }
+        // 检测推理模型是否因 max_tokens 不足导致输出截断
+        final finishReason = _extractFinishReason(response.data);
+        if (finishReason == 'length') {
+          LoggerService.instance.logAI(
+            '⚠️ AI响应被截断 (finish_reason: length)，当前 max_tokens=$_maxTokens 可能不够推理模型使用',
+            level: LogLevel.warning,
+          );
+        }
 
-      final content = _extractTextFromResponse(response.data);
-      LoggerService.instance.logAI(
-        'AI统一提取响应:\n${_formatJsonForLogging(response.data)}',
-      );
+        final content = _extractTextFromResponse(response.data);
+        LoggerService.instance.logAI(
+          'AI统一提取响应:\n${_formatJsonForLogging(response.data)}',
+        );
 
-      final jsonResult = _parseJsonFromAiContent(content);
-      LoggerService.instance.logAI(
-        '统一提取完成',
-        details: '结果数量=${jsonResult is List ? jsonResult.length : 1}',
-      );
+        final jsonResult = _parseJsonFromAiContent(content);
+        LoggerService.instance.logAI(
+          '统一提取完成',
+          details: '结果数量=${jsonResult is List ? jsonResult.length : 1}',
+        );
 
-      List<Map<String, dynamic>> results;
-      if (jsonResult is List) {
-        results = jsonResult.cast<Map<String, dynamic>>();
-      } else if (jsonResult is Map<String, dynamic>) {
-        if (jsonResult['message'] == 'NO_USEFUL_INFO') {
+        List<Map<String, dynamic>> results;
+        if (jsonResult is List) {
+          results = jsonResult.cast<Map<String, dynamic>>();
+        } else if (jsonResult is Map<String, dynamic>) {
+          if (jsonResult['message'] == 'NO_USEFUL_INFO') {
+            LoggerService.instance.logAI(
+              '统一提取完成',
+              details: 'AI返回NO_USEFUL_INFO，未提取到有用信息',
+            );
+            return [];
+          }
+          List<Map<String, dynamic>>? foundList;
+          if (jsonResult['tags'] is List &&
+              (jsonResult['tags'] as List).every((e) => e is Map)) {
+            foundList = (jsonResult['tags'] as List).cast<Map<String, dynamic>>();
+          } else if (jsonResult['results'] is List &&
+              (jsonResult['results'] as List).every((e) => e is Map)) {
+            foundList = (jsonResult['results'] as List)
+                .cast<Map<String, dynamic>>();
+          } else {
+            for (final entry in jsonResult.entries) {
+              final val = entry.value;
+              if (val is List && val.every((e) => e is Map)) {
+                foundList = val.cast<Map<String, dynamic>>();
+                break;
+              }
+            }
+          }
+          if (foundList != null) {
+            results = foundList;
+          } else {
+            results = [jsonResult];
+          }
+        } else {
+          results = [];
+        }
+
+        if (results.isEmpty) {
           LoggerService.instance.logAI(
             '统一提取完成',
-            details: 'AI返回NO_USEFUL_INFO，未提取到有用信息',
+            details: '结果为空，未提取到有用信息',
           );
           return [];
         }
-        List<Map<String, dynamic>>? foundList;
-        if (jsonResult['tags'] is List &&
-            (jsonResult['tags'] as List).every((e) => e is Map)) {
-          foundList = (jsonResult['tags'] as List).cast<Map<String, dynamic>>();
-        } else if (jsonResult['results'] is List &&
-            (jsonResult['results'] as List).every((e) => e is Map)) {
-          foundList = (jsonResult['results'] as List)
-              .cast<Map<String, dynamic>>();
-        } else {
-          for (final entry in jsonResult.entries) {
-            final val = entry.value;
-            if (val is List && val.every((e) => e is Map)) {
-              foundList = val.cast<Map<String, dynamic>>();
-              break;
-            }
+
+        return results.map(_convertSimplifiedExtractResult).toList();
+      } catch (e, stackTrace) {
+        if (_config?.vendorId == 'free_model' &&
+            retryCount < maxRetries - 1 &&
+            FreeModelKeyManager.instance.isRecoverableError(e)) {
+          retryCount++;
+          final switched = switchFreeModelKey();
+          if (switched) {
+            LoggerService.instance.logAI(
+              '免费模型日记提取遭遇限速/鉴权异常，已自动切换 API Key 并发起第 $retryCount 次重试',
+              level: LogLevel.warning,
+            );
+            continue;
           }
         }
-        if (foundList != null) {
-          results = foundList;
-        } else {
-          results = [jsonResult];
-        }
-      } else {
-        results = [];
-      }
-
-      if (results.isEmpty) {
         LoggerService.instance.logAI(
-          '统一提取完成',
-          details: '结果为空，未提取到有用信息',
+          '统一提取失败: $e',
+          level: LogLevel.error,
+          details: stackTrace.toString(),
         );
-        return [];
+        rethrow;
       }
-
-      return results.map(_convertSimplifiedExtractResult).toList();
-    } catch (e, stackTrace) {
-      LoggerService.instance.logAI(
-        '统一提取失败: $e',
-        level: LogLevel.error,
-        details: stackTrace.toString(),
-      );
-      rethrow;
     }
   }
 

@@ -212,7 +212,7 @@ final aiProviders = <AiProviderConfig>[
     provider: 'openai',
     defaultBaseUrl: 'https://token.sensenova.cn/v1',
     models: [
-      'sensenova-6.7-flash-lite',
+      'sensenova-6.8-flash-lite',
       'deepseek-v4-flash',
     ],
     modelsEndpoint: '/v1/models',

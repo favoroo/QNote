@@ -957,7 +957,7 @@ class _AiPageState extends ConsumerState<AiPage> {
   }
 
   String _getActiveConfigName(List<AiConfig> configs) {
-    if (_activeModelId == '__free_model__') return '免费模型';
+    if (_activeModelId == '__free_model__') return 'QNote内置模型';
     if (_activeModelId == null) return '默认';
     final config = configs.where((c) => c.id == _activeModelId).firstOrNull;
     return config?.name ?? '默认';
@@ -2078,14 +2078,14 @@ class _ModelSelectorDialog extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '免费模型',
+                      'QNote内置模型',
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
                         color: isFreeActive ? theme.colorScheme.primary : null,
                       ),
                     ),
                     Text(
-                      '自动切换并重试',
+                      '多节点轮询与自动容灾',
                       style: TextStyle(
                         fontSize: 11,
                         color: theme.colorScheme.onSurfaceVariant,

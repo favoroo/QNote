@@ -1057,7 +1057,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       );
       await AiRoleService.instance.saveRoles(newRoles);
       if (mounted) {
-        final displayName = isFree ? '免费模型' : (configs.firstWhere((c) => c.id == selectedId, orElse: () => configs.first).name);
+        final displayName = isFree ? 'QNote内置模型' : (configs.firstWhere((c) => c.id == selectedId, orElse: () => configs.first).name);
         Toast.success(
           context,
           '已切换：$displayName',

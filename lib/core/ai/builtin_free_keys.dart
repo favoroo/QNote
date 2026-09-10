@@ -1,0 +1,194 @@
+import 'package:dio/dio.dart';
+import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/models/free_model_config.dart';
+
+/// 内置加密免费模型密钥库
+///
+/// 密钥在代码与编译产物中均以掩码字节数组保存，杜绝明文字符串，
+/// 在运行时动态还原，为应用提供开箱即用（离线/导出 APK 即可使用）的免费模型支持。
+class BuiltinFreeKeys {
+  BuiltinFreeKeys._();
+
+  // 掩码混淆保存的 SenseNova API Keys（无任何明文字符串）
+  static const List<int> _k0 = [
+    44, 158, 93, 227, 202, 13, 154, 158, 53, 30, 170, 99, 24, 200, 15, 112,
+    238, 16, 195, 86, 137, 34, 240, 176, 4, 158, 79, 148, 242, 76, 180, 214,
+    139, 27, 185
+  ];
+  static const List<int> _k1 = [
+    44, 158, 93, 156, 228, 51, 164, 199, 102, 61, 145, 73, 57, 229, 65, 88,
+    223, 95, 203, 16, 187, 69, 174, 192, 36, 201, 92, 138, 204, 79, 159, 237,
+    177, 103, 232
+  ];
+  static const List<int> _k2 = [
+    44, 158, 93, 160, 220, 112, 216, 239, 86, 42, 153, 120, 46, 227, 78, 103,
+    195, 109, 210, 23, 186, 38, 168, 147, 56, 136, 76, 132, 201, 8, 149, 236,
+    137, 50, 227
+  ];
+  static const List<int> _k3 = [
+    44, 158, 93, 143, 132, 117, 155, 246, 81, 124, 143, 99, 62, 197, 98, 78,
+    152, 108, 145, 63, 180, 113, 235, 164, 56, 136, 64, 175, 215, 10, 172, 253,
+    143, 38, 135
+  ];
+
+  static const List<List<int>> _allEncoded = [_k0, _k1, _k2, _k3];
+
+  /// 掩码向量
+  static const List<int> _mask = [0x7A, 0xC5, 0x4B, 0x93, 0xE2, 0x1F, 0x88, 0xD4];
+
+  /// 动态还原单个 API Key
+  static String _decode(List<int> bytes) {
+    final plain = <int>[];
+    for (int i = 0; i < bytes.length; i++) {
+      plain.add(bytes[i] ^ _mask[i % _mask.length] ^ ((i * 11 + 37) & 0xFF));
+    }
+    return String.fromCharCodes(plain);
+  }
+
+  /// 获取所有解密后的 SenseNova API Key 列表
+  static List<String> getDecryptedKeys() {
+    return _allEncoded.map(_decode).toList();
+  }
+
+  /// 创建内置的默认 SenseNova 6.8 模型配置
+  static FreeModelConfig createDefaultConfig([String? apiKey]) {
+    final effectiveKey = apiKey ?? FreeModelKeyManager.instance.acquireNextKey();
+    return FreeModelConfig(
+      id: 'sensenova-flash-lite',
+      displayName: 'SenseNova Flash Lite',
+      provider: 'openai',
+      baseUrl: 'https://token.sensenova.cn/v1',
+      modelName: 'sensenova-6.8-flash-lite',
+      obfuscatedApiKey: effectiveKey,
+      authType: 'bearer',
+      priority: 0,
+    );
+  }
+}
+
+/// 免费模型 API Key 轮询与故障转移管理器
+///
+/// 1. 轮批使用（Round-Robin）：维护全局递增游标，打散日常请求，降低触发限速概率；
+/// 2. 限速与故障转移（Failover）：识别 429 限速与鉴权错误，遇到限速自动切换下一个备用 Key 并重试。
+class FreeModelKeyManager {
+  static final FreeModelKeyManager _instance = FreeModelKeyManager._internal();
+  static FreeModelKeyManager get instance => _instance;
+  FreeModelKeyManager._internal();
+
+  /// 维护全部可用 Key 池
+  List<String> _keys = BuiltinFreeKeys.getDecryptedKeys();
+
+  /// 轮询游标
+  int _cursor = 0;
+
+  /// Key 冷却记录（记录被标记限速的时间戳）
+  final Map<String, DateTime> _rateLimitedKeys = {};
+
+  /// 冷却时间（10分钟后自动解除冷却状态）
+  static const Duration _cooldownDuration = Duration(minutes: 10);
+
+  /// 更新 Key 池（支持与外部远程清单扩展融合）
+  void updateKeys(List<String> newKeys) {
+    if (newKeys.isEmpty) return;
+    final merged = <String>{...newKeys, ...BuiltinFreeKeys.getDecryptedKeys()}.toList();
+    _keys = merged;
+  }
+
+  /// 当前 Key 池总容量
+  int get totalKeysCount => _keys.length;
+
+  /// 轮询获取下一个 API Key
+  String acquireNextKey() {
+    if (_keys.isEmpty) {
+      _keys = BuiltinFreeKeys.getDecryptedKeys();
+    }
+    _cleanExpiredCooldowns();
+
+    // 优先选择未处于冷却状态的 Key
+    for (int i = 0; i < _keys.length; i++) {
+      final key = _keys[(_cursor + i) % _keys.length];
+      if (!_rateLimitedKeys.containsKey(key)) {
+        _cursor = (_cursor + i + 1) % _keys.length;
+        return key;
+      }
+    }
+
+    // 若全部均处于冷却，则直接顺位返回，避免不可用
+    final key = _keys[_cursor % _keys.length];
+    _cursor = (_cursor + 1) % _keys.length;
+    return key;
+  }
+
+  /// 标记某个 Key 发生限速或故障，并返回下一个备用 Key
+  String rotateKeyOnFailure(String failedKey) {
+    _rateLimitedKeys[failedKey] = DateTime.now();
+    LoggerService.instance.logAI(
+      'SenseNova 免费 Key 发生限速或调用失败，自动加入冷却并切换下一个 Key',
+      level: LogLevel.warning,
+      details: '受限 Key: ${_maskKey(failedKey)}, 当前受限总数: ${_rateLimitedKeys.length}/${_keys.length}',
+    );
+
+    // 寻找下一个未处于冷却状态的 Key
+    for (int i = 0; i < _keys.length; i++) {
+      final key = _keys[(_cursor + i) % _keys.length];
+      if (key != failedKey && !_rateLimitedKeys.containsKey(key)) {
+        _cursor = (_cursor + i + 1) % _keys.length;
+        return key;
+      }
+    }
+
+    // 备用：返回与 failedKey 不同的下一个 Key
+    for (int i = 0; i < _keys.length; i++) {
+      final key = _keys[(_cursor + i) % _keys.length];
+      if (key != failedKey) {
+        _cursor = (_cursor + i + 1) % _keys.length;
+        return key;
+      }
+    }
+
+    return failedKey;
+  }
+
+  /// 清理已过期的限速冷却记录
+  void _cleanExpiredCooldowns() {
+    final now = DateTime.now();
+    _rateLimitedKeys.removeWhere((_, time) => now.difference(time) > _cooldownDuration);
+  }
+
+  /// 判定是否属于可故障转移并重试的错误（限速 429、鉴权失效 401、服务端拥塞等）
+  bool isRecoverableError(dynamic error) {
+    if (error == null) return false;
+    if (error is DioException) {
+      final statusCode = error.response?.statusCode;
+      if (statusCode == 429 || statusCode == 401 || statusCode == 503 || statusCode == 502) {
+        return true;
+      }
+      final respData = error.response?.data?.toString().toLowerCase() ?? '';
+      if (respData.contains('rate limit') ||
+          respData.contains('rate_limit') ||
+          respData.contains('qps') ||
+          respData.contains('concurrency') ||
+          respData.contains('quota') ||
+          respData.contains('配额') ||
+          respData.contains('超限')) {
+        return true;
+      }
+    }
+    final errorStr = error.toString().toLowerCase();
+    if (errorStr.contains('429') ||
+        errorStr.contains('rate limit') ||
+        errorStr.contains('qps limit') ||
+        errorStr.contains('concurrency limit') ||
+        errorStr.contains('配额不足') ||
+        errorStr.contains('频率限制')) {
+      return true;
+    }
+    return false;
+  }
+
+  /// 密钥脱敏显示（用于日志）
+  String _maskKey(String key) {
+    if (key.length <= 8) return '***';
+    return '${key.substring(0, 4)}...${key.substring(key.length - 4)}';
+  }
+}

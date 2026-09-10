@@ -31,6 +31,8 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   final _weightController = TextEditingController();
   final _ageController = TextEditingController();
   final _otherInfoController = TextEditingController();
+  final _scrollController = ScrollController();
+  final _weightInputFocusNode = FocusNode();
   final Map<String, TextEditingController> _customFieldControllers = {};
   DateTime? _birthday;
   String? _gender;
@@ -46,6 +48,9 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   @override
   void initState() {
     super.initState();
+    _weightInputFocusNode.addListener(() {
+      if (mounted) setState(() {});
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadProfile());
   }
 
@@ -85,20 +90,39 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     }
   }
 
-  void _toggleWeightUnit() async {
-    final newUnit = _weightUnit == 'kg' ? '斤' : 'kg';
+  Future<void> _setWeightUnit(String unit) async {
+    if (_weightUnit == unit) return;
     setState(() {
-      _weightUnit = newUnit;
+      _weightUnit = unit;
     });
     try {
-      await ConfigRepository.instance.setAppConfig('weight_unit', newUnit);
+      await ConfigRepository.instance.setAppConfig('weight_unit', unit);
     } catch (e) {
       debugPrint('保存体重单位偏好失败: $e');
     }
   }
 
+  void _toggleWeightUnit() {
+    _setWeightUnit(_weightUnit == 'kg' ? '斤' : 'kg');
+  }
+
+  void _focusWeightInput() {
+    _weightInputFocusNode.requestFocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          120,
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    });
+  }
+
   @override
   void dispose() {
+    _scrollController.dispose();
+    _weightInputFocusNode.dispose();
     _nicknameController.dispose();
     _heightController.dispose();
     _weightController.dispose();
@@ -317,6 +341,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
         behavior: HitTestBehavior.translucent,
         onTap: () => FocusScope.of(context).unfocus(),
         child: ListView(
+          controller: _scrollController,
           padding: const EdgeInsets.all(20),
           children: [
             _buildIdentityCard(theme),
@@ -505,7 +530,6 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                   textInputAction: TextInputAction.next,
                   decoration: const InputDecoration(
                     labelText: '身高',
-                    hintText: '173',
                     suffixText: 'cm',
                     floatingLabelBehavior: FloatingLabelBehavior.always,
                     contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -514,24 +538,32 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: GestureDetector(
-                  onTap: _toggleWeightUnit,
-                  behavior: HitTestBehavior.opaque,
-                  child: InputDecorator(
-                    decoration: const InputDecoration(
-                      labelText: '最新体重',
-                      floatingLabelBehavior: FloatingLabelBehavior.always,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                    ),
-                    child: Text(
-                      _latestWeight != null
-                          ? '${_weightUnit == '斤' ? (_latestWeight! * 2).toStringAsFixed(1) : _latestWeight!.toStringAsFixed(1)} $_weightUnit'
-                          : '未记录',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w500,
-                        color: _latestWeight != null
-                            ? theme.colorScheme.onSurface
-                            : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: _focusWeightInput,
+                    borderRadius: BorderRadius.circular(12),
+                    child: InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: '最新体重',
+                        floatingLabelBehavior: FloatingLabelBehavior.always,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        suffixIcon: Icon(
+                          Icons.edit_note_rounded,
+                          size: 20,
+                          color: theme.colorScheme.primary.withValues(alpha: 0.8),
+                        ),
+                      ),
+                      child: Text(
+                        _latestWeight != null
+                            ? '${_weightUnit == '斤' ? (_latestWeight! * 2).toStringAsFixed(1) : _latestWeight!.toStringAsFixed(1)} $_weightUnit'
+                            : '点击记录',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w500,
+                          color: _latestWeight != null
+                              ? theme.colorScheme.onSurface
+                              : theme.colorScheme.primary.withValues(alpha: 0.8),
+                        ),
                       ),
                     ),
                   ),
@@ -591,6 +623,60 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     );
   }
 
+  Widget _buildUnitToggle(ThemeData theme) {
+    final isJin = _weightUnit == '斤';
+    return Container(
+      height: 28,
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildUnitOption(theme, '斤', isJin),
+          _buildUnitOption(theme, 'kg', !isJin),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUnitOption(ThemeData theme, String unit, bool isSelected) {
+    return GestureDetector(
+      onTap: () => _setWeightUnit(unit),
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: isSelected ? theme.colorScheme.surface : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.06),
+                    blurRadius: 3,
+                    offset: const Offset(0, 1),
+                  ),
+                ]
+              : null,
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          unit,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+            color: isSelected
+                ? theme.colorScheme.primary
+                : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildHealthCard(ThemeData theme) {
     final profile = ref.watch(userProfileNotifierProvider);
     final weightHistory = profile != null ? profile.weightHistory : <dynamic>[];
@@ -622,36 +708,46 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                   ),
                 ],
               ),
-              GestureDetector(
-                onTap: () => setState(() => _showWeightHistory = !_showWeightHistory),
-                child: Row(
-                  children: [
-                    Icon(
-                      _showWeightHistory ? Icons.keyboard_arrow_up : Icons.history,
-                      size: 16,
-                      color: theme.colorScheme.primary,
+              Row(
+                children: [
+                  _buildUnitToggle(theme),
+                  const SizedBox(width: 10),
+                  GestureDetector(
+                    onTap: () => setState(() => _showWeightHistory = !_showWeightHistory),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _showWeightHistory ? Icons.keyboard_arrow_up : Icons.history,
+                          size: 16,
+                          color: theme.colorScheme.primary,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          _showWeightHistory ? '收起历史' : '历史记录',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      _showWeightHistory ? '收起历史' : '历史记录',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ],
           ),
           const SizedBox(height: 12),
           // Weight Input Bar
-          Container(
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
             decoration: BoxDecoration(
               color: theme.colorScheme.surfaceContainerLow,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.8),
+                color: _weightInputFocusNode.hasFocus
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.outlineVariant.withValues(alpha: 0.8),
+                width: _weightInputFocusNode.hasFocus ? 1.5 : 1.0,
               ),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -691,6 +787,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                 Expanded(
                   child: TextField(
                     controller: _weightController,
+                    focusNode: _weightInputFocusNode,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
                     textInputAction: TextInputAction.done,
@@ -703,10 +800,10 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                       border: InputBorder.none,
                       isDense: true,
                       suffix: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
                         onTap: _toggleWeightUnit,
+                        behavior: HitTestBehavior.opaque,
                         child: Padding(
-                          padding: const EdgeInsets.only(left: 8, right: 4),
+                          padding: const EdgeInsets.only(left: 6, right: 4),
                           child: Text(
                             _weightUnit,
                             style: theme.textTheme.bodyMedium?.copyWith(

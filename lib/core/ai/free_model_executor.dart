@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:qnote_flutter/core/ai/ai_service.dart';
+import 'package:qnote_flutter/core/ai/builtin_free_keys.dart';
 import 'package:qnote_flutter/core/ai/free_model_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
@@ -80,47 +81,65 @@ class FreeModelExecutor {
       LoggerService.instance.logAI(
         '免费模型流式调用 [${i + 1}/${ordered.length}]: ${model.displayName}',
       );
-      final config = FreeModelService.instance.toAiConfig(model);
-      aiService.updateConfig(config,
-          temperature: temperature, maxTokens: maxTokens);
 
-      final stream = aiService.chatStream(messages);
-      final iterator = StreamIterator(stream);
+      final maxKeyRetries = FreeModelKeyManager.instance.totalKeysCount;
+      int keyRetry = 0;
 
-      // 阶段1：尝试建立连接并获取第一个 chunk
-      bool hasFirstChunk;
-      try {
-        hasFirstChunk = await iterator.moveNext();
-      } catch (e) {
-        lastError = e;
-        LoggerService.instance.logAI(
-          '免费模型流式连接失败: ${model.displayName}',
-          details: e.toString(),
-          level: LogLevel.warning,
-        );
-        await iterator.cancel();
-        continue; // 连接阶段失败，切换到下一个模型
-      }
+      while (keyRetry < maxKeyRetries) {
+        final config = FreeModelService.instance.toAiConfig(model);
+        aiService.updateConfig(config,
+            temperature: temperature, maxTokens: maxTokens);
 
-      // 阶段2：连接成功，开始消费流
-      try {
-        while (hasFirstChunk) {
-          yield iterator.current;
+        final stream = aiService.chatStream(messages);
+        final iterator = StreamIterator(stream);
+
+        // 阶段1：尝试建立连接并获取第一个 chunk
+        bool hasFirstChunk;
+        try {
           hasFirstChunk = await iterator.moveNext();
+        } catch (e) {
+          lastError = e;
+          await iterator.cancel();
+          if (FreeModelKeyManager.instance.isRecoverableError(e) &&
+              keyRetry < maxKeyRetries - 1) {
+            keyRetry++;
+            final switched = aiService.switchFreeModelKey();
+            if (switched) {
+              LoggerService.instance.logAI(
+                '免费模型流式连接限速/出错，自动切换备用 Key 重试 [$keyRetry/$maxKeyRetries]',
+                level: LogLevel.warning,
+              );
+              continue;
+            }
+          }
+          LoggerService.instance.logAI(
+            '免费模型流式连接失败: ${model.displayName}',
+            details: e.toString(),
+            level: LogLevel.warning,
+          );
+          break; // 当前模型所有 Key 均失败或发生不可恢复错误，尝试下一个模型
         }
-        LoggerService.instance.logAI(
-          '免费模型流式调用成功: ${model.displayName}',
-        );
-        return; // 成功完成，退出
-      } catch (e) {
-        // 流式阶段失败，不切换，直接抛异常
-        LoggerService.instance.logAI(
-          '免费模型流式中断: ${model.displayName}',
-          details: e.toString(),
-          level: LogLevel.warning,
-        );
-        await iterator.cancel();
-        rethrow;
+
+        // 阶段2：连接成功，开始消费流
+        try {
+          while (hasFirstChunk) {
+            yield iterator.current;
+            hasFirstChunk = await iterator.moveNext();
+          }
+          LoggerService.instance.logAI(
+            '免费模型流式调用成功: ${model.displayName}',
+          );
+          return; // 成功完成，退出
+        } catch (e) {
+          // 流式阶段失败，不切换，直接抛异常
+          LoggerService.instance.logAI(
+            '免费模型流式中断: ${model.displayName}',
+            details: e.toString(),
+            level: LogLevel.warning,
+          );
+          await iterator.cancel();
+          rethrow;
+        }
       }
     }
     throw Exception('所有免费模型流式连接失败: $lastError');

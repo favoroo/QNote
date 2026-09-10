@@ -122,7 +122,7 @@ class _ModelFreeItem extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '免费模型',
+                      'QNote内置模型',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: isSelected
                             ? FontWeight.bold
@@ -133,7 +133,7 @@ class _ModelFreeItem extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      '自动切换并重试',
+                      '多节点轮询与自动容灾',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: colorScheme.onSurfaceVariant,
                       ),

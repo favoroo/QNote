@@ -63,7 +63,7 @@ class AiRoleSettings {
 
   const AiRoleSettings({
     this.temperature = 0.7,
-    this.maxTokens = 2048,
+    this.maxTokens = 4096,
     this.extractImages = false,
   });
 
@@ -78,7 +78,7 @@ class AiRoleSettings {
   factory AiRoleSettings.fromMap(Map<String, dynamic> map) {
     return AiRoleSettings(
       temperature: (map['temperature'] as num?)?.toDouble() ?? 0.7,
-      maxTokens: map['maxTokens'] as int? ?? 2048,
+      maxTokens: map['maxTokens'] as int? ?? 4096,
       extractImages: map['extractImages'] as bool? ?? false,
     );
   }
@@ -101,7 +101,7 @@ class AiTemperatures {
   final AiRoleSettings timelineOptimization;
 
   const AiTemperatures({
-    this.assistant = const AiRoleSettings(),
+    this.assistant = const AiRoleSettings(maxTokens: 4096),
     this.timelineOptimization = const AiRoleSettings(
       temperature: 0.01,
       // 推理模型（如 SenseNova、DeepSeek-R1）需要足够 token 预算给思维链 + JSON 输出
@@ -111,6 +111,17 @@ class AiTemperatures {
     ),
   });
 
+  AiTemperatures copyWith({
+    AiRoleSettings? assistant,
+    AiRoleSettings? timelineOptimization,
+  }) {
+    return AiTemperatures(
+      assistant: assistant ?? this.assistant,
+      timelineOptimization:
+          timelineOptimization ?? this.timelineOptimization,
+    );
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'assistant': assistant.toMap(),
@@ -119,23 +130,25 @@ class AiTemperatures {
   }
 
   factory AiTemperatures.fromMap(Map<String, dynamic> map) {
-    return AiTemperatures(
-      assistant: map['assistant'] != null
-          ? AiRoleSettings.fromMap(map['assistant'] as Map<String, dynamic>)
-          : const AiRoleSettings(),
-      timelineOptimization: map['timelineOptimization'] != null
-          ? AiRoleSettings.fromMap(map['timelineOptimization'] as Map<String, dynamic>)
-          : const AiRoleSettings(),
-    );
-  }
+    var assistantSettings = map['assistant'] != null
+        ? AiRoleSettings.fromMap(map['assistant'] as Map<String, dynamic>)
+        : const AiRoleSettings(maxTokens: 4096);
+    // 提问助手场景（长文分析/思维链）将老用户的 2048 预算平滑提升至 4096，避免截断
+    if (assistantSettings.maxTokens < 4096) {
+      assistantSettings = assistantSettings.copyWith(maxTokens: 4096);
+    }
 
-  AiTemperatures copyWith({
-    AiRoleSettings? assistant,
-    AiRoleSettings? timelineOptimization,
-  }) {
+    final timelineSettings = map['timelineOptimization'] != null
+        ? AiRoleSettings.fromMap(map['timelineOptimization'] as Map<String, dynamic>)
+        : const AiRoleSettings(
+            temperature: 0.01,
+            maxTokens: 2048,
+            extractImages: true,
+          );
+
     return AiTemperatures(
-      assistant: assistant ?? this.assistant,
-      timelineOptimization: timelineOptimization ?? this.timelineOptimization,
+      assistant: assistantSettings,
+      timelineOptimization: timelineSettings,
     );
   }
 

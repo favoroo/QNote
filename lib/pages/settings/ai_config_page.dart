@@ -7,11 +7,11 @@ import 'package:uuid/uuid.dart';
 import 'package:dio/dio.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
-import 'package:qnote_flutter/models/free_model_config.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/config/models.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/ai/builtin_free_keys.dart';
 import 'package:qnote_flutter/core/ai/free_model_service.dart';
 import 'package:qnote_flutter/core/ai/model_fetch_service.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
@@ -43,14 +43,10 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   bool _fetchMessageIsError = false;
   SharedPreferences? _prefs;
 
-  // 免费模型相关状态
-  List<FreeModelConfig> _freeModels = [];
-  DateTime? _freeModelsLastUpdate;
-  String? _selectedFreeModelId;
-  bool _isUpdatingFreeModels = false;
-  bool _freeBatchTesting = false;
-  final Map<String, bool> _freeModelTestingMap = {};
-  final Map<String, String> _freeModelLatencyMap = {};
+  // QNote内置模型相关状态
+  bool _builtinTesting = false;
+  String? _builtinLatency;
+  bool? _builtinTestSuccess;
 
   Future<SharedPreferences> _getPrefs() async {
     _prefs ??= await SharedPreferences.getInstance();
@@ -67,129 +63,63 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   }
 
   Future<void> _loadFreeModels() async {
-    final models = await FreeModelService.instance.getCachedModels();
-    final lastUpdate = await FreeModelService.instance.getLastUpdateTime();
     final selectedId = await AiRoleService.instance.getPreferredFreeModelId();
-    if (mounted) {
-      setState(() {
-        _freeModels = models;
-        _freeModelsLastUpdate = lastUpdate;
-        _selectedFreeModelId = selectedId;
-        // 如果已选主模型不存在于当前的免费模型列表中，或者为 null，则默认选中第一个免费模型并保存
-        if (_freeModels.isNotEmpty) {
-          final hasSelected = _freeModels.any((m) => m.id == _selectedFreeModelId);
-          if (!hasSelected) {
-            _selectedFreeModelId = _freeModels.first.id;
-            _saveSelectedFreeModel(_selectedFreeModelId);
-          }
-        } else {
-          _selectedFreeModelId = null;
-        }
-      });
-
-      // 如果列表仍然为空，自动触发一次网络更新
-      if (_freeModels.isEmpty && !_isUpdatingFreeModels) {
-        _updateFreeModels();
-      }
+    if (selectedId == null) {
+      await AiRoleService.instance.savePreferredFreeModelId('sensenova-flash-lite');
     }
   }
 
-  Future<void> _updateFreeModels() async {
-    if (_isUpdatingFreeModels) return;
-    setState(() => _isUpdatingFreeModels = true);
-    try {
-      final manifest = await FreeModelService.instance.fetchRemoteManifest();
-      if (mounted) {
-        setState(() {
-          _freeModels = manifest.models;
-          _freeModelsLastUpdate = DateTime.now();
-          // 如果已选主模型不存在于新获取的免费模型列表中，或者为 null，则默认选中第一个
-          if (_freeModels.isNotEmpty) {
-            final hasSelected = _freeModels.any((m) => m.id == _selectedFreeModelId);
-            if (!hasSelected) {
-              _selectedFreeModelId = _freeModels.first.id;
-              _saveSelectedFreeModel(_selectedFreeModelId);
-            }
-          } else {
-            _selectedFreeModelId = null;
-            _saveSelectedFreeModel(null);
-          }
-        });
-        Toast.success(context, '免费模型更新成功（${manifest.models.length}个）');
+  /// 测试 QNote 内置模型连通性（只要 Key 池中任一连通成功即视为测试成功）
+  Future<void> _testBuiltinModel() async {
+    if (_builtinTesting) return;
+    setState(() {
+      _builtinTesting = true;
+      _builtinLatency = null;
+      _builtinTestSuccess = null;
+    });
+
+    final keys = BuiltinFreeKeys.getDecryptedKeys();
+    final candidateKeys = keys.isNotEmpty
+        ? keys
+        : [FreeModelKeyManager.instance.acquireNextKey()];
+
+    Object? lastError;
+    int? elapsedMs;
+
+    for (final key in candidateKeys) {
+      try {
+        final service = AiService();
+        final config = FreeModelService.instance.toAiConfig(
+          BuiltinFreeKeys.createDefaultConfig(key),
+          explicitApiKey: key,
+        );
+        service.updateConfig(config);
+        final sw = Stopwatch()..start();
+        await service.chat([
+          ChatMessage(role: 'user', content: 'Hi', timestamp: DateTime.now()),
+        ]);
+        sw.stop();
+        elapsedMs = sw.elapsedMilliseconds;
+        break; // 只要有一个连通成功就算测试成功
+      } catch (e) {
+        lastError = e;
       }
-    } catch (e) {
-      if (mounted) {
-        Toast.error(context, '更新失败: $e');
-      }
-    } finally {
-      if (mounted) setState(() => _isUpdatingFreeModels = false);
     }
-  }
 
-  Future<void> _saveSelectedFreeModel(String? modelId) async {
-    await AiRoleService.instance.savePreferredFreeModelId(modelId);
-    if (mounted) {
-      setState(() => _selectedFreeModelId = modelId);
-    }
-  }
+    if (!mounted) return;
 
-  /// 批量测试所有免费模型
-  Future<void> _batchTestFreeModels() async {
-    if (_freeBatchTesting || _freeModels.isEmpty) return;
-    if (mounted) setState(() => _freeBatchTesting = true);
-
-    try {
-      const int maxConcurrency = 3;
-      final List<Future<void>> tasks = [];
-      final remainingModels = List<FreeModelConfig>.from(_freeModels);
-
-      // 测试单个免费模型
-      Future<void> testOne(FreeModelConfig model) async {
-        if (!mounted) return;
-        setState(() => _freeModelTestingMap[model.id] = true);
-        try {
-          final service = AiService();
-          final config = FreeModelService.instance.toAiConfig(model);
-          service.updateConfig(config);
-          final sw = Stopwatch()..start();
-          await service.chat([
-            ChatMessage(role: 'user', content: 'Hi', timestamp: DateTime.now()),
-          ]);
-          sw.stop();
-          if (mounted) {
-            setState(
-              () => _freeModelLatencyMap[model.id] =
-                  '${sw.elapsedMilliseconds}ms',
-            );
-          }
-        } catch (e) {
-          if (mounted) {
-            setState(
-              () => _freeModelLatencyMap[model.id] = _formatTestError(e),
-            );
-          }
-        } finally {
-          if (mounted) {
-            setState(() => _freeModelTestingMap[model.id] = false);
-          }
-        }
+    setState(() {
+      _builtinTesting = false;
+      if (elapsedMs != null) {
+        _builtinTestSuccess = true;
+        _builtinLatency = '${elapsedMs}ms';
+        Toast.success(context, 'QNote内置模型测试成功 (${elapsedMs}ms)');
+      } else {
+        _builtinTestSuccess = false;
+        _builtinLatency = '连接失败';
+        Toast.error(context, '内置模型连通失败: ${_formatTestError(lastError ?? '未知错误')}');
       }
-
-      // 并发执行（限制并发数）
-      Future<void> runNext() async {
-        if (remainingModels.isEmpty || !mounted) return;
-        final model = remainingModels.removeAt(0);
-        await testOne(model);
-        await runNext();
-      }
-
-      for (int i = 0; i < maxConcurrency && i < _freeModels.length; i++) {
-        tasks.add(runNext());
-      }
-      await Future.wait(tasks);
-    } finally {
-      if (mounted) setState(() => _freeBatchTesting = false);
-    }
+    });
   }
 
   @override
@@ -726,15 +656,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     AiConfig? config;
 
     if (useFreeModel) {
-      if (_freeModels.isEmpty) {
-        Toast.warning(context, '请先更新免费模型');
-        return;
-      }
-      final model = _freeModels.firstWhere(
-        (m) => m.id == _selectedFreeModelId,
-        orElse: () => _freeModels.first,
+      config = FreeModelService.instance.toAiConfig(
+        BuiltinFreeKeys.createDefaultConfig(),
       );
-      config = FreeModelService.instance.toAiConfig(model);
     } else {
       String? currentId;
       switch (roleKey) {
@@ -974,254 +898,137 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
 
   Widget _buildFreeModelsCard(BuildContext context) {
     final theme = Theme.of(context);
-    final lastUpdateStr = _freeModelsLastUpdate != null
-        ? '${_freeModelsLastUpdate!.month.toString().padLeft(2, '0')}-${_freeModelsLastUpdate!.day.toString().padLeft(2, '0')} ${_freeModelsLastUpdate!.hour.toString().padLeft(2, '0')}:${_freeModelsLastUpdate!.minute.toString().padLeft(2, '0')}'
-        : '未更新';
+    final colorScheme = theme.colorScheme;
 
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          // 左侧高质感图标徽标
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: colorScheme.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              Icons.auto_awesome_rounded,
+              color: colorScheme.primary,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 14),
+          // 标题与说明
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  Icons.card_giftcard,
-                  size: 18,
-                  color: theme.colorScheme.primary,
+                Row(
+                  children: [
+                    Text(
+                      'QNote内置模型',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '就绪',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green.shade700,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(height: 3),
                 Text(
-                  '免费模型',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
+                  _builtinLatency != null
+                      ? (_builtinTestSuccess == true
+                          ? '连通正常 · 延迟 $_builtinLatency'
+                          : '连接异常 · 点击右侧重新测试')
+                      : '多节点轮询分流 & 遇限速自动切换容灾',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: _builtinLatency != null
+                        ? (_builtinTestSuccess == true
+                            ? Colors.green.shade700
+                            : colorScheme.error)
+                        : colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+                    fontSize: 12,
                   ),
-                ),
-                const Spacer(),
-                // 批量测试按钮
-                TextButton.icon(
-                  onPressed: (_freeBatchTesting || _freeModels.isEmpty)
-                      ? null
-                      : _batchTestFreeModels,
-                  icon: _freeBatchTesting
-                      ? SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: theme.colorScheme.primary,
-                          ),
-                        )
-                      : const Icon(Icons.flash_on, size: 16),
-                  label: Text(
-                    _freeBatchTesting ? '测试中...' : '批量测试',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                  style: TextButton.styleFrom(
-                    foregroundColor: theme.colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                // 更新按钮
-                TextButton.icon(
-                  onPressed: _isUpdatingFreeModels ? null : _updateFreeModels,
-                  icon: _isUpdatingFreeModels
-                      ? SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: theme.colorScheme.primary,
-                          ),
-                        )
-                      : const Icon(Icons.refresh, size: 16),
-                  label: Text(
-                    _isUpdatingFreeModels ? '更新中...' : '更新',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                  style: TextButton.styleFrom(
-                    foregroundColor: theme.colorScheme.primary,
-                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            if (_freeModels.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Center(
-                  child: Column(
-                    children: [
-                      Text(
-                        '暂无免费模型',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.disabledColor,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '点击右上角"更新"从远程获取',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: theme.disabledColor,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            else ...[
-              // 主模型选择
-              Row(
-                children: [
-                  Text(
-                    '主模型:',
-                    style: theme.textTheme.bodyMedium?.copyWith(fontSize: 12),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String?>(
-                        isExpanded: true,
-                        value: _selectedFreeModelId,
-                        hint: const Text(
-                          '未设置',
-                          style: TextStyle(fontSize: 12),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontSize: 12,
-                        ),
-                        items: _freeModels.map(
-                          (m) => DropdownMenuItem<String?>(
-                            value: m.id,
-                            child: Text(
-                              m.displayName,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                          ),
-                        ).toList(),
-                        onChanged: (value) => _saveSelectedFreeModel(value),
-                      ),
-                    ),
-                  ),
-                ],
+          ),
+          const SizedBox(width: 12),
+          // 单一测试按钮
+          OutlinedButton.icon(
+            onPressed: _builtinTesting ? null : _testBuiltinModel,
+            style: OutlinedButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              side: BorderSide(
+                color: colorScheme.primary.withValues(alpha: 0.5),
               ),
-              const SizedBox(height: 8),
-              // 模型列表（含延迟显示）
-              ..._freeModels.map((model) {
-                final isSelected = model.id == _selectedFreeModelId;
-                final isTesting = _freeModelTestingMap[model.id] == true;
-                final latency = _freeModelLatencyMap[model.id];
-                final isError =
-                    latency != null &&
-                    (latency.contains('失败') ||
-                        latency.contains('限制') ||
-                        latency.contains('无法'));
-
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Row(
-                    children: [
-                      Icon(
-                        isSelected
-                            ? Icons.radio_button_checked
-                            : Icons.radio_button_off,
-                        size: 14,
-                        color: isSelected
-                            ? theme.colorScheme.primary
-                            : theme.disabledColor,
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          model.displayName,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontSize: 12,
-                            color: isSelected
-                                ? theme.colorScheme.primary
-                                : null,
-                            fontWeight: isSelected ? FontWeight.w600 : null,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (isTesting)
-                        SizedBox(
-                          width: 12,
-                          height: 12,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 1.5,
-                            color: theme.colorScheme.primary,
-                          ),
-                        )
-                      else if (latency != null)
-                        Text(
-                          latency,
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            fontSize: 10,
-                            color: isError ? Colors.red : Colors.orange,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        )
-                      else
-                        Text(
-                          model.provider == 'gemini' ? 'Gemini' : 'OpenAI',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            fontSize: 10,
-                            color: theme.disabledColor,
-                          ),
-                        ),
-                    ],
-                  ),
-                );
-              }),
-              const SizedBox(height: 8),
-              Divider(
-                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Text(
-                    '最后更新: $lastUpdateStr',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      fontSize: 10,
-                      color: theme.disabledColor,
+            ),
+            icon: _builtinTesting
+                ? SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
                     ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '调用失败自动切换',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      fontSize: 10,
-                      color: theme.disabledColor,
-                    ),
-                  ),
-                ],
+                  )
+                : Icon(Icons.bolt_rounded, size: 16, color: colorScheme.primary),
+            label: Text(
+              _builtinTesting ? '测试中' : '测试',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: colorScheme.primary,
               ),
-            ],
-          ],
-        ),
+            ),
+          ),
+        ],
       ),
     );
   }
-
   Widget _buildConfigCard(
     BuildContext context,
     AiConfig config,
     List<AiConfig> allConfigs,
   ) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final providerConfig = config.vendorId != null
         ? getProviderById(config.vendorId!)
         : null;
-    final displayName = providerConfig?.name ?? config.name;
+    final vendorName = providerConfig?.name ?? config.provider;
     final isTesting = _testingMap[config.id] == true;
+    final modelDisplayName =
+        config.modelName.isNotEmpty ? config.modelName : config.name;
 
     return Dismissible(
       key: ValueKey(config.id),
@@ -1231,7 +1038,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('确认删除'),
-            content: Text('确定要删除 "$displayName" 吗？'),
+            content: Text('确定要删除 "$modelDisplayName" 吗？'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
@@ -1239,6 +1046,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
               ),
               TextButton(
                 onPressed: () => Navigator.pop(ctx, true),
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
                 child: const Text('删除'),
               ),
             ],
@@ -1259,108 +1067,140 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         ),
         child: const Icon(Icons.delete, color: Colors.red),
       ),
-      child: Card(
-        margin: const EdgeInsets.only(bottom: 8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            displayName,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 11,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        decoration: BoxDecoration(
+          color: theme.cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => _showEditDialog(context, config),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 主标题直接是清晰的模型名称，字体14号，600字重，最多允许2行换行防截断
+                      Text(
+                        modelDisplayName,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          color: colorScheme.onSurface,
                         ),
-                        const SizedBox(width: 4),
-                        Flexible(child: _buildLatencyText(config.id, theme)),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      config.modelName,
-                      style: theme.textTheme.bodySmall?.copyWith(fontSize: 10),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 4),
-              IconButton(
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-                icon: isTesting
-                    ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 1.5),
-                      )
-                    : Icon(
-                        Icons.bolt_outlined,
-                        size: 18,
-                        color: theme.colorScheme.primary,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                tooltip: '测试延迟',
-                onPressed: isTesting ? null : () => _testSingleConfig(config),
-              ),
-              IconButton(
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-                icon: Icon(
-                  Icons.edit_outlined,
-                  size: 16,
-                  color: theme.colorScheme.outline,
+                      const SizedBox(height: 6),
+                      // 辅助信息：供应商徽标 + 延迟状态
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: colorScheme.surfaceContainerHighest
+                                  .withValues(alpha: 0.6),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              vendorName,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                          _buildLatencyText(config.id, theme),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-                tooltip: '编辑',
-                onPressed: () => _showEditDialog(context, config),
-              ),
-              IconButton(
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-                icon: Icon(
-                  Icons.delete_outline,
-                  size: 16,
-                  color: Colors.red.shade300,
+                const SizedBox(width: 8),
+                // 测试延迟按钮
+                IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints:
+                      const BoxConstraints(minWidth: 36, minHeight: 36),
+                  icon: isTesting
+                      ? SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: colorScheme.primary,
+                          ),
+                        )
+                      : Icon(
+                          Icons.bolt_rounded,
+                          size: 20,
+                          color: colorScheme.primary,
+                        ),
+                  tooltip: '测试延迟',
+                  onPressed:
+                      isTesting ? null : () => _testSingleConfig(config),
                 ),
-                tooltip: '删除',
-                onPressed: () async {
-                  final confirmed = await showDialog<bool>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Text('确认删除'),
-                      content: Text('确定要删除 "$displayName" 吗？'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(ctx, false),
-                          child: const Text('取消'),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.pop(ctx, true),
-                          child: const Text('删除'),
-                        ),
-                      ],
-                    ),
-                  );
-                  if (confirmed == true) {
-                    ref
-                        .read(aiConfigListProvider.notifier)
-                        .deleteConfig(config.id);
-                    _cleanupRoleBindingsForDeletedConfig(config.id);
-                    if (mounted) setState(() => _latencyMap.remove(config.id));
-                  }
-                },
-              ),
-            ],
+                // 删除按钮
+                IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints:
+                      const BoxConstraints(minWidth: 36, minHeight: 36),
+                  icon: Icon(
+                    Icons.delete_outline_rounded,
+                    size: 19,
+                    color: colorScheme.error.withValues(alpha: 0.7),
+                  ),
+                  tooltip: '删除',
+                  onPressed: () async {
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('确认删除'),
+                        content: Text('确定要删除 "$modelDisplayName" 吗？'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('取消'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.red,
+                            ),
+                            child: const Text('删除'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirmed == true) {
+                      ref
+                          .read(aiConfigListProvider.notifier)
+                          .deleteConfig(config.id);
+                      _cleanupRoleBindingsForDeletedConfig(config.id);
+                      if (mounted) {
+                        setState(() => _latencyMap.remove(config.id));
+                      }
+                    }
+                  },
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1429,6 +1269,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     List<AiConfig> configs,
   ) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final settings = _getSettingsForRole(roleKey);
     String? currentId;
     bool useFreeModel = false;
@@ -1441,36 +1282,92 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         useFreeModel = _roles.timelineOptimizationUseFreeModel;
     }
 
-    double tempValue = settings.temperature;
-    int tokenValue = settings.maxTokens;
-    final tokenCtl = TextEditingController(text: tokenValue.toString());
-
     // 免费模型选项的特殊值
     const freeModelValue = '__free_model__';
 
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    label,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
+    // 角色特有视觉属性
+    final isAssistant = roleKey == 'assistant';
+    final roleIcon = isAssistant
+        ? Icons.chat_bubble_outline_rounded
+        : Icons.auto_awesome_motion_rounded;
+    final roleIconColor = isAssistant
+        ? colorScheme.primary
+        : Colors.purple.shade600;
+    final roleSubtitle = isAssistant
+        ? '随身生活顾问 · 深度分析与智能问答'
+        : '自然语言结构化 · 标签与日程精准提取';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 头部：场景徽标 + 角色标题与副标题
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: roleIconColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(roleIcon, color: roleIconColor, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    const SizedBox(height: 2),
+                    Text(
+                      roleSubtitle,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                        fontSize: 11,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // 内嵌模型选择面板
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Text(
+                  '调用模型',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: colorScheme.onSurfaceVariant,
                   ),
                 ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  width: 170,
+                const SizedBox(width: 12),
+                Expanded(
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String?>(
                       isExpanded: true,
@@ -1480,7 +1377,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                               ? currentId
                               : null,
                       hint: const Text(
-                        '未设置',
+                        '未设置（跟随默认）',
                         style: TextStyle(fontSize: 12),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1489,21 +1386,28 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                         const DropdownMenuItem<String?>(
                           value: null,
                           child: Text(
-                            '未设置',
+                            '未设置（跟随默认）',
                             style: TextStyle(fontSize: 12),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        const DropdownMenuItem<String?>(
+                        DropdownMenuItem<String?>(
                           value: freeModelValue,
                           child: Row(
                             children: [
-                              Icon(Icons.card_giftcard, size: 12),
-                              SizedBox(width: 4),
-                              Expanded(
+                              Icon(
+                                Icons.auto_awesome_rounded,
+                                size: 13,
+                                color: colorScheme.primary,
+                              ),
+                              const SizedBox(width: 6),
+                              const Expanded(
                                 child: Text(
-                                  '免费模型',
-                                  style: TextStyle(fontSize: 12),
+                                  'QNote内置模型',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
@@ -1546,162 +1450,118 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Text(
-                  'Temp: ${tempValue.toStringAsFixed(1)}',
-                  style: theme.textTheme.labelSmall?.copyWith(fontSize: 11),
-                ),
-                const Spacer(),
-                Text(
-                  'Max Tokens: ',
-                  style: theme.textTheme.labelSmall?.copyWith(fontSize: 11),
-                ),
-                const SizedBox(width: 4),
-                SizedBox(
-                  width: 70,
-                  child: TextField(
-                    controller: tokenCtl,
-                    keyboardType: TextInputType.number,
-                    style: const TextStyle(fontSize: 11),
-                    decoration: InputDecoration(
-                      hintText: '2048',
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 4,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    onChanged: (v) {
-                      final parsed = int.tryParse(v);
-                      if (parsed != null && parsed > 0) {
-                        tokenValue = parsed;
-                      }
-                    },
-                    onSubmitted: (v) {
-                      final parsed = int.tryParse(v);
-                      if (parsed != null && parsed > 0) {
-                        _updateRoleSettings(
-                          roleKey,
-                          settings.copyWith(maxTokens: parsed),
-                        );
-                      }
-                    },
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            SizedBox(
-              height: 32,
-              child: Slider(
-                value: tempValue,
-                min: 0.0,
-                max: 2.0,
-                divisions: 20,
-                onChanged: (v) {
-                  if (mounted) setState(() => tempValue = v);
-                  _updateRoleSettings(
-                    roleKey,
-                    settings.copyWith(temperature: v),
-                  );
-                },
+          ),
+          // 时间轴特化：图片识别次级功能岛
+          if (roleKey == 'timelineOptimization') ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(12),
               ),
-            ),
-            if (roleKey == 'timelineOptimization') ...[
-              const SizedBox(height: 4),
-              Divider(
-                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-              ),
-              const SizedBox(height: 6),
-              Row(
+              child: Column(
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.photo_library_outlined,
+                        size: 18,
+                        color: colorScheme.primary,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '提取图片内容',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '日记附带照片时自动识别图像与数据',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.65),
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Switch(
+                        value: settings.extractImages,
+                        onChanged: (value) {
+                          _updateRoleSettings(
+                            roleKey,
+                            settings.copyWith(extractImages: value),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                  if (settings.extractImages) ...[
+                    const SizedBox(height: 8),
+                    Divider(
+                      height: 1,
+                      color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
                       children: [
-                        Text(
-                          '是否提取图片',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
+                        Expanded(
+                          child: Text(
+                            _imageTestResult ?? '检测当前选择的模型是否支持多模态识图',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontSize: 11,
+                              color: _imageTestResult == null
+                                  ? colorScheme.onSurfaceVariant.withValues(alpha: 0.6)
+                                  : (_imageTestResult == '支持识别'
+                                      ? Colors.green.shade700
+                                      : colorScheme.error),
+                              fontWeight: _imageTestResult != null
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '提取时包含图片信息（需要模型支持）',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant
-                                .withValues(alpha: 0.6),
-                            fontSize: 10,
+                        OutlinedButton(
+                          onPressed: _testingImageRecognition
+                              ? null
+                              : () => _testModelImageRecognition(roleKey, configs),
+                          style: OutlinedButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            side: BorderSide(
+                              color: colorScheme.primary.withValues(alpha: 0.4),
+                            ),
                           ),
+                          child: _testingImageRecognition
+                              ? const SizedBox(
+                                  width: 12,
+                                  height: 12,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : Text(
+                                  '检测识图能力',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: colorScheme.primary,
+                                  ),
+                                ),
                         ),
                       ],
                     ),
-                  ),
-                  Switch(
-                    value: settings.extractImages,
-                    onChanged: (value) {
-                      _updateRoleSettings(
-                        roleKey,
-                        settings.copyWith(extractImages: value),
-                      );
-                    },
-                  ),
+                  ],
                 ],
               ),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '多模态能力检测',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _imageTestResult ?? '一键测试模型是否支持图片识别',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: _imageTestResult == null
-                                ? theme.colorScheme.onSurfaceVariant.withValues(
-                                    alpha: 0.6,
-                                  )
-                                : (_imageTestResult == '支持识别'
-                                      ? Colors.green
-                                      : Colors.red),
-                            fontSize: 10,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: _testingImageRecognition
-                        ? null
-                        : () => _testModelImageRecognition(roleKey, configs),
-                    child: _testingImageRecognition
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('检测图片识别', style: TextStyle(fontSize: 12)),
-                  ),
-                ],
-              ),
-            ],
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -1734,7 +1594,6 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     }
 
     final isEditing = existingConfig != null;
-    final nameCtl = TextEditingController(text: existingConfig?.name ?? '');
     final modelCtl = TextEditingController(
       text: existingConfig?.modelName ?? '',
     );
@@ -1743,8 +1602,6 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     );
     String selectedVendorId = existingConfig?.vendorId ?? 'deepseek';
     String selectedProvider = existingConfig?.provider ?? 'openai';
-
-    bool isNameManuallyEdited = isEditing;
 
     String getCleanModelName(String model) {
       if (model.contains('/')) {
@@ -1776,8 +1633,6 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           modelCtl.text = defaultProvider.models.first;
         }
         selectedProvider = defaultProvider.provider;
-        // Default to model name as per user preference
-        nameCtl.text = getCleanModelName(modelCtl.text);
       }
     }
 
@@ -1849,11 +1704,6 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                                     } else {
                                       modelCtl.text = '';
                                     }
-                                    // Always update name when vendor/model changes as per user request
-                                    nameCtl.text = getCleanModelName(
-                                      modelCtl.text,
-                                    );
-                                    isNameManuallyEdited = false;
                                   }
                                 });
                               },
@@ -1949,11 +1799,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                           selectedVendorId,
                           modelCtl,
                           setDialogState,
-                          (newModel) {
-                            // Always sync name when model changes, even if previously edited
-                            nameCtl.text = getCleanModelName(newModel);
-                            isNameManuallyEdited = false;
-                          },
+                          (newModel) {},
                           selectedVendorId == 'custom'
                               ? null
                               : () {
@@ -2081,23 +1927,6 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                             ),
                           ),
                         ],
-                        const SizedBox(height: 16),
-                        Text(
-                          '显示名称',
-                          style: Theme.of(context).textTheme.labelSmall,
-                        ),
-                        const SizedBox(height: 4),
-                        TextField(
-                          controller: nameCtl,
-                          decoration: const InputDecoration(
-                            hintText: '例如：我的模型',
-                          ),
-                          onChanged: (val) {
-                            // Only mark as manually edited if there's actual user input
-                            // If user clears it, we allow auto-sync again
-                            isNameManuallyEdited = val.isNotEmpty;
-                          },
-                        ),
                         const SizedBox(height: 16),
                         Text(
                           'API Key',
@@ -2229,13 +2058,19 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                                       testResult = null;
                                     });
                                     try {
+                                      final rawModelName = modelCtl.text.trim();
+                                      final cleanName = getCleanModelName(rawModelName);
+                                      final effectiveName = cleanName.isNotEmpty
+                                          ? cleanName
+                                          : (rawModelName.isNotEmpty ? rawModelName : '未命名');
+
                                       final testConfig = AiConfig(
                                         id: existingConfig?.id ?? 'test',
-                                        name: nameCtl.text,
+                                        name: effectiveName,
                                         provider: selectedProvider,
-                                        modelName: modelCtl.text,
-                                        apiKey: apiKeyCtl.text,
-                                        baseUrl: baseUrlCtl.text,
+                                        modelName: rawModelName,
+                                        apiKey: apiKeyCtl.text.trim(),
+                                        baseUrl: baseUrlCtl.text.trim(),
                                         vendorId: selectedVendorId,
                                         createdAt: DateTime.now(),
                                         updatedAt: DateTime.now(),
@@ -2253,22 +2088,24 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                                       sw.stop();
                                       final latencyStr =
                                           '${sw.elapsedMilliseconds}ms';
-                                      if (existingConfig != null)
+                                      if (existingConfig != null) {
                                         await _saveLatency(
                                           existingConfig.id,
                                           latencyStr,
                                         );
+                                      }
                                       setDialogState(() {
                                         isTesting = false;
                                         testResult = '连接成功！延迟: $latencyStr';
                                       });
                                     } catch (e) {
                                       final errMsg = _formatTestError(e);
-                                      if (existingConfig != null)
+                                      if (existingConfig != null) {
                                         await _saveLatency(
                                           existingConfig.id,
                                           errMsg,
                                         );
+                                      }
                                       setDialogState(() {
                                         isTesting = false;
                                         testResult = '连接失败: $errMsg';
@@ -2357,13 +2194,19 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                         );
                       }
 
+                      final rawModelName = modelCtl.text.trim();
+                      final cleanName = getCleanModelName(rawModelName);
+                      final effectiveName = cleanName.isNotEmpty
+                          ? cleanName
+                          : (rawModelName.isNotEmpty ? rawModelName : '未命名');
+
                       final config = AiConfig(
                         id: existingConfig?.id ?? const Uuid().v4(),
-                        name: nameCtl.text.isEmpty ? '未命名' : nameCtl.text,
+                        name: effectiveName,
                         provider: selectedProvider,
-                        modelName: modelCtl.text,
-                        apiKey: apiKeyCtl.text,
-                        baseUrl: baseUrlCtl.text,
+                        modelName: rawModelName,
+                        apiKey: apiKeyCtl.text.trim(),
+                        baseUrl: baseUrlCtl.text.trim(),
                         isDefault: existingConfig?.isDefault ?? false,
                         vendorId: selectedVendorId,
                         createdAt: existingConfig?.createdAt ?? DateTime.now(),
