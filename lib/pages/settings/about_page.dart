@@ -228,7 +228,6 @@ class _AboutPageState extends State<AboutPage> {
                   const Divider(height: 1, indent: 16, endIndent: 16),
                   SwitchListTile(
                     title: const Text('自动检查更新', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                    subtitle: Text('启动时静默检查新版本（每天至多一次）', style: TextStyle(fontSize: 12, color: theme.hintColor)),
                     value: _autoCheckUpdate,
                     onChanged: _toggleAutoCheck,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16),
