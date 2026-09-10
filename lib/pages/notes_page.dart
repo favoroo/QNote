@@ -1105,7 +1105,14 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
     final isFolder = widget.item.isFolder;
     final isJournal = widget.item.isJournal;
 
-    Widget tileContent = Container(
+    // 统一点击事件：文件夹触发展开/收起，笔记打开编辑，多选模式切换选中
+    final VoidCallback? onItemTap = widget.isSelectionMode
+        ? (isJournal ? null : widget.onToggleSelection)
+        : (isFolder
+            ? () => widget.onToggleFolder(widget.item.folder!)
+            : () => widget.onEditNote(widget.item.note!));
+
+    final Widget tileContent = Container(
       padding: EdgeInsets.only(
         left: 12.0 + widget.item.depth * 16.0,
         right: 12,
@@ -1153,47 +1160,47 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
           else
             const SizedBox(width: 8),
 
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: isJournal
-                  ? theme.colorScheme.tertiary.withValues(alpha: 0.12)
-                  : theme.colorScheme.primary.withValues(
-                      alpha: isFolder ? 0.08 : 0.1,
-                    ),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: _buildLeadingIcon(theme, isFolder, isJournal),
-          ),
-          const SizedBox(width: 12),
-
-          if (!isFolder && widget.item.isPinned) ...[
-            Icon(
-              Icons.push_pin,
-              size: 14,
-              color: theme.colorScheme.primary,
-            ),
-            const SizedBox(width: 4),
-          ],
-
           Expanded(
             child: GestureDetector(
-              onTap: widget.isSelectionMode
-                  ? (isJournal ? null : widget.onToggleSelection)
-                  : (isFolder
-                      ? () => widget.onToggleFolder(widget.item.folder!)
-                      : () => widget.onEditNote(widget.item.note!)),
+              onTap: onItemTap,
               behavior: HitTestBehavior.opaque,
-              child: Text(
-                isFolder ? widget.item.folder!.name : widget.item.note!.title,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: isFolder ? FontWeight.bold : FontWeight.w500,
-                  letterSpacing: 0.2,
-                  color: isJournal ? theme.colorScheme.tertiary : null,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              child: Row(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: isJournal
+                          ? theme.colorScheme.tertiary.withValues(alpha: 0.12)
+                          : theme.colorScheme.primary.withValues(
+                              alpha: isFolder ? 0.08 : 0.1,
+                            ),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: _buildLeadingIcon(theme, isFolder, isJournal),
+                  ),
+                  const SizedBox(width: 12),
+                  if (!isFolder && widget.item.isPinned) ...[
+                    Icon(
+                      Icons.push_pin,
+                      size: 14,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                  Expanded(
+                    child: Text(
+                      isFolder ? widget.item.folder!.name : widget.item.note!.title,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: isFolder ? FontWeight.bold : FontWeight.w500,
+                        letterSpacing: 0.2,
+                        color: isJournal ? theme.colorScheme.tertiary : null,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -1225,7 +1232,7 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
     );
 
     // 长按触发拖动排序；选择模式下禁用拖动；日记体系节点不可拖动
-    Widget tileWithDraggable = LongPressDraggable<FlattenedItem>(
+    final Widget tileWithDraggable = LongPressDraggable<FlattenedItem>(
       data: widget.item,
       maxSimultaneousDrags: (widget.isSelectionMode || isJournal) ? 0 : 1,
       feedback: Material(

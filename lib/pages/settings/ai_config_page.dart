@@ -899,6 +899,18 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   Widget _buildFreeModelsCard(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
+    // 状态色彩适配
+    final successColor = isDark ? Colors.greenAccent.shade200 : Colors.green.shade700;
+    final successBg = isDark
+        ? Colors.green.withValues(alpha: 0.15)
+        : Colors.green.withValues(alpha: 0.08);
+    final errorColor = colorScheme.error;
+    final errorBg = isDark
+        ? colorScheme.errorContainer.withValues(alpha: 0.25)
+        : colorScheme.errorContainer.withValues(alpha: 0.4);
+    final neutralBg = colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.35 : 0.5);
 
     return Container(
       decoration: BoxDecoration(
@@ -908,31 +920,32 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           color: colorScheme.outlineVariant.withValues(alpha: 0.5),
         ),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Row(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // 左侧高质感图标徽标
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: colorScheme.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              Icons.auto_awesome_rounded,
-              color: colorScheme.primary,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 14),
-          // 标题与说明
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
+          // 顶部行：图标、模型标题与底座说明、右侧测试操作按钮
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: colorScheme.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.auto_awesome_rounded,
+                  color: colorScheme.primary,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       'QNote内置模型',
@@ -941,78 +954,193 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                         fontSize: 15,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        '就绪',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.green.shade700,
-                        ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'SenseNova 6.8 · 免配置即用',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+                        fontSize: 11.5,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  _builtinLatency != null
-                      ? (_builtinTestSuccess == true
-                          ? '连通正常 · 延迟 $_builtinLatency'
-                          : '连接异常 · 点击右侧重新测试')
-                      : '多节点轮询分流 & 遇限速自动切换容灾',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: _builtinLatency != null
-                        ? (_builtinTestSuccess == true
-                            ? Colors.green.shade700
-                            : colorScheme.error)
-                        : colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
-                    fontSize: 12,
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: _builtinTesting ? null : _testBuiltinModel,
+                style: OutlinedButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  side: BorderSide(
+                    color: colorScheme.primary.withValues(alpha: 0.45),
+                  ),
                 ),
-              ],
-            ),
+                icon: _builtinTesting
+                    ? SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
+                        ),
+                      )
+                    : Icon(Icons.bolt_rounded, size: 16, color: colorScheme.primary),
+                label: Text(
+                  _builtinTesting ? '测试中' : '测试',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: colorScheme.primary,
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          // 单一测试按钮
-          OutlinedButton.icon(
-            onPressed: _builtinTesting ? null : _testBuiltinModel,
-            style: OutlinedButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              side: BorderSide(
-                color: colorScheme.primary.withValues(alpha: 0.5),
-              ),
+          const SizedBox(height: 10),
+          // 底部全宽状态/容灾指示栏，彻底解决窄屏内容截断问题
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: _builtinTesting
+                  ? neutralBg
+                  : (_builtinLatency != null
+                      ? (_builtinTestSuccess == true ? successBg : errorBg)
+                      : neutralBg),
+              borderRadius: BorderRadius.circular(8),
             ),
-            icon: _builtinTesting
-                ? SizedBox(
-                    width: 12,
-                    height: 12,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
-                    ),
-                  )
-                : Icon(Icons.bolt_rounded, size: 16, color: colorScheme.primary),
-            label: Text(
-              _builtinTesting ? '测试中' : '测试',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: colorScheme.primary,
-              ),
+            child: _buildBuiltinStatusContent(
+              theme: theme,
+              colorScheme: colorScheme,
+              successColor: successColor,
+              errorColor: errorColor,
             ),
           ),
         ],
       ),
+    );
+  }
+
+  /// 构建内置模型底部状态栏内容
+  Widget _buildBuiltinStatusContent({
+    required ThemeData theme,
+    required ColorScheme colorScheme,
+    required Color successColor,
+    required Color errorColor,
+  }) {
+    if (_builtinTesting) {
+      return Row(
+        children: [
+          SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '正在测试内置节点连通性与延迟...',
+            style: TextStyle(
+              fontSize: 11.5,
+              color: colorScheme.primary,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (_builtinLatency != null) {
+      if (_builtinTestSuccess == true) {
+        return Row(
+          children: [
+            Icon(Icons.check_circle_rounded, size: 14, color: successColor),
+            const SizedBox(width: 6),
+            Text(
+              '服务连通正常',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: successColor,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+              decoration: BoxDecoration(
+                color: successColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                '延迟 $_builtinLatency',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: successColor,
+                ),
+              ),
+            ),
+            const Spacer(),
+            Flexible(
+              child: Text(
+                '4节点容灾正常',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: successColor.withValues(alpha: 0.85),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        );
+      } else {
+        return Row(
+          children: [
+            Icon(Icons.error_outline_rounded, size: 14, color: errorColor),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                '连接异常 · 点击上方测试重新诊断',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  color: errorColor,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        );
+      }
+    }
+
+    // 默认初始状态
+    return Row(
+      children: [
+        Icon(
+          Icons.hub_outlined,
+          size: 14,
+          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            '4节点智能轮询分流 · 遇限速自动容灾切换',
+            style: TextStyle(
+              fontSize: 11.5,
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
   Widget _buildConfigCard(
