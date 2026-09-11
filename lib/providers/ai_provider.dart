@@ -22,6 +22,7 @@ import 'package:qnote_flutter/providers/todo_folder_provider.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/journal_provider.dart';
+import 'package:qnote_flutter/providers/folder_provider.dart';
 import 'package:qnote_flutter/providers/note_provider.dart';
 import 'package:qnote_flutter/core/utils/widget_utils.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
@@ -708,6 +709,11 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
             try {
               _ref.read(diaryListProvider.notifier).refresh();
               _ref.invalidate(journalByDateProvider);
+              // 日记复用 notes/folders 表存储（JournalService），删除日记只是硬删数据库行，
+              // 笔记树的 noteListProvider/folderListProvider 仍是内存旧缓存，
+              // 不刷新会导致笔记页残留"内容被清空"的已删日记节点
+              _ref.read(noteListProvider.notifier).refresh();
+              _ref.read(folderListProvider.notifier).refresh();
             } catch (_) {}
           }
 
@@ -715,6 +721,8 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
           if (targetPath.startsWith('/notes')) {
             try {
               _ref.read(noteListProvider.notifier).refresh();
+              // 文件夹列表同样需要联动（如 AI 新建/移动笔记到文件夹）
+              _ref.read(folderListProvider.notifier).refresh();
             } catch (_) {}
           }
         },

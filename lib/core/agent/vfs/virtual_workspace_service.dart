@@ -571,15 +571,20 @@ class VirtualWorkspaceService {
       baseDate = DateTime.now();
     }
 
-    // 解析 markdown 块
-    final blockRegex = RegExp(r'##\s*\[(\d{1,2}:\d{2})\]\s*([^\n]+)(?:<!--\s*id:\s*([^\s>]+)\s*-->)?([\s\S]*?)(?=(?:##\s*\[|\Z))');
+    // 解析 markdown 块。注意：Dart RegExp 遵循 ECMAScript，不支持 \Z 结尾断言，
+    // 用 (?![\s\S]) 表示输入结尾，否则文件中最后一个块永远匹配不到（会被静默丢弃）
+    final blockRegex = RegExp(r'##\s*\[(\d{1,2}:\d{2})\]\s*([^\n]+)(?:<!--\s*id:\s*([^\s>]+)\s*-->)?([\s\S]*?)(?=##\s*\[|(?![\s\S]))');
     final matches = blockRegex.allMatches(content);
 
     int count = 0;
     for (final m in matches) {
       final timeStr = m.group(1)!.trim();
-      final title = m.group(2)!.replaceAll(RegExp(r'<!--.*?-->'), '').trim();
-      final recordId = m.group(3)?.trim();
+      var title = m.group(2) ?? '';
+      // 块标题组为贪婪匹配，行内「<!-- id: xxx -->」会被整体吞进 title，
+      // 导致 m.group(3) 恒为 null、已有记录被重复插入而非更新，这里手动提取 id
+      final inlineId = RegExp(r'<!--\s*id:\s*([^\s>]+)\s*-->').firstMatch(title);
+      final recordId = inlineId?.group(1)?.trim() ?? m.group(3)?.trim();
+      title = title.replaceAll(RegExp(r'<!--.*?-->'), '').trim();
       final body = m.group(4)?.trim() ?? '';
 
       final timeParts = timeStr.split(':');
@@ -596,34 +601,46 @@ class VirtualWorkspaceService {
       String detail = '';
 
       for (final line in body.split('\n')) {
-        final l = line.trim();
+        // 兼容全角冒号；取值必须取第一个冒号之后的全部内容，
+        // 用 split(':')[1] 会把「- 详情: 喝了牛奶:250ml」截成「喝了牛奶」丢数据
+        final l = line.trim().replaceAll('：', ':');
         if (l.startsWith('- 分类:') || l.startsWith('- category:')) {
-          category = l.split(':')[1].trim();
+          category = _fieldValue(l);
         } else if (l.startsWith('- 心情:') || l.startsWith('- mood:')) {
-          mood = int.tryParse(l.split(':')[1].trim());
-        } else if (l.startsWith('- 详情:') || l.startsWith('- detail:')) {
-          detail = l.split(':')[1].trim();
-        } else if (l.isNotEmpty && !l.startsWith('-')) {
+          mood = int.tryParse(_fieldValue(l));
+        } else if (l.startsWith('- 详情:') ||
+            l.startsWith('- detail:') ||
+            l.startsWith('- 内容:') ||
+            l.startsWith('- content:')) {
+          detail = _fieldValue(l);
+        } else if (l.isNotEmpty) {
+          // 无法识别的字段行（如「- 备注:」「- 种类:」）与自由文本都并入详情，
+          // 避免小Q按自定义字段写入时信息被静默丢弃
           detail += (detail.isEmpty ? '' : '\n') + l;
         }
       }
 
       final now = DateTime.now();
+      DiaryRecord? existing;
       if (recordId != null && recordId.isNotEmpty) {
-        final existing = await _diaryRepo.getById(recordId);
-        if (existing != null) {
-          final updated = existing.copyWith(
-            title: title,
-            content: detail,
-            displayTag: category,
-            time: recordTime,
-            mood: mood ?? existing.mood,
-            updatedAt: now,
-          );
-          await _diaryRepo.update(updated);
-          count++;
-          continue;
-        }
+        existing = await _diaryRepo.getById(recordId);
+      }
+      // 兜底去重：模型重写时间线时可能丢失 id 注释（或 id 已失效），
+      // 按「同一天 + 同一时刻 + 同一标题」匹配已有记录走更新，避免重复插入
+      existing ??= await _findTimelineRecord(baseDate, recordTime, title);
+
+      if (existing != null) {
+        final updated = existing.copyWith(
+          title: title.isNotEmpty ? title : existing.title,
+          content: detail,
+          displayTag: category,
+          time: recordTime,
+          mood: mood ?? existing.mood,
+          updatedAt: now,
+        );
+        await _diaryRepo.update(updated);
+        count++;
+        continue;
       }
 
       final newRecord = DiaryRecord(
@@ -642,6 +659,25 @@ class VirtualWorkspaceService {
 
     WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, {'date': dateStr, 'count': count});
     return {'status': 'success', 'path': path, 'records_processed': count};
+  }
+
+  /// 按「同一天 + 同一时刻 + 同一标题」查找已有时间线记录，作为 id 注释丢失时的去重兜底
+  Future<DiaryRecord?> _findTimelineRecord(DateTime date, DateTime recordTime, String title) async {
+    final trimmed = title.trim();
+    if (trimmed.isEmpty) return null;
+    final records = await _diaryRepo.getByDate(date);
+    return records.where((r) {
+      return r.time.hour == recordTime.hour &&
+          r.time.minute == recordTime.minute &&
+          r.title.trim() == trimmed;
+    }).firstOrNull;
+  }
+
+  /// 取「字段名: 值」中第一个冒号之后的全部内容（值本身可含冒号，不能用 split 取固定下标）
+  String _fieldValue(String line) {
+    final idx = line.indexOf(':');
+    if (idx == -1 || idx == line.length - 1) return '';
+    return line.substring(idx + 1).trim();
   }
 
   Future<Map<String, dynamic>> _writeJournalFile(String path, String content) async {

@@ -871,8 +871,23 @@ class _AiPageState extends ConsumerState<AiPage> {
     );
   }
 
+  /// 判断一条消息是否需要在会话流中渲染。
+  ///
+  /// Agent 在每轮发起工具调用前，都会生成一条「正文为空、仅承载 tool_calls」的 assistant
+  /// 消息以维持上下文协议完整。这类消息属于内部中转，不应出现在聊天记录里，
+  /// 否则会被渲染成一个永远不会消失的加载气泡。
+  bool _isVisibleMessage(ChatMessage message) {
+    if (message.role == 'user') return true;
+    if (message.content.trim().isNotEmpty) return true;
+    if (message.thought != null && message.thought!.trim().isNotEmpty) return true;
+    if (message.uiDetails != null) return true;
+    return false;
+  }
+
   Widget _buildChatArea(ChatSession? currentChat, ThemeData theme) {
-    final messages = currentChat?.messages ?? [];
+    // 过滤掉 Agent 内部的工具调用中转消息（正文为空、只承载 tool_calls 的 assistant 消息）。
+    // 它们只为上下文协议完整而存在，渲染到会话流里只会变成永久转动的空白气泡。
+    final messages = (currentChat?.messages ?? []).where(_isVisibleMessage).toList();
     
     // If messages are empty, virtualize the assistant's greeting bubble so it's shown.
     final displayMessages = messages.isEmpty
@@ -1766,6 +1781,18 @@ class _ChatBubble extends StatelessWidget {
     final theme = Theme.of(context);
     final isUser = message.role == 'user';
 
+    // 该消息是否还有可渲染的主体（正文 / 思考过程 / 工具卡片）
+    final hasRenderableBody = message.content.trim().isNotEmpty ||
+        (message.thought?.trim().isNotEmpty ?? false) ||
+        message.role == 'tool' ||
+        message.uiDetails != null;
+
+    // 正文为空的助手消息属于工具调用中转（列表层已过滤），这里再兜一层；
+    // 只有流式占位气泡（showCursor）才允许退化成「正在输入」动画。
+    if (!isUser && !showCursor && !hasRenderableBody) {
+      return const SizedBox.shrink();
+    }
+
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
       duration: AppDurations.medium,
@@ -1897,7 +1924,7 @@ class _ChatBubble extends StatelessWidget {
                         ),
                     ],
                   )
-                : message.content.isEmpty
+                : !hasRenderableBody
                 ? const _TypingDots()
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -2115,6 +2142,44 @@ class _ChatBubble extends StatelessWidget {
                   color: theme.colorScheme.onSurface,
                   fontSize: 13,
                   height: 1.4,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // read_file 返回的文件正文过长，气泡里只显示路径摘要，不渲染正文
+    if (message.toolName == 'read_file') {
+      final path = uiDetails?['path'] as String? ?? '';
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.description_outlined,
+              size: 14,
+              color: theme.colorScheme.primary,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                '已读取文件 $path',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
                 ),
               ),
             ),

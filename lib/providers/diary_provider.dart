@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
+import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/core/storage/color_mark_repository.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
@@ -60,8 +61,21 @@ final diaryListProvider =
 class DiaryListNotifier extends AsyncNotifier<List<DiaryRecord>> {
   DiaryRecord? _lastDeleted;
 
+  /// 小Q 虚拟工作区变更回调：/timeline/ 路径有写入时自动重查数据库，
+  /// 避免 VFS 直接写库后内存列表与 UI 脱节（时间线看不到新增记录）
+  void _onWorkspaceChange(WorkspaceChangeEvent event) {
+    if (event.path.startsWith('/timeline/')) {
+      refresh();
+    }
+  }
+
   @override
   Future<List<DiaryRecord>> build() async {
+    // addListener 内部按引用去重，build 重复执行不会重复注册
+    WorkspaceEventBus.instance.addListener(_onWorkspaceChange);
+    ref.onDispose(
+      () => WorkspaceEventBus.instance.removeListener(_onWorkspaceChange),
+    );
     final repo = ref.read(diaryRepositoryProvider);
     return repo.getAll();
   }
