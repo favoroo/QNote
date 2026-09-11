@@ -987,130 +987,11 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
             ),
           ),
         ],
-      ),
-    );
-  }
+	      ),
+	    );
+	  }
 
-  /// 构建内置模型底部状态栏内容
-  Widget _buildBuiltinStatusContent({
-    required ThemeData theme,
-    required ColorScheme colorScheme,
-    required Color successColor,
-    required Color errorColor,
-  }) {
-    if (_builtinTesting) {
-      return Row(
-        children: [
-          SizedBox(
-            width: 12,
-            height: 12,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            '正在测试内置节点连通性与延迟...',
-            style: TextStyle(
-              fontSize: 11.5,
-              color: colorScheme.primary,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      );
-    }
-
-    if (_builtinLatency != null) {
-      if (_builtinTestSuccess == true) {
-        return Row(
-          children: [
-            Icon(Icons.check_circle_rounded, size: 14, color: successColor),
-            const SizedBox(width: 6),
-            Text(
-              '服务连通正常',
-              style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
-                color: successColor,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-              decoration: BoxDecoration(
-                color: successColor.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                '延迟 $_builtinLatency',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: successColor,
-                ),
-              ),
-            ),
-            const Spacer(),
-            Flexible(
-              child: Text(
-                '4节点容灾正常',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: successColor.withValues(alpha: 0.85),
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        );
-      } else {
-        return Row(
-          children: [
-            Icon(Icons.error_outline_rounded, size: 14, color: errorColor),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                '连接异常 · 点击上方测试重新诊断',
-                style: TextStyle(
-                  fontSize: 11.5,
-                  color: errorColor,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        );
-      }
-    }
-
-    // 默认初始状态
-    return Row(
-      children: [
-        Icon(
-          Icons.hub_outlined,
-          size: 14,
-          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-        ),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            '4节点智能轮询分流 · 遇限速自动容灾切换',
-            style: TextStyle(
-              fontSize: 11.5,
-              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
-    );
-  }
-  Widget _buildConfigCard(
+	  Widget _buildConfigCard(
     BuildContext context,
     AiConfig config,
     List<AiConfig> allConfigs,
@@ -1322,6 +1203,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     }
     if (changed) {
       await AiRoleService.instance.saveRoles(roles);
+      ref.invalidate(aiRolesProvider);
       if (mounted) setState(() => _roles = roles);
     }
   }
@@ -1559,6 +1441,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                             newRoles = _roles;
                         }
                         await AiRoleService.instance.saveRoles(newRoles);
+                        ref.invalidate(aiRolesProvider);
                         if (mounted) setState(() => _roles = newRoles);
                       },
                     ),

@@ -734,6 +734,52 @@ class VirtualWorkspaceService {
       throw Exception('未找到要删除的笔记: $path');
     }
 
+    if (path.startsWith('/journal/')) {
+      final dateStr = path.substring('/journal/'.length).replaceAll('.md', '').trim();
+      DateTime date;
+      try {
+        date = DateTime.parse(dateStr);
+      } catch (_) {
+        date = DateTime.now();
+      }
+      final existing = await _journalService.getNoteForDate(date);
+      if (existing == null || existing.content.trim().isEmpty) {
+        throw Exception('日期 $dateStr 尚未记录日记，无需删除');
+      }
+      await _journalService.saveJournal(date, '');
+      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.deleted, {'date': dateStr, 'id': existing.id});
+      return {
+        'status': 'deleted',
+        'path': path,
+        'id': existing.id,
+        'title': '$dateStr 日记',
+      };
+    }
+
+    if (path.startsWith('/timeline/')) {
+      final dateStr = path.substring('/timeline/'.length).replaceAll('.md', '').trim();
+      DateTime date;
+      try {
+        date = DateTime.parse(dateStr);
+      } catch (_) {
+        date = DateTime.now();
+      }
+      final records = await _diaryRepo.getByDate(date);
+      if (records.isEmpty) {
+        throw Exception('日期 $dateStr 暂无流水事件打卡，无需删除');
+      }
+      for (final r in records) {
+        await _diaryRepo.softDelete(r.id);
+      }
+      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.deleted, {'date': dateStr, 'count': records.length});
+      return {
+        'status': 'deleted',
+        'path': path,
+        'title': '$dateStr 时间线流水',
+        'records_deleted': records.length,
+      };
+    }
+
     throw Exception('当前路径不支持直接删除: $path');
   }
 

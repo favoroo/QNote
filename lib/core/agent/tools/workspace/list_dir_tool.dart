@@ -9,6 +9,9 @@ class ListDirTool extends AgentTool {
   String get name => 'list_dir';
 
   @override
+  ToolExecutionMode get executionMode => ToolExecutionMode.parallel;
+
+  @override
   String get description =>
       '列出指定虚拟目录下的文件与子文件夹。用于探索工作区、查看有哪些分类或查看分类下有哪些待办、笔记等。例如查看根目录 list_dir(path: "/")，查看待办分类 list_dir(path: "/todos")，查看今日待办 list_dir(path: "/todos/今日")。';
 

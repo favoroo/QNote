@@ -10,7 +10,7 @@ class ManageJournalTool extends AgentTool {
 
   @override
   String get description =>
-      '长篇日记综合管理：查看某天日记 (get)、创建/覆盖日记 (write)、向某天日记末尾追加内容 (append)。';
+      '长篇日记综合管理：查看某天日记 (get)、创建/覆盖日记 (write)、向某天日记末尾追加内容 (append)、删除某天日记 (delete)。';
 
   @override
   Map<String, dynamic> get parametersSchema => {
@@ -18,8 +18,8 @@ class ManageJournalTool extends AgentTool {
         'properties': {
           'action': {
             'type': 'string',
-            'enum': ['get', 'write', 'append'],
-            'description': '日记操作类型',
+            'enum': ['get', 'write', 'append', 'delete'],
+            'description': '日记操作类型：get(查看), write(创建/覆盖), append(追加内容), delete(清空/删除该日记)',
           },
           'date': {
             'type': 'string',
@@ -90,6 +90,21 @@ class ManageJournalTool extends AgentTool {
             'type': 'journal_appended',
             'date': dateStr,
             'note_id': saved?.id,
+          },
+        );
+
+      case 'delete':
+        final existing = await _journalService.getNoteForDate(date);
+        if (existing == null || existing.content.trim().isEmpty) {
+          return ToolResult.success('日期 $dateStr 本来就没有记录日记，无需删除。');
+        }
+        await _journalService.saveJournal(date, '');
+        return ToolResult.success(
+          '已成功删除 $dateStr 的日记。',
+          uiDetails: {
+            'type': 'journal_deleted',
+            'date': dateStr,
+            'note_id': existing.id,
           },
         );
 

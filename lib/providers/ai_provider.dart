@@ -2,12 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:qnote_flutter/config/defaults.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/free_model_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/agent/agent_tool_registry.dart';
+import 'package:qnote_flutter/core/agent/engine/agent_cancellation_token.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_events.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_loop.dart';
 import 'package:qnote_flutter/core/agent/prompts/q_system_prompt.dart';
@@ -18,6 +20,9 @@ import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/providers/todo_folder_provider.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
+import 'package:qnote_flutter/providers/diary_provider.dart';
+import 'package:qnote_flutter/providers/journal_provider.dart';
+import 'package:qnote_flutter/providers/note_provider.dart';
 import 'package:qnote_flutter/core/utils/widget_utils.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
@@ -236,11 +241,37 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
 
   final StringBuffer _streamingContent = StringBuffer();
   bool _isStreaming = false;
+  AgentCancellationToken? _currentCancellationToken;
 
   bool get isStreaming => _isStreaming;
 
+  /// 主动取消/中止当前 Agent 执行（对齐 Pi Agent 的 abort 控制）
+  void cancelCurrentAgent([String? reason]) {
+    _currentCancellationToken?.cancel(reason);
+  }
+
   void setSession(ChatSession? session) {
     state = session;
+    // 持久化最后活跃会话 ID，供下次启动恢复
+    SharedPreferences.getInstance().then((prefs) {
+      if (session != null) {
+        prefs.setString('last_chat_session_id', session.id);
+      } else {
+        prefs.remove('last_chat_session_id');
+      }
+    });
+  }
+
+  /// 启动时从持久化存储恢复上次的会话
+  Future<void> initLastSession() async {
+    if (state != null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final lastId = prefs.getString('last_chat_session_id');
+    if (lastId == null) return;
+    final session = await ConfigRepository.instance.getChatSession(lastId);
+    if (session != null && !session.isDeleted) {
+      state = session;
+    }
   }
 
   Future<String> exportContext({
@@ -620,8 +651,6 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       userContent += '==== [用户指令] ====\n$content';
 
       final aiService = _ref.read(aiServiceProvider);
-      final useFreeModel =
-          await AiRoleService.instance.isFreeModelEnabled('assistant');
       final roleSettings = await AiRoleService.instance.getSettingsForRole(
         'assistant',
       );
@@ -648,41 +677,62 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
 
       _ref.read(aiStreamingMessageProvider.notifier).state = '小Q正在思考并分析任务...';
 
-      // 初始化工具分发器并构建 AgentLoop
+      // 初始化工具分发器并构建 AgentLoop（声明式注入 afterToolCall 钩子）
       final dispatcher = AgentToolRegistry.createDefaultDispatcher();
       
-      // 预先配置好 AiService
-      if (useFreeModel) {
-        final freeModels =
-            await AiRoleService.instance.getFreeModelConfigsForRole('assistant');
-        if (freeModels.isEmpty) {
-          throw Exception('免费模型列表为空，请先在设置中更新免费模型');
-        }
-        final preferredId =
-            await AiRoleService.instance.getPreferredFreeModelId();
-        final ordered = FreeModelService.instance.getOrderedModels(freeModels, preferredId);
-        if (ordered.isNotEmpty) {
-          final config = FreeModelService.instance.toAiConfig(ordered.first);
-          aiService.updateConfig(
-            config,
-            temperature: roleSettings.temperature,
-            maxTokens: roleSettings.maxTokens,
-          );
-        }
-      } else {
-        final assistantConfig = await AiRoleService.instance
-            .getEffectiveConfigForRole('assistant');
-        aiService.updateConfig(
-          assistantConfig,
-          temperature: roleSettings.temperature,
-          maxTokens: roleSettings.maxTokens,
-        );
-      }
+      // 预先配置好 AiService：统一使用角色绑定的生效模型配置
+      final assistantConfig = await AiRoleService.instance
+          .getEffectiveConfigForRole('assistant');
+      aiService.updateConfig(
+        assistantConfig,
+        temperature: roleSettings.temperature,
+        maxTokens: roleSettings.maxTokens,
+      );
+
+      final token = AgentCancellationToken();
+      _currentCancellationToken = token;
 
       final agentLoop = AgentLoop(
         aiService: aiService,
         dispatcher: dispatcher,
         maxTurns: 8,
+        afterToolCall: (call, result) async {
+          final toolName = call.name;
+          final args = call.arguments;
+          final targetPath = (args['path'] as String? ?? '').toLowerCase();
+
+          // 1. 待办系统联动刷新
+          if (toolName == 'manage_todo' ||
+              (toolName == 'write_file' && targetPath.startsWith('/todos')) ||
+              (toolName == 'edit_file' && targetPath.startsWith('/todos')) ||
+              (toolName == 'delete_file' && targetPath.startsWith('/todos'))) {
+            try {
+              _ref.read(todoListProvider.notifier).refresh();
+              _ref.read(todoFolderListProvider.notifier).refresh();
+              _ref.invalidate(completedTodoListProvider);
+              _ref.invalidate(upcomingRemindersProvider);
+              WidgetUtils.updateHomeWidgets();
+            } catch (_) {}
+          }
+
+          // 2. 日记与时间线流水联动刷新
+          if (toolName == 'manage_journal' ||
+              targetPath.startsWith('/journal') ||
+              toolName == 'manage_timeline' ||
+              targetPath.startsWith('/timeline')) {
+            try {
+              _ref.read(diaryListProvider.notifier).refresh();
+              _ref.invalidate(journalByDateProvider);
+            } catch (_) {}
+          }
+
+          // 3. 笔记知识库联动刷新
+          if (toolName == 'manage_note' || targetPath.startsWith('/notes')) {
+            try {
+              _ref.read(noteListProvider.notifier).refresh();
+            } catch (_) {}
+          }
+        },
       );
 
       final List<ChatMessage> conversationHistory = [];
@@ -706,8 +756,12 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       await for (final event in agentLoop.run(
         conversationHistory: conversationHistory,
         systemPrompt: QSystemPrompt.prompt,
+        cancellationToken: token,
       )) {
         switch (event.type) {
+          case AgentEventType.agentStart:
+            _ref.read(aiStreamingMessageProvider.notifier).state = '小Q正在准备...';
+            break;
           case AgentEventType.turnStart:
             streamingTextBuffer.clear();
             _ref.read(aiStreamingMessageProvider.notifier).state =
@@ -728,32 +782,19 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
             break;
           case AgentEventType.toolExecuting:
             final toolName = event.toolCall?.name ?? '';
+            final extraProgress = event.text != null ? ' (${event.text})' : '';
             _ref.read(aiStreamingMessageProvider.notifier).state =
-                '⚡ 小Q正在执行操作: [$toolName]...';
+                '⚡ 小Q正在执行操作: [$toolName]$extraProgress...';
             break;
           case AgentEventType.toolCompleted:
-            // 每当工具执行完成后，若有对应的变更，推入中间消息
+            // 每当工具执行完成后，推入中间消息
             if (event.message != null) {
               sessionMessages.add(event.message!);
               state = state!.copyWith(messages: List.from(sessionMessages));
             }
-            // 实时联动刷新各业务模块 Provider
-            final toolName = event.toolCall?.name;
-            final args = event.toolCall?.arguments ?? {};
-            final targetPath = (args['path'] as String? ?? '').toLowerCase();
-
-            if (toolName == 'manage_todo' ||
-                (toolName == 'write_file' && targetPath.startsWith('/todos')) ||
-                (toolName == 'edit_file' && targetPath.startsWith('/todos')) ||
-                (toolName == 'delete_file' && targetPath.startsWith('/todos'))) {
-              try {
-                _ref.read(todoListProvider.notifier).refresh();
-                _ref.read(todoFolderListProvider.notifier).refresh();
-                _ref.invalidate(completedTodoListProvider);
-                _ref.invalidate(upcomingRemindersProvider);
-                WidgetUtils.updateHomeWidgets();
-              } catch (_) {}
-            }
+            break;
+          case AgentEventType.turnEnd:
+            // 单轮结束，准备下一轮
             break;
           case AgentEventType.assistantMessage:
             if (event.message != null) {
@@ -764,14 +805,22 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
           case AgentEventType.finished:
             finalResponse = event.message;
             break;
+          case AgentEventType.agentEnd:
+            // 整个 Agent 任务终结
+            break;
           case AgentEventType.error:
             throw Exception(event.error ?? 'Agent 执行异常');
         }
       }
 
       if (finalResponse != null) {
-        // 如果最后一条不是 finalResponse，则追加
-        if (sessionMessages.isEmpty || sessionMessages.last != finalResponse) {
+        // 避免重复追加相同内容的最终答复
+        final bool isAlreadyAdded = sessionMessages.isNotEmpty &&
+            (sessionMessages.last == finalResponse ||
+                (sessionMessages.last.role == 'assistant' &&
+                    sessionMessages.last.content.trim() == finalResponse.content.trim()));
+
+        if (!isAlreadyAdded) {
           sessionMessages.add(finalResponse);
         }
         state = state!.copyWith(messages: sessionMessages);
@@ -790,6 +839,7 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       state = state!.copyWith(messages: [...updatedMessages, errorMessage]);
     } finally {
       _isStreaming = false;
+      _currentCancellationToken = null;
       _ref.read(aiStreamingMessageProvider.notifier).state = null;
       if (state != null) {
         await repo.updateChatSession(state!);

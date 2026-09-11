@@ -138,6 +138,36 @@ void main() {
       final getRes = await dispatcher.dispatch(getCall);
       expect(getRes.content.contains('今天天气晴朗'), true);
       expect(getRes.content.contains('晚上完成了小Q的开发'), true);
+
+      // 测试 manage_journal 的 delete 动作
+      final deleteCall = ToolCall(
+        id: 'call_delete_journal',
+        name: 'manage_journal',
+        arguments: {
+          'action': 'delete',
+          'date': todayStr,
+        },
+      );
+      final deleteRes = await dispatcher.dispatch(deleteCall);
+      expect(deleteRes.isError, false);
+      expect(deleteRes.content.contains('已成功删除'), true);
+
+      // 再次读取验证已被清空
+      final getAfterDelete = await dispatcher.dispatch(getCall);
+      expect(getAfterDelete.content.contains('尚未撰写长篇日记'), true);
+
+      // 测试通过 delete_file 删除 /journal/ 日记
+      await dispatcher.dispatch(writeCall);
+      final deleteFileCall = ToolCall(
+        id: 'call_delete_file_journal',
+        name: 'delete_file',
+        arguments: {
+          'path': '/journal/$todayStr.md',
+        },
+      );
+      final deleteFileRes = await dispatcher.dispatch(deleteFileCall);
+      expect(deleteFileRes.isError, false);
+      expect(deleteFileRes.content.contains('已成功删除'), true);
     });
 
     test('5. manage_todo: 增、改、切换完成状态', () async {

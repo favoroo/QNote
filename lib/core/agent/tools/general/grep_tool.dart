@@ -13,6 +13,9 @@ class GrepTool extends AgentTool {
   String get name => 'grep';
 
   @override
+  ToolExecutionMode get executionMode => ToolExecutionMode.parallel;
+
+  @override
   String get description =>
       '在整个 App（笔记、待办、时间线流水日记）中检索包含指定关键词或正则表达式的内容。输出匹配项摘要与 ID。';
 

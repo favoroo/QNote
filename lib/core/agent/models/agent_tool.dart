@@ -32,10 +32,22 @@ class ToolResult {
   }
 }
 
+/// 工具执行调度模式（对齐 Pi Agent 设计）
+enum ToolExecutionMode {
+  /// 并行模式：无副作用的只读/检索类工具，可与其他 parallel 工具并发执行
+  parallel,
+
+  /// 串行模式：涉及写、改、删、人机确认的工具，必须按序严格串行执行
+  sequential,
+}
+
 /// Agent 工具抽象基类
 abstract class AgentTool {
   /// 工具名称（英文唯一标识，如 "manage_todo"）
   String get name;
+
+  /// 工具调度执行模式，默认串行安全
+  ToolExecutionMode get executionMode => ToolExecutionMode.sequential;
 
   /// 工具的自然语言中文描述，供大模型理解何时调用
   String get description;

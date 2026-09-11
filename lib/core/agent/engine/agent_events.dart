@@ -1,14 +1,17 @@
 import 'package:qnote_flutter/models/chat_session.dart';
 
-/// Agent 事件类型
+/// Agent 事件类型（对齐 Pi Agent 生命周期）
 enum AgentEventType {
+  agentStart,
   turnStart,
   thoughtUpdate,
   contentDelta, // 文本流打字机碎片
   toolExecuting,
   toolCompleted,
+  turnEnd,
   assistantMessage,
   finished,
+  agentEnd,
   error,
 }
 
@@ -30,8 +33,17 @@ class AgentEvent {
     this.error,
   });
 
+  factory AgentEvent.agentStart() =>
+      const AgentEvent(type: AgentEventType.agentStart);
+
+  factory AgentEvent.agentEnd() =>
+      const AgentEvent(type: AgentEventType.agentEnd);
+
   factory AgentEvent.turnStart(int turn) =>
       AgentEvent(type: AgentEventType.turnStart, turn: turn);
+
+  factory AgentEvent.turnEnd(int turn) =>
+      AgentEvent(type: AgentEventType.turnEnd, turn: turn);
 
   factory AgentEvent.thoughtUpdate(String thought) =>
       AgentEvent(type: AgentEventType.thoughtUpdate, text: thought);

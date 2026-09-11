@@ -21,6 +21,7 @@ import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/widgets/empty_state.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
+import 'package:qnote_flutter/core/agent/services/agent_interaction_service.dart';
 
 class AiPage extends ConsumerStatefulWidget {
   const AiPage({super.key});
@@ -63,6 +64,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     _selectedPeriodPreset = '本周';
     _initActiveModelId();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(currentChatProvider.notifier).initLastSession();
       _syncContextFilter();
       _scrollToBottom();
     });
@@ -92,6 +94,7 @@ class _AiPageState extends ConsumerState<AiPage> {
 
   @override
   void dispose() {
+    AgentInteractionService.instance.cancelPending('离开AI页面');
     _inputController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -190,6 +193,13 @@ class _AiPageState extends ConsumerState<AiPage> {
         _scrollToBottom();
       }
     }
+  }
+
+  /// 中止小Q当前生成与工具执行
+  void _stopGenerating() {
+    HapticFeedback.mediumImpact();
+    ref.read(currentChatProvider.notifier).cancelCurrentAgent('用户主动中止操作');
+    AgentInteractionService.instance.cancelPending('用户主动中止操作');
   }
 
   Future<void> _openDatePicker() async {
@@ -635,10 +645,33 @@ class _AiPageState extends ConsumerState<AiPage> {
     final aiConfigsAsync = ref.watch(aiConfigListProvider);
     final theme = Theme.of(context);
 
+    // 监听 aiRolesProvider，保证小Q界面与设置页角色绑定实时同步
+    ref.listen<AsyncValue<AiRoles?>>(aiRolesProvider, (prev, next) {
+      if (next is AsyncData<AiRoles?>) {
+        final roles = next.value;
+        if (roles != null) {
+          String? newActiveId;
+          if (roles.assistantUseFreeModel) {
+            final freeId = roles.assistantFreeModelId ?? 'sensenova-flash-lite';
+            newActiveId = 'free:$freeId';
+          } else if (roles.assistant != null) {
+            newActiveId = roles.assistant;
+          }
+          if (newActiveId != null && newActiveId != _activeModelId) {
+            setState(() => _activeModelId = newActiveId);
+          }
+        }
+      }
+    });
+
     // Listen to aiConfigsAsync to ensure _activeModelId is always valid
     ref.listen<AsyncValue<List<AiConfig>>>(aiConfigListProvider, (prev, next) {
       if (next is AsyncData<List<AiConfig>>) {
         final configs = next.value;
+        // 如果当前是内置免费模型，不受自定义模型列表增删影响
+        if (_activeModelId != null && _activeModelId!.startsWith('free:')) {
+          return;
+        }
         if (configs.isNotEmpty) {
           // If current active ID is not in the list, or null, pick the first or default
           final currentValid = configs.any((c) => c.id == _activeModelId);
@@ -647,7 +680,7 @@ class _AiPageState extends ConsumerState<AiPage> {
             setState(() => _activeModelId = defaultCfg.id);
           }
         } else {
-          setState(() => _activeModelId = null);
+          setState(() => _activeModelId = 'free:sensenova-flash-lite');
         }
       }
     });
@@ -670,7 +703,11 @@ class _AiPageState extends ConsumerState<AiPage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.history),
-            onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
+            onPressed: () {
+              // 先取消输入框焦点，防止关闭抽屉后键盘自动弹出
+              FocusManager.instance.primaryFocus?.unfocus();
+              _scaffoldKey.currentState?.openEndDrawer();
+            },
           ),
         ],
       ),
@@ -931,8 +968,42 @@ class _AiPageState extends ConsumerState<AiPage> {
                     builder: (context, value, _) {
                       final hasText = value.text.trim().isNotEmpty;
                       final canSend = (hasText || hasAttachments) && !_isTyping;
+
+                      // 小Q工作过程中：发送按钮变为中断/停止按钮
+                      if (_isTyping) {
+                        return Tooltip(
+                          message: '点击中止小Q当前操作',
+                          child: GestureDetector(
+                            onTap: _stopGenerating,
+                            child: Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.errorContainer.withValues(alpha: 0.8),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: theme.colorScheme.error.withValues(alpha: 0.6),
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: Center(
+                                child: Container(
+                                  width: 13,
+                                  height: 13,
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.error,
+                                    borderRadius: BorderRadius.circular(2.5),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+
+                      // 小Q空闲时：标准发送按钮（长按切换模型）
                       return Tooltip(
-                        message: '点击发送，长按切换模型',
+                        message: '当前模型: $activeName\n点击发送，长按切换模型',
                         child: GestureDetector(
                           onTap: canSend ? _sendMessage : null,
                           onLongPress: () {
@@ -1311,8 +1382,21 @@ class _AiPageState extends ConsumerState<AiPage> {
   }
 
   String _getActiveConfigName(List<AiConfig> configs) {
-    if (_activeModelId == '__free_model__') return 'QNote内置模型';
     if (_activeModelId == null) return '默认';
+    if (_activeModelId!.startsWith('free:')) {
+      final freeId = _activeModelId!.substring(5);
+      switch (freeId) {
+        case 'sensenova-flash-lite':
+          return '内置 SenseNova 6.8';
+        case 'glm-5.2':
+          return '内置 GLM 5.2';
+        case 'deepseek-v4-flash':
+          return '内置 DeepSeek V4 Flash';
+        default:
+          return '内置免费模型';
+      }
+    }
+    if (_activeModelId == '__free_model__') return '内置 SenseNova 6.8';
     final config = configs.where((c) => c.id == _activeModelId).firstOrNull;
     return config?.name ?? '默认';
   }
@@ -1856,102 +1940,283 @@ class _ChatBubble extends StatelessWidget {
 
                       // 工具调用或执行反馈卡片
                       if (message.role == 'tool')
-                        Container(
-                          margin: const EdgeInsets.only(bottom: 6),
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: (message.isError == true)
-                                ? theme.colorScheme.errorContainer.withValues(alpha: 0.4)
-                                : theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                (message.isError == true) ? Icons.error_outline : Icons.check_circle_outline,
-                                size: 14,
-                                color: (message.isError == true) ? theme.colorScheme.error : theme.colorScheme.primary,
+                        _buildToolFeedbackWidget(message, theme)
+                      else ...[
+                        MarkdownBody(
+                          data: message.content,
+                          selectable: true,
+                          styleSheet: MarkdownStyleSheet(
+                            p: TextStyle(
+                              color: theme.colorScheme.onSurface,
+                              fontSize: 14,
+                              height: 1.5,
+                            ),
+                            h1: TextStyle(
+                              color: theme.colorScheme.onSurface,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              height: 1.6,
+                            ),
+                            h2: TextStyle(
+                              color: theme.colorScheme.onSurface,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              height: 1.5,
+                            ),
+                            h3: TextStyle(
+                              color: theme.colorScheme.onSurface,
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              height: 1.4,
+                            ),
+                            code: TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 13,
+                              color: theme.colorScheme.primary,
+                              backgroundColor: Colors.transparent,
+                            ),
+                            codeblockDecoration: BoxDecoration(
+                              color: theme.colorScheme.surfaceContainerLow,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
                               ),
-                              const SizedBox(width: 4),
-                              Text(
-                                '操作反馈 [${message.toolName ?? "tool"}]',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: (message.isError == true) ? theme.colorScheme.error : theme.colorScheme.primary,
+                            ),
+                            blockquoteDecoration: BoxDecoration(
+                              color: theme.colorScheme.surfaceContainerLow,
+                              border: Border(
+                                left: BorderSide(
+                                  color: theme.colorScheme.primary,
+                                  width: 4,
                                 ),
                               ),
-                            ],
-                          ),
-                        ),
-
-                      MarkdownBody(
-                        data: message.content,
-                        selectable: true,
-                        styleSheet: MarkdownStyleSheet(
-                          p: TextStyle(
-                            color: theme.colorScheme.onSurface,
-                            fontSize: 14,
-                            height: 1.5,
-                          ),
-                          h1: TextStyle(
-                            color: theme.colorScheme.onSurface,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            height: 1.6,
-                          ),
-                          h2: TextStyle(
-                            color: theme.colorScheme.onSurface,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            height: 1.5,
-                          ),
-                          h3: TextStyle(
-                            color: theme.colorScheme.onSurface,
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            height: 1.4,
-                          ),
-                          code: TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 13,
-                            color: theme.colorScheme.primary,
-                            backgroundColor: Colors.transparent,
-                          ),
-                          codeblockDecoration: BoxDecoration(
-                            color: theme.colorScheme.surfaceContainerLow,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                            ),
-                          ),
-                          blockquoteDecoration: BoxDecoration(
-                            color: theme.colorScheme.surfaceContainerLow,
-                            border: Border(
-                              left: BorderSide(
-                                color: theme.colorScheme.primary,
-                                width: 4,
+                              borderRadius: const BorderRadius.horizontal(
+                                right: Radius.circular(6),
                               ),
                             ),
-                            borderRadius: const BorderRadius.horizontal(
-                              right: Radius.circular(6),
+                            blockquotePadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
                             ),
+                            listBullet: TextStyle(color: theme.colorScheme.onSurface),
                           ),
-                          blockquotePadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          listBullet: TextStyle(color: theme.colorScheme.onSurface),
                         ),
-                      ),
-                      if (showCursor) const _BlinkingCursor(),
+                        if (showCursor) const _BlinkingCursor(),
+                      ],
                     ],
                   ),
           ),
         ),
       ],
     ),
+    );
+  }
+
+  /// 构建工具调用执行反馈与小Q确认交互卡片
+  Widget _buildToolFeedbackWidget(ChatMessage message, ThemeData theme) {
+    final uiDetails = message.uiDetails;
+    final isAskUser = message.toolName == 'ask_user' || uiDetails?['type'] == 'ask_user';
+
+    if (isAskUser) {
+      final question = uiDetails?['question'] as String? ?? message.content;
+      final status = uiDetails?['status'] as String?;
+      final choice = uiDetails?['choice'] as String?;
+      final isConfirmed = status == 'confirmed';
+      final isCancelled = status == 'cancelled';
+
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isCancelled
+                ? theme.colorScheme.outlineVariant.withValues(alpha: 0.5)
+                : theme.colorScheme.primary.withValues(alpha: 0.25),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.help_outline_rounded,
+                  size: 16,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '小Q确认交互',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                const Spacer(),
+                if (isConfirmed)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.check, size: 12, color: Colors.green),
+                        const SizedBox(width: 4),
+                        Text(
+                          choice != null ? '已选择: $choice' : '已确认',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.green,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (isCancelled)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.close, size: 12, color: theme.colorScheme.error),
+                        const SizedBox(width: 4),
+                        Text(
+                          '已取消',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: theme.colorScheme.error,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            MarkdownBody(
+              data: question,
+              selectable: true,
+              styleSheet: MarkdownStyleSheet(
+                p: TextStyle(
+                  color: theme.colorScheme.onSurface,
+                  fontSize: 13,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final isError = message.isError == true;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: isError
+                ? theme.colorScheme.errorContainer.withValues(alpha: 0.4)
+                : theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isError ? Icons.error_outline : Icons.check_circle_outline,
+                size: 14,
+                color: isError ? theme.colorScheme.error : theme.colorScheme.primary,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '操作反馈 [${message.toolName ?? "tool"}]',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: isError ? theme.colorScheme.error : theme.colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+        ),
+        MarkdownBody(
+          data: message.content,
+          selectable: true,
+          styleSheet: MarkdownStyleSheet(
+            p: TextStyle(
+              color: theme.colorScheme.onSurface,
+              fontSize: 14,
+              height: 1.5,
+            ),
+            h1: TextStyle(
+              color: theme.colorScheme.onSurface,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              height: 1.6,
+            ),
+            h2: TextStyle(
+              color: theme.colorScheme.onSurface,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              height: 1.5,
+            ),
+            h3: TextStyle(
+              color: theme.colorScheme.onSurface,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              height: 1.4,
+            ),
+            code: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 13,
+              color: theme.colorScheme.primary,
+              backgroundColor: Colors.transparent,
+            ),
+            codeblockDecoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+              ),
+            ),
+            blockquoteDecoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerLow,
+              border: Border(
+                left: BorderSide(
+                  color: theme.colorScheme.primary,
+                  width: 4,
+                ),
+              ),
+              borderRadius: const BorderRadius.horizontal(
+                right: Radius.circular(6),
+              ),
+            ),
+            blockquotePadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 8,
+            ),
+            listBullet: TextStyle(color: theme.colorScheme.onSurface),
+          ),
+        ),
+      ],
     );
   }
 
@@ -2566,9 +2831,9 @@ class _ModelSelectorDialog extends StatelessWidget {
     final theme = Theme.of(context);
 
     final builtinModels = [
-      {'id': 'free:sensenova-flash-lite', 'name': '内置 SenseNova 6.8', 'desc': '多节点轮询与自动容灾'},
-      {'id': 'free:glm-5.2', 'name': '内置 GLM 5.2', 'desc': '多节点轮询与自动容灾'},
-      {'id': 'free:deepseek-v4-flash', 'name': '内置 DeepSeek V4 Flash', 'desc': '多节点轮询与自动容灾'},
+      {'id': 'free:sensenova-flash-lite', 'name': '内置 SenseNova 6.8'},
+      {'id': 'free:glm-5.2', 'name': '内置 GLM 5.2'},
+      {'id': 'free:deepseek-v4-flash', 'name': '内置 DeepSeek V4 Flash'},
     ];
 
     return SimpleDialog(
@@ -2592,24 +2857,12 @@ class _ModelSelectorDialog extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        m['name']!,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: isSelected ? theme.colorScheme.primary : null,
-                        ),
-                      ),
-                      Text(
-                        m['desc']!,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    m['name']!,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: isSelected ? theme.colorScheme.primary : null,
+                    ),
                   ),
                 ),
               ],
