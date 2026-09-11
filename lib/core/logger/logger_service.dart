@@ -46,7 +46,7 @@ class LoggerService extends ChangeNotifier {
   static LoggerService get instance => _instance;
   LoggerService._();
 
-  static const _maxEntries = 1000;
+  static const _maxEntries = 35;
   static const _storageKey = 'qnote_logs';
 
   final List<LogEntry> _entries = [];
@@ -287,6 +287,9 @@ class LoggerService extends ChangeNotifier {
         _entries.addAll(
           list.map((e) => LogEntry.fromMap(e as Map<String, dynamic>)),
         );
+        if (_entries.length > _maxEntries) {
+          _entries.removeRange(0, _entries.length - _maxEntries);
+        }
         _entriesController.add(_entries);
         notifyListeners();
       }

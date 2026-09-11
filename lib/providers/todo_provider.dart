@@ -39,14 +39,16 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
   @override
   Future<List<Todo>> build() async {
     final repo = ref.read(todoRepositoryProvider);
-    // 启动初始化时自动清理存量空待办脏数据
+    // 启动初始化时自动清理存量空待办脏数据，并自愈修复未关联分类的孤儿待办
     await repo.cleanEmptyTodos();
+    await repo.healNullFolderIds();
     return repo.getAll();
   }
 
   Future<void> refresh() async {
     final repo = ref.read(todoRepositoryProvider);
     await repo.cleanEmptyTodos();
+    await repo.healNullFolderIds();
     state = AsyncData(await repo.getAll());
     // Invalidate other providers to force them to reload from the database
     ref.invalidate(completedTodoListProvider);

@@ -342,9 +342,6 @@ class _LogViewerPageState extends State<_LogViewerPage> {
   void initState() {
     super.initState();
     _logger.addListener(_onLogsChanged);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scrollToBottom();
-    });
   }
 
   @override
@@ -357,23 +354,13 @@ class _LogViewerPageState extends State<_LogViewerPage> {
   void _onLogsChanged() {
     if (mounted) {
       setState(() {});
-      if (!_isSelectMode) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _scrollToBottom();
-        });
-      }
-    }
-  }
-
-  void _scrollToBottom() {
-    if (_scrollController.hasClients) {
-      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
     }
   }
   
   @override
   Widget build(BuildContext context) {
-    var entries = _logger.entries;
+    // 日志按时间倒序排列，最新生成的日志展示在最上方
+    var entries = _logger.entries.reversed.toList();
     
     if (_selectedLevel != null) {
       entries = entries.where((e) => e.level == _selectedLevel).toList();

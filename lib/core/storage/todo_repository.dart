@@ -182,6 +182,22 @@ class TodoRepository {
     return emptyRows.length;
   }
 
+  /// 自动修复存量未关联分类的孤儿待办（将其归属到今日或长期）
+  Future<int> healNullFolderIds() async {
+    final db = await _dbHelper.database;
+    final count1 = await db.rawUpdate('''
+      UPDATE todos 
+      SET folder_id = 'todo_default_today' 
+      WHERE (folder_id IS NULL OR folder_id = '') AND (is_long_term = 0 OR is_long_term IS NULL)
+    ''');
+    final count2 = await db.rawUpdate('''
+      UPDATE todos 
+      SET folder_id = 'todo_default_longterm' 
+      WHERE (folder_id IS NULL OR folder_id = '') AND is_long_term = 1
+    ''');
+    return count1 + count2;
+  }
+
   Future<void> toggleComplete(String id, bool isCompleted) async {
     final db = await _dbHelper.database;
     final existing = await getById(id);

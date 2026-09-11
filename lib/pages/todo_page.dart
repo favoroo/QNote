@@ -169,7 +169,17 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                         if (t.isCompleted) return false;
                         // 内容为空且不是当前新建聚焦待办，不予显示
                         if (t.title.trim().isEmpty && t.id != _focusedTodoId) return false;
-                        return t.folderId == folder.id;
+                        if (t.folderId == folder.id) return true;
+                        // 容错兜底：若 folderId 为空，非长期待办归于今日/首个分类，长期待办归于长期分类
+                        if (t.folderId == null || t.folderId!.isEmpty) {
+                          if (folder.id == 'todo_default_longterm' || folder.name == '长期') {
+                            return t.isLongTerm;
+                          }
+                          if (folder.id == 'todo_default_today' || index == 0) {
+                            return !t.isLongTerm;
+                          }
+                        }
+                        return false;
                       }).toList();
 
                       return _buildTodoList(context, folder.id, todosAsync, folderTodos);
@@ -784,10 +794,20 @@ class _TodoFolderTabBar extends StatelessWidget {
               itemBuilder: (context, index) {
                 final folder = folders[index];
                 final isSelected = folder.id == selectedFolderId;
-                // 计算未完成待办数
-                final count = todos
-                    .where((t) => !t.isCompleted && t.folderId == folder.id && t.title.trim().isNotEmpty)
-                    .length;
+                // 计算未完成待办数（包含未分类兜底）
+                final count = todos.where((t) {
+                  if (t.isCompleted || t.title.trim().isEmpty) return false;
+                  if (t.folderId == folder.id) return true;
+                  if (t.folderId == null || t.folderId!.isEmpty) {
+                    if (folder.id == 'todo_default_longterm' || folder.name == '长期') {
+                      return t.isLongTerm;
+                    }
+                    if (folder.id == 'todo_default_today' || index == 0) {
+                      return !t.isLongTerm;
+                    }
+                  }
+                  return false;
+                }).length;
 
                 return GestureDetector(
                   onTap: () => onSelect(folder.id),

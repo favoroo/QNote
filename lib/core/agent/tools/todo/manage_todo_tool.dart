@@ -1,11 +1,15 @@
 import 'package:qnote_flutter/core/agent/models/agent_tool.dart';
+import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
+import 'package:qnote_flutter/core/storage/folder_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
+import 'package:qnote_flutter/models/folder.dart';
 import 'package:qnote_flutter/models/todo.dart';
 import 'package:uuid/uuid.dart';
 
 /// 待办事项综合管理工具（增、删、改、查、标记完成）
 class ManageTodoTool extends AgentTool {
   final TodoRepository _todoRepo = TodoRepository();
+  final FolderRepository _folderRepo = FolderRepository();
 
   @override
   String get name => 'manage_todo';
@@ -56,6 +60,10 @@ class ManageTodoTool extends AgentTool {
             'type': 'string',
             'description': '所属待办分类文件夹 ID',
           },
+          'folder_name': {
+            'type': 'string',
+            'description': '所属待办分类名称（如"今日"、"长期"、"工作"、"学习"等）。若分类不存在将自动创建；若同时传入 folder_id 则以 folder_id 优先',
+          },
           'query_filter': {
             'type': 'string',
             'enum': ['all', 'pending', 'completed', 'long_term'],
@@ -98,9 +106,14 @@ class ManageTodoTool extends AgentTool {
       dueDate = DateTime.tryParse(args['due_date'].toString());
     }
 
-    final priority = args['priority'] as String? ?? 'none';
+    final rawPriority = (args['priority'] as String? ?? 'normal').toLowerCase();
+    final priority = (rawPriority == 'important' || rawPriority == 'high') ? 'important' : 'normal';
     final isLongTerm = args['is_long_term'] as bool? ?? false;
-    final folderId = args['folder_id'] as String?;
+    final folderId = await _resolveFolderId(
+      folderId: args['folder_id'] as String?,
+      folderName: args['folder_name'] as String?,
+      isLongTerm: isLongTerm,
+    );
     final desc = args['description'] as String? ?? '';
 
     final now = DateTime.now();
@@ -113,18 +126,61 @@ class ManageTodoTool extends AgentTool {
       isCompleted: args['is_completed'] as bool? ?? false,
       isLongTerm: isLongTerm,
       folderId: folderId,
+      sortOrder: now.millisecondsSinceEpoch,
       createdAt: now,
       updatedAt: now,
     );
 
     final inserted = await _todoRepo.insert(todo);
+    WorkspaceEventBus.instance.emit('/todos', WorkspaceChangeType.created, inserted);
     return ToolResult.success(
-      '已成功创建待办事项：\n- 标题: ${inserted.title}\n- ID: ${inserted.id}\n- 优先级: $priority\n- 截止时间: ${dueDate != null ? dueDate.toIso8601String() : "无"}',
+      '已成功创建待办事项：\n- 标题: ${inserted.title}\n- ID: ${inserted.id}\n- 优先级: $priority\n- 截止时间: ${dueDate != null ? dueDate.toIso8601String() : "无"}\n- 所属分类ID: $folderId',
       uiDetails: {
         'type': 'todo_created',
         'todo': inserted.toMap(),
       },
     );
+  }
+
+  Future<String> _resolveFolderId({
+    String? folderId,
+    String? folderName,
+    bool isLongTerm = false,
+  }) async {
+    final folders = await _folderRepo.getByType('todo');
+    if (folderId != null && folderId.isNotEmpty) {
+      final existing = folders.where((f) => f.id == folderId).firstOrNull;
+      if (existing != null) return existing.id;
+    }
+
+    if (folderName != null && folderName.trim().isNotEmpty) {
+      final trimmed = folderName.trim();
+      final matched = folders.where((f) => f.name.toLowerCase() == trimmed.toLowerCase()).firstOrNull;
+      if (matched != null) return matched.id;
+
+      // 自动创建新分类
+      final now = DateTime.now();
+      final newFolder = Folder(
+        id: const Uuid().v4(),
+        name: trimmed,
+        type: 'todo',
+        sortOrder: folders.length,
+        createdAt: now,
+        updatedAt: now,
+      );
+      await _folderRepo.insert(newFolder);
+      return newFolder.id;
+    }
+
+    if (isLongTerm) {
+      final longterm = folders.where((f) => f.id == 'todo_default_longterm' || f.name == '长期').firstOrNull;
+      if (longterm != null) return longterm.id;
+    }
+
+    final today = folders.where((f) => f.id == 'todo_default_today' || f.name == '今日').firstOrNull;
+    if (today != null) return today.id;
+
+    return folders.isNotEmpty ? folders.first.id : 'todo_default_today';
   }
 
   Future<ToolResult> _updateTodo(Map<String, dynamic> args) async {

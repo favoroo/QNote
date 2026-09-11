@@ -16,6 +16,7 @@ import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
+import 'package:qnote_flutter/providers/todo_folder_provider.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
 import 'package:qnote_flutter/core/utils/widget_utils.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
@@ -737,9 +738,17 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
               state = state!.copyWith(messages: List.from(sessionMessages));
             }
             // 实时联动刷新各业务模块 Provider
-            if (event.toolCall?.name == 'manage_todo') {
+            final toolName = event.toolCall?.name;
+            final args = event.toolCall?.arguments ?? {};
+            final targetPath = (args['path'] as String? ?? '').toLowerCase();
+
+            if (toolName == 'manage_todo' ||
+                (toolName == 'write_file' && targetPath.startsWith('/todos')) ||
+                (toolName == 'edit_file' && targetPath.startsWith('/todos')) ||
+                (toolName == 'delete_file' && targetPath.startsWith('/todos'))) {
               try {
                 _ref.read(todoListProvider.notifier).refresh();
+                _ref.read(todoFolderListProvider.notifier).refresh();
                 _ref.invalidate(completedTodoListProvider);
                 _ref.invalidate(upcomingRemindersProvider);
                 WidgetUtils.updateHomeWidgets();

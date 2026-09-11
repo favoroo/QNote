@@ -38,9 +38,6 @@ class _DebugConsoleOverlayState extends State<_DebugConsoleOverlay> {
   void initState() {
     super.initState();
     LoggerService.instance.addListener(_onLogsChanged);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scrollToBottom();
-    });
   }
 
   @override
@@ -54,22 +51,7 @@ class _DebugConsoleOverlayState extends State<_DebugConsoleOverlay> {
   void _onLogsChanged() {
     if (mounted) {
       setState(() {});
-      if (!_isSelectMode) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _scrollToBottom();
-        });
-      }
     }
-  }
-
-  void _scrollToBottom() {
-    if (!_scrollController.hasClients) return;
-    _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
-      }
-    });
   }
 
   void _showToast(String message) {
@@ -87,7 +69,7 @@ class _DebugConsoleOverlayState extends State<_DebugConsoleOverlay> {
   }
 
   List<LogEntry> get _filteredLogs {
-    final logs = LoggerService.instance.entries;
+    final logs = LoggerService.instance.entries.reversed.toList();
     if (_filter == null) return logs;
     return logs.where((e) => e.level == _filter).toList();
   }
@@ -279,8 +261,8 @@ class _DebugConsoleOverlayState extends State<_DebugConsoleOverlay> {
             onPressed: () => LoggerService.instance.clearLogs(),
             tooltip: '清除',
           ),
-          IconButton(
-            icon: const Icon(Icons.close, color: Colors.white70, size: 20),
+          const IconButton(
+            icon: Icon(Icons.close, color: Colors.white70, size: 20),
             onPressed: hideDebugConsole,
             tooltip: '关闭',
           ),
@@ -376,9 +358,6 @@ class _DebugConsoleOverlayState extends State<_DebugConsoleOverlay> {
       onTap: () {
         if (_filter != level) {
           setState(() => _filter = level);
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _scrollToBottom();
-          });
         }
       },
       child: Container(
