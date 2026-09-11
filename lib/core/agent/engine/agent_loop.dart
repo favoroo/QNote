@@ -45,23 +45,32 @@ class AgentLoop {
       yield AgentEvent.turnStart(currentTurn);
 
       LoggerService.instance.logAI(
-        'AgentLoop 开始第 $currentTurn 轮推理 (消息数=${activeMessages.length})',
+        'AgentLoop 开始第 $currentTurn 轮流式推理 (消息数=${activeMessages.length})',
       );
 
-      ChatMessage assistantResponse;
+      final accumulatedContent = StringBuffer();
+      final List<ToolCall> streamedToolCalls = [];
+
       try {
-        assistantResponse = await aiService.chatResponse(
-          activeMessages,
+        final stream = aiService.chatStreamWithTools(
+          messages: activeMessages,
           tools: toolDefinitions.isNotEmpty ? toolDefinitions : null,
+          onToolCallsReady: (calls) {
+            streamedToolCalls.addAll(calls);
+          },
         );
+
+        await for (final delta in stream) {
+          accumulatedContent.write(delta);
+          yield AgentEvent.contentDelta(delta);
+        }
       } catch (e) {
-        LoggerService.instance.logAI('AgentLoop 发生错误: $e', level: LogLevel.error);
+        LoggerService.instance.logAI('AgentLoop 流式发生错误: $e', level: LogLevel.error);
         yield AgentEvent.error('请求模型失败: $e');
         return;
       }
 
-      // 如果模型内容包含 <thought> 或带有思考段落，上报事件
-      String content = assistantResponse.content;
+      String content = accumulatedContent.toString().trim();
       String? thought;
       if (content.contains('<thought>') && content.contains('</thought>')) {
         final startIdx = content.indexOf('<thought>') + 9;
@@ -69,10 +78,6 @@ class AgentLoop {
         if (endIdx > startIdx) {
           thought = content.substring(startIdx, endIdx).trim();
           content = (content.substring(0, startIdx - 9) + content.substring(endIdx + 10)).trim();
-          assistantResponse = assistantResponse.copyWith(
-            content: content,
-            thought: thought,
-          );
         }
       }
 
@@ -80,13 +85,20 @@ class AgentLoop {
         yield AgentEvent.thoughtUpdate(thought);
       }
 
-      // 检查是否有原生 tool_calls
-      List<ToolCall> toolCalls = assistantResponse.toolCalls ?? [];
+      List<ToolCall> toolCalls = List.from(streamedToolCalls);
 
       // 容灾解析：如果模型没有原生 tool_calls，但内容包含 Action: tool_name 格式
       if (toolCalls.isEmpty && _containsTextToolCall(content)) {
         toolCalls = _parseTextToolCalls(content);
       }
+
+      final assistantResponse = ChatMessage(
+        role: 'assistant',
+        content: content,
+        thought: thought,
+        toolCalls: toolCalls.isNotEmpty ? toolCalls : null,
+        timestamp: DateTime.now(),
+      );
 
       // 若没有触发任何工具调用，说明 ReAct 循环收敛，得到最终回复
       if (toolCalls.isEmpty) {

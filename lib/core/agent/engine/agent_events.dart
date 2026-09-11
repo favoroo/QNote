@@ -4,6 +4,7 @@ import 'package:qnote_flutter/models/chat_session.dart';
 enum AgentEventType {
   turnStart,
   thoughtUpdate,
+  contentDelta, // 文本流打字机碎片
   toolExecuting,
   toolCompleted,
   assistantMessage,
@@ -34,6 +35,9 @@ class AgentEvent {
 
   factory AgentEvent.thoughtUpdate(String thought) =>
       AgentEvent(type: AgentEventType.thoughtUpdate, text: thought);
+
+  factory AgentEvent.contentDelta(String deltaText) =>
+      AgentEvent(type: AgentEventType.contentDelta, text: deltaText);
 
   factory AgentEvent.toolExecuting(ToolCall toolCall, {String? progress}) =>
       AgentEvent(

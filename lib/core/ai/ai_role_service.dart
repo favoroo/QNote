@@ -210,7 +210,11 @@ class AiRoleService {
       if (models.isEmpty) {
         throw Exception('免费模型列表为空，请先在设置中更新免费模型');
       }
-      final preferredId = await getPreferredFreeModelId();
+      // 优先根据角色绑定的具体内置模型 ID，若未指定则 fallback 到全局 preferredId
+      final roleFreeModelId = role == 'assistant'
+          ? roles.assistantFreeModelId
+          : roles.timelineOptimizationFreeModelId;
+      final preferredId = roleFreeModelId ?? await getPreferredFreeModelId();
       final ordered = FreeModelService.instance.getOrderedModels(
         models,
         preferredId,

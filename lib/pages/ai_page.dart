@@ -71,7 +71,8 @@ class _AiPageState extends ConsumerState<AiPage> {
   Future<void> _initActiveModelId() async {
     final roles = await ref.read(aiRolesProvider.future);
     if (roles != null && roles.assistantUseFreeModel) {
-      if (mounted) setState(() => _activeModelId = '__free_model__');
+      final freeId = roles.assistantFreeModelId ?? 'sensenova-flash-lite';
+      if (mounted) setState(() => _activeModelId = 'free:$freeId');
       return;
     }
     try {
@@ -612,13 +613,16 @@ class _AiPageState extends ConsumerState<AiPage> {
     if (selected != null && selected != _activeModelId) {
       setState(() => _activeModelId = selected);
       final roles = await ref.read(aiRolesProvider.future);
-      final isFree = selected == '__free_model__';
+      final isFree = selected.startsWith('free:');
+      final freeModelId = isFree ? selected.substring(5) : null;
       final oldRoles = roles ?? const AiRoles();
       final newRoles = AiRoles(
         assistant: isFree ? null : selected,
         assistantUseFreeModel: isFree,
+        assistantFreeModelId: freeModelId,
         timelineOptimization: oldRoles.timelineOptimization,
         timelineOptimizationUseFreeModel: oldRoles.timelineOptimizationUseFreeModel,
+        timelineOptimizationFreeModelId: oldRoles.timelineOptimizationFreeModelId,
       );
       await saveAiRoles(newRoles);
       ref.invalidate(aiRolesProvider);
@@ -662,7 +666,7 @@ class _AiPageState extends ConsumerState<AiPage> {
           icon: const Icon(Icons.menu),
           onPressed: () => rootScaffoldKey.currentState?.openDrawer(),
         ),
-        title: const Text('小Q助手'),
+        title: const Text('小Q'),
         actions: [
           IconButton(
             icon: const Icon(Icons.history),
@@ -889,54 +893,13 @@ class _AiPageState extends ConsumerState<AiPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 1. 多模型切换胶囊（仅配置了多个模型时精简展示在右侧）
-              if (configs.length > 1)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4, right: 2),
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: GestureDetector(
-                      onTap: _openModelSelector,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              activeName,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: theme.colorScheme.onSurface,
-                              ),
-                            ),
-                            const SizedBox(width: 2),
-                            Icon(
-                              Icons.arrow_drop_down,
-                              size: 14,
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-              // 2. 豆包式附件挂载条（图片缩略图、分享的笔记、分享的待办）
+              // 1. 豆包式附件挂载条（图片缩略图、分享的笔记、分享的待办）
               if (hasAttachments) ...[
                 _buildAttachmentBar(theme),
                 const SizedBox(height: 6),
               ],
 
-              // 3. 底部输入栏与操作按钮
+              // 2. 底部输入栏与操作按钮
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -968,24 +931,31 @@ class _AiPageState extends ConsumerState<AiPage> {
                     builder: (context, value, _) {
                       final hasText = value.text.trim().isNotEmpty;
                       final canSend = (hasText || hasAttachments) && !_isTyping;
-                      return GestureDetector(
-                        onTap: canSend ? _sendMessage : null,
-                        child: Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: canSend
-                                ? theme.colorScheme.primary
-                                : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Center(
-                            child: Icon(
-                              Icons.send_rounded,
-                              size: 22,
+                      return Tooltip(
+                        message: '点击发送，长按切换模型',
+                        child: GestureDetector(
+                          onTap: canSend ? _sendMessage : null,
+                          onLongPress: () {
+                            HapticFeedback.mediumImpact();
+                            _openModelSelector();
+                          },
+                          child: Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
                               color: canSend
-                                  ? theme.colorScheme.onPrimary
-                                  : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Center(
+                              child: Icon(
+                                Icons.send_rounded,
+                                size: 22,
+                                color: canSend
+                                    ? theme.colorScheme.onPrimary
+                                    : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                              ),
                             ),
                           ),
                         ),
@@ -2594,49 +2564,58 @@ class _ModelSelectorDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isFreeActive = activeModelId == '__free_model__';
+
+    final builtinModels = [
+      {'id': 'free:sensenova-flash-lite', 'name': '内置 SenseNova 6.8', 'desc': '多节点轮询与自动容灾'},
+      {'id': 'free:glm-5.2', 'name': '内置 GLM 5.2', 'desc': '多节点轮询与自动容灾'},
+      {'id': 'free:deepseek-v4-flash', 'name': '内置 DeepSeek V4 Flash', 'desc': '多节点轮询与自动容灾'},
+    ];
 
     return SimpleDialog(
-      title: const Text('选择模型'),
+      title: const Text('选择小Q模型'),
       children: [
-        SimpleDialogOption(
-          onPressed: () => Navigator.pop(context, '__free_model__'),
-          child: Row(
-            children: [
-              Icon(
-                isFreeActive
-                    ? Icons.radio_button_checked
-                    : Icons.radio_button_unchecked,
-                color: isFreeActive
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.onSurfaceVariant,
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'QNote内置模型',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: isFreeActive ? theme.colorScheme.primary : null,
-                      ),
-                    ),
-                    Text(
-                      '多节点轮询与自动容灾',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+        ...builtinModels.map((m) {
+          final isSelected = activeModelId == m['id'] ||
+              (activeModelId == '__free_model__' && m['id'] == 'free:sensenova-flash-lite');
+          return SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, m['id']),
+            child: Row(
+              children: [
+                Icon(
+                  isSelected
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                  color: isSelected
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                  size: 20,
                 ),
-              ),
-            ],
-          ),
-        ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        m['name']!,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: isSelected ? theme.colorScheme.primary : null,
+                        ),
+                      ),
+                      Text(
+                        m['desc']!,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
         ...configs.map((config) {
           final isActive = config.id == activeModelId;
           return SimpleDialogOption(

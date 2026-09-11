@@ -6,12 +6,17 @@ class AiRoles {
   // 角色是否使用免费模型
   final bool assistantUseFreeModel;
   final bool timelineOptimizationUseFreeModel;
+  // 角色具体使用的免费模型 ID (如 'sensenova-flash-lite', 'glm-5.2', 'deepseek-v4-flash')
+  final String? assistantFreeModelId;
+  final String? timelineOptimizationFreeModelId;
 
   const AiRoles({
     this.assistant,
     this.timelineOptimization,
     this.assistantUseFreeModel = false,
     this.timelineOptimizationUseFreeModel = false,
+    this.assistantFreeModelId,
+    this.timelineOptimizationFreeModelId,
   });
 
   Map<String, dynamic> toMap() {
@@ -20,6 +25,9 @@ class AiRoles {
       'timelineOptimization': timelineOptimization,
       'assistantUseFreeModel': assistantUseFreeModel,
       'timelineOptimizationUseFreeModel': timelineOptimizationUseFreeModel,
+      if (assistantFreeModelId != null) 'assistantFreeModelId': assistantFreeModelId,
+      if (timelineOptimizationFreeModelId != null)
+        'timelineOptimizationFreeModelId': timelineOptimizationFreeModelId,
     };
   }
 
@@ -30,6 +38,9 @@ class AiRoles {
       assistantUseFreeModel: map['assistantUseFreeModel'] as bool? ?? false,
       timelineOptimizationUseFreeModel:
           map['timelineOptimizationUseFreeModel'] as bool? ?? false,
+      assistantFreeModelId: map['assistantFreeModelId'] as String?,
+      timelineOptimizationFreeModelId:
+          map['timelineOptimizationFreeModelId'] as String?,
     );
   }
 
@@ -42,14 +53,13 @@ class AiRoles {
   static const Object _unset = Object();
 
   /// 复制并修改角色绑定
-  ///
-  /// [assistant] / [timelineOptimization] 不传时保持原值，显式传 `null` 则清空绑定。
-  /// 早前用 `?? this.x` 实现，导致传 null 被当成"不修改"，绑定永远清不掉。
   AiRoles copyWith({
     Object? assistant = _unset,
     Object? timelineOptimization = _unset,
     bool? assistantUseFreeModel,
     bool? timelineOptimizationUseFreeModel,
+    Object? assistantFreeModelId = _unset,
+    Object? timelineOptimizationFreeModelId = _unset,
   }) {
     return AiRoles(
       assistant: identical(assistant, _unset)
@@ -63,6 +73,13 @@ class AiRoles {
       timelineOptimizationUseFreeModel:
           timelineOptimizationUseFreeModel ??
               this.timelineOptimizationUseFreeModel,
+      assistantFreeModelId: identical(assistantFreeModelId, _unset)
+          ? this.assistantFreeModelId
+          : assistantFreeModelId as String?,
+      timelineOptimizationFreeModelId:
+          identical(timelineOptimizationFreeModelId, _unset)
+              ? this.timelineOptimizationFreeModelId
+              : timelineOptimizationFreeModelId as String?,
     );
   }
 }

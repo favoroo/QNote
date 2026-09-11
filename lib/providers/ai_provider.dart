@@ -16,6 +16,8 @@ import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
+import 'package:qnote_flutter/providers/todo_provider.dart';
+import 'package:qnote_flutter/core/utils/widget_utils.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
@@ -698,14 +700,24 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       ChatMessage? finalResponse;
       final sessionMessages = [...updatedMessages];
 
+      final streamingTextBuffer = StringBuffer();
+
       await for (final event in agentLoop.run(
         conversationHistory: conversationHistory,
         systemPrompt: QSystemPrompt.prompt,
       )) {
         switch (event.type) {
           case AgentEventType.turnStart:
+            streamingTextBuffer.clear();
             _ref.read(aiStreamingMessageProvider.notifier).state =
                 '小Q正在思考中 (第 ${event.turn} 步)...';
+            break;
+          case AgentEventType.contentDelta:
+            if (event.text != null) {
+              streamingTextBuffer.write(event.text);
+              _ref.read(aiStreamingMessageProvider.notifier).state =
+                  streamingTextBuffer.toString();
+            }
             break;
           case AgentEventType.thoughtUpdate:
             if (event.text != null && event.text!.isNotEmpty) {
@@ -723,6 +735,15 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
             if (event.message != null) {
               sessionMessages.add(event.message!);
               state = state!.copyWith(messages: List.from(sessionMessages));
+            }
+            // 实时联动刷新各业务模块 Provider
+            if (event.toolCall?.name == 'manage_todo') {
+              try {
+                _ref.read(todoListProvider.notifier).refresh();
+                _ref.invalidate(completedTodoListProvider);
+                _ref.invalidate(upcomingRemindersProvider);
+                WidgetUtils.updateHomeWidgets();
+              } catch (_) {}
             }
             break;
           case AgentEventType.assistantMessage:

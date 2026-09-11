@@ -55,13 +55,43 @@ class BuiltinFreeKeys {
     final effectiveKey = apiKey ?? FreeModelKeyManager.instance.acquireNextKey();
     return FreeModelConfig(
       id: 'sensenova-flash-lite',
-      displayName: 'SenseNova Flash Lite',
+      displayName: 'SenseNova 6.8',
       provider: 'openai',
       baseUrl: 'https://token.sensenova.cn/v1',
       modelName: 'sensenova-6.8-flash-lite',
       obfuscatedApiKey: effectiveKey,
       authType: 'bearer',
       priority: 0,
+    );
+  }
+
+  /// 创建内置的 GLM-5.2 模型配置（共享网关与 4 个内置 Key 轮询）
+  static FreeModelConfig createGlmConfig([String? apiKey]) {
+    final effectiveKey = apiKey ?? FreeModelKeyManager.instance.acquireNextKey();
+    return FreeModelConfig(
+      id: 'glm-5.2',
+      displayName: 'GLM 5.2',
+      provider: 'openai',
+      baseUrl: 'https://token.sensenova.cn/v1',
+      modelName: 'glm-5.2',
+      obfuscatedApiKey: effectiveKey,
+      authType: 'bearer',
+      priority: 1,
+    );
+  }
+
+  /// 创建内置的 DeepSeek-V4-Flash 模型配置（共享网关与 4 个内置 Key 轮询）
+  static FreeModelConfig createDeepSeekConfig([String? apiKey]) {
+    final effectiveKey = apiKey ?? FreeModelKeyManager.instance.acquireNextKey();
+    return FreeModelConfig(
+      id: 'deepseek-v4-flash',
+      displayName: 'DeepSeek V4 Flash',
+      provider: 'openai',
+      baseUrl: 'https://token.sensenova.cn/v1',
+      modelName: 'deepseek-v4-flash',
+      obfuscatedApiKey: effectiveKey,
+      authType: 'bearer',
+      priority: 2,
     );
   }
 }
@@ -123,12 +153,12 @@ class FreeModelKeyManager {
   String rotateKeyOnFailure(String failedKey) {
     _rateLimitedKeys[failedKey] = DateTime.now();
     LoggerService.instance.logAI(
-      'SenseNova 免费 Key 发生限速或调用失败，自动加入冷却并切换下一个 Key',
+      '免费 Key 发生限速或调用失败，自动加入冷却并轮换下一个 Key',
       level: LogLevel.warning,
       details: '受限 Key: ${_maskKey(failedKey)}, 当前受限总数: ${_rateLimitedKeys.length}/${_keys.length}',
     );
 
-    // 寻找下一个未处于冷却状态的 Key
+    // 1. 优先寻找下一个未处于冷却状态且不等于 failedKey 的 Key
     for (int i = 0; i < _keys.length; i++) {
       final key = _keys[(_cursor + i) % _keys.length];
       if (key != failedKey && !_rateLimitedKeys.containsKey(key)) {
@@ -137,13 +167,21 @@ class FreeModelKeyManager {
       }
     }
 
-    // 备用：返回与 failedKey 不同的下一个 Key
+    // 2. 次选：即使全在冷却中，也强制轮询到与 failedKey 不同的下一个 Key
     for (int i = 0; i < _keys.length; i++) {
       final key = _keys[(_cursor + i) % _keys.length];
       if (key != failedKey) {
         _cursor = (_cursor + i + 1) % _keys.length;
         return key;
       }
+    }
+
+    // 3. 兜底：若池中只有 1 个 Key 或未匹配到，强制将游标顺位递增取下一个
+    final currentIndex = _keys.indexOf(failedKey);
+    if (_keys.length > 1 && currentIndex != -1) {
+      final nextIndex = (currentIndex + 1) % _keys.length;
+      _cursor = (nextIndex + 1) % _keys.length;
+      return _keys[nextIndex];
     }
 
     return failedKey;
@@ -155,31 +193,48 @@ class FreeModelKeyManager {
     _rateLimitedKeys.removeWhere((_, time) => now.difference(time) > _cooldownDuration);
   }
 
-  /// 判定是否属于可故障转移并重试的错误（限速 429、鉴权失效 401、服务端拥塞等）
+  /// 判定是否属于可故障转移并重试的错误（限速 429、鉴权失效 401、禁用 403、服务端拥塞 502/503 等）
   bool isRecoverableError(dynamic error) {
     if (error == null) return false;
     if (error is DioException) {
       final statusCode = error.response?.statusCode;
-      if (statusCode == 429 || statusCode == 401 || statusCode == 503 || statusCode == 502) {
+      if (statusCode == 429 ||
+          statusCode == 401 ||
+          statusCode == 403 ||
+          statusCode == 503 ||
+          statusCode == 502 ||
+          statusCode == 504) {
         return true;
       }
       final respData = error.response?.data?.toString().toLowerCase() ?? '';
       if (respData.contains('rate limit') ||
           respData.contains('rate_limit') ||
           respData.contains('qps') ||
+          respData.contains('tpm') ||
+          respData.contains('rpm') ||
           respData.contains('concurrency') ||
           respData.contains('quota') ||
+          respData.contains('insufficient') ||
+          respData.contains('forbidden') ||
+          respData.contains('blocked') ||
           respData.contains('配额') ||
-          respData.contains('超限')) {
+          respData.contains('超限') ||
+          respData.contains('并发') ||
+          respData.contains('频率') ||
+          respData.contains('限制')) {
         return true;
       }
     }
     final errorStr = error.toString().toLowerCase();
     if (errorStr.contains('429') ||
+        errorStr.contains('401') ||
+        errorStr.contains('403') ||
         errorStr.contains('rate limit') ||
         errorStr.contains('qps limit') ||
         errorStr.contains('concurrency limit') ||
+        errorStr.contains('quota') ||
         errorStr.contains('配额不足') ||
+        errorStr.contains('超限') ||
         errorStr.contains('频率限制')) {
       return true;
     }

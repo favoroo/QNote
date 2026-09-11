@@ -881,7 +881,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                _buildRoleAssignment(context, '提问助手', 'assistant', configs),
+                _buildRoleAssignment(context, '小Q', 'assistant', configs),
                 const SizedBox(height: 8),
                 _buildRoleAssignment(
                   context,
@@ -900,18 +900,6 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   Widget _buildFreeModelsCard(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final isDark = theme.brightness == Brightness.dark;
-
-    // 状态色彩适配
-    final successColor = isDark ? Colors.greenAccent.shade200 : Colors.green.shade700;
-    final successBg = isDark
-        ? Colors.green.withValues(alpha: 0.15)
-        : Colors.green.withValues(alpha: 0.08);
-    final errorColor = colorScheme.error;
-    final errorBg = isDark
-        ? colorScheme.errorContainer.withValues(alpha: 0.25)
-        : colorScheme.errorContainer.withValues(alpha: 0.4);
-    final neutralBg = colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.35 : 0.5);
 
     return Container(
       decoration: BoxDecoration(
@@ -922,102 +910,80 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         ),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+      child: Row(
         children: [
-          // 顶部行：图标、模型标题与底座说明、右侧测试操作按钮
-          Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  Icons.auto_awesome_rounded,
-                  color: colorScheme.primary,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'QNote内置模型',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'SenseNova 6.8 · 免配置即用',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
-                        fontSize: 11.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
-                onPressed: _builtinTesting ? null : _testBuiltinModel,
-                style: OutlinedButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  side: BorderSide(
-                    color: colorScheme.primary.withValues(alpha: 0.45),
-                  ),
-                ),
-                icon: _builtinTesting
-                    ? SizedBox(
-                        width: 12,
-                        height: 12,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
-                        ),
-                      )
-                    : Icon(Icons.bolt_rounded, size: 16, color: colorScheme.primary),
-                label: Text(
-                  _builtinTesting ? '测试中' : '测试',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: colorScheme.primary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          // 底部全宽状态/容灾指示栏，彻底解决窄屏内容截断问题
           Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            width: 38,
+            height: 38,
             decoration: BoxDecoration(
-              color: _builtinTesting
-                  ? neutralBg
-                  : (_builtinLatency != null
-                      ? (_builtinTestSuccess == true ? successBg : errorBg)
-                      : neutralBg),
-              borderRadius: BorderRadius.circular(8),
+              color: colorScheme.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: _buildBuiltinStatusContent(
-              theme: theme,
-              colorScheme: colorScheme,
-              successColor: successColor,
-              errorColor: errorColor,
+            child: Icon(
+              Icons.auto_awesome_rounded,
+              color: colorScheme.primary,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'QNote内置模型',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+                if (_builtinLatency != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    _builtinTestSuccess == true
+                        ? '连接正常 · 延迟 $_builtinLatency'
+                        : '连接失败',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: _builtinTestSuccess == true ? Colors.green : colorScheme.error,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton.icon(
+            onPressed: _builtinTesting ? null : _testBuiltinModel,
+            style: OutlinedButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              side: BorderSide(
+                color: colorScheme.primary.withValues(alpha: 0.45),
+              ),
+            ),
+            icon: _builtinTesting
+                ? SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
+                    ),
+                  )
+                : Icon(Icons.bolt_rounded, size: 16, color: colorScheme.primary),
+            label: Text(
+              _builtinTesting ? '测试中' : '测试',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: colorScheme.primary,
+              ),
             ),
           ),
         ],
@@ -1411,23 +1377,35 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         useFreeModel = _roles.timelineOptimizationUseFreeModel;
     }
 
-    // 解析当前实际生效的配置：角色未绑定（或绑定的配置已被删除）时，
-    // 按「标记为默认 → 列表首个」回退，与 AiRoleService.getEffectiveConfigForRole 保持一致。
-    // 这样下拉永远显示一个确定的模型，不再出现含义模糊的「未设置」状态。
-    String? effectiveId;
-    if (!useFreeModel) {
+    // 解析当前实际生效的配置
+    final roleFreeModelId = roleKey == 'assistant'
+        ? _roles.assistantFreeModelId
+        : _roles.timelineOptimizationFreeModelId;
+
+    // 当前选中的下拉 value：若是免费模型，使用形如 `free:sensenova-flash-lite`；否则为自定义配置 id
+    String? currentDropdownValue;
+    if (useFreeModel) {
+      currentDropdownValue = 'free:${roleFreeModelId ?? 'sensenova-flash-lite'}';
+    } else {
       final boundValid =
           currentId != null && configs.any((c) => c.id == currentId);
       if (boundValid) {
-        effectiveId = currentId;
+        currentDropdownValue = currentId;
       } else if (configs.isNotEmpty) {
-        effectiveId =
+        currentDropdownValue =
             (configs.where((c) => c.isDefault).firstOrNull ?? configs.first).id;
+      } else {
+        // 兜底进入内置模型
+        currentDropdownValue = 'free:sensenova-flash-lite';
       }
     }
 
-    // 免费模型选项的特殊值
-    const freeModelValue = '__free_model__';
+    // 内置免费模型候选列表
+    final builtinModels = [
+      {'id': 'free:sensenova-flash-lite', 'name': '内置 SenseNova 6.8', 'modelId': 'sensenova-flash-lite'},
+      {'id': 'free:glm-5.2', 'name': '内置 GLM 5.2', 'modelId': 'glm-5.2'},
+      {'id': 'free:deepseek-v4-flash', 'name': '内置 DeepSeek V4 Flash', 'modelId': 'deepseek-v4-flash'},
+    ];
 
     // 角色特有视觉属性
     final isAssistant = roleKey == 'assistant';
@@ -1515,7 +1493,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String?>(
                       isExpanded: true,
-                      value: useFreeModel ? freeModelValue : effectiveId,
+                      value: currentDropdownValue,
                       hint: const Text(
                         '暂无可用模型',
                         style: TextStyle(fontSize: 12),
@@ -1523,27 +1501,29 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                       ),
                       style: theme.textTheme.bodyMedium?.copyWith(fontSize: 12),
                       items: [
-                        DropdownMenuItem<String?>(
-                          value: freeModelValue,
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.auto_awesome_rounded,
-                                size: 13,
-                                color: colorScheme.primary,
-                              ),
-                              const SizedBox(width: 6),
-                              const Expanded(
-                                child: Text(
-                                  'QNote内置模型',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
+                        ...builtinModels.map(
+                          (m) => DropdownMenuItem<String?>(
+                            value: m['id'],
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.auto_awesome_rounded,
+                                  size: 13,
+                                  color: colorScheme.primary,
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    m['name']!,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                         ...configs.map(
@@ -1558,20 +1538,22 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                         ),
                       ],
                       onChanged: (value) async {
-                        // 下拉已无 null 项，这里仅作防御
                         if (value == null) return;
                         AiRoles newRoles;
-                        final isFree = value == freeModelValue;
+                        final isFree = value.startsWith('free:');
+                        final freeModelId = isFree ? value.substring(5) : null;
                         switch (roleKey) {
                           case 'assistant':
                             newRoles = _roles.copyWith(
                               assistant: isFree ? null : value,
                               assistantUseFreeModel: isFree,
+                              assistantFreeModelId: freeModelId,
                             );
                           case 'timelineOptimization':
                             newRoles = _roles.copyWith(
                               timelineOptimization: isFree ? null : value,
                               timelineOptimizationUseFreeModel: isFree,
+                              timelineOptimizationFreeModelId: freeModelId,
                             );
                           default:
                             newRoles = _roles;

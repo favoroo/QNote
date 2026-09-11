@@ -204,7 +204,7 @@ class AiService {
         );
       } catch (e, stackTrace) {
         if (_config?.vendorId == 'free_model' &&
-            retryCount < maxRetries - 1 &&
+            retryCount < maxRetries &&
             FreeModelKeyManager.instance.isRecoverableError(e)) {
           retryCount++;
           final switched = switchFreeModelKey();
@@ -243,6 +243,159 @@ class AiService {
         );
         rethrow;
       }
+    }
+  }
+
+  /// 流式支持 Tool Calling 的高级流式调用
+  ///
+  /// - 当模型生成文本时，yield 普通文本碎片（支持即时打字机效果）
+  /// - 当模型生成 tool_calls 时，在内部聚合其参数碎片并在 onToolCallsComplete 回调中交付完整对象
+  Stream<String> chatStreamWithTools({
+    required List<ChatMessage> messages,
+    List<Map<String, dynamic>>? tools,
+    void Function(List<ToolCall> toolCalls)? onToolCallsReady,
+  }) async* {
+    if (_config == null) throw Exception('AI config not set');
+
+    final startTime = DateTime.now();
+    LoggerService.instance.logAI(
+      '开始带工具的流式对话请求',
+      details: '模型=${_config!.modelName}, 消息数=${messages.length}, 工具数=${tools?.length ?? 0}',
+    );
+
+    int retryCount = 0;
+    final maxRetries = _config?.vendorId == 'free_model'
+        ? FreeModelKeyManager.instance.totalKeysCount
+        : 1;
+
+    while (true) {
+      try {
+        final dynamic bodyMap = await _prepareChatRequestBody(messages, stream: true, tools: tools);
+        final dynamic requestBody = jsonEncode(bodyMap);
+
+        final response = await _dio.post<ResponseBody>(
+          _chatEndpoint,
+          data: requestBody,
+          options: Options(responseType: ResponseType.stream),
+        );
+
+        final stream = response.data?.stream;
+        if (stream == null) {
+          LoggerService.instance.logAI('流式响应为空', level: LogLevel.warning);
+          return;
+        }
+
+        String buffer = '';
+        final accumulatedResponse = StringBuffer();
+        // 存储流式拼接中的 tool_calls: index -> {id, name, argumentsBuffer}
+        final Map<int, Map<String, dynamic>> toolCallBuilders = {};
+
+        await for (final chunk in stream) {
+          buffer += utf8.decode(chunk, allowMalformed: true);
+          final lines = buffer.split('\n');
+          buffer = lines.removeLast();
+
+          for (final line in lines) {
+            final trimmed = line.trim();
+            if (trimmed.isEmpty || !trimmed.startsWith('data:')) continue;
+            final data = trimmed.substring(5).trim();
+            if (data == '[DONE]') {
+              final duration = DateTime.now().difference(startTime).inMilliseconds;
+              LoggerService.instance.logAI(
+                'AI带工具流式响应完成 [耗时=${duration}ms]:\n$accumulatedResponse',
+              );
+              _deliverToolCalls(toolCallBuilders, onToolCallsReady);
+              return;
+            }
+
+            try {
+              final json = jsonDecode(data) as Map<String, dynamic>;
+              final choice = json['choices']?[0];
+              final delta = choice?['delta'] as Map<String, dynamic>?;
+
+              // 1. 文本内容增量
+              final text = delta?['content'] as String?;
+              if (text != null && text.isNotEmpty) {
+                accumulatedResponse.write(text);
+                yield text;
+              }
+
+              // 2. 工具调用碎片聚合
+              final toolCallsDelta = delta?['tool_calls'] as List?;
+              if (toolCallsDelta != null) {
+                for (final tc in toolCallsDelta) {
+                  if (tc is! Map<String, dynamic>) continue;
+                  final idx = tc['index'] as int? ?? 0;
+                  final builder = toolCallBuilders.putIfAbsent(idx, () => {
+                    'id': '',
+                    'name': '',
+                    'arguments': StringBuffer(),
+                  });
+
+                  if (tc['id'] != null) {
+                    builder['id'] = (builder['id'] as String) + (tc['id'] as String);
+                  }
+                  final func = tc['function'] as Map<String, dynamic>?;
+                  if (func != null) {
+                    if (func['name'] != null) {
+                      builder['name'] = (builder['name'] as String) + (func['name'] as String);
+                    }
+                    if (func['arguments'] != null) {
+                      (builder['arguments'] as StringBuffer).write(func['arguments']);
+                    }
+                  }
+                }
+              }
+            } catch (_) {}
+          }
+        }
+
+        _deliverToolCalls(toolCallBuilders, onToolCallsReady);
+        return;
+      } catch (e, stackTrace) {
+        if (_config?.vendorId == 'free_model' &&
+            retryCount < maxRetries &&
+            FreeModelKeyManager.instance.isRecoverableError(e)) {
+          retryCount++;
+          final switched = switchFreeModelKey();
+          if (switched) {
+            LoggerService.instance.logAI(
+              '流式对话遭遇限速/故障，已切换 Key 并发起第 $retryCount 次重试',
+              level: LogLevel.warning,
+            );
+            continue;
+          }
+        }
+        LoggerService.instance.logAI(
+          '带工具流式对话失败: $e',
+          level: LogLevel.error,
+          details: stackTrace.toString(),
+        );
+        rethrow;
+      }
+    }
+  }
+
+  void _deliverToolCalls(
+    Map<int, Map<String, dynamic>> toolCallBuilders,
+    void Function(List<ToolCall> toolCalls)? onToolCallsReady,
+  ) {
+    if (toolCallBuilders.isEmpty || onToolCallsReady == null) return;
+    final List<ToolCall> completedCalls = [];
+    for (final b in toolCallBuilders.values) {
+      final id = b['id'] as String? ?? 'call_${DateTime.now().millisecondsSinceEpoch}';
+      final name = b['name'] as String? ?? '';
+      final argsStr = (b['arguments'] as StringBuffer).toString();
+      Map<String, dynamic> args = {};
+      try {
+        if (argsStr.trim().isNotEmpty) {
+          args = jsonDecode(argsStr) as Map<String, dynamic>;
+        }
+      } catch (_) {}
+      completedCalls.add(ToolCall(id: id, name: name, arguments: args));
+    }
+    if (completedCalls.isNotEmpty) {
+      onToolCallsReady(completedCalls);
     }
   }
 

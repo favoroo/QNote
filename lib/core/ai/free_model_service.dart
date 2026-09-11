@@ -70,9 +70,13 @@ class FreeModelService {
     throw Exception('拉取免费模型清单失败: $lastError');
   }
 
-  /// 获取内置模型列表（直接使用加密内置的 SenseNova 6.8 配置，杜绝远端配置干扰）
+  /// 获取内置模型列表（包含 SenseNova 6.8、GLM 5.2、DeepSeek V4 Flash）
   Future<List<FreeModelConfig>> getCachedModels() async {
-    return [BuiltinFreeKeys.createDefaultConfig()];
+    return [
+      BuiltinFreeKeys.createDefaultConfig(),
+      BuiltinFreeKeys.createGlmConfig(),
+      BuiltinFreeKeys.createDeepSeekConfig(),
+    ];
   }
 
   /// 规范化并迁移清单中的模型（修复旧版下线模型名称，如 6.7 迁移为 6.8）
@@ -154,8 +158,12 @@ class FreeModelService {
   /// 支持从 FreeModelKeyManager 自动进行轮询取 Key，并支持指定特定 Key 重试
   AiConfig toAiConfig(FreeModelConfig model, {String? explicitApiKey}) {
     final now = DateTime.now();
+    // 三个内置免费模型均共享 SenseNova 网关与 4 个内置轮询 Key
+    final isBuiltinKey = model.id.contains('sensenova') ||
+        model.id == 'glm-5.2' ||
+        model.id == 'deepseek-v4-flash';
     final effectiveKey = explicitApiKey ??
-        (model.id.contains('sensenova')
+        (isBuiltinKey
             ? FreeModelKeyManager.instance.acquireNextKey()
             : model.apiKey);
 
