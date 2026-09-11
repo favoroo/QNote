@@ -10,7 +10,10 @@ class DeleteFileTool extends AgentTool {
 
   @override
   String get description =>
-      '删除虚拟工作区中的指定文件（如软删除待办 "/todos/今日/已取消任务.md" 或笔记 "/notes/旧笔记.md"）。执行前请确认用户意图。';
+      '删除虚拟工作区中的文件或分类目录：\n'
+      '1. 单项删除：软删除单个待办（如 "/todos/今日/任务.md"）、单篇笔记（如 "/notes/旧笔记.md"）、单条时间线（如 "/timeline/<id>.md"）、历史会话（如 "/chats/<id>.json"）；\n'
+      '2. 分类目录级删除：支持传入待办分类目录路径（如 "/todos/工作/"）或笔记本目录路径（如 "/notes/临时/"），系统将自动级联软删除该分类及其下属的所有条目；\n'
+      '3. 整天流水清空：支持传入 "/timeline/2026-09-11.md" 清空当天所有流水。敏感删除请先调用 ask_user 确认。';
 
   @override
   Map<String, dynamic> get parametersSchema => {
@@ -18,7 +21,7 @@ class DeleteFileTool extends AgentTool {
         'properties': {
           'path': {
             'type': 'string',
-            'description': '要删除的文件绝对路径（如 "/todos/今日/拿快递.md"）',
+            'description': '要删除的文件或分类目录绝对路径（如 "/todos/今日/拿快递.md"、"/todos/临时分类/"、"/timeline/<id>.md"、"/chats/<id>.json"）',
           },
         },
         'required': ['path'],

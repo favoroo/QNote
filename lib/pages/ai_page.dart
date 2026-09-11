@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -907,21 +909,76 @@ class _AiPageState extends ConsumerState<AiPage> {
 
     final totalCount = displayMessages.length + (showTyping ? 1 : 0) + (showStreaming ? 1 : 0);
 
+    bool isUserMsg(ChatMessage m) => m.role == 'user';
+
     return ListView.builder(
       controller: _scrollController,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
       itemCount: totalCount,
       itemBuilder: (context, index) {
         // 隔离每条消息的重绘，流式输出时只重绘最后一条
         if (index < displayMessages.length) {
+          final currentMsg = displayMessages[index];
+          final currentIsUser = isUserMsg(currentMsg);
+
+          // 1. 判断是否是同组的第一条消息（若前一条也是同一方且时间相近，则不重复显示头像）
+          var isFirstInGroup = true;
+          if (index > 0) {
+            final prevMsg = displayMessages[index - 1];
+            final prevIsUser = isUserMsg(prevMsg);
+            if (prevIsUser == currentIsUser) {
+              final prevTime = prevMsg.timestamp;
+              final currTime = currentMsg.timestamp;
+              if (prevTime == null || currTime == null || currTime.difference(prevTime).abs().inMinutes < 5) {
+                isFirstInGroup = false;
+              }
+            }
+          }
+
+          // 2. 判断是否是同组的最后一条消息（若后面还有同方连续消息/流式输出，则收缩底部间距）
+          var isLastInGroup = true;
+          if (index < displayMessages.length - 1) {
+            final nextMsg = displayMessages[index + 1];
+            final nextIsUser = isUserMsg(nextMsg);
+            if (nextIsUser == currentIsUser) {
+              final nextTime = nextMsg.timestamp;
+              final currTime = currentMsg.timestamp;
+              if (nextTime == null || currTime == null || nextTime.difference(currTime).abs().inMinutes < 5) {
+                isLastInGroup = false;
+              }
+            }
+          } else {
+            // 当前是已存列表的最后一条，如果紧接着有 typing 或 streaming，且小Q是发送方，则不是最后一条
+            if (!currentIsUser && (showTyping || showStreaming)) {
+              isLastInGroup = false;
+            }
+          }
+
           return RepaintBoundary(
-            child: _ChatBubble(message: displayMessages[index]),
+            child: _ChatBubble(
+              message: currentMsg,
+              isFirstInGroup: isFirstInGroup,
+              isLastInGroup: isLastInGroup,
+            ),
           );
         }
+
         if (showTyping && index == displayMessages.length) {
-          return const _TypingBubble();
+          // 如果上一条已经是小Q回复，打字指示器隐藏头像并紧凑排列
+          final prevIsAssistant = displayMessages.isNotEmpty && !isUserMsg(displayMessages.last);
+          return _TypingBubble(
+            isFirstInGroup: !prevIsAssistant,
+            isLastInGroup: !showStreaming,
+          );
         }
-        return const _StreamingBubble();
+
+        // 流式气泡
+        final lastMsg = displayMessages.isNotEmpty ? displayMessages.last : null;
+        final prevIsAssistant = lastMsg != null && !isUserMsg(lastMsg);
+        return _StreamingBubble(
+          isFirstInGroup: !prevIsAssistant && !showTyping,
+          isLastInGroup: true,
+        );
       },
     );
   }
@@ -1755,7 +1812,13 @@ class _AiPageState extends ConsumerState<AiPage> {
 }
 
 class _StreamingBubble extends ConsumerWidget {
-  const _StreamingBubble();
+  final bool isFirstInGroup;
+  final bool isLastInGroup;
+
+  const _StreamingBubble({
+    this.isFirstInGroup = true,
+    this.isLastInGroup = true,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1767,6 +1830,8 @@ class _StreamingBubble extends ConsumerWidget {
         timestamp: DateTime.now(),
       ),
       showCursor: true,
+      isFirstInGroup: isFirstInGroup,
+      isLastInGroup: isLastInGroup,
     );
   }
 }
@@ -1774,7 +1839,15 @@ class _StreamingBubble extends ConsumerWidget {
 class _ChatBubble extends StatelessWidget {
   final ChatMessage message;
   final bool showCursor;
-  const _ChatBubble({required this.message, this.showCursor = false});
+  final bool isFirstInGroup;
+  final bool isLastInGroup;
+
+  const _ChatBubble({
+    required this.message,
+    this.showCursor = false,
+    this.isFirstInGroup = true,
+    this.isLastInGroup = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1809,77 +1882,81 @@ class _ChatBubble extends StatelessWidget {
       child: Column(
       crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
-        // Avatar and sender name header
-        Padding(
-          padding: const EdgeInsets.only(bottom: 6, left: 4, right: 4),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (!isUser) ...[
-                Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Icon(
-                      Icons.smart_toy_rounded,
-                      size: 13,
-                      color: theme.colorScheme.primary,
+        // Avatar and sender name header - 仅当同组第一条消息时显示，同一回复多条消息避免重复显示头像
+        if (isFirstInGroup)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6, left: 4, right: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!isUser) ...[
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Icon(
+                        Icons.smart_toy_rounded,
+                        size: 13,
+                        color: theme.colorScheme.primary,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  '小Q',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w500,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ] else ...[
-                Text(
-                  '您的提问',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w500,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Icon(
-                      Icons.chat_bubble_outline_rounded,
-                      size: 12,
+                  const SizedBox(width: 6),
+                  Text(
+                    '小Q',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
-                ),
+                ] else ...[
+                  Text(
+                    '您的提问',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Icon(
+                        Icons.chat_bubble_outline_rounded,
+                        size: 12,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
-        ),
         // Bubble container
         Align(
           alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
           child: Container(
-            margin: const EdgeInsets.only(bottom: 16),
+            width: isUser ? null : double.infinity,
+            margin: EdgeInsets.only(bottom: isLastInGroup ? 16 : 4),
             padding: EdgeInsets.symmetric(
               horizontal: 16,
               vertical: isUser ? 10 : 12,
             ),
             constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.82,
+              maxWidth: isUser
+                  ? MediaQuery.of(context).size.width * 0.82
+                  : double.infinity,
             ),
             decoration: BoxDecoration(
               color: isUser
@@ -1930,39 +2007,11 @@ class _ChatBubble extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // 思考过程展示（若有）
-                      if (message.thought != null && message.thought!.isNotEmpty)
-                        Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-                            ),
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Icon(
-                                Icons.psychology_outlined,
-                                size: 16,
-                                color: theme.colorScheme.primary,
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  message.thought!,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                    fontStyle: FontStyle.italic,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
+                      // 思考过程展示（若有，折叠在单行流水中滚动展示，点击可展开完整内容）
+                      if (message.thought != null && message.thought!.trim().isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: _ThoughtProcessView(thought: message.thought!.trim()),
                         ),
 
                       // 工具调用或执行反馈卡片
@@ -2367,7 +2416,13 @@ class _ChatBubble extends StatelessWidget {
 }
 
 class _TypingBubble extends StatelessWidget {
-  const _TypingBubble();
+  final bool isFirstInGroup;
+  final bool isLastInGroup;
+
+  const _TypingBubble({
+    this.isFirstInGroup = true,
+    this.isLastInGroup = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -2375,42 +2430,43 @@ class _TypingBubble extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 6, left: 4),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: Icon(
-                    Icons.smart_toy_rounded,
-                    size: 13,
-                    color: theme.colorScheme.primary,
+        if (isFirstInGroup)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6, left: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Icon(
+                      Icons.smart_toy_rounded,
+                      size: 13,
+                      color: theme.colorScheme.primary,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'QNote AI',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w500,
-                  color: theme.colorScheme.onSurfaceVariant,
+                const SizedBox(width: 6),
+                Text(
+                  '小Q',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
         Align(
           alignment: Alignment.centerLeft,
           child: Container(
-            margin: const EdgeInsets.only(bottom: 16),
+            margin: EdgeInsets.only(bottom: isLastInGroup ? 16 : 4),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: theme.colorScheme.surfaceContainer,
@@ -2531,6 +2587,225 @@ class _BlinkingCursorState extends State<_BlinkingCursor>
         decoration: BoxDecoration(
           color: color,
           borderRadius: BorderRadius.circular(1),
+        ),
+      ),
+    );
+  }
+}
+
+class _ThoughtProcessView extends StatefulWidget {
+  final String thought;
+
+  const _ThoughtProcessView({
+    required this.thought,
+  });
+
+  @override
+  State<_ThoughtProcessView> createState() => _ThoughtProcessViewState();
+}
+
+class _ThoughtProcessViewState extends State<_ThoughtProcessView> {
+  bool _isExpanded = false;
+  late final ScrollController _marqueeScrollController;
+  Timer? _marqueeTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _marqueeScrollController = ScrollController();
+    // 延迟启动轻量跑马灯滚动，让文字在单行内平滑流动
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startMarquee());
+  }
+
+  void _startMarquee() {
+    if (!mounted) return;
+    _marqueeTimer?.cancel();
+    _marqueeTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+      if (!mounted || _isExpanded || !_marqueeScrollController.hasClients) return;
+      final maxScroll = _marqueeScrollController.position.maxScrollExtent;
+      if (maxScroll <= 0) return;
+
+      final current = _marqueeScrollController.offset;
+      final next = current + 1.2;
+      if (next >= maxScroll) {
+        // 滚动到尽头后暂停片刻并平滑回滚到起点，形成流水循环
+        _marqueeTimer?.cancel();
+        Future.delayed(const Duration(milliseconds: 1200), () {
+          if (!mounted || _isExpanded || !_marqueeScrollController.hasClients) return;
+          _marqueeScrollController.animateTo(
+            0,
+            duration: const Duration(milliseconds: 800),
+            curve: Curves.easeInOut,
+          ).then((_) {
+            Future.delayed(const Duration(milliseconds: 1000), () {
+              if (mounted) _startMarquee();
+            });
+          });
+        });
+      } else {
+        _marqueeScrollController.jumpTo(next);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _marqueeTimer?.cancel();
+    _marqueeScrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    // 清洗思考过程开头的换行与多余空格，保证单行流水整洁
+    final cleanThought = widget.thought.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+    return AnimatedSize(
+      duration: AppDurations.medium,
+      curve: Curves.easeOutCubic,
+      child: Container(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: theme.colorScheme.primary.withValues(alpha: 0.18),
+            width: 1,
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              setState(() {
+                _isExpanded = !_isExpanded;
+                if (!_isExpanded) {
+                  // 收起时重置并重启单行流水跑马灯
+                  WidgetsBinding.instance.addPostFrameCallback((_) => _startMarquee());
+                } else {
+                  _marqueeTimer?.cancel();
+                }
+              });
+            },
+            borderRadius: BorderRadius.circular(10),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 顶部单行胶囊栏
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.psychology_outlined,
+                        size: 15,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '思考过程',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.primary,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // 折叠态：单行水平渐变淡出流水跑马灯
+                      if (!_isExpanded)
+                        Expanded(
+                          child: ShaderMask(
+                            shaderCallback: (rect) {
+                              return const LinearGradient(
+                                colors: [
+                                  Colors.white,
+                                  Colors.white,
+                                  Colors.transparent,
+                                ],
+                                stops: [0.0, 0.88, 1.0],
+                              ).createShader(rect);
+                            },
+                            blendMode: BlendMode.dstIn,
+                            child: SingleChildScrollView(
+                              controller: _marqueeScrollController,
+                              scrollDirection: Axis.horizontal,
+                              physics: const NeverScrollableScrollPhysics(),
+                              child: Text(
+                                cleanThought,
+                                maxLines: 1,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                      else
+                        Expanded(
+                          child: Text(
+                            '点击折叠',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: theme.colorScheme.outline,
+                            ),
+                          ),
+                        ),
+                      const SizedBox(width: 4),
+                      AnimatedRotation(
+                        turns: _isExpanded ? 0.5 : 0,
+                        duration: AppDurations.normal,
+                        child: Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          size: 16,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                  // 展开态：完整富文本思考过程（支持长文本内部滚动）
+                  if (_isExpanded) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      constraints: const BoxConstraints(maxHeight: 220),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+                        ),
+                      ),
+                      child: SingleChildScrollView(
+                        child: SelectableText(
+                          widget.thought,
+                          style: TextStyle(
+                            fontSize: 12,
+                            height: 1.55,
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
+                            fontStyle: FontStyle.italic,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );

@@ -10,7 +10,7 @@ class SkillTool extends AgentTool {
 
   @override
   String get description =>
-      '查看或激活指定的专业技能手册（如 "todo-manager"、"note-manager"、"timeline-manager"、"journal-manager"、"settings-manager"）。当遇到用户复杂的规划、长文排版或特定领域需求时，调用此工具获取最佳工作流与格式规范。';
+      '查看或激活指定的专业技能手册（如 "todo-manager"、"note-manager"、"timeline-manager"、"journal-manager"、"settings-manager"、"stats-analyst"、"folder-manager"）。当遇到复杂的 GTD 任务规划、长文排版、数据趋势分析或分类维护需求时，调用此工具获取最佳工作流与格式规范。';
 
   @override
   Map<String, dynamic> get parametersSchema => {
@@ -18,7 +18,7 @@ class SkillTool extends AgentTool {
         'properties': {
           'name': {
             'type': 'string',
-            'description': '技能名称或技能文件路径（如 "todo-manager"、"note-manager" 或 "/skills/todo-manager.md"）。不填则列出所有可用技能。',
+            'description': '技能名称或技能文件路径（如 "todo-manager"、"stats-analyst"、"folder-manager"、"settings-manager" 或 "/skills/todo-manager.md"）。不填则列出所有可用技能。',
           },
         },
       };

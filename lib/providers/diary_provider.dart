@@ -221,6 +221,17 @@ final diaryListByDateRangeProvider = FutureProvider.family<
 class DiaryColorMarkNotifier extends AsyncNotifier<List<DateColorMark>> {
   @override
   Future<List<DateColorMark>> build() async {
+    void onWorkspaceChange(WorkspaceChangeEvent event) {
+      if (event.path.contains('color_marks') || event.path.startsWith('/timeline/')) {
+        refresh();
+      }
+    }
+
+    WorkspaceEventBus.instance.addListener(onWorkspaceChange);
+    ref.onDispose(() {
+      WorkspaceEventBus.instance.removeListener(onWorkspaceChange);
+    });
+
     final repo = ref.read(colorMarkRepositoryProvider);
     return repo.getAll();
   }

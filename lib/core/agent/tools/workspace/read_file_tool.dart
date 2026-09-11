@@ -13,7 +13,7 @@ class ReadFileTool extends AgentTool {
 
   @override
   String get description =>
-      '读取虚拟工作区中指定文件的内容（包含行号及 Frontmatter 元数据）。支持读取待办详情（如 "/todos/今日/拿快递.md"）、笔记内容（如 "/notes/技术架构/方案.md"）、时间线流水（如 "/timeline/2026-09-11.md"）、长篇日记、系统配置（如 "/settings/profile.json"）或专业技能手册（如 "/skills/todo-manager.md"）。支持行号切片。';
+      '读取虚拟工作区中指定文件的内容（包含行号及 Frontmatter 元数据）。支持读取待办详情（如 "/todos/今日/拿快递.md"）、笔记内容（如 "/notes/技术/架构.md"）、时间流水（如 "/timeline/2026-09-11.md"）、分类管理（如 "/folders/todos.json"、"/folders/notes.json"）、数据洞察（如 "/stats/summary.json"、"/stats/daily_scores.json"）、会话历史（如 "/chats/sessions.json"）、系统与健康设置（如 "/settings/appearance.json"、"/settings/weight.json"、"/settings/color_marks.json"）或专业技能手册（如 "/skills/todo-manager.md"）。支持行号切片。';
 
   @override
   Map<String, dynamic> get parametersSchema => {

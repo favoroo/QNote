@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
+import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/core/storage/folder_repository.dart';
 import 'package:qnote_flutter/models/folder.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
@@ -20,6 +21,17 @@ final todoFolderListProvider =
 class TodoFolderListNotifier extends AsyncNotifier<List<Folder>> {
   @override
   Future<List<Folder>> build() async {
+    void onWorkspaceChange(WorkspaceChangeEvent event) {
+      if (event.path.startsWith('/folders') || event.path.startsWith('/todos/')) {
+        refresh();
+      }
+    }
+
+    WorkspaceEventBus.instance.addListener(onWorkspaceChange);
+    ref.onDispose(() {
+      WorkspaceEventBus.instance.removeListener(onWorkspaceChange);
+    });
+
     final repo = ref.read(todoFolderRepositoryProvider);
     var folders = await repo.getByType('todo');
 

@@ -13,7 +13,7 @@ class ListDirTool extends AgentTool {
 
   @override
   String get description =>
-      '列出指定虚拟目录下的文件与子文件夹。用于探索工作区、查看有哪些分类或查看分类下有哪些待办、笔记等。例如查看根目录 list_dir(path: "/")，查看待办分类 list_dir(path: "/todos")，查看今日待办 list_dir(path: "/todos/今日")。';
+      '列出指定虚拟目录下的文件与子文件夹。用于探索工作区全貌、查看分类、浏览待办/笔记/时间线/系统配置等。常用目录：根目录 list_dir(path: "/")，待办分类 list_dir(path: "/todos")，分类管理 list_dir(path: "/folders")，数据洞察 list_dir(path: "/stats")，会话管理 list_dir(path: "/chats")，系统配置 list_dir(path: "/settings")。';
 
   @override
   Map<String, dynamic> get parametersSchema => {
@@ -21,7 +21,7 @@ class ListDirTool extends AgentTool {
         'properties': {
           'path': {
             'type': 'string',
-            'description': '要查看的虚拟目录路径（如 "/"、"/todos"、"/todos/今日"、"/notes"、"/skills" 等，默认为 "/"）',
+            'description': '要查看的虚拟目录路径（如 "/"、"/todos"、"/folders"、"/stats"、"/chats"、"/settings"、"/notes"、"/skills" 等，默认为 "/"）',
           },
         },
         'required': ['path'],

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
+import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/models/note.dart';
 
@@ -14,6 +15,17 @@ final noteListProvider = AsyncNotifierProvider<NoteListNotifier, List<Note>>(() 
 class NoteListNotifier extends AsyncNotifier<List<Note>> {
   @override
   Future<List<Note>> build() async {
+    void onWorkspaceChange(WorkspaceChangeEvent event) {
+      if (event.path.startsWith('/notes/')) {
+        refresh();
+      }
+    }
+
+    WorkspaceEventBus.instance.addListener(onWorkspaceChange);
+    ref.onDispose(() {
+      WorkspaceEventBus.instance.removeListener(onWorkspaceChange);
+    });
+
     final repo = ref.read(noteRepositoryProvider);
     return repo.getAll();
   }

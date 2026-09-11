@@ -185,12 +185,8 @@ class _AskUserDialogState extends State<AskUserDialog> {
                             : colorScheme.onSurface,
                       ),
                       onSelected: (selected) {
-                        setState(() {
-                          if (selected) {
-                            _selectedOption = option;
-                            _showCustomInput = false;
-                          }
-                        });
+                        // 点击选项直接触发确认并关闭弹窗，提供符合直觉的单步确认体验
+                        Navigator.of(context).pop(option);
                       },
                     );
                   }).toList(),

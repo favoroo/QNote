@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 
@@ -11,7 +12,18 @@ class ShortcutListNotifier extends StateNotifier<List<ShortcutConfig>> {
   final ConfigRepository _repo = ConfigRepository.instance;
   final Ref _ref;
 
-  ShortcutListNotifier(this._ref) : super([]);
+  ShortcutListNotifier(this._ref) : super([]) {
+    void onWorkspaceChange(WorkspaceChangeEvent event) {
+      if (event.path == '/settings/shortcuts.json') {
+        load();
+      }
+    }
+
+    WorkspaceEventBus.instance.addListener(onWorkspaceChange);
+    _ref.onDispose(() {
+      WorkspaceEventBus.instance.removeListener(onWorkspaceChange);
+    });
+  }
 
   Future<void> load() async {
     state = await _repo.getShortcutConfigs();

@@ -13,6 +13,7 @@ import 'package:qnote_flutter/core/agent/engine/agent_cancellation_token.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_events.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_loop.dart';
 import 'package:qnote_flutter/core/agent/prompts/q_system_prompt.dart';
+import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
@@ -75,11 +76,31 @@ final aiServiceProvider = Provider<AiService>((ref) {
 });
 
 final aiRolesProvider = FutureProvider<AiRoles?>((ref) async {
+  void onWorkspaceChange(WorkspaceChangeEvent event) {
+    if (event.path == '/settings/ai.json') {
+      ref.invalidateSelf();
+    }
+  }
+
+  WorkspaceEventBus.instance.addListener(onWorkspaceChange);
+  ref.onDispose(() {
+    WorkspaceEventBus.instance.removeListener(onWorkspaceChange);
+  });
   final repo = ConfigRepository.instance;
   return repo.getAiRoles();
 });
 
 final aiTemperaturesProvider = FutureProvider<AiTemperatures?>((ref) async {
+  void onWorkspaceChange(WorkspaceChangeEvent event) {
+    if (event.path == '/settings/ai.json') {
+      ref.invalidateSelf();
+    }
+  }
+
+  WorkspaceEventBus.instance.addListener(onWorkspaceChange);
+  ref.onDispose(() {
+    WorkspaceEventBus.instance.removeListener(onWorkspaceChange);
+  });
   final repo = ConfigRepository.instance;
   return repo.getAiTemperatures();
 });
@@ -117,6 +138,16 @@ final aiConfigListProvider =
 class AiConfigListNotifier extends AsyncNotifier<List<AiConfig>> {
   @override
   Future<List<AiConfig>> build() async {
+    void onWorkspaceChange(WorkspaceChangeEvent event) {
+      if (event.path == '/settings/ai.json') {
+        refresh();
+      }
+    }
+
+    WorkspaceEventBus.instance.addListener(onWorkspaceChange);
+    ref.onDispose(() {
+      WorkspaceEventBus.instance.removeListener(onWorkspaceChange);
+    });
     final repo = ConfigRepository.instance;
     return repo.getAllAiConfigs();
   }
@@ -178,6 +209,17 @@ final chatSessionListProvider =
 class ChatSessionListNotifier extends AsyncNotifier<List<ChatSession>> {
   @override
   Future<List<ChatSession>> build() async {
+    void onWorkspaceChange(WorkspaceChangeEvent event) {
+      if (event.path.startsWith('/chats/')) {
+        refresh();
+      }
+    }
+
+    WorkspaceEventBus.instance.addListener(onWorkspaceChange);
+    ref.onDispose(() {
+      WorkspaceEventBus.instance.removeListener(onWorkspaceChange);
+    });
+
     final repo = ConfigRepository.instance;
     return repo.getAllChatSessions();
   }

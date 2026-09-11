@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
+import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/core/storage/folder_repository.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/models/folder.dart';
@@ -16,6 +17,17 @@ final folderListProvider =
 class FolderListNotifier extends AsyncNotifier<List<Folder>> {
   @override
   Future<List<Folder>> build() async {
+    void onWorkspaceChange(WorkspaceChangeEvent event) {
+      if (event.path.startsWith('/folders') || event.path.startsWith('/notes/')) {
+        refresh();
+      }
+    }
+
+    WorkspaceEventBus.instance.addListener(onWorkspaceChange);
+    ref.onDispose(() {
+      WorkspaceEventBus.instance.removeListener(onWorkspaceChange);
+    });
+
     // 笔记页可见的文件夹：普通笔记文件夹 + 日记体系（根目录与月份子文件夹）
     final repo = ref.read(folderRepositoryProvider);
     await JournalService.instance.ensureRootFolder();

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
+import 'package:qnote_flutter/core/utils/reminder_utils.dart';
 import 'package:qnote_flutter/models/folder.dart';
 import 'package:qnote_flutter/models/todo.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
@@ -711,28 +712,12 @@ class _TodoPageState extends ConsumerState<TodoPage> {
       title: '设置提醒时间',
     );
     if (result == null) return;
-    final formatted =
-        '${result.month.toString().padLeft(2, '0')}-${result.day.toString().padLeft(2, '0')} ${result.hour.toString().padLeft(2, '0')}:${result.minute.toString().padLeft(2, '0')}';
+    final formatted = ReminderUtils.format(result);
     ref.read(todoListProvider.notifier).setReminder(todo.id, formatted);
   }
 
-  DateTime? _parseReminderTime(String timeStr) {
-    try {
-      final parts = timeStr.split(' ');
-      final dateParts = parts[0].split('-');
-      final timeParts = parts[1].split(':');
-      final now = DateTime.now();
-      return DateTime(
-        now.year,
-        int.parse(dateParts[0]),
-        int.parse(dateParts[1]),
-        int.parse(timeParts[0]),
-        int.parse(timeParts[1]),
-      );
-    } catch (_) {
-      return null;
-    }
-  }
+  /// 解析提醒时间；兼容 `MM-DD HH:mm`、`YYYY-MM-DD HH:mm` 等写法。
+  DateTime? _parseReminderTime(String timeStr) => ReminderUtils.parse(timeStr);
 
   Future<void> _confirmDelete(Todo todo) async {
     final confirmed = await showDialog<bool>(

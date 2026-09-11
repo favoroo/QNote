@@ -20,6 +20,20 @@ class DiaryRepository {
     return maps.map((m) => DiaryRecord.fromMap(m)).toList();
   }
 
+  /// 获取有打卡记录的活跃日期列表（YYYY-MM-DD，倒序）
+  Future<List<String>> getActiveDates({int limit = 30}) async {
+    final db = await _dbHelper.database;
+    final results = await db.rawQuery(
+      "SELECT DISTINCT substr(time, 1, 10) AS date_str FROM diary_records WHERE is_deleted = 0 ORDER BY time DESC LIMIT ?",
+      [limit],
+    );
+    return results
+        .map((r) => r['date_str'] as String?)
+        .where((s) => s != null && s.isNotEmpty)
+        .cast<String>()
+        .toList();
+  }
+
   Future<List<DiaryRecord>> getByDate(DateTime date) async {
     final db = await _dbHelper.database;
     final prevDateStr = date.subtract(const Duration(days: 1)).toIso8601String().split('T').first;

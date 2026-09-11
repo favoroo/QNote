@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/models/user_profile.dart';
 import 'package:qnote_flutter/models/weight_record.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
@@ -11,11 +12,24 @@ final userProfileProvider = FutureProvider<UserProfile?>((ref) async {
 
 class UserProfileNotifier extends StateNotifier<UserProfile?> {
   final ConfigRepository _repo = ConfigRepository.instance;
+  final Ref? _ref;
 
-  UserProfileNotifier() : super(null);
+  UserProfileNotifier([this._ref]) : super(null) {
+    void onWorkspaceChange(WorkspaceChangeEvent event) {
+      if (event.path == '/settings/profile.json') {
+        load();
+      }
+    }
+
+    WorkspaceEventBus.instance.addListener(onWorkspaceChange);
+    _ref?.onDispose(() {
+      WorkspaceEventBus.instance.removeListener(onWorkspaceChange);
+    });
+  }
 
   Future<void> load() async {
     state = await _repo.getUserProfile();
+    _ref?.invalidate(userProfileProvider);
   }
 
   Future<void> save(UserProfile profile) async {
@@ -52,5 +66,5 @@ class UserProfileNotifier extends StateNotifier<UserProfile?> {
 
 final userProfileNotifierProvider =
     StateNotifierProvider<UserProfileNotifier, UserProfile?>((ref) {
-  return UserProfileNotifier();
+  return UserProfileNotifier(ref);
 });

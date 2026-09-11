@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/models/fixed_event_template.dart';
 import 'package:qnote_flutter/core/storage/fixed_event_repository.dart';
 
@@ -13,7 +14,18 @@ class FixedEventNotifier extends StateNotifier<List<FixedEventTemplate>> {
   final FixedEventRepository _repo = FixedEventRepository.instance;
   final Ref _ref;
 
-  FixedEventNotifier(this._ref) : super([]);
+  FixedEventNotifier(this._ref) : super([]) {
+    void onWorkspaceChange(WorkspaceChangeEvent event) {
+      if (event.path == '/settings/fixed_events.json') {
+        loadAll();
+      }
+    }
+
+    WorkspaceEventBus.instance.addListener(onWorkspaceChange);
+    _ref.onDispose(() {
+      WorkspaceEventBus.instance.removeListener(onWorkspaceChange);
+    });
+  }
 
   /// 加载所有模板（包括禁用的）
   Future<void> loadAll() async {

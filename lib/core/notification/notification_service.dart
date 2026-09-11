@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
+import 'package:qnote_flutter/core/utils/reminder_utils.dart';
 import 'package:qnote_flutter/models/todo.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
@@ -279,21 +280,6 @@ class NotificationService {
     }
   }
 
-  DateTime? _parseReminderTime(String timeStr) {
-    try {
-      final parts = timeStr.split(' ');
-      final dateParts = parts[0].split('-');
-      final timeParts = parts[1].split(':');
-      final now = DateTime.now();
-      return DateTime(
-        now.year,
-        int.parse(dateParts[0]),
-        int.parse(dateParts[1]),
-        int.parse(timeParts[0]),
-        int.parse(timeParts[1]),
-      );
-    } catch (_) {
-      return null;
-    }
-  }
+  /// 解析提醒时间；兼容 `MM-DD HH:mm`、`YYYY-MM-DD HH:mm` 等写法。
+  DateTime? _parseReminderTime(String timeStr) => ReminderUtils.parse(timeStr);
 }

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
+import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/models/todo.dart';
 import 'package:qnote_flutter/core/notification/notification_service.dart';
@@ -38,6 +39,17 @@ final upcomingRemindersProvider = FutureProvider<List<Todo>>((ref) async {
 class TodoListNotifier extends AsyncNotifier<List<Todo>> {
   @override
   Future<List<Todo>> build() async {
+    void onWorkspaceChange(WorkspaceChangeEvent event) {
+      if (event.path.startsWith('/todos/')) {
+        refresh();
+      }
+    }
+
+    WorkspaceEventBus.instance.addListener(onWorkspaceChange);
+    ref.onDispose(() {
+      WorkspaceEventBus.instance.removeListener(onWorkspaceChange);
+    });
+
     final repo = ref.read(todoRepositoryProvider);
     // 启动初始化时自动清理存量空待办脏数据，并自愈修复未关联分类的孤儿待办
     await repo.cleanEmptyTodos();
