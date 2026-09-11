@@ -33,6 +33,11 @@ class BuiltinFreeKeys {
     143, 38, 135
   ];
 
+  // 掩码混淆保存的 Gemini 网关 API Key（无任何明文字符串）
+  static const List<int> _kGemini = [
+    44, 158, 93, 189, 194, 114, 220, 145, 63, 116, 233, 62, 123, 155, 7, 47
+  ];
+
   static const List<List<int>> _allEncoded = [_k0, _k1, _k2, _k3];
 
   /// 掩码向量
@@ -52,6 +57,11 @@ class BuiltinFreeKeys {
     return _allEncoded.map(_decode).toList();
   }
 
+  /// 获取解密后的 Gemini 专用 API Key
+  static String getGeminiApiKey() {
+    return _decode(_kGemini);
+  }
+
   /// 创建内置的默认 SenseNova 6.8 模型配置
   static FreeModelConfig createDefaultConfig([String? apiKey]) {
     final effectiveKey = apiKey ?? FreeModelKeyManager.instance.acquireNextKey();
@@ -63,7 +73,7 @@ class BuiltinFreeKeys {
       modelName: 'sensenova-6.8-flash-lite',
       obfuscatedApiKey: effectiveKey,
       authType: 'bearer',
-      priority: 0,
+      priority: 2,
     );
   }
 
@@ -78,7 +88,7 @@ class BuiltinFreeKeys {
       modelName: 'glm-5.2',
       obfuscatedApiKey: effectiveKey,
       authType: 'bearer',
-      priority: 1,
+      priority: 3,
     );
   }
 
@@ -93,7 +103,37 @@ class BuiltinFreeKeys {
       modelName: 'deepseek-v4-flash',
       obfuscatedApiKey: effectiveKey,
       authType: 'bearer',
-      priority: 2,
+      priority: 4,
+    );
+  }
+
+  /// 创建内置的 Gemini 3.8 Flash Low 模型配置
+  static FreeModelConfig createGemini38Config([String? apiKey]) {
+    final effectiveKey = apiKey ?? getGeminiApiKey();
+    return FreeModelConfig(
+      id: 'gemini-3.8-flash-low',
+      displayName: 'Gemini 3.8 Flash Low',
+      provider: 'openai',
+      baseUrl: 'https://1demacbook-pro.tail77f123.ts.net/v1',
+      modelName: 'gemini-3.8-flash-low',
+      obfuscatedApiKey: effectiveKey,
+      authType: 'bearer',
+      priority: 1,
+    );
+  }
+
+  /// 创建内置的 Gemini 3.5 Flash Lite 模型配置（默认推荐）
+  static FreeModelConfig createGemini35Config([String? apiKey]) {
+    final effectiveKey = apiKey ?? getGeminiApiKey();
+    return FreeModelConfig(
+      id: 'gemini-3.5-flash-lite',
+      displayName: 'Gemini 3.5 Flash Lite',
+      provider: 'openai',
+      baseUrl: 'https://1demacbook-pro.tail77f123.ts.net/v1',
+      modelName: 'gemini-3.5-flash-lite',
+      obfuscatedApiKey: effectiveKey,
+      authType: 'bearer',
+      priority: 0,
     );
   }
 }

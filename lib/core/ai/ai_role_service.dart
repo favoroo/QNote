@@ -17,22 +17,69 @@ class AiRoleService {
   static const _selectedFreeModelKey = 'selected_free_model';
   // AI 温度设置迁移版本标记
   static const _aiTempsMigrationVersionKey = 'ai_temps_migration_version';
+  // 默认免费模型升级迁移标记
+  static const _defaultModelMigrationVersionKey = 'default_model_migration_v2';
 
   /// 初始化并确保默认配置
   Future<void> initAndEnsureDefaults() async {
     final existing = await _repo.getAiRoles();
     if (existing == null) {
-      // 初次进入应用：自动配置使用内置模型（开箱即用）
+      // 初次进入应用：自动配置使用内置模型（开箱即用，默认选用 Gemini 3.5 Flash Lite）
       await saveRoles(
         const AiRoles(
           assistantUseFreeModel: true,
           timelineOptimizationUseFreeModel: true,
+          assistantFreeModelId: 'gemini-3.5-flash-lite',
+          timelineOptimizationFreeModelId: 'gemini-3.5-flash-lite',
         ),
       );
     }
 
     // 迁移：将 timelineOptimization.extractImages 默认值从 false 升级为 true
     await _migrateExtractImagesDefault();
+    // 迁移：将旧版默认内置模型顺畅升级为 Gemini 3.5 Flash Lite
+    await _migrateDefaultFreeModel();
+  }
+
+  /// 迁移默认内置模型至 gemini-3.5-flash-lite
+  Future<void> _migrateDefaultFreeModel() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(_defaultModelMigrationVersionKey) == true) return;
+
+    final existing = await _repo.getAiRoles();
+    if (existing != null) {
+      bool needUpdate = false;
+      String? newAssistantModel = existing.assistantFreeModelId;
+      String? newTimelineModel = existing.timelineOptimizationFreeModelId;
+
+      if (existing.assistantUseFreeModel &&
+          (existing.assistantFreeModelId == null ||
+              existing.assistantFreeModelId == 'sensenova-flash-lite')) {
+        newAssistantModel = 'gemini-3.5-flash-lite';
+        needUpdate = true;
+      }
+      if (existing.timelineOptimizationUseFreeModel &&
+          (existing.timelineOptimizationFreeModelId == null ||
+              existing.timelineOptimizationFreeModelId == 'sensenova-flash-lite')) {
+        newTimelineModel = 'gemini-3.5-flash-lite';
+        needUpdate = true;
+      }
+      if (needUpdate) {
+        await saveRoles(
+          existing.copyWith(
+            assistantFreeModelId: newAssistantModel,
+            timelineOptimizationFreeModelId: newTimelineModel,
+          ),
+        );
+      }
+    }
+
+    final preferred = await getPreferredFreeModelId();
+    if (preferred == null || preferred == 'sensenova-flash-lite') {
+      await savePreferredFreeModelId('gemini-3.5-flash-lite');
+    }
+
+    await prefs.setBool(_defaultModelMigrationVersionKey, true);
   }
 
   /// 迁移旧版用户的 extractImages 设置：默认开启图片提取

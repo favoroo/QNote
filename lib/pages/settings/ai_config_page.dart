@@ -65,7 +65,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   Future<void> _loadFreeModels() async {
     final selectedId = await AiRoleService.instance.getPreferredFreeModelId();
     if (selectedId == null) {
-      await AiRoleService.instance.savePreferredFreeModelId('sensenova-flash-lite');
+      await AiRoleService.instance.savePreferredFreeModelId('gemini-3.5-flash-lite');
     }
   }
 
@@ -1264,10 +1264,10 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         ? _roles.assistantFreeModelId
         : _roles.timelineOptimizationFreeModelId;
 
-    // 当前选中的下拉 value：若是免费模型，使用形如 `free:sensenova-flash-lite`；否则为自定义配置 id
+    // 当前选中的下拉 value：若是免费模型，使用形如 `free:gemini-3.5-flash-lite`；否则为自定义配置 id
     String? currentDropdownValue;
     if (useFreeModel) {
-      currentDropdownValue = 'free:${roleFreeModelId ?? 'sensenova-flash-lite'}';
+      currentDropdownValue = 'free:${roleFreeModelId ?? 'gemini-3.5-flash-lite'}';
     } else {
       final boundValid =
           currentId != null && configs.any((c) => c.id == currentId);
@@ -1278,12 +1278,14 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
             (configs.where((c) => c.isDefault).firstOrNull ?? configs.first).id;
       } else {
         // 兜底进入内置模型
-        currentDropdownValue = 'free:sensenova-flash-lite';
+        currentDropdownValue = 'free:gemini-3.5-flash-lite';
       }
     }
 
-    // 内置免费模型候选列表
+    // 内置免费模型候选列表（默认推荐 Gemini 3.5 Flash Lite）
     final builtinModels = [
+      {'id': 'free:gemini-3.5-flash-lite', 'name': '内置 Gemini 3.5 Flash Lite', 'modelId': 'gemini-3.5-flash-lite'},
+      {'id': 'free:gemini-3.8-flash-low', 'name': '内置 Gemini 3.8 Flash Low', 'modelId': 'gemini-3.8-flash-low'},
       {'id': 'free:sensenova-flash-lite', 'name': '内置 SenseNova 6.8', 'modelId': 'sensenova-flash-lite'},
       {'id': 'free:glm-5.2', 'name': '内置 GLM 5.2', 'modelId': 'glm-5.2'},
       {'id': 'free:deepseek-v4-flash', 'name': '内置 DeepSeek V4 Flash', 'modelId': 'deepseek-v4-flash'},

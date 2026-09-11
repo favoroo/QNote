@@ -113,9 +113,19 @@ class AiService {
         .replaceAll(RegExp(r'/+$'), ''); // 去除末尾多余斜杠
   }
 
+  /// 免费模型重试深度：SenseNova 网关遍历 Key 池容量，其它独立端点为 1
+  int get _maxFreeRetries {
+    if (_config?.vendorId != 'free_model') return 1;
+    final isSenseNova = _config?.baseUrl.contains('sensenova') == true;
+    return isSenseNova ? FreeModelKeyManager.instance.totalKeysCount : 1;
+  }
+
   /// 为免费模型自动切换下一个备用 Key，并更新请求头
   bool switchFreeModelKey() {
     if (_config?.vendorId != 'free_model') return false;
+    // 仅针对属于 SenseNova Key 池的模型进行 Key 轮换，避免污染其他独立网关端点
+    final isSenseNova = _config?.baseUrl.contains('sensenova') == true;
+    if (!isSenseNova) return false;
     final oldKey = _config!.apiKey;
     final nextKey = FreeModelKeyManager.instance.rotateKeyOnFailure(oldKey);
     if (nextKey == oldKey) {
@@ -148,9 +158,7 @@ class AiService {
     );
 
     int retryCount = 0;
-    final maxRetries = _config?.vendorId == 'free_model'
-        ? FreeModelKeyManager.instance.totalKeysCount
-        : 1;
+    final maxRetries = _maxFreeRetries;
 
     while (true) {
       try {
@@ -266,9 +274,7 @@ class AiService {
     );
 
     int retryCount = 0;
-    final maxRetries = _config?.vendorId == 'free_model'
-        ? FreeModelKeyManager.instance.totalKeysCount
-        : 1;
+    final maxRetries = _maxFreeRetries;
 
     while (true) {
       bool hasYielded = false;
@@ -428,9 +434,7 @@ class AiService {
     );
 
     int retryCount = 0;
-    final maxRetries = _config?.vendorId == 'free_model'
-        ? FreeModelKeyManager.instance.totalKeysCount
-        : 1;
+    final maxRetries = _maxFreeRetries;
 
     while (true) {
       bool hasYielded = false;
@@ -1044,9 +1048,7 @@ class AiService {
     );
 
     int retryCount = 0;
-    final maxRetries = _config?.vendorId == 'free_model'
-        ? FreeModelKeyManager.instance.totalKeysCount
-        : 1;
+    final maxRetries = _maxFreeRetries;
 
     while (true) {
       try {
@@ -1180,9 +1182,7 @@ class AiService {
     );
 
     int retryCount = 0;
-    final maxRetries = _config?.vendorId == 'free_model'
-        ? FreeModelKeyManager.instance.totalKeysCount
-        : 1;
+    final maxRetries = _maxFreeRetries;
 
     while (true) {
       try {

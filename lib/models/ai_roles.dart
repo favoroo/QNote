@@ -15,8 +15,8 @@ class AiRoles {
     this.timelineOptimization,
     this.assistantUseFreeModel = false,
     this.timelineOptimizationUseFreeModel = false,
-    this.assistantFreeModelId,
-    this.timelineOptimizationFreeModelId,
+    this.assistantFreeModelId = 'gemini-3.5-flash-lite',
+    this.timelineOptimizationFreeModelId = 'gemini-3.5-flash-lite',
   });
 
   Map<String, dynamic> toMap() {
@@ -38,9 +38,9 @@ class AiRoles {
       assistantUseFreeModel: map['assistantUseFreeModel'] as bool? ?? false,
       timelineOptimizationUseFreeModel:
           map['timelineOptimizationUseFreeModel'] as bool? ?? false,
-      assistantFreeModelId: map['assistantFreeModelId'] as String?,
+      assistantFreeModelId: map['assistantFreeModelId'] as String? ?? 'gemini-3.5-flash-lite',
       timelineOptimizationFreeModelId:
-          map['timelineOptimizationFreeModelId'] as String?,
+          map['timelineOptimizationFreeModelId'] as String? ?? 'gemini-3.5-flash-lite',
     );
   }
 

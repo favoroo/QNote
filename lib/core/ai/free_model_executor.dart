@@ -82,7 +82,10 @@ class FreeModelExecutor {
         '免费模型流式调用 [${i + 1}/${ordered.length}]: ${model.displayName}',
       );
 
-      final maxKeyRetries = FreeModelKeyManager.instance.totalKeysCount;
+      final isSenseNovaModel = model.baseUrl.contains('sensenova');
+      final maxKeyRetries = isSenseNovaModel
+          ? FreeModelKeyManager.instance.totalKeysCount
+          : 1;
       int keyRetry = 0;
 
       while (keyRetry < maxKeyRetries) {

@@ -70,9 +70,11 @@ class FreeModelService {
     throw Exception('拉取免费模型清单失败: $lastError');
   }
 
-  /// 获取内置模型列表（包含 SenseNova 6.8、GLM 5.2、DeepSeek V4 Flash）
+  /// 获取内置模型列表（包含 Gemini 3.5 Flash Lite、Gemini 3.8 Flash Low、SenseNova 6.8、GLM 5.2、DeepSeek V4 Flash）
   Future<List<FreeModelConfig>> getCachedModels() async {
     return [
+      BuiltinFreeKeys.createGemini35Config(),
+      BuiltinFreeKeys.createGemini38Config(),
       BuiltinFreeKeys.createDefaultConfig(),
       BuiltinFreeKeys.createGlmConfig(),
       BuiltinFreeKeys.createDeepSeekConfig(),
@@ -158,14 +160,24 @@ class FreeModelService {
   /// 支持从 FreeModelKeyManager 自动进行轮询取 Key，并支持指定特定 Key 重试
   AiConfig toAiConfig(FreeModelConfig model, {String? explicitApiKey}) {
     final now = DateTime.now();
-    // 三个内置免费模型均共享 SenseNova 网关与 4 个内置轮询 Key
-    final isBuiltinKey = model.id.contains('sensenova') ||
+    // SenseNova 网关下的内置模型共享 4 个商汤轮询 Key
+    final isSenseNovaBuiltinKey = model.id.contains('sensenova') ||
         model.id == 'glm-5.2' ||
         model.id == 'deepseek-v4-flash';
-    final effectiveKey = explicitApiKey ??
-        (isBuiltinKey
-            ? FreeModelKeyManager.instance.acquireNextKey()
-            : model.apiKey);
+    // Gemini 专用网关的内置模型
+    final isGeminiBuiltinKey =
+        model.id == 'gemini-3.8-flash-low' || model.id == 'gemini-3.5-flash-lite';
+
+    final String effectiveKey;
+    if (explicitApiKey != null && explicitApiKey.isNotEmpty) {
+      effectiveKey = explicitApiKey;
+    } else if (isSenseNovaBuiltinKey) {
+      effectiveKey = FreeModelKeyManager.instance.acquireNextKey();
+    } else if (isGeminiBuiltinKey) {
+      effectiveKey = BuiltinFreeKeys.getGeminiApiKey();
+    } else {
+      effectiveKey = model.apiKey;
+    }
 
     return AiConfig(
       id: 'free_${model.id}',

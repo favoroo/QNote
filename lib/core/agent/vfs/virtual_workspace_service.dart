@@ -433,12 +433,12 @@ class VirtualWorkspaceService {
         'roles': {
           'assistant': {
             'useFreeModel': roles.assistantUseFreeModel,
-            'freeModelId': roles.assistantFreeModelId ?? 'sensenova-flash-lite',
+            'freeModelId': roles.assistantFreeModelId ?? 'gemini-3.5-flash-lite',
             'customModelId': roles.assistant,
           },
           'timelineOptimization': {
             'useFreeModel': roles.timelineOptimizationUseFreeModel,
-            'freeModelId': roles.timelineOptimizationFreeModelId ?? 'sensenova-flash-lite',
+            'freeModelId': roles.timelineOptimizationFreeModelId ?? 'gemini-3.5-flash-lite',
             'customModelId': roles.timelineOptimization,
           },
         },

@@ -19,6 +19,25 @@ void main() {
       }
     });
 
+    test('Gemini 专用内置密钥解密正确且配置完整', () {
+      final geminiKey = BuiltinFreeKeys.getGeminiApiKey();
+      expect(geminiKey, equals('sk-hq13789130001'));
+
+      final m38 = BuiltinFreeKeys.createGemini38Config();
+      expect(m38.id, equals('gemini-3.8-flash-low'));
+      expect(m38.displayName, equals('Gemini 3.8 Flash Low'));
+      expect(m38.modelName, equals('gemini-3.8-flash-low'));
+      expect(m38.baseUrl, equals('https://1demacbook-pro.tail77f123.ts.net/v1'));
+      expect(m38.provider, equals('openai'));
+
+      final m35 = BuiltinFreeKeys.createGemini35Config();
+      expect(m35.id, equals('gemini-3.5-flash-lite'));
+      expect(m35.displayName, equals('Gemini 3.5 Flash Lite'));
+      expect(m35.modelName, equals('gemini-3.5-flash-lite'));
+      expect(m35.baseUrl, equals('https://1demacbook-pro.tail77f123.ts.net/v1'));
+      expect(m35.provider, equals('openai'));
+    });
+
     test('FreeModelKeyManager 顺位轮询 Round-Robin 正常工作', () {
       final manager = FreeModelKeyManager.instance;
       final k1 = manager.acquireNextKey();

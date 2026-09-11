@@ -34,8 +34,10 @@ class AiPage extends ConsumerStatefulWidget {
 
 class _AiPageState extends ConsumerState<AiPage> {
   final _inputController = TextEditingController();
+  final _inputFocusNode = FocusNode();
   final _scrollController = ScrollController();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
+  double _lastBottomInset = 0.0;
 
   bool _isTyping = false;
   DateTime? _filterStartDate;
@@ -58,6 +60,7 @@ class _AiPageState extends ConsumerState<AiPage> {
   @override
   void initState() {
     super.initState();
+    _inputFocusNode.addListener(_onInputFocusChanged);
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     // 默认本周（周一至今天）
@@ -72,10 +75,22 @@ class _AiPageState extends ConsumerState<AiPage> {
     });
   }
 
+  void _onInputFocusChanged() {
+    if (_inputFocusNode.hasFocus) {
+      // 输入框聚焦时立即触发滚动，并等待软键盘弹起动画完成后再次校准到底部
+      _scrollToBottom();
+      Future.delayed(const Duration(milliseconds: 260), () {
+        if (mounted && _inputFocusNode.hasFocus) {
+          _scrollToBottom();
+        }
+      });
+    }
+  }
+
   Future<void> _initActiveModelId() async {
     final roles = await ref.read(aiRolesProvider.future);
     if (roles != null && roles.assistantUseFreeModel) {
-      final freeId = roles.assistantFreeModelId ?? 'sensenova-flash-lite';
+      final freeId = roles.assistantFreeModelId ?? 'gemini-3.5-flash-lite';
       if (mounted) setState(() => _activeModelId = 'free:$freeId');
       return;
     }
@@ -97,6 +112,8 @@ class _AiPageState extends ConsumerState<AiPage> {
   @override
   void dispose() {
     AgentInteractionService.instance.cancelPending('离开AI页面');
+    _inputFocusNode.removeListener(_onInputFocusChanged);
+    _inputFocusNode.dispose();
     _inputController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -121,7 +138,9 @@ class _AiPageState extends ConsumerState<AiPage> {
   void _scrollToBottomIfNeeded() {
     if (_scrollController.hasClients) {
       final pos = _scrollController.position;
-      final isNearBottom = pos.maxScrollExtent - pos.pixels < 150;
+      // 当键盘弹起时，允许更大容差，避免流式内容被误判为历史回看而阻断滚动
+      final tolerance = _lastBottomInset > 0 ? 300.0 : 150.0;
+      final isNearBottom = pos.maxScrollExtent - pos.pixels < tolerance;
       if (isNearBottom || pos.pixels == 0) {
         _scrollToBottom(immediate: true);
       }
@@ -654,7 +673,7 @@ class _AiPageState extends ConsumerState<AiPage> {
         if (roles != null) {
           String? newActiveId;
           if (roles.assistantUseFreeModel) {
-            final freeId = roles.assistantFreeModelId ?? 'sensenova-flash-lite';
+            final freeId = roles.assistantFreeModelId ?? 'gemini-3.5-flash-lite';
             newActiveId = 'free:$freeId';
           } else if (roles.assistant != null) {
             newActiveId = roles.assistant;
@@ -682,7 +701,7 @@ class _AiPageState extends ConsumerState<AiPage> {
             setState(() => _activeModelId = defaultCfg.id);
           }
         } else {
-          setState(() => _activeModelId = 'free:sensenova-flash-lite');
+          setState(() => _activeModelId = 'free:gemini-3.5-flash-lite');
         }
       }
     });
@@ -693,6 +712,17 @@ class _AiPageState extends ConsumerState<AiPage> {
         _scrollToBottomIfNeeded();
       }
     });
+
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    if (bottomInset > _lastBottomInset) {
+      // 软键盘弹起或高度增加，在下一帧平滑滚动到底部跟随避让
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _scrollToBottom();
+        }
+      });
+    }
+    _lastBottomInset = bottomInset;
 
     return Scaffold(
       key: _scaffoldKey,
@@ -911,11 +941,18 @@ class _AiPageState extends ConsumerState<AiPage> {
 
     bool isUserMsg(ChatMessage m) => m.role == 'user';
 
-    return ListView.builder(
-      controller: _scrollController,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-      itemCount: totalCount,
-      itemBuilder: (context, index) {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () {
+        // 点击聊天区域空白背景收起软键盘
+        _inputFocusNode.unfocus();
+      },
+      child: ListView.builder(
+        controller: _scrollController,
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+        itemCount: totalCount,
+        itemBuilder: (context, index) {
         // 隔离每条消息的重绘，流式输出时只重绘最后一条
         if (index < displayMessages.length) {
           final currentMsg = displayMessages[index];
@@ -980,8 +1017,9 @@ class _AiPageState extends ConsumerState<AiPage> {
           isLastInGroup: true,
         );
       },
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildInputArea(
     AsyncValue<List<AiConfig>> aiConfigsAsync,
@@ -1384,6 +1422,7 @@ class _AiPageState extends ConsumerState<AiPage> {
         children: [
           TextField(
             controller: _inputController,
+            focusNode: _inputFocusNode,
             minLines: 1,
             maxLines: 4,
             decoration: const InputDecoration(
@@ -1464,11 +1503,15 @@ class _AiPageState extends ConsumerState<AiPage> {
           return '内置 GLM 5.2';
         case 'deepseek-v4-flash':
           return '内置 DeepSeek V4 Flash';
+        case 'gemini-3.8-flash-low':
+          return '内置 Gemini 3.8 Flash Low';
+        case 'gemini-3.5-flash-lite':
+          return '内置 Gemini 3.5 Flash Lite';
         default:
           return '内置免费模型';
       }
     }
-    if (_activeModelId == '__free_model__') return '内置 SenseNova 6.8';
+    if (_activeModelId == '__free_model__') return '内置 Gemini 3.5 Flash Lite';
     final config = configs.where((c) => c.id == _activeModelId).firstOrNull;
     return config?.name ?? '默认';
   }
@@ -3171,6 +3214,8 @@ class _ModelSelectorDialog extends StatelessWidget {
     final theme = Theme.of(context);
 
     final builtinModels = [
+      {'id': 'free:gemini-3.5-flash-lite', 'name': '内置 Gemini 3.5 Flash Lite'},
+      {'id': 'free:gemini-3.8-flash-low', 'name': '内置 Gemini 3.8 Flash Low'},
       {'id': 'free:sensenova-flash-lite', 'name': '内置 SenseNova 6.8'},
       {'id': 'free:glm-5.2', 'name': '内置 GLM 5.2'},
       {'id': 'free:deepseek-v4-flash', 'name': '内置 DeepSeek V4 Flash'},
@@ -3181,7 +3226,7 @@ class _ModelSelectorDialog extends StatelessWidget {
       children: [
         ...builtinModels.map((m) {
           final isSelected = activeModelId == m['id'] ||
-              (activeModelId == '__free_model__' && m['id'] == 'free:sensenova-flash-lite');
+              (activeModelId == '__free_model__' && m['id'] == 'free:gemini-3.5-flash-lite');
           return SimpleDialogOption(
             onPressed: () => Navigator.pop(context, m['id']),
             child: Row(
