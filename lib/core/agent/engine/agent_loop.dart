@@ -12,14 +12,19 @@ import 'package:qnote_flutter/models/chat_session.dart';
 ///
 /// 核心特性：
 /// 1. 十级细粒度生命周期事件流 (Lifecycle Events)
-/// 2. 上下文转换与防爆机制 (transformContext)
+/// 2. 长会话上下文压缩 (Compaction)：超窗成对裁剪 + LLM 结构化摘要
 /// 3. 并行与串行混合工具调度 (Parallel & Sequential Tool Execution)
 /// 4. 生命周期钩子系统 (beforeToolCall, afterToolCall, shouldStopAfterTurn)
 /// 5. 动态中断与取消控制 (AgentCancellationToken)
+/// 6. 动态环境上下文注入 system 尾部（对齐 pi 的 before_agent_start 钩子）
+/// 7. `<thought>` 标签流式过滤，UI 不闪现协议原文
 class AgentLoop {
   final AiService aiService;
   final ToolDispatcher dispatcher;
   final int maxTurns;
+
+  /// 历史消息窗口上限（条数，不含 system 与摘要消息），超过则触发压缩
+  final int maxHistoryMessages;
   final Future<void> Function(ToolCall call)? beforeToolCall;
   final Future<void> Function(ToolCall call, ChatMessage result)? afterToolCall;
   final FutureOr<bool> Function(ChatMessage lastAssistantMessage, int turn)? shouldStopAfterTurn;
@@ -28,7 +33,8 @@ class AgentLoop {
   AgentLoop({
     required this.aiService,
     required this.dispatcher,
-    this.maxTurns = 10,
+    this.maxTurns = 8,
+    this.maxHistoryMessages = 30,
     this.beforeToolCall,
     this.afterToolCall,
     this.shouldStopAfterTurn,
@@ -36,16 +42,28 @@ class AgentLoop {
   });
 
   /// 运行 ReAct 循环
+  ///
+  /// [dynamicContext] 为动态环境上下文（当前时间、用户资料、关联数据等），
+  /// 会拼接到系统提示词尾部，避免污染用户消息原文且保证每轮都可见。
   Stream<AgentEvent> run({
     required List<ChatMessage> conversationHistory,
     required String systemPrompt,
+    String? dynamicContext,
     AgentCancellationToken? cancellationToken,
   }) async* {
     yield AgentEvent.agentStart();
 
+    // 长会话压缩：裁剪早期消息并生成摘要（对齐 pi compaction）
+    final compactedHistory = await _compactHistory(conversationHistory);
+
+    final String fullSystemPrompt =
+        (dynamicContext == null || dynamicContext.trim().isEmpty)
+            ? systemPrompt
+            : '$systemPrompt\n\n# 当前环境上下文\n$dynamicContext';
+
     final List<ChatMessage> activeMessages = [
-      ChatMessage(role: 'system', content: systemPrompt),
-      ...conversationHistory,
+      ChatMessage(role: 'system', content: fullSystemPrompt),
+      ...compactedHistory,
     ];
 
     final toolDefinitions = dispatcher.toFunctionDefinitions();
@@ -79,6 +97,7 @@ class AgentLoop {
 
         final accumulatedContent = StringBuffer();
         final List<ToolCall> streamedToolCalls = [];
+        final thoughtFilter = _ThoughtTagFilter();
 
         try {
           final stream = aiService.chatStreamWithTools(
@@ -102,7 +121,16 @@ class AgentLoop {
               return;
             }
             accumulatedContent.write(delta);
-            yield AgentEvent.contentDelta(delta);
+            // 过滤 <thought> 标签，UI 只收到干净的正文增量
+            final visible = thoughtFilter.feed(delta);
+            if (visible.isNotEmpty) {
+              yield AgentEvent.contentDelta(visible);
+            }
+          }
+          // 冲刷过滤器中因标签截断而暂扣的尾巴
+          final tail = thoughtFilter.flush();
+          if (tail.isNotEmpty) {
+            yield AgentEvent.contentDelta(tail);
           }
         } catch (e) {
           LoggerService.instance.logAI('AgentLoop 流式发生错误: $e', level: LogLevel.error);
@@ -113,7 +141,15 @@ class AgentLoop {
 
         String content = accumulatedContent.toString().trim();
         String? thought;
-        if (content.contains('<thought>') && content.contains('</thought>')) {
+        if (thoughtFilter.hasThought) {
+          thought = thoughtFilter.thoughtText;
+          // 过滤器已将标签内文本收集到 thought，这里整段剥除标签（含内部空白差异）
+          content = content
+              .replaceAll(RegExp(r'<thought>[\s\S]*?</thought>'), '')
+              .replaceAll(RegExp(r'</?thought>'), '')
+              .trim();
+        } else if (content.contains('<thought>') && content.contains('</thought>')) {
+          // 兜底：非流式路径或过滤器未覆盖的格式
           final startIdx = content.indexOf('<thought>') + 9;
           final endIdx = content.indexOf('</thought>');
           if (endIdx > startIdx) {
@@ -220,10 +256,17 @@ class AgentLoop {
         }
       }
 
-      // 超过最大轮次保护
+      // 超过最大轮次保护：附带已执行操作摘要，方便用户接续指令
+      final executedTools = activeMessages
+          .where((m) => m.role == 'tool' && m.toolName != null)
+          .map((m) => m.toolName!)
+          .toSet()
+          .join('、');
       final timeoutMsg = ChatMessage(
         role: 'assistant',
-        content: '小Q执行步骤较多，已达到本轮安全上限。请查看已完成的操作，如有需要可继续向我提问！',
+        content: executedTools.isEmpty
+            ? '小Q执行步骤较多，已达到本轮安全上限。请查看已完成的操作，如有需要可继续向我提问！'
+            : '小Q已连续执行多步操作（$executedTools），达到本轮安全上限，已完成的工作均已生效。如需继续，请告诉我下一步！',
         timestamp: DateTime.now(),
       );
       yield AgentEvent.finished(timeoutMsg);
@@ -231,6 +274,78 @@ class AgentLoop {
     } finally {
       // 循环退出保障
     }
+  }
+
+  /// 长会话上下文压缩（简化版 pi compaction）
+  ///
+  /// 历史超过 [maxHistoryMessages] 时裁剪早期消息，并生成一条摘要注入窗口头部。
+  /// 裁剪点必须保证 assistant(tool_calls) 与其 tool 结果成对完整，
+  /// 否则 OpenAI 兼容接口会因 tool_call_id 失配直接返回 400。
+  Future<List<ChatMessage>> _compactHistory(List<ChatMessage> history) async {
+    if (history.length <= maxHistoryMessages) return history;
+
+    int cut = history.length - maxHistoryMessages;
+    // 窗口起点不能落在孤立的 tool 结果上：向前回退到配对的 assistant(tool_calls) 之前
+    while (cut > 0 && history[cut].role == 'tool') {
+      cut--;
+    }
+    if (cut <= 0) return history;
+
+    final removed = history.sublist(0, cut);
+    final kept = history.sublist(cut);
+
+    final summary = await _summarizeMessages(removed);
+    LoggerService.instance.logAI(
+      '触发上下文压缩: 裁剪 ${removed.length} 条早期消息, 保留 ${kept.length} 条',
+    );
+
+    return [
+      ChatMessage(
+        role: 'user',
+        content: '[以下是此前对话的压缩摘要，供你了解上下文背景，无需直接回应]\n$summary',
+        timestamp: removed.first.timestamp,
+      ),
+      ...kept,
+    ];
+  }
+
+  /// 将被裁剪的历史压缩为结构化摘要：优先 LLM 生成，失败时降级为机械拼接
+  Future<String> _summarizeMessages(List<ChatMessage> messages) async {
+    final buffer = StringBuffer();
+    for (final m in messages) {
+      if (m.role == 'system') continue;
+      final label = m.role == 'user'
+          ? '用户'
+          : m.role == 'assistant'
+              ? '小Q'
+              : '工具结果';
+      var text = m.content.trim();
+      if (text.length > 400) text = '${text.substring(0, 400)}…';
+      if (text.isEmpty) continue;
+      buffer.writeln('[$label] $text');
+    }
+    final transcript = buffer.toString().trim();
+    if (transcript.isEmpty) return '（无有效内容）';
+
+    try {
+      final llmSummary = await aiService.chat([
+        ChatMessage(
+          role: 'system',
+          content: '你是会话压缩器。将以下对话历史压缩为简洁的要点列表摘要，必须保留：'
+              '1) 用户的目标与偏好；2) 已完成的操作（涉及的数据类型与路径）；'
+              '3) 关键决定；4) 未完成事项。控制在 300 字以内。',
+        ),
+        ChatMessage(role: 'user', content: transcript),
+      ]);
+      if (llmSummary.trim().isNotEmpty) return llmSummary.trim();
+    } catch (e) {
+      LoggerService.instance.logAI(
+        'LLM 会话摘要生成失败，降级为机械摘要: $e',
+        level: LogLevel.warning,
+      );
+    }
+    // 机械降级：截断保护，避免摘要本身反而撑爆上下文
+    return transcript.length > 2000 ? '${transcript.substring(0, 2000)}…' : transcript;
   }
 
   /// 默认上下文修剪与 Token 防爆治理策略（对齐 Pi Agent 的 transformContext）
@@ -242,13 +357,13 @@ class AgentLoop {
     for (int i = 0; i < messages.length; i++) {
       final msg = messages[i];
 
-      // 1. 系统提示词保持完整
+      // 系统提示词保持完整
       if (msg.role == 'system') {
         transformed.add(msg);
         continue;
       }
 
-      // 2. 对工具返回超大内容进行截断保护（超过 2200 字符折叠）
+      // 对工具返回超大内容进行截断保护（超过 2200 字符折叠）
       if (msg.role == 'tool') {
         final content = msg.content;
         if (content.length > 2200) {
@@ -259,13 +374,6 @@ class AgentLoop {
           transformed.add(msg.copyWith(content: safeContent));
           continue;
         }
-      }
-
-      // 3. 对历史中过旧的工具消息做状态压缩（仅保留最近 12 条完整记录）
-      if (messages.length > 14 && i < messages.length - 10 && msg.role == 'tool') {
-        final brief = '[已执行 ${msg.toolName ?? "tool"}: 成功]';
-        transformed.add(msg.copyWith(content: brief));
-        continue;
       }
 
       transformed.add(msg);
@@ -316,3 +424,76 @@ class AgentLoop {
   }
 }
 
+/// `<thought>` 标签流式过滤器
+///
+/// 标签可能被流式增量从中间切开（如 `<tho` + `ught>`），因此用前缀暂扣缓冲：
+/// 确定是标签前缀时等待后续增量，确定不是时按普通文本放行。
+/// 思考内容被拦截到 [thought]，不进入 UI 展示流。
+class _ThoughtTagFilter {
+  static const String _openTag = '<thought>';
+  static const String _closeTag = '</thought>';
+
+  final StringBuffer thought = StringBuffer();
+  final StringBuffer _pending = StringBuffer();
+  bool _inThought = false;
+
+  /// 输入流式增量，返回可安全展示的文本（不含 thought 标签及其内容）
+  String feed(String delta) {
+    _pending.write(delta);
+    final output = StringBuffer();
+
+    while (_pending.isNotEmpty) {
+      final pending = _pending.toString();
+      final tag = _inThought ? _closeTag : _openTag;
+
+      // 1. 完整命中标签：切换状态并消费
+      if (pending.startsWith(tag)) {
+        _pending.clear();
+        _inThought = !_inThought;
+        continue;
+      }
+
+      // 2. 是标签前缀但尚未完整（可能被增量切断）：暂扣等待
+      if (pending.length < tag.length && tag.startsWith(pending)) {
+        break;
+      }
+
+      // 3. 普通文本：一次性输出到下一个 '<' 之前
+      final searchFrom = pending.startsWith('<') ? 1 : 0;
+      final lt = pending.indexOf('<', searchFrom);
+      if (lt == -1) {
+        _emit(output, pending);
+        _pending.clear();
+      } else {
+        _emit(output, pending.substring(0, lt));
+        _pending.clear();
+        _pending.write(pending.substring(lt));
+      }
+    }
+
+    return output.toString();
+  }
+
+  void _emit(StringBuffer output, String text) {
+    if (_inThought) {
+      thought.write(text);
+    } else {
+      output.write(text);
+    }
+  }
+
+  /// 流结束时冲刷暂扣缓冲（未闭合的 thought 归入思考内容）
+  String flush() {
+    final rest = _pending.toString();
+    _pending.clear();
+    if (_inThought) {
+      thought.write(rest);
+      return '';
+    }
+    return rest;
+  }
+
+  bool get hasThought => thought.isNotEmpty;
+
+  String get thoughtText => thought.toString().trim();
+}

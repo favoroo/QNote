@@ -29,6 +29,14 @@ class DatabaseHelper {
     return await openDatabase(
       path,
       version: 20,
+      onConfigure: (db) async {
+        // 遇到写锁时等待重试（默认立即抛 database is locked），提升并发访问健壮性
+        try {
+          await db.execute('PRAGMA busy_timeout = 5000');
+        } catch (_) {
+          // 个别平台（如 Web WASM）不支持该 PRAGMA，忽略即可
+        }
+      },
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onOpen: (db) async {

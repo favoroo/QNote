@@ -6,7 +6,6 @@ import 'package:qnote_flutter/core/agent/agent_tool_registry.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_events.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_loop.dart';
 import 'package:qnote_flutter/core/agent/prompts/q_system_prompt.dart';
-import 'package:qnote_flutter/core/agent/vfs/virtual_workspace_service.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/builtin_free_keys.dart';
 import 'package:qnote_flutter/core/ai/free_model_service.dart';
@@ -121,6 +120,9 @@ void main() {
         print('✅ 工具执行结果: ${event.message?.content}');
       } else if (event.type == AgentEventType.finished) {
         reply2 = event.message;
+      } else if (event.type == AgentEventType.error) {
+        // ignore: avoid_print
+        print('❌ [测试2错误事件]: ${event.error}');
       }
     }
 

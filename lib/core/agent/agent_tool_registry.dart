@@ -1,12 +1,6 @@
 import 'package:qnote_flutter/core/agent/engine/tool_dispatcher.dart';
 import 'package:qnote_flutter/core/agent/tools/general/ask_user_tool.dart';
-import 'package:qnote_flutter/core/agent/tools/general/edit_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/general/grep_tool.dart';
-import 'package:qnote_flutter/core/agent/tools/journal/manage_journal_tool.dart';
-import 'package:qnote_flutter/core/agent/tools/notes/manage_note_tool.dart';
-import 'package:qnote_flutter/core/agent/tools/settings/manage_settings_tool.dart';
-import 'package:qnote_flutter/core/agent/tools/timeline/manage_timeline_tool.dart';
-import 'package:qnote_flutter/core/agent/tools/todo/manage_todo_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/delete_file_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/edit_file_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/list_dir_tool.dart';
@@ -15,6 +9,9 @@ import 'package:qnote_flutter/core/agent/tools/workspace/skill_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/write_file_tool.dart';
 
 /// 全局工具装配工厂
+///
+/// 对齐 pi-agent 的"通用原语优先"理念：仅保留 VFS 文件原语 + 检索 + 人机确认，
+/// 不再注册 manage_todo 等与 VFS 语义重叠的业务工具，降低每轮 schema 开销与模型决策摇摆。
 class AgentToolRegistry {
   static ToolDispatcher createDefaultDispatcher() {
     final dispatcher = ToolDispatcher();
@@ -30,15 +27,7 @@ class AgentToolRegistry {
 
       // 通用搜索与交互
       GrepTool(),
-      EditTool(),
       AskUserTool(),
-
-      // 业务工具（兼容保留）
-      ManageTodoTool(),
-      ManageTimelineTool(),
-      ManageJournalTool(),
-      ManageNoteTool(),
-      ManageSettingsTool(),
     ]);
 
     return dispatcher;

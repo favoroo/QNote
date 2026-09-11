@@ -12,14 +12,20 @@ void main() {
       expect(defs.isNotEmpty, true);
       final names = defs.map((d) => (d['function'] as Map)['name']).toSet();
 
+      // VFS 通用原语工具集（对齐 pi-agent 精简理念）
+      expect(names.contains('list_dir'), true);
+      expect(names.contains('read_file'), true);
+      expect(names.contains('write_file'), true);
+      expect(names.contains('edit_file'), true);
+      expect(names.contains('delete_file'), true);
+      expect(names.contains('skill'), true);
       expect(names.contains('grep'), true);
-      expect(names.contains('edit'), true);
       expect(names.contains('ask_user'), true);
-      expect(names.contains('manage_todo'), true);
-      expect(names.contains('manage_timeline'), true);
-      expect(names.contains('manage_journal'), true);
-      expect(names.contains('manage_note'), true);
-      expect(names.contains('manage_settings'), true);
+
+      // 已移除的冗余业务工具不应再注册
+      expect(names.contains('manage_todo'), false);
+      expect(names.contains('manage_note'), false);
+      expect(names.contains('edit'), false);
     });
 
     test('ToolDispatcher dispatch 未知工具能安全返回 isError 消息', () async {
@@ -40,8 +46,8 @@ void main() {
     test('ToolCall 与 ChatMessage 模型序列化与反序列化完整性', () {
       final toolCall = ToolCall(
         id: 'call_123',
-        name: 'manage_todo',
-        arguments: {'action': 'create', 'title': '测试待办'},
+        name: 'write_file',
+        arguments: {'path': '/todos/今日/测试待办.md', 'content': '测试内容'},
       );
 
       final msg = ChatMessage(
@@ -57,8 +63,8 @@ void main() {
       expect(restored.role, 'assistant');
       expect(restored.thought, '用户想记录一件事情');
       expect(restored.toolCalls?.length, 1);
-      expect(restored.toolCalls?.first.name, 'manage_todo');
-      expect(restored.toolCalls?.first.arguments['title'], '测试待办');
+      expect(restored.toolCalls?.first.name, 'write_file');
+      expect(restored.toolCalls?.first.arguments['path'], '/todos/今日/测试待办.md');
     });
   });
 }

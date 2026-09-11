@@ -243,11 +243,23 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
   bool _isStreaming = false;
   AgentCancellationToken? _currentCancellationToken;
 
+  /// 流式文本刷新节流定时器：批量合并 delta，避免每 token 触发 UI 重建
+  Timer? _streamingFlushTimer;
+
   bool get isStreaming => _isStreaming;
 
   /// 主动取消/中止当前 Agent 执行（对齐 Pi Agent 的 abort 控制）
   void cancelCurrentAgent([String? reason]) {
     _currentCancellationToken?.cancel(reason);
+  }
+
+  /// 以约 60ms 的节奏批量刷新流式文本到 UI（人眼流畅且不逐 token 重建）
+  void _scheduleStreamingFlush() {
+    if (_streamingFlushTimer != null && _streamingFlushTimer!.isActive) return;
+    _streamingFlushTimer = Timer(const Duration(milliseconds: 60), () {
+      _ref.read(aiStreamingMessageProvider.notifier).state =
+          _streamingContent.toString();
+    });
   }
 
   void setSession(ChatSession? session) {
@@ -637,42 +649,22 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         }
       }
 
-      // 5. Construct userContent for LLM (following the legacy structure exactly)
-      String userContent = '';
+      // 5. 构建动态环境上下文（时间/用户资料/关联数据），注入 system 尾部而非污染用户消息原文
+      final dynamicContextBuffer = StringBuffer();
       if (timeContext.isNotEmpty) {
-        userContent += '==== [系统时间] ====\n$timeContext\n\n';
+        dynamicContextBuffer.writeln('- 当前时间: $timeContext');
       }
       if (userInfo != null && userInfo.isNotEmpty) {
-        userContent += '==== [用户信息] ====\n$userInfo\n\n';
+        dynamicContextBuffer.writeln('- 用户资料: $userInfo');
       }
       if (dataContext != null && dataContext.isNotEmpty) {
-        userContent += '==== [上下文数据] ====\n$dataContext\n\n';
+        dynamicContextBuffer.writeln('- 关联数据（用户引用的待办/笔记/日记等）:\n$dataContext');
       }
-      userContent += '==== [用户指令] ====\n$content';
+      final dynamicContext = dynamicContextBuffer.toString().trim();
 
       final aiService = _ref.read(aiServiceProvider);
       final roleSettings = await AiRoleService.instance.getSettingsForRole(
         'assistant',
-      );
-
-      // 6. Build enriched messages history to send to LLM (with system instruction and contextualized last message)
-      final List<ChatMessage> messagesToSend = [];
-      final systemPrompt = defaultSystemPrompts['analysis_system'] ?? '';
-      if (systemPrompt.isNotEmpty) {
-        messagesToSend.add(ChatMessage(role: 'system', content: systemPrompt));
-      }
-      // Add all previous messages (except the last one which we send enriched)
-      for (int i = 0; i < updatedMessages.length - 1; i++) {
-        messagesToSend.add(updatedMessages[i]);
-      }
-      // Add the contextualized last user message (carrying images for vision understanding)
-      messagesToSend.add(
-        ChatMessage(
-          role: 'user',
-          content: userContent,
-          timestamp: userMessage.timestamp,
-          images: userMessage.images,
-        ),
       );
 
       _ref.read(aiStreamingMessageProvider.notifier).state = '小Q正在思考并分析任务...';
@@ -697,15 +689,11 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         dispatcher: dispatcher,
         maxTurns: 8,
         afterToolCall: (call, result) async {
-          final toolName = call.name;
-          final args = call.arguments;
-          final targetPath = (args['path'] as String? ?? '').toLowerCase();
+          // 按 VFS 路径前缀联动刷新对应业务数据
+          final targetPath = (call.arguments['path'] as String? ?? '').toLowerCase();
 
           // 1. 待办系统联动刷新
-          if (toolName == 'manage_todo' ||
-              (toolName == 'write_file' && targetPath.startsWith('/todos')) ||
-              (toolName == 'edit_file' && targetPath.startsWith('/todos')) ||
-              (toolName == 'delete_file' && targetPath.startsWith('/todos'))) {
+          if (targetPath.startsWith('/todos')) {
             try {
               _ref.read(todoListProvider.notifier).refresh();
               _ref.read(todoFolderListProvider.notifier).refresh();
@@ -716,10 +704,7 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
           }
 
           // 2. 日记与时间线流水联动刷新
-          if (toolName == 'manage_journal' ||
-              targetPath.startsWith('/journal') ||
-              toolName == 'manage_timeline' ||
-              targetPath.startsWith('/timeline')) {
+          if (targetPath.startsWith('/journal') || targetPath.startsWith('/timeline')) {
             try {
               _ref.read(diaryListProvider.notifier).refresh();
               _ref.invalidate(journalByDateProvider);
@@ -727,7 +712,7 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
           }
 
           // 3. 笔记知识库联动刷新
-          if (toolName == 'manage_note' || targetPath.startsWith('/notes')) {
+          if (targetPath.startsWith('/notes')) {
             try {
               _ref.read(noteListProvider.notifier).refresh();
             } catch (_) {}
@@ -735,27 +720,16 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         },
       );
 
-      final List<ChatMessage> conversationHistory = [];
-      for (int i = 0; i < updatedMessages.length - 1; i++) {
-        conversationHistory.add(updatedMessages[i]);
-      }
-      conversationHistory.add(
-        ChatMessage(
-          role: 'user',
-          content: userContent,
-          timestamp: userMessage.timestamp,
-          images: userMessage.images,
-        ),
-      );
+      // 历史保持用户原文（时间/资料等环境信息已注入 system 尾部，每轮可见且不污染历史）
+      final List<ChatMessage> conversationHistory = List.from(updatedMessages);
 
       ChatMessage? finalResponse;
       final sessionMessages = [...updatedMessages];
 
-      final streamingTextBuffer = StringBuffer();
-
       await for (final event in agentLoop.run(
         conversationHistory: conversationHistory,
         systemPrompt: QSystemPrompt.prompt,
+        dynamicContext: dynamicContext,
         cancellationToken: token,
       )) {
         switch (event.type) {
@@ -763,15 +737,14 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
             _ref.read(aiStreamingMessageProvider.notifier).state = '小Q正在准备...';
             break;
           case AgentEventType.turnStart:
-            streamingTextBuffer.clear();
+            _streamingContent.clear();
             _ref.read(aiStreamingMessageProvider.notifier).state =
                 '小Q正在思考中 (第 ${event.turn} 步)...';
             break;
           case AgentEventType.contentDelta:
             if (event.text != null) {
-              streamingTextBuffer.write(event.text);
-              _ref.read(aiStreamingMessageProvider.notifier).state =
-                  streamingTextBuffer.toString();
+              _streamingContent.write(event.text!);
+              _scheduleStreamingFlush();
             }
             break;
           case AgentEventType.thoughtUpdate:
@@ -840,6 +813,8 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
     } finally {
       _isStreaming = false;
       _currentCancellationToken = null;
+      _streamingFlushTimer?.cancel();
+      _streamingFlushTimer = null;
       _ref.read(aiStreamingMessageProvider.notifier).state = null;
       if (state != null) {
         await repo.updateChatSession(state!);

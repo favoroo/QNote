@@ -214,8 +214,9 @@ class VirtualWorkspaceService {
     final slicedLines = lines.sublist(start, end);
     final buffer = StringBuffer();
     for (int i = 0; i < slicedLines.length; i++) {
-      final lineNum = start + i + 1;
-      buffer.writeln('$lineNum\t${slicedLines[i]}');
+      final line = slicedLines[i];
+      // 空行不加行号前缀，避免尾部空行经 trimRight 后残留孤立行号
+      buffer.writeln(line.isEmpty ? '' : '${start + i + 1}\t$line');
     }
     return buffer.toString().trimRight();
   }
@@ -685,11 +686,10 @@ class VirtualWorkspaceService {
   }) async {
     final path = normalizePath(rawPath);
     final rawLines = (await readFile(path)).split('\n');
-    // 去掉行号前缀
-    final originalContent = rawLines.map((l) {
-      final tabIdx = l.indexOf('\t');
-      return tabIdx != -1 ? l.substring(tabIdx + 1) : l;
-    }).join('\n');
+    // 去掉行号前缀：锚定"行首数字+制表符"，避免误伤正文中含制表符的内容
+    final originalContent = rawLines
+        .map((l) => l.replaceFirst(RegExp(r'^\d+\t'), ''))
+        .join('\n');
 
     if (!originalContent.contains(oldText)) {
       throw Exception('在文件 $path 中未找到要替换的文本:\n$oldText');

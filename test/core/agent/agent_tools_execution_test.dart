@@ -1,9 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:qnote_flutter/core/storage/database_helper.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
-import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/agent/agent_tool_registry.dart';
@@ -17,70 +17,71 @@ void main() {
     databaseFactory = databaseFactoryFfi;
   });
 
-  group('小Q Agent 端到端工具执行真实测试', () {
+  group('小Q Agent 端到端工具执行真实测试（VFS 工具集）', () {
     final dispatcher = AgentToolRegistry.createDefaultDispatcher();
     final noteRepo = NoteRepository();
     final todoRepo = TodoRepository();
     final configRepo = ConfigRepository.instance;
 
-    test('1. manage_note: 创建笔记并在库中验证', () async {
+    // ffi 数据库为持久文件，历史运行的残留数据会按标题匹配命中，
+    // 因此所有测试数据带时间戳后缀保证唯一
+    final ts = DateTime.now().millisecondsSinceEpoch;
+
+    test('1. write_file: 创建笔记并在库中验证', () async {
       final call = ToolCall(
         id: 'call_note_create',
-        name: 'manage_note',
+        name: 'write_file',
         arguments: {
-          'action': 'create_note',
-          'title': '测试小Q笔记',
-          'content': '这是小Q的初始内容：Flutter 是一个跨平台框架。',
-          'tags': '小Q,AI',
+          'path': '/notes/测试笔记本-$ts/小Q笔记测试-$ts.md',
+          'content': '---\ntags: ["小Q", "AI"]\n---\n这是小Q的初始内容：Flutter 是一个跨平台框架。',
         },
       );
 
       final result = await dispatcher.dispatch(call);
       expect(result.isError, false);
-      expect(result.content.contains('已成功创建笔记'), true);
 
-      final noteId = result.uiDetails?['note']?['id'] as String;
+      final noteId = result.uiDetails?['id'] as String;
       expect(noteId.isNotEmpty, true);
 
       final saved = await noteRepo.getById(noteId);
       expect(saved != null, true);
-      expect(saved!.title, '测试小Q笔记');
+      expect(saved!.title, '小Q笔记测试-$ts');
       expect(saved.content.contains('跨平台框架'), true);
+      expect(saved.tags.contains('小Q'), true);
     });
 
-    test('2. edit: 对笔记进行精准文本替换，验证未破坏整体结构', () async {
-      // 先建一篇
+    test('2. edit_file: 对笔记进行精准文本替换，验证未破坏整体结构', () async {
+      // 先建一篇根目录笔记
       final createCall = ToolCall(
         id: 'call_create_for_edit',
-        name: 'manage_note',
+        name: 'write_file',
         arguments: {
-          'action': 'create_note',
-          'title': '待编辑笔记',
-          'content': '第一行内容\n待替换关键词：苹果\n第三行内容',
+          'path': '/notes/待编辑笔记-$ts.md',
+          'content': '第一行内容\n待替换关键词：苹果$ts\n第三行内容',
         },
       );
       final createRes = await dispatcher.dispatch(createCall);
-      final noteId = createRes.uiDetails!['note']['id'] as String;
+      expect(createRes.isError, false);
+      final noteId = createRes.uiDetails!['id'] as String;
 
-      // 使用 edit 工具替换 "苹果" -> "橙子"
+      // 使用 edit_file 工具替换 "苹果" -> "橙子"
       final editCall = ToolCall(
         id: 'call_edit_text',
-        name: 'edit',
+        name: 'edit_file',
         arguments: {
-          'target_type': 'note',
-          'id': noteId,
-          'old_text': '苹果',
-          'new_text': '橙子',
+          'path': '/notes/待编辑笔记-$ts.md',
+          'old_text': '苹果$ts',
+          'new_text': '橙子$ts',
         },
       );
 
       final editRes = await dispatcher.dispatch(editCall);
       expect(editRes.isError, false);
-      expect(editRes.content.contains('已成功更新目标'), true);
+      expect(editRes.content.contains('已成功编辑文件'), true);
 
       // 验证数据库真实落库结果
       final updated = await noteRepo.getById(noteId);
-      expect(updated!.content, '第一行内容\n待替换关键词：橙子\n第三行内容');
+      expect(updated!.content, '第一行内容\n待替换关键词：橙子$ts\n第三行内容');
     });
 
     test('3. grep: 跨模块正则与关键词搜索', () async {
@@ -88,136 +89,113 @@ void main() {
         id: 'call_grep',
         name: 'grep',
         arguments: {
-          'query': '橙子',
+          'query': '橙子$ts',
           'scope': 'notes',
         },
       );
 
       final grepRes = await dispatcher.dispatch(grepCall);
       expect(grepRes.isError, false);
-      expect(grepRes.content.contains('待编辑笔记'), true);
-      expect(grepRes.content.contains('橙子'), true);
+      expect(grepRes.content.contains('待编辑笔记-$ts'), true);
+      expect(grepRes.content.contains('橙子$ts'), true);
     });
 
-    test('4. manage_journal: 编写和追加长篇日记', () async {
-      final todayStr = '2026-09-11';
-      final writeCall = ToolCall(
+    test('4. write_file + read_file + delete_file: 日记全生命周期', () async {
+      const todayStr = '2026-09-11';
+      final writeRes = await dispatcher.dispatch(ToolCall(
         id: 'call_write_journal',
-        name: 'manage_journal',
+        name: 'write_file',
         arguments: {
-          'action': 'write',
-          'date': todayStr,
-          'content': '# 2026-09-11 日记\n今天天气晴朗。',
+          'path': '/journal/$todayStr.md',
+          'content': '# 2026-09-11 日记\n今天天气晴朗，完成了 agent 框架优化（批次 $ts）。',
         },
-      );
-      final writeRes = await dispatcher.dispatch(writeCall);
+      ));
       expect(writeRes.isError, false);
 
-      // 追加一段
-      final appendCall = ToolCall(
-        id: 'call_append_journal',
-        name: 'manage_journal',
-        arguments: {
-          'action': 'append',
-          'date': todayStr,
-          'content': '晚上完成了小Q的开发！',
-        },
-      );
-      final appendRes = await dispatcher.dispatch(appendCall);
-      expect(appendRes.isError, false);
-
       // 读取验证
-      final getCall = ToolCall(
-        id: 'call_get_journal',
-        name: 'manage_journal',
-        arguments: {
-          'action': 'get',
-          'date': todayStr,
-        },
-      );
-      final getRes = await dispatcher.dispatch(getCall);
-      expect(getRes.content.contains('今天天气晴朗'), true);
-      expect(getRes.content.contains('晚上完成了小Q的开发'), true);
+      final readRes = await dispatcher.dispatch(ToolCall(
+        id: 'call_read_journal',
+        name: 'read_file',
+        arguments: {'path': '/journal/$todayStr.md'},
+      ));
+      expect(readRes.content.contains('今天天气晴朗'), true);
 
-      // 测试 manage_journal 的 delete 动作
-      final deleteCall = ToolCall(
+      // 删除
+      final deleteRes = await dispatcher.dispatch(ToolCall(
         id: 'call_delete_journal',
-        name: 'manage_journal',
-        arguments: {
-          'action': 'delete',
-          'date': todayStr,
-        },
-      );
-      final deleteRes = await dispatcher.dispatch(deleteCall);
+        name: 'delete_file',
+        arguments: {'path': '/journal/$todayStr.md'},
+      ));
       expect(deleteRes.isError, false);
       expect(deleteRes.content.contains('已成功删除'), true);
 
       // 再次读取验证已被清空
-      final getAfterDelete = await dispatcher.dispatch(getCall);
-      expect(getAfterDelete.content.contains('尚未撰写长篇日记'), true);
-
-      // 测试通过 delete_file 删除 /journal/ 日记
-      await dispatcher.dispatch(writeCall);
-      final deleteFileCall = ToolCall(
-        id: 'call_delete_file_journal',
-        name: 'delete_file',
-        arguments: {
-          'path': '/journal/$todayStr.md',
-        },
-      );
-      final deleteFileRes = await dispatcher.dispatch(deleteFileCall);
-      expect(deleteFileRes.isError, false);
-      expect(deleteFileRes.content.contains('已成功删除'), true);
+      final readAfterDelete = await dispatcher.dispatch(ToolCall(
+        id: 'call_read_journal_after',
+        name: 'read_file',
+        arguments: {'path': '/journal/$todayStr.md'},
+      ));
+      expect(readAfterDelete.content.contains('尚未开始编写'), true);
     });
 
-    test('5. manage_todo: 增、改、切换完成状态', () async {
-      final createTodoCall = ToolCall(
+    test('5. write_file + edit_file: 待办创建与状态切换', () async {
+      final createRes = await dispatcher.dispatch(ToolCall(
         id: 'call_create_todo',
-        name: 'manage_todo',
+        name: 'write_file',
         arguments: {
-          'action': 'create',
-          'title': '明天下午开会',
-          'priority': 'high',
-          'due_date': '2026-09-12 15:00:00',
+          'path': '/todos/今日/明天下午开会-$ts.md',
+          'content': '---\nstatus: pending\npriority: important\ndue_date: "2026-09-12 15:00"\n---\n准备会议材料',
         },
-      );
-      final createTodoRes = await dispatcher.dispatch(createTodoCall);
-      expect(createTodoRes.isError, false);
-      final todoId = createTodoRes.uiDetails!['todo']['id'] as String;
+      ));
+      expect(createRes.isError, false);
+      final todoId = createRes.uiDetails!['id'] as String;
 
-      // 切换为已完成
-      final toggleCall = ToolCall(
+      // 通过 edit_file 将 status: pending 替换为 completed（标记完成）
+      final editRes = await dispatcher.dispatch(ToolCall(
         id: 'call_toggle_todo',
-        name: 'manage_todo',
+        name: 'edit_file',
         arguments: {
-          'action': 'toggle_complete',
-          'id': todoId,
-          'is_completed': true,
+          'path': '/todos/今日/明天下午开会-$ts.md',
+          'old_text': 'status: pending',
+          'new_text': 'status: completed',
         },
-      );
-      final toggleRes = await dispatcher.dispatch(toggleCall);
-      expect(toggleRes.isError, false);
+      ));
+      expect(editRes.isError, false);
 
       final savedTodo = await todoRepo.getById(todoId);
       expect(savedTodo!.isCompleted, true);
+      expect(savedTodo.priority, 'important');
     });
 
-    test('6. manage_settings: 修改个人信息', () async {
-      final updateProfileCall = ToolCall(
+    test('6. read_file + write_file: 修改个人信息配置', () async {
+      // 先读取当前 profile.json（read_file 输出带行号前缀，需剥离后再解析）
+      final readRes = await dispatcher.dispatch(ToolCall(
+        id: 'call_read_profile',
+        name: 'read_file',
+        arguments: {'path': '/settings/profile.json'},
+      ));
+      expect(readRes.isError, false);
+      final cleanJson = readRes.content
+          .split('\n')
+          .map((l) => l.replaceFirst(RegExp(r'^\d+\t'), ''))
+          .join('\n');
+      final profileMap = jsonDecode(cleanJson) as Map<String, dynamic>;
+
+      // 修改昵称与身高后写回（保留 id/created_at 等必填字段）
+      profileMap['nickname'] = '小Q的主人-$ts';
+      profileMap['height'] = 185;
+      final writeRes = await dispatcher.dispatch(ToolCall(
         id: 'call_update_profile',
-        name: 'manage_settings',
+        name: 'write_file',
         arguments: {
-          'target': 'profile',
-          'action': 'update',
-          'nickname': '小Q的主人',
-          'height': 185,
+          'path': '/settings/profile.json',
+          'content': jsonEncode(profileMap),
         },
-      );
-      final updateProfileRes = await dispatcher.dispatch(updateProfileCall);
-      expect(updateProfileRes.isError, false);
+      ));
+      expect(writeRes.isError, false);
 
       final profile = await configRepo.getUserProfile();
-      expect(profile!.nickname, '小Q的主人');
+      expect(profile!.nickname, '小Q的主人-$ts');
       expect(profile.height, 185.0);
     });
   });
