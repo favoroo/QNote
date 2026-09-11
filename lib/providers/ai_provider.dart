@@ -5,9 +5,12 @@ import 'package:intl/intl.dart';
 import 'package:qnote_flutter/config/defaults.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
-import 'package:qnote_flutter/core/ai/free_model_executor.dart';
 import 'package:qnote_flutter/core/ai/free_model_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/agent/agent_tool_registry.dart';
+import 'package:qnote_flutter/core/agent/engine/agent_events.dart';
+import 'package:qnote_flutter/core/agent/engine/agent_loop.dart';
+import 'package:qnote_flutter/core/agent/prompts/q_system_prompt.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
@@ -640,11 +643,13 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         ),
       );
 
-      _ref.read(aiStreamingMessageProvider.notifier).state = '';
-      DateTime lastUpdateTime = DateTime.now();
+      _ref.read(aiStreamingMessageProvider.notifier).state = '小Q正在思考并分析任务...';
 
+      // 初始化工具分发器并构建 AgentLoop
+      final dispatcher = AgentToolRegistry.createDefaultDispatcher();
+      
+      // 预先配置好 AiService
       if (useFreeModel) {
-        // 免费模型模式：使用执行器自动切换
         final freeModels =
             await AiRoleService.instance.getFreeModelConfigsForRole('assistant');
         if (freeModels.isEmpty) {
@@ -652,24 +657,16 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         }
         final preferredId =
             await AiRoleService.instance.getPreferredFreeModelId();
-        await for (final chunk in FreeModelExecutor.chatStreamWithFallback(
-          aiService: aiService,
-          models: freeModels,
-          preferredId: preferredId,
-          messages: messagesToSend,
-          temperature: roleSettings.temperature,
-          maxTokens: roleSettings.maxTokens,
-        )) {
-          _streamingContent.write(chunk);
-          final now = DateTime.now();
-          if (now.difference(lastUpdateTime).inMilliseconds >= 50) {
-            _ref.read(aiStreamingMessageProvider.notifier).state =
-                _streamingContent.toString();
-            lastUpdateTime = now;
-          }
+        final ordered = FreeModelService.instance.getOrderedModels(freeModels, preferredId);
+        if (ordered.isNotEmpty) {
+          final config = FreeModelService.instance.toAiConfig(ordered.first);
+          aiService.updateConfig(
+            config,
+            temperature: roleSettings.temperature,
+            maxTokens: roleSettings.maxTokens,
+          );
         }
       } else {
-        // 普通模式：使用角色绑定的配置
         final assistantConfig = await AiRoleService.instance
             .getEffectiveConfigForRole('assistant');
         aiService.updateConfig(
@@ -677,26 +674,78 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
           temperature: roleSettings.temperature,
           maxTokens: roleSettings.maxTokens,
         );
-        await for (final chunk in aiService.chatStream(messagesToSend)) {
-          _streamingContent.write(chunk);
-          final now = DateTime.now();
-          if (now.difference(lastUpdateTime).inMilliseconds >= 50) {
+      }
+
+      final agentLoop = AgentLoop(
+        aiService: aiService,
+        dispatcher: dispatcher,
+        maxTurns: 8,
+      );
+
+      final List<ChatMessage> conversationHistory = [];
+      for (int i = 0; i < updatedMessages.length - 1; i++) {
+        conversationHistory.add(updatedMessages[i]);
+      }
+      conversationHistory.add(
+        ChatMessage(
+          role: 'user',
+          content: userContent,
+          timestamp: userMessage.timestamp,
+          images: userMessage.images,
+        ),
+      );
+
+      ChatMessage? finalResponse;
+      final sessionMessages = [...updatedMessages];
+
+      await for (final event in agentLoop.run(
+        conversationHistory: conversationHistory,
+        systemPrompt: QSystemPrompt.prompt,
+      )) {
+        switch (event.type) {
+          case AgentEventType.turnStart:
             _ref.read(aiStreamingMessageProvider.notifier).state =
-                _streamingContent.toString();
-            lastUpdateTime = now;
-          }
+                '小Q正在思考中 (第 ${event.turn} 步)...';
+            break;
+          case AgentEventType.thoughtUpdate:
+            if (event.text != null && event.text!.isNotEmpty) {
+              _ref.read(aiStreamingMessageProvider.notifier).state =
+                  '💭 思考过程:\n${event.text}';
+            }
+            break;
+          case AgentEventType.toolExecuting:
+            final toolName = event.toolCall?.name ?? '';
+            _ref.read(aiStreamingMessageProvider.notifier).state =
+                '⚡ 小Q正在执行操作: [$toolName]...';
+            break;
+          case AgentEventType.toolCompleted:
+            // 每当工具执行完成后，若有对应的变更，推入中间消息
+            if (event.message != null) {
+              sessionMessages.add(event.message!);
+              state = state!.copyWith(messages: List.from(sessionMessages));
+            }
+            break;
+          case AgentEventType.assistantMessage:
+            if (event.message != null) {
+              sessionMessages.add(event.message!);
+              state = state!.copyWith(messages: List.from(sessionMessages));
+            }
+            break;
+          case AgentEventType.finished:
+            finalResponse = event.message;
+            break;
+          case AgentEventType.error:
+            throw Exception(event.error ?? 'Agent 执行异常');
         }
       }
-      _ref.read(aiStreamingMessageProvider.notifier).state = _streamingContent.toString();
-      
-      final assistantMessage = ChatMessage(
-        role: 'assistant',
-        content: _streamingContent.toString(),
-        timestamp: DateTime.now(),
-      );
-      state = state!.copyWith(
-        messages: [...updatedMessages, assistantMessage],
-      );
+
+      if (finalResponse != null) {
+        // 如果最后一条不是 finalResponse，则追加
+        if (sessionMessages.isEmpty || sessionMessages.last != finalResponse) {
+          sessionMessages.add(finalResponse);
+        }
+        state = state!.copyWith(messages: sessionMessages);
+      }
     } catch (e, stackTrace) {
       LoggerService.instance.logAI(
         'AI对话发送失败: $e',

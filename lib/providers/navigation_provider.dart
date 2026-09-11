@@ -26,7 +26,7 @@ final navigationItems = [
   ),
   const NavigationItem(
     path: '/ai',
-    label: 'AI',
+    label: '小Q',
     icon: Icons.smart_toy_outlined,
     activeIcon: Icons.smart_toy,
   ),

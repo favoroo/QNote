@@ -662,7 +662,7 @@ class _AiPageState extends ConsumerState<AiPage> {
           icon: const Icon(Icons.menu),
           onPressed: () => rootScaffoldKey.currentState?.openDrawer(),
         ),
-        title: const Text('AI 助手'),
+        title: const Text('小Q助手'),
         actions: [
           IconButton(
             icon: const Icon(Icons.history),
@@ -838,7 +838,7 @@ class _AiPageState extends ConsumerState<AiPage> {
         ? [
             ChatMessage(
               role: 'assistant',
-              content: defaultSystemPrompts['assistant_greeting'] ?? '你可以直接向我提问，或点击底部的“+”分享笔记、待办和图片给我，顶部也可以按日期筛选日记分析',
+              content: defaultSystemPrompts['assistant_greeting'] ?? '你好！我是你的全能助手「小Q」。你可以直接向我提问，或者让我帮你添加待办、记录流水、修改笔记与设置等。',
               timestamp: DateTime.now(),
             )
           ]
@@ -1752,7 +1752,7 @@ class _ChatBubble extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  'QNote AI',
+                  '小Q',
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w500,
@@ -1849,6 +1849,73 @@ class _ChatBubble extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // 思考过程展示（若有）
+                      if (message.thought != null && message.thought!.isNotEmpty)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.psychology_outlined,
+                                size: 16,
+                                color: theme.colorScheme.primary,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  message.thought!,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                      // 工具调用或执行反馈卡片
+                      if (message.role == 'tool')
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: (message.isError == true)
+                                ? theme.colorScheme.errorContainer.withValues(alpha: 0.4)
+                                : theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                (message.isError == true) ? Icons.error_outline : Icons.check_circle_outline,
+                                size: 14,
+                                color: (message.isError == true) ? theme.colorScheme.error : theme.colorScheme.primary,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '操作反馈 [${message.toolName ?? "tool"}]',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: (message.isError == true) ? theme.colorScheme.error : theme.colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
                       MarkdownBody(
                         data: message.content,
                         selectable: true,

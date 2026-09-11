@@ -1,3 +1,4 @@
+import 'package:qnote_flutter/core/agent/prompts/q_system_prompt.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/shortcut_field.dart';
 import 'package:qnote_flutter/models/shortcut_category.dart';
@@ -23,13 +24,8 @@ final defaultSystemPrompts = <String, String>{
 文档照片 → 一份白色A4纸打印的会议纪要，标题为"2024年Q3产品规划会"，可见"用户增长""留存率""迭代排期"等关键词，手写批注标注了三个优先级。
 风景照片 → 湖边日落风景，前景是木质栈道和芦苇，湖面倒映橙红色晚霞，远处有连绵山脉轮廓，天空有少量云层。
 ''',
-  'assistant_greeting': '你可以切换顶部的分析范围（日期/笔记）来获得更精准的专业建议，或直接提问',
-  'analysis_system':
-      '你是一个专业的智能个人助手和生活数据分析师。\n\n'
-      '==== [任务要求] ====\n'
-      '1. 如果包含日记或笔记记录，请结合用户的身体数据（如身高体重），提供专业的建议、趋势发现和定性定量分析。\n'
-      '2. 发现数据之间的关联（例如：吃了高热量食物 but 有运动，或者睡眠不好导致活动量低）。\n'
-      '3. 语气保持亲切、鼓励。使用 Markdown 格式排版，重点内容加粗。',
+  'assistant_greeting': '你好！我是你的全能助手「小Q」。你可以直接向我提问，或者让我帮你添加待办、记录流水、修改笔记与设置等。',
+  'analysis_system': QSystemPrompt.prompt,
   'unified_extraction': '''
 你是智能标签识别助手，从用户输入中识别标签并提取结构化字段。
 

@@ -130,12 +130,21 @@ class AiService {
   }
 
   Future<String> chat(List<ChatMessage> messages) async {
+    final response = await chatResponse(messages);
+    return response.content;
+  }
+
+  /// 支持 Tool Calling 的同步调用，返回完整 ChatMessage（含 content、toolCalls、thought 等）
+  Future<ChatMessage> chatResponse(
+    List<ChatMessage> messages, {
+    List<Map<String, dynamic>>? tools,
+  }) async {
     if (_config == null) throw Exception('AI config not set');
 
     final startTime = DateTime.now();
     LoggerService.instance.logAI(
-      '开始同步对话请求',
-      details: '模型=${_config!.modelName}, 消息数=${messages.length}',
+      '开始对话请求(带工具支持)',
+      details: '模型=${_config!.modelName}, 消息数=${messages.length}, 工具数=${tools?.length ?? 0}',
     );
 
     int retryCount = 0;
@@ -146,37 +155,53 @@ class AiService {
     while (true) {
       try {
         String endpoint = _chatEndpoint;
-        final bodyMap = await _prepareChatRequestBody(messages, stream: false);
+        final bodyMap = await _prepareChatRequestBody(messages, stream: false, tools: tools);
         if (_config!.provider == 'gemini') {
           endpoint = '/v1beta/models/${_config!.modelName}:generateContent';
         }
         final dynamic requestBody = bodyMap;
 
-      final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
-      LoggerService.instance.logAI(
-        'AI请求 [${_config!.provider}] [${_config!.modelName}] $endpoint:\n${_formatJsonForLogging(sanitizedBody)}',
-      );
+        final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
+        LoggerService.instance.logAI(
+          'AI请求 [${_config!.provider}] [${_config!.modelName}] $endpoint:\n${_formatJsonForLogging(sanitizedBody)}',
+        );
 
-      final response = await _dio.post(endpoint, data: requestBody);
+        final response = await _dio.post(endpoint, data: requestBody);
 
-      final duration = DateTime.now().difference(startTime).inMilliseconds;
-      final data = response.data;
-      LoggerService.instance.logAI('AI响应:\n${_formatJsonForLogging(data)}');
-      String result;
+        final duration = DateTime.now().difference(startTime).inMilliseconds;
+        final data = response.data;
+        LoggerService.instance.logAI('AI响应:\n${_formatJsonForLogging(data)}');
 
-      if (_config!.provider == 'gemini') {
-        result =
-            data['candidates']?[0]?['content']?['parts']?[0]?['text'] ?? '';
-      } else {
-        result = data['choices']?[0]?['message']?['content'] ?? '';
-      }
+        String content = '';
+        List<ToolCall>? toolCalls;
 
-      LoggerService.instance.logAI(
-        '同步对话完成',
-        details: '耗时=${duration}ms, 响应长度=${result.length}字符',
-      );
+        if (_config!.provider == 'gemini') {
+          content =
+              data['candidates']?[0]?['content']?['parts']?[0]?['text'] ?? '';
+        } else {
+          final choice = data['choices']?[0];
+          final message = choice?['message'] as Map<String, dynamic>?;
+          content = message?['content'] as String? ?? '';
+          
+          if (message?['tool_calls'] != null && message!['tool_calls'] is List) {
+            toolCalls = (message['tool_calls'] as List)
+                .whereType<Map<String, dynamic>>()
+                .map((m) => ToolCall.fromMap(m))
+                .toList();
+          }
+        }
 
-      return result;
+        LoggerService.instance.logAI(
+          '对话完成',
+          details: '耗时=${duration}ms, 响应长度=${content.length}字符, 工具调用数=${toolCalls?.length ?? 0}',
+        );
+
+        return ChatMessage(
+          role: 'assistant',
+          content: content,
+          toolCalls: toolCalls,
+          timestamp: DateTime.now(),
+        );
       } catch (e, stackTrace) {
         if (_config?.vendorId == 'free_model' &&
             retryCount < maxRetries - 1 &&
@@ -337,6 +362,7 @@ class AiService {
   Future<dynamic> _prepareChatRequestBody(
     List<ChatMessage> messages, {
     bool stream = false,
+    List<Map<String, dynamic>>? tools,
   }) async {
     final imageRepo = ImageRepository();
 
@@ -412,6 +438,26 @@ class AiService {
     final formattedMessages = <Map<String, dynamic>>[];
 
     for (final m in messages) {
+      if (m.role == 'tool') {
+        // 工具执行结果消息 (OpenAI Tool Role)
+        formattedMessages.add({
+          'role': 'tool',
+          'tool_call_id': m.toolCallId ?? '',
+          'content': m.content,
+        });
+        continue;
+      }
+
+      if (m.role == 'assistant' && m.toolCalls != null && m.toolCalls!.isNotEmpty) {
+        // 含有工具调用的助手消息
+        formattedMessages.add({
+          'role': 'assistant',
+          'content': m.content.isEmpty ? null : m.content,
+          'tool_calls': m.toolCalls!.map((t) => t.toMap()).toList(),
+        });
+        continue;
+      }
+
       final hasImages = m.images != null && m.images!.isNotEmpty;
       if (isOmni) {
         final contentList = <Map<String, dynamic>>[
@@ -487,7 +533,7 @@ class AiService {
       }
     }
 
-    final bodyMap = _buildBaseBody(messages: formattedMessages, stream: stream);
+    final bodyMap = _buildBaseBody(messages: formattedMessages, stream: stream, tools: tools);
     if (isOmni) {
       bodyMap['sessionId'] = DateTime.now().millisecondsSinceEpoch.toString();
       bodyMap['output_modalities'] = ['text'];
@@ -500,6 +546,7 @@ class AiService {
     required List<dynamic> messages,
     bool stream = false,
     Map<String, dynamic>? responseFormat,
+    List<Map<String, dynamic>>? tools,
   }) {
     final body = <String, dynamic>{
       'model': _config!.modelName,
@@ -509,6 +556,10 @@ class AiService {
     };
     if (stream) body['stream'] = true;
     if (responseFormat != null) body['response_format'] = responseFormat;
+    if (tools != null && tools.isNotEmpty) {
+      body['tools'] = tools;
+      body['tool_choice'] = 'auto';
+    }
     if (_reasoningEffort != null) {
       body['reasoning_effort'] = _reasoningEffort;
     }
