@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:dio/dio.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/models/free_model_config.dart';
@@ -114,8 +116,8 @@ class FreeModelKeyManager {
   /// Key 冷却记录（记录被标记限速的时间戳）
   final Map<String, DateTime> _rateLimitedKeys = {};
 
-  /// 冷却时间（10分钟后自动解除冷却状态）
-  static const Duration _cooldownDuration = Duration(minutes: 10);
+  /// 冷却时间（1分钟后自动解除冷却状态，避免瞬时限速导致 Key 长期锁定）
+  static const Duration _cooldownDuration = Duration(minutes: 1);
 
   /// 更新 Key 池（支持与外部远程清单扩展融合）
   void updateKeys(List<String> newKeys) {
@@ -193,52 +195,108 @@ class FreeModelKeyManager {
     _rateLimitedKeys.removeWhere((_, time) => now.difference(time) > _cooldownDuration);
   }
 
-  /// 判定是否属于可故障转移并重试的错误（限速 429、鉴权失效 401、禁用 403、服务端拥塞 502/503 等）
+  /// 计算指数退避延迟时间（含随机抖动 Jitter），避免并发重试瞬时撞墙
+  Duration getBackoffDelay(int retryCount) {
+    // 基础延时：第 1 次 300ms，第 2 次 600ms，第 3 次 1200ms...
+    final baseMs = 300 * (1 << (retryCount - 1).clamp(0, 4));
+    // 附加 0~150ms 随机抖动
+    final jitter = Random().nextInt(150);
+    return Duration(milliseconds: baseMs + jitter);
+  }
+
+  /// 判定是否属于可故障转移并重试的错误
+  ///
+  /// 涵盖：
+  /// - 状态码：429（限速）、400（商汤常见并发超限/40003/1102）、401（鉴权失效）、403（禁用）、
+  ///          408（请求超时）、500（偶发服务故障）、502/503/504（网关超时与拥塞）
+  /// - 网络抖动：超时（connect/send/receive）、连接重置、网络断开等
+  /// - 文本关键词：并发、超限、配额、rate limit、qps、quota 等
   bool isRecoverableError(dynamic error) {
     if (error == null) return false;
     if (error is DioException) {
+      // 1. 网络连接与超时类错误（网络轻微抖动、网关未响应，均可安全切 Key 重试）
+      if (error.type == DioExceptionType.connectionTimeout ||
+          error.type == DioExceptionType.sendTimeout ||
+          error.type == DioExceptionType.receiveTimeout ||
+          error.type == DioExceptionType.connectionError) {
+        return true;
+      }
+
+      // 2. HTTP 状态码判定
       final statusCode = error.response?.statusCode;
       if (statusCode == 429 ||
+          statusCode == 400 ||
           statusCode == 401 ||
           statusCode == 403 ||
-          statusCode == 503 ||
+          statusCode == 408 ||
+          statusCode == 500 ||
           statusCode == 502 ||
+          statusCode == 503 ||
           statusCode == 504) {
         return true;
       }
-      final respData = error.response?.data?.toString().toLowerCase() ?? '';
-      if (respData.contains('rate limit') ||
-          respData.contains('rate_limit') ||
-          respData.contains('qps') ||
-          respData.contains('tpm') ||
-          respData.contains('rpm') ||
-          respData.contains('concurrency') ||
-          respData.contains('quota') ||
-          respData.contains('insufficient') ||
-          respData.contains('forbidden') ||
-          respData.contains('blocked') ||
-          respData.contains('配额') ||
-          respData.contains('超限') ||
-          respData.contains('并发') ||
-          respData.contains('频率') ||
-          respData.contains('限制')) {
+
+      // 3. 检查状态文本与错误描述
+      final statusMessage = error.response?.statusMessage?.toLowerCase() ?? '';
+      if (_hasRateOrQuotaKeywords(statusMessage)) {
         return true;
       }
+
+      final errorMsg = error.message?.toLowerCase() ?? '';
+      if (_hasRateOrQuotaKeywords(errorMsg)) {
+        return true;
+      }
+
+      // 4. 处理非流式 response.data
+      final respData = error.response?.data;
+      if (respData != null && respData is! ResponseBody) {
+        final respStr = respData.toString().toLowerCase();
+        if (_hasRateOrQuotaKeywords(respStr)) {
+          return true;
+        }
+      }
     }
+
     final errorStr = error.toString().toLowerCase();
-    if (errorStr.contains('429') ||
-        errorStr.contains('401') ||
-        errorStr.contains('403') ||
-        errorStr.contains('rate limit') ||
-        errorStr.contains('qps limit') ||
-        errorStr.contains('concurrency limit') ||
-        errorStr.contains('quota') ||
-        errorStr.contains('配额不足') ||
-        errorStr.contains('超限') ||
-        errorStr.contains('频率限制')) {
+    if (_hasRateOrQuotaKeywords(errorStr)) {
       return true;
     }
+
     return false;
+  }
+
+  /// 检查文本是否包含限频、配额、并发超限或服务端网络异常等关键词
+  bool _hasRateOrQuotaKeywords(String text) {
+    if (text.isEmpty) return false;
+    return text.contains('429') ||
+        text.contains('401') ||
+        text.contains('403') ||
+        text.contains('400') ||
+        text.contains('502') ||
+        text.contains('503') ||
+        text.contains('rate limit') ||
+        text.contains('rate_limit') ||
+        text.contains('ratelimit') ||
+        text.contains('qps') ||
+        text.contains('tpm') ||
+        text.contains('rpm') ||
+        text.contains('concurrency') ||
+        text.contains('quota') ||
+        text.contains('insufficient') ||
+        text.contains('forbidden') ||
+        text.contains('blocked') ||
+        text.contains('timeout') ||
+        text.contains('timed out') ||
+        text.contains('connection refused') ||
+        text.contains('connection closed') ||
+        text.contains('connection reset') ||
+        text.contains('配额') ||
+        text.contains('超限') ||
+        text.contains('并发') ||
+        text.contains('频率') ||
+        text.contains('限制') ||
+        text.contains('超时') ||
+        text.contains('繁忙');
   }
 
   /// 密钥脱敏显示（用于日志）

@@ -209,10 +209,12 @@ class AiService {
           retryCount++;
           final switched = switchFreeModelKey();
           if (switched) {
+            final delay = FreeModelKeyManager.instance.getBackoffDelay(retryCount);
             LoggerService.instance.logAI(
-              '免费模型对话遭遇限速/鉴权异常，已自动切换 API Key 并发起第 $retryCount 次重试',
+              '免费模型对话遭遇限速/鉴权异常，已自动切换 API Key，退避等待 ${delay.inMilliseconds}ms 后发起第 $retryCount 次重试',
               level: LogLevel.warning,
             );
+            await Future.delayed(delay);
             continue;
           }
         }
@@ -269,6 +271,7 @@ class AiService {
         : 1;
 
     while (true) {
+      bool hasYielded = false;
       try {
         final dynamic bodyMap = await _prepareChatRequestBody(messages, stream: true, tools: tools);
         final dynamic requestBody = jsonEncode(bodyMap);
@@ -310,6 +313,13 @@ class AiService {
 
             try {
               final json = jsonDecode(data) as Map<String, dynamic>;
+              // 捕获商汤等服务商在流式第一包中下发的 JSON 错误对象
+              if (json.containsKey('error')) {
+                final errObj = json['error'];
+                final errMsg = errObj is Map ? (errObj['message'] ?? errObj.toString()) : errObj.toString();
+                throw Exception('AI Stream Error: $errMsg');
+              }
+
               final choice = json['choices']?[0];
               final delta = choice?['delta'] as Map<String, dynamic>?;
 
@@ -317,6 +327,7 @@ class AiService {
               final text = delta?['content'] as String?;
               if (text != null && text.isNotEmpty) {
                 accumulatedResponse.write(text);
+                hasYielded = true;
                 yield text;
               }
 
@@ -346,23 +357,31 @@ class AiService {
                   }
                 }
               }
-            } catch (_) {}
+            } catch (e) {
+              // 若已进入显式错误，直接抛出交由外层重试判断
+              if (e.toString().contains('AI Stream Error:')) {
+                rethrow;
+              }
+            }
           }
         }
 
         _deliverToolCalls(toolCallBuilders, onToolCallsReady);
         return;
       } catch (e, stackTrace) {
-        if (_config?.vendorId == 'free_model' &&
+        if (!hasYielded &&
+            _config?.vendorId == 'free_model' &&
             retryCount < maxRetries &&
             FreeModelKeyManager.instance.isRecoverableError(e)) {
           retryCount++;
           final switched = switchFreeModelKey();
           if (switched) {
+            final delay = FreeModelKeyManager.instance.getBackoffDelay(retryCount);
             LoggerService.instance.logAI(
-              '流式对话遭遇限速/故障，已切换 Key 并发起第 $retryCount 次重试',
+              '流式对话首包阶段遭遇限速/故障，已切换 Key，退避等待 ${delay.inMilliseconds}ms 后发起第 $retryCount 次重试',
               level: LogLevel.warning,
             );
+            await Future.delayed(delay);
             continue;
           }
         }
@@ -408,84 +427,121 @@ class AiService {
       details: '模型=${_config!.modelName}, 消息数=${messages.length}',
     );
 
-    final dynamic bodyMap = await _prepareChatRequestBody(messages, stream: true);
-    final dynamic requestBody = jsonEncode(bodyMap);
+    int retryCount = 0;
+    final maxRetries = _config?.vendorId == 'free_model'
+        ? FreeModelKeyManager.instance.totalKeysCount
+        : 1;
 
-    final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
-    LoggerService.instance.logAI(
-      'AI流式请求 [${_config!.provider}] [${_config!.modelName}] $_chatEndpoint:\n${_formatJsonForLogging(sanitizedBody)}',
-    );
+    while (true) {
+      bool hasYielded = false;
+      try {
+        final dynamic bodyMap = await _prepareChatRequestBody(messages, stream: true);
+        final dynamic requestBody = jsonEncode(bodyMap);
 
-    try {
-      final response = await _dio.post<ResponseBody>(
-        _chatEndpoint,
-        data: requestBody,
-        options: Options(responseType: ResponseType.stream),
-      );
+        final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
+        LoggerService.instance.logAI(
+          'AI流式请求 [${_config!.provider}] [${_config!.modelName}] $_chatEndpoint:\n${_formatJsonForLogging(sanitizedBody)}',
+        );
 
-      final stream = response.data?.stream;
-      if (stream == null) {
-        LoggerService.instance.logAI('流式响应为空', level: LogLevel.warning);
-        return;
-      }
+        final response = await _dio.post<ResponseBody>(
+          _chatEndpoint,
+          data: requestBody,
+          options: Options(responseType: ResponseType.stream),
+        );
 
-      String buffer = '';
-      int totalChars = 0;
-      final accumulatedResponse = StringBuffer();
-      await for (final chunk in stream) {
-        buffer += utf8.decode(chunk, allowMalformed: true);
-        final lines = buffer.split('\n');
-        buffer = lines.removeLast();
+        final stream = response.data?.stream;
+        if (stream == null) {
+          LoggerService.instance.logAI('流式响应为空', level: LogLevel.warning);
+          return;
+        }
 
-        for (final line in lines) {
-          final trimmed = line.trim();
-          if (trimmed.isEmpty || !trimmed.startsWith('data:')) continue;
-          final data = trimmed.substring(5).trim();
-          if (data == '[DONE]') {
-            final duration = DateTime.now()
-                .difference(startTime)
-                .inMilliseconds;
-            LoggerService.instance.logAI(
-              'AI流式响应完成 [总输出=$totalChars字符] [耗时=${duration}ms]:\n$accumulatedResponse',
-            );
-            return;
+        String buffer = '';
+        int totalChars = 0;
+        final accumulatedResponse = StringBuffer();
+        await for (final chunk in stream) {
+          buffer += utf8.decode(chunk, allowMalformed: true);
+          final lines = buffer.split('\n');
+          buffer = lines.removeLast();
+
+          for (final line in lines) {
+            final trimmed = line.trim();
+            if (trimmed.isEmpty || !trimmed.startsWith('data:')) continue;
+            final data = trimmed.substring(5).trim();
+            if (data == '[DONE]') {
+              final duration = DateTime.now()
+                  .difference(startTime)
+                  .inMilliseconds;
+              LoggerService.instance.logAI(
+                'AI流式响应完成 [总输出=$totalChars字符] [耗时=${duration}ms]:\n$accumulatedResponse',
+              );
+              return;
+            }
+
+            try {
+              final json = jsonDecode(data) as Map<String, dynamic>;
+              if (json.containsKey('error')) {
+                final errObj = json['error'];
+                final errMsg = errObj is Map ? (errObj['message'] ?? errObj.toString()) : errObj.toString();
+                throw Exception('AI Stream Error: $errMsg');
+              }
+
+              String? text;
+              if (_config!.provider == 'gemini') {
+                text = json['candidates']?[0]?['content']?['parts']?[0]?['text'];
+              } else {
+                text = json['choices']?[0]?['delta']?['content'];
+              }
+              if (text != null) {
+                totalChars += text.length;
+                accumulatedResponse.write(text);
+                hasYielded = true;
+                yield text;
+              }
+            } catch (e) {
+              if (e.toString().contains('AI Stream Error:')) {
+                rethrow;
+              }
+            }
           }
-
-          try {
-            final json = jsonDecode(data) as Map<String, dynamic>;
-            String? text;
-            if (_config!.provider == 'gemini') {
-              text = json['candidates']?[0]?['content']?['parts']?[0]?['text'];
-            } else {
-              text = json['choices']?[0]?['delta']?['content'];
-            }
-            if (text != null) {
-              totalChars += text.length;
-              accumulatedResponse.write(text);
-              yield text;
-            }
-          } catch (_) {}
         }
-      }
 
-      final duration = DateTime.now().difference(startTime).inMilliseconds;
-      LoggerService.instance.logAI(
-        'AI流式响应结束 [总输出=$totalChars字符] [耗时=${duration}ms]:\n$accumulatedResponse',
-      );
-    } catch (e, stackTrace) {
-      String details = stackTrace.toString();
-      if (e is DioException) {
-        final respData = e.response?.data;
-        if (respData != null) {
-          details = 'Response Body: $respData\n\n$details';
+        final duration = DateTime.now().difference(startTime).inMilliseconds;
+        LoggerService.instance.logAI(
+          'AI流式响应结束 [总输出=$totalChars字符] [耗时=${duration}ms]:\n$accumulatedResponse',
+        );
+        return;
+      } catch (e, stackTrace) {
+        if (!hasYielded &&
+            _config?.vendorId == 'free_model' &&
+            retryCount < maxRetries &&
+            FreeModelKeyManager.instance.isRecoverableError(e)) {
+          retryCount++;
+          final switched = switchFreeModelKey();
+          if (switched) {
+            final delay = FreeModelKeyManager.instance.getBackoffDelay(retryCount);
+            LoggerService.instance.logAI(
+              '普通流式对话首包阶段遭遇限速/故障，已切换 Key，退避等待 ${delay.inMilliseconds}ms 后发起第 $retryCount 次重试',
+              level: LogLevel.warning,
+            );
+            await Future.delayed(delay);
+            continue;
+          }
         }
+
+        String details = stackTrace.toString();
+        if (e is DioException) {
+          final respData = e.response?.data;
+          if (respData != null) {
+            details = 'Response Body: $respData\n\n$details';
+          }
+        }
+        LoggerService.instance.logAI(
+          '流式对话失败: $e',
+          level: LogLevel.error,
+          details: details,
+        );
+        rethrow;
       }
-      LoggerService.instance.logAI(
-        '流式对话失败: $e',
-        level: LogLevel.error,
-        details: details,
-      );
-      rethrow;
     }
   }
 
@@ -1067,15 +1123,17 @@ class AiService {
         return results.map(_convertSimplifiedExtractResult).toList();
       } catch (e, stackTrace) {
         if (_config?.vendorId == 'free_model' &&
-            retryCount < maxRetries - 1 &&
+            retryCount < maxRetries &&
             FreeModelKeyManager.instance.isRecoverableError(e)) {
           retryCount++;
           final switched = switchFreeModelKey();
           if (switched) {
+            final delay = FreeModelKeyManager.instance.getBackoffDelay(retryCount);
             LoggerService.instance.logAI(
-              '免费模型日记提取遭遇限速/鉴权异常，已自动切换 API Key 并发起第 $retryCount 次重试',
+              '免费模型日记提取遭遇限速/鉴权异常，已自动切换 API Key，退避等待 ${delay.inMilliseconds}ms 后发起第 $retryCount 次重试',
               level: LogLevel.warning,
             );
+            await Future.delayed(delay);
             continue;
           }
         }
@@ -1121,35 +1179,58 @@ class AiService {
       '图片识别请求 [${_config!.provider}] [${_config!.modelName}] $_generateContentEndpoint:\n${_formatJsonForLogging(sanitizedBody)}',
     );
 
-    try {
-      final response = await _dio.post(
-        _generateContentEndpoint,
-        data: requestBody,
-        cancelToken: cancelToken,
-      );
-      final result = _extractTextFromResponse(response.data);
-      LoggerService.instance.logAI(
-        '图片识别响应:\n${_formatJsonForLogging(response.data)}',
-      );
-      LoggerService.instance.logAI(
-        '图片识别完成',
-        details: '耗时=${DateTime.now().difference(startTime).inMilliseconds}ms, 响应长度=${result.length}字符',
-      );
-      return result;
-    } catch (e, stackTrace) {
-      String details = stackTrace.toString();
-      if (e is DioException) {
-        final respData = e.response?.data;
-        if (respData != null) {
-          details = 'Response Body: $respData\n\n$details';
+    int retryCount = 0;
+    final maxRetries = _config?.vendorId == 'free_model'
+        ? FreeModelKeyManager.instance.totalKeysCount
+        : 1;
+
+    while (true) {
+      try {
+        final response = await _dio.post(
+          _generateContentEndpoint,
+          data: requestBody,
+          cancelToken: cancelToken,
+        );
+        final result = _extractTextFromResponse(response.data);
+        LoggerService.instance.logAI(
+          '图片识别响应:\n${_formatJsonForLogging(response.data)}',
+        );
+        LoggerService.instance.logAI(
+          '图片识别完成',
+          details: '耗时=${DateTime.now().difference(startTime).inMilliseconds}ms, 响应长度=${result.length}字符',
+        );
+        return result;
+      } catch (e, stackTrace) {
+        if (_config?.vendorId == 'free_model' &&
+            retryCount < maxRetries &&
+            FreeModelKeyManager.instance.isRecoverableError(e)) {
+          retryCount++;
+          final switched = switchFreeModelKey();
+          if (switched) {
+            final delay = FreeModelKeyManager.instance.getBackoffDelay(retryCount);
+            LoggerService.instance.logAI(
+              '图片识别遭遇限速/鉴权异常，已自动切换 API Key，退避等待 ${delay.inMilliseconds}ms 后发起第 $retryCount 次重试',
+              level: LogLevel.warning,
+            );
+            await Future.delayed(delay);
+            continue;
+          }
         }
+
+        String details = stackTrace.toString();
+        if (e is DioException) {
+          final respData = e.response?.data;
+          if (respData != null) {
+            details = 'Response Body: $respData\n\n$details';
+          }
+        }
+        LoggerService.instance.logAI(
+          '图片识别失败: $e',
+          level: LogLevel.error,
+          details: details,
+        );
+        rethrow;
       }
-      LoggerService.instance.logAI(
-        '图片识别失败: $e',
-        level: LogLevel.error,
-        details: details,
-      );
-      rethrow;
     }
   }
 
@@ -1614,13 +1695,15 @@ class AiService {
     final trimmed = str.trim();
     if (trimmed.startsWith('data:image/')) return true;
     if (trimmed.startsWith('/') && trimmed.length > 1000) return true;
-    if (trimmed.length > 2000 && RegExp(r'^[A-Za-z0-9+/=]+$').hasMatch(trimmed))
+    if (trimmed.length > 2000 && RegExp(r'^[A-Za-z0-9+/=]+$').hasMatch(trimmed)) {
       return true;
+    }
     if (trimmed.length > 5000 &&
         !trimmed.contains('\n') &&
         !trimmed.contains('\r') &&
-        !trimmed.contains('\t'))
+        !trimmed.contains('\t')) {
       return true;
+    }
     return false;
   }
 
@@ -1688,7 +1771,7 @@ class AiService {
     final userPrompt = '请根据上述规则和以下数据进行评分与分析。\n\n[当日记录]\n${recordsStr.toString()}\n\n[用户信息]\n${userInfo ?? "无"}';
 
     dynamic requestBody;
-    String endpoint = _generateContentEndpoint;
+    final String endpoint = _generateContentEndpoint;
 
     if (_config!.provider == 'gemini') {
       requestBody = {
@@ -1853,7 +1936,7 @@ class AiService {
     final data = response.data;
     LoggerService.instance.logAI('图片识别测试响应:\n${_formatJsonForLogging(data)}');
 
-    String result = _extractTextFromResponse(data);
+    final String result = _extractTextFromResponse(data);
     LoggerService.instance.logAI('大模型图片识别测试结果: $result');
 
     final cleanResult = result.trim().replaceAll(' ', '');
