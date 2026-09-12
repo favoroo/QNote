@@ -231,7 +231,9 @@ class _AiPageState extends ConsumerState<AiPage> {
 
   /// 长按用户消息弹出的操作菜单；[stateIndex] 为该消息在会话态中的真实下标
   void _showUserMessageActions(int stateIndex, ChatMessage message) {
-    if (_isTyping || ref.read(aiStreamingMessageProvider) != null) {
+    if (_isTyping ||
+        ref.read(aiStreamingMessageProvider) != null ||
+        ref.read(aiStreamingStatusProvider) != null) {
       Toast.warning(context, '小Q正在生成中，请等待完成后再操作');
       return;
     }
@@ -889,6 +891,11 @@ class _AiPageState extends ConsumerState<AiPage> {
         _scrollToBottomIfNeeded();
       }
     });
+    ref.listen(aiStreamingStatusProvider, (prev, next) {
+      if (next != null) {
+        _scrollToBottomIfNeeded();
+      }
+    });
 
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     if (bottomInset > _lastBottomInset) {
@@ -1115,7 +1122,9 @@ class _AiPageState extends ConsumerState<AiPage> {
           ]
         : messages;
 
-    final hasStreaming = ref.watch(aiStreamingMessageProvider.select((value) => value != null));
+    final hasStreaming =
+        ref.watch(aiStreamingMessageProvider.select((value) => value != null)) ||
+        ref.watch(aiStreamingStatusProvider.select((value) => value != null));
     final showTyping =
         _isTyping && !hasStreaming && messages.isNotEmpty && messages.last.role == 'user';
     final showStreaming = hasStreaming;
@@ -2056,14 +2065,18 @@ class _StreamingBubble extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final streamingMessageText = ref.watch(aiStreamingMessageProvider);
+    final streamingContent = ref.watch(aiStreamingMessageProvider);
+    // 正文与阶段性状态互斥展示：优先正文；正文未到时展示状态行（思考中/准备中…）
+    final hasContent =
+        streamingContent != null && streamingContent.trim().isNotEmpty;
+    final statusText = hasContent ? null : ref.watch(aiStreamingStatusProvider);
     return _ChatBubble(
       message: ChatMessage(
         role: 'assistant',
-        content: streamingMessageText ?? '',
+        content: streamingContent ?? '',
         timestamp: DateTime.now(),
       ),
-      showCursor: true,
+      statusText: statusText,
       isFirstInGroup: isFirstInGroup,
       isLastInGroup: isLastInGroup,
     );
@@ -2072,13 +2085,15 @@ class _StreamingBubble extends ConsumerWidget {
 
 class _ChatBubble extends StatelessWidget {
   final ChatMessage message;
-  final bool showCursor;
+
+  /// 流式占位的阶段性状态文案（非 null 即占位模式），与正文互斥展示
+  final String? statusText;
   final bool isFirstInGroup;
   final bool isLastInGroup;
 
   const _ChatBubble({
     required this.message,
-    this.showCursor = false,
+    this.statusText,
     this.isFirstInGroup = true,
     this.isLastInGroup = true,
   });
@@ -2087,6 +2102,8 @@ class _ChatBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isUser = message.role == 'user';
+    // 实例字段的空安全提升不跨闭包生效，局部变量化供下方 builder 内使用
+    final statusText = this.statusText;
 
     // 该消息是否还有可渲染的主体（正文 / 思考过程 / 工具卡片）
     final hasRenderableBody = message.content.trim().isNotEmpty ||
@@ -2095,8 +2112,8 @@ class _ChatBubble extends StatelessWidget {
         message.uiDetails != null;
 
     // 正文为空的助手消息属于工具调用中转（列表层已过滤），这里再兜一层；
-    // 只有流式占位气泡（showCursor）才允许退化成「正在输入」动画。
-    if (!isUser && !showCursor && !hasRenderableBody) {
+    // 只有流式占位气泡（statusText 阶段）才允许退化成「正在输入」动画。
+    if (!isUser && statusText == null && !hasRenderableBody) {
       return const SizedBox.shrink();
     }
 
@@ -2235,6 +2252,32 @@ class _ChatBubble extends StatelessWidget {
                         ),
                     ],
                   )
+                : statusText != null
+                ? // 阶段性状态行：弱化色文案 + 逐点渐显的动态省略号，替代原先文本下方的闪烁光标
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            statusText,
+                            style: TextStyle(
+                              color: theme.colorScheme.onSurfaceVariant,
+                              fontSize: 14,
+                              height: 1.5,
+                            ),
+                          ),
+                        ),
+                        // 底部留 5px 让圆点与文字基线视觉对齐
+                        const Padding(
+                          padding: EdgeInsets.only(left: 4, bottom: 5),
+                          child: _AnimatedEllipsis(),
+                        ),
+                      ],
+                    ),
+                  )
                 : !hasRenderableBody
                 ? const _TypingDots()
                 : Column(
@@ -2311,7 +2354,6 @@ class _ChatBubble extends StatelessWidget {
                             listBullet: TextStyle(color: theme.colorScheme.onSurface),
                           ),
                         ),
-                        if (showCursor) const _BlinkingCursor(),
                       ],
                     ],
                   ),
@@ -2829,14 +2871,16 @@ class _TypingDotsState extends State<_TypingDots>
   }
 }
 
-class _BlinkingCursor extends StatefulWidget {
-  const _BlinkingCursor();
+/// 动态省略号：三个圆点依次渐显、周期尾整体淡出后循环，
+/// 用于流式占位状态行，弱化"卡住不动"的等待感
+class _AnimatedEllipsis extends StatefulWidget {
+  const _AnimatedEllipsis();
 
   @override
-  State<_BlinkingCursor> createState() => _BlinkingCursorState();
+  State<_AnimatedEllipsis> createState() => _AnimatedEllipsisState();
 }
 
-class _BlinkingCursorState extends State<_BlinkingCursor>
+class _AnimatedEllipsisState extends State<_AnimatedEllipsis>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
 
@@ -2845,8 +2889,8 @@ class _BlinkingCursorState extends State<_BlinkingCursor>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 500),
-    )..repeat(reverse: true);
+      duration: const Duration(milliseconds: 1350),
+    )..repeat();
   }
 
   @override
@@ -2855,20 +2899,46 @@ class _BlinkingCursorState extends State<_BlinkingCursor>
     super.dispose();
   }
 
+  /// 第 [index] 个点在周期进度 [t]（0~1）下的透明度：错峰渐显 + 尾段整体淡出
+  double _dotOpacity(double t, int index) {
+    final start = 0.05 + index * 0.2;
+    double opacity;
+    if (t <= start) {
+      opacity = 0.0;
+    } else if (t < start + 0.2) {
+      opacity = Curves.easeOut.transform((t - start) / 0.2);
+    } else {
+      opacity = 1.0;
+    }
+    // 周期最后 15% 整体淡出，循环衔接更自然
+    if (t > 0.85) {
+      opacity *= 1 - (t - 0.85) / 0.15;
+    }
+    return opacity.clamp(0.0, 1.0);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.onSurface;
-    return FadeTransition(
-      opacity: _controller,
-      child: Container(
-        width: 2,
-        height: 16,
-        margin: const EdgeInsets.only(left: 2),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(1),
-        ),
-      ),
+    final color = Theme.of(context).colorScheme.primary;
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        final t = _controller.value;
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(3, (i) {
+            return Opacity(
+              opacity: _dotOpacity(t, i),
+              child: Container(
+                width: 4,
+                height: 4,
+                margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+            );
+          }),
+        );
+      },
     );
   }
 }

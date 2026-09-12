@@ -279,6 +279,10 @@ final currentChatProvider =
 
 final aiStreamingMessageProvider = StateProvider<String?>((ref) => null);
 
+/// 小Q 流式过程中的阶段性状态文案（思考中/准备中/执行工具等），
+/// 与 [aiStreamingMessageProvider] 互斥展示：写状态时清空正文，写正文时清空状态
+final aiStreamingStatusProvider = StateProvider<String?>((ref) => null);
+
 class CurrentChatNotifier extends StateNotifier<ChatSession?> {
   final Ref _ref;
 
@@ -308,7 +312,17 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
     _streamingFlushTimer = Timer(const Duration(milliseconds: 60), () {
       _ref.read(aiStreamingMessageProvider.notifier).state =
           _streamingContent.toString();
+      _ref.read(aiStreamingStatusProvider.notifier).state = null;
     });
+  }
+
+  /// 写入阶段性状态文案并清空流式正文（占位气泡切到状态行展示），
+  /// 同时取消待触发的正文 flush，避免旧缓冲在状态展示后被迟到刷出
+  void _setStreamingStatus(String text) {
+    _streamingFlushTimer?.cancel();
+    _streamingFlushTimer = null;
+    _ref.read(aiStreamingMessageProvider.notifier).state = null;
+    _ref.read(aiStreamingStatusProvider.notifier).state = text;
   }
 
   void setSession(ChatSession? session) {
@@ -735,7 +749,7 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         'assistant',
       );
 
-      _ref.read(aiStreamingMessageProvider.notifier).state = '小Q正在思考并分析任务...';
+      _setStreamingStatus('小Q思考中');
 
       // 初始化工具分发器并构建 AgentLoop（声明式注入 afterToolCall 钩子）
       final dispatcher = AgentToolRegistry.createDefaultDispatcher();
@@ -806,12 +820,14 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       )) {
         switch (event.type) {
           case AgentEventType.agentStart:
-            _ref.read(aiStreamingMessageProvider.notifier).state = '小Q正在准备...';
+            _setStreamingStatus('小Q准备中');
             break;
           case AgentEventType.turnStart:
             _streamingContent.clear();
-            _ref.read(aiStreamingMessageProvider.notifier).state =
-                '小Q正在思考中 (第 ${event.turn} 步)...';
+            // 首轮不展示步数，避免“第 1 步”这类无信息量文案
+            _setStreamingStatus((event.turn ?? 0) > 1
+                ? '小Q思考中 · 第 ${event.turn} 步'
+                : '小Q思考中');
             break;
           case AgentEventType.contentDelta:
             if (event.text != null) {
@@ -821,15 +837,14 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
             break;
           case AgentEventType.thoughtUpdate:
             if (event.text != null && event.text!.isNotEmpty) {
-              _ref.read(aiStreamingMessageProvider.notifier).state =
-                  '💭 思考过程:\n${event.text}';
+              _setStreamingStatus('💭 思考过程:\n${event.text}');
             }
             break;
           case AgentEventType.toolExecuting:
             final toolName = event.toolCall?.name ?? '';
             final extraProgress = event.text != null ? ' (${event.text})' : '';
-            _ref.read(aiStreamingMessageProvider.notifier).state =
-                '⚡ 小Q正在执行操作: [$toolName]$extraProgress...';
+            // 尾部不再拼字面省略号，由 UI 的动态省略号动画表达进行中
+            _setStreamingStatus('⚡ 小Q正在执行操作: [$toolName]$extraProgress');
             break;
           case AgentEventType.toolCompleted:
             // 每当工具执行完成后，推入中间消息
@@ -888,6 +903,7 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       _streamingFlushTimer?.cancel();
       _streamingFlushTimer = null;
       _ref.read(aiStreamingMessageProvider.notifier).state = null;
+      _ref.read(aiStreamingStatusProvider.notifier).state = null;
 
       // 结束录制，把本轮 VFS 变更快照挂到本轮用户消息上（随会话落库，撤回时按此恢复）
       final undoEntries = VirtualWorkspaceService.instance.stopRecording();
