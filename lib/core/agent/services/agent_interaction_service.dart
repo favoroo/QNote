@@ -1,4 +1,7 @@
 import 'dart:async';
+
+import 'package:flutter/material.dart'
+    show BuildContext, Navigator;
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/router/app_router.dart';
 import 'package:qnote_flutter/widgets/ai/ask_user_dialog.dart';
@@ -13,6 +16,9 @@ class AgentInteractionService {
 
   Completer<String?>? _pendingCompleter;
   Timer? _timeoutTimer;
+
+  /// 当前打开中的 ask_user 对话框 context，用于取消/超时时主动关闭残留弹窗
+  BuildContext? _dialogContext;
 
   /// 向用户提出确认或选择请求并等待结果
   ///
@@ -34,6 +40,7 @@ class AgentInteractionService {
       if (!completer.isCompleted) {
         LoggerService.instance.logAI('用户交互确认超时未响应，已自动取消');
         completer.complete(null);
+        _closeDialog();
       }
     });
 
@@ -56,6 +63,7 @@ class AgentInteractionService {
           context: context,
           question: question,
           options: options,
+          onDialogBuilt: (dialogContext) => _dialogContext = dialogContext,
         );
         if (!completer.isCompleted) {
           completer.complete(result);
@@ -85,12 +93,32 @@ class AgentInteractionService {
     if (_pendingCompleter != null && !_pendingCompleter!.isCompleted) {
       _pendingCompleter!.complete(null);
     }
+    _closeDialog();
     _cleanup();
+  }
+
+  /// 主动关闭仍在打开中的 ask_user 对话框。
+  ///
+  /// 只完成 Completer 的话对话框会残留在导航栈上（Agent 已结束但确认弹窗
+  /// 挡住整个界面），因此取消/超时时需要把它一并 pop 掉
+  void _closeDialog() {
+    final dialogContext = _dialogContext;
+    _dialogContext = null;
+    if (dialogContext == null || !dialogContext.mounted) return;
+    try {
+      Navigator.of(dialogContext).pop();
+    } catch (e) {
+      LoggerService.instance.logAI(
+        '关闭 ask_user 残留对话框失败: $e',
+        level: LogLevel.warning,
+      );
+    }
   }
 
   void _cleanup() {
     _timeoutTimer?.cancel();
     _timeoutTimer = null;
     _pendingCompleter = null;
+    _dialogContext = null;
   }
 }

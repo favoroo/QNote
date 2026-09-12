@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
@@ -2555,6 +2556,56 @@ class _ChatBubble extends StatelessWidget {
                 ),
               ),
             ),
+          ],
+        ),
+      );
+    }
+
+    // fetch_url 返回的网页正文过长，气泡里只显示标题摘要，点击可打开原网页
+    if (message.toolName == 'fetch_url') {
+      final url = uiDetails?['url'] as String? ?? '';
+      final title = (uiDetails?['title'] as String? ?? '').trim();
+      final hasError = message.isError == true;
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              hasError ? Icons.link_off : Icons.language,
+              size: 14,
+              color: hasError ? theme.colorScheme.error : theme.colorScheme.primary,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                title.isEmpty ? '已读取网页 $url' : '已读取网页：$title',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+                ),
+              ),
+            ),
+            // 点击卡片用系统浏览器打开原网页，方便用户核对来源
+            if (!hasError && url.isNotEmpty)
+              GestureDetector(
+                onTap: () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+                child: Icon(
+                  Icons.open_in_new,
+                  size: 14,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
           ],
         ),
       );

@@ -4,18 +4,24 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 /// 弹出小Q人机交互确认弹窗
 ///
 /// 返回用户选择的选项文本或自定义输入的文字。如果用户取消或关闭弹窗，则返回 null。
+/// [onDialogBuilt] 在对话框 context 就绪时回调，供调用方在需要时主动关闭弹窗
+/// （如 AgentInteractionService.cancelPending 取消挂起提问时清除残留弹窗）。
 Future<String?> showAskUserDialog({
   required BuildContext context,
   required String question,
   List<String>? options,
+  void Function(BuildContext dialogContext)? onDialogBuilt,
 }) {
   return showDialog<String>(
     context: context,
     barrierDismissible: true,
-    builder: (dialogContext) => AskUserDialog(
-      question: question,
-      options: options,
-    ),
+    builder: (dialogContext) {
+      onDialogBuilt?.call(dialogContext);
+      return AskUserDialog(
+        question: question,
+        options: options,
+      );
+    },
   );
 }
 

@@ -19,7 +19,19 @@ String extractPlainTextFromDelta(String deltaJsonStr, {int maxLength = 100}) {
     }
     return text;
   } catch (_) {
-    return deltaJsonStr;
+    // 非 delta 内容（Markdown/HTML 等纯文本）：剥离 HTML 标签后再截断，
+    // 避免小Q生成的网页源码直接进入搜索摘要
+    var text = deltaJsonStr
+        .replaceAll(RegExp(r'<[^>]*>'), ' ')
+        .replaceAll('\n', ' ')
+        .trim();
+    while (text.contains('  ')) {
+      text = text.replaceAll('  ', ' ');
+    }
+    if (text.length > maxLength) {
+      return '${text.substring(0, maxLength)}...';
+    }
+    return text;
   }
 }
 

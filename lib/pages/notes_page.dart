@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/models/folder.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
+import 'package:qnote_flutter/core/utils/note_file_type.dart';
 import 'package:qnote_flutter/providers/note_provider.dart';
 import 'package:qnote_flutter/providers/folder_provider.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
@@ -1099,7 +1100,28 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
         color: theme.colorScheme.primary,
       );
     }
+    // 按文件类型显示图标，便于识别小Q生成的网页/数据文件
+    final icon = _noteTypeIcon(theme);
+    if (icon != null) return icon;
     return Icon(Icons.description, size: 18, color: theme.colorScheme.primary);
+  }
+
+  /// 依据标题后缀返回文件类型图标；普通 Markdown 笔记返回 null 走默认图标
+  Icon? _noteTypeIcon(ThemeData theme) {
+    final note = widget.item.note;
+    if (note == null) return null;
+    switch (NoteFileTypeHelper.fromTitle(note.title)) {
+      case NoteFileType.html:
+        return Icon(Icons.language, size: 18, color: theme.colorScheme.primary);
+      case NoteFileType.svg:
+        return Icon(Icons.palette_outlined, size: 18, color: theme.colorScheme.primary);
+      case NoteFileType.json:
+        return Icon(Icons.data_object, size: 18, color: theme.colorScheme.primary);
+      case NoteFileType.code:
+        return Icon(Icons.code, size: 18, color: theme.colorScheme.primary);
+      case NoteFileType.markdown:
+        return null;
+    }
   }
 
   /// 前置图标容器：32×32 圆角底色 + 图标。

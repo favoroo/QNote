@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/core/agent/agent_tool_registry.dart';
@@ -24,31 +25,77 @@ import 'package:qnote_flutter/providers/ai_provider.dart';
 // 与 AI 主页面会话完全隔离的轻量任务入口：
 // - 页面上下文（QPageContext）让小Q知道当前界面与目标文件；
 // - 会话按上下文签名隔离：签名变化（切页/返回）即丢失历史，重新开始；
-// - 任务过程悬浮球播放动画，结束后 5 秒倒计时可一键撤回本次会话的全部修改；
+// - 任务过程悬浮球播放动画，结束后可在面板横幅中随时撤回本次会话的全部修改
+//   （撤回横幅常驻不消失，直到撤回执行；期间发起新任务则跨任务累加）；
 // - 消息为纯内存态，不落库、不污染 AI 主页面的会话历史。
 // ==========================================
 
 /// 全局模态弹层计数（Dialog/BottomSheet 打开时悬浮球自动隐藏）
 final floatingQModalCount = ValueNotifier<int>(0);
 
-/// 模态路由观察者：挂在 GoRouter 的 observers 上，统计 PopupRoute（对话框/底部弹层）
+/// 模态路由观察者：挂在 GoRouter 的 observers（root Navigator）上，统计 PopupRoute。
+///
+/// 自愈设计：除 didPush/didPop/didRemove/didReplace 对称增删外，还给每个入集路由挂
+/// 动画状态监听——弹层动画回到 dismissed 即代表它已关闭，若因事件丢失仍残留在集合中
+/// 则强制剔除并重算，杜绝计数泄漏导致悬浮球永久隐藏。
 class FloatingQModalRouteObserver extends NavigatorObserver {
-  static int _count = 0;
+  /// 当前打开中的 PopupRoute 集合（以路由对象为键，天然去重）。
+  /// 用 PopupRoute 类型而非 Route 基类：animation getter 定义在 TransitionRoute 上
+  final Set<PopupRoute> _openPopups = {};
 
-  void _bump(Route? route, int delta) {
-    if (route is! PopupRoute) return;
-    _count = (_count + delta).clamp(0, 1 << 30);
-    floatingQModalCount.value = _count;
+  @override
+  void didPush(Route route, Route? previousRoute) => _track(route);
+
+  @override
+  void didPop(Route route, Route? previousRoute) => _untrack(route);
+
+  @override
+  void didRemove(Route route, Route? previousRoute) => _untrack(route);
+
+  @override
+  void didReplace({Route? newRoute, Route? oldRoute}) {
+    _untrack(oldRoute);
+    _track(newRoute);
   }
 
-  @override
-  void didPush(Route route, Route? previousRoute) => _bump(route, 1);
+  /// 登记弹层路由并挂动画状态监听（自愈信号源）
+  void _track(Route? route) {
+    if (route is! PopupRoute || _openPopups.contains(route)) return;
+    _openPopups.add(route);
+    route.animation?.addStatusListener(_onRouteAnimationStatus);
+    _sync();
+  }
 
-  @override
-  void didPop(Route route, Route? previousRoute) => _bump(route, -1);
+  void _untrack(Route? route) {
+    if (route is! PopupRoute || !_openPopups.contains(route)) return;
+    route.animation?.removeStatusListener(_onRouteAnimationStatus);
+    _openPopups.remove(route);
+    _sync();
+  }
 
-  @override
-  void didRemove(Route route, Route? previousRoute) => _bump(route, -1);
+  /// 弹层动画回到 dismissed 意味着它已经关闭：无论 didPop/didRemove 是否被
+  /// 漏掉都强制剔除（防止计数泄漏导致悬浮球永久隐藏）
+  void _onRouteAnimationStatus(AnimationStatus status) {
+    if (status != AnimationStatus.dismissed) return;
+    final stale = _openPopups
+        .where((r) =>
+            r.animation == null ||
+            r.animation!.status == AnimationStatus.dismissed)
+        .toList();
+    if (stale.isEmpty) return;
+    for (final route in stale) {
+      route.animation?.removeStatusListener(_onRouteAnimationStatus);
+      _openPopups.remove(route);
+    }
+    _sync();
+  }
+
+  void _sync() {
+    if (kDebugMode) {
+      debugPrint('[FloatingQ] modal count = ${_openPopups.length}');
+    }
+    floatingQModalCount.value = _openPopups.length;
+  }
 }
 
 /// 悬浮小Q的工作阶段
@@ -59,7 +106,8 @@ enum FloatingQPhase {
   /// 任务执行中（悬浮球播放动画，面板可查看进度并可中断）
   working,
 
-  /// 撤回倒计时：任务（或中断）结束后 5 秒内可一键撤回
+  /// 撤回就绪：任务（或中断）结束后可随时在面板中撤回，
+  /// 直到撤回执行；期间发起新任务则待撤回变更跨任务累加
   countdown,
 }
 
@@ -92,9 +140,6 @@ class FloatingQState {
   /// 流式正文缓冲
   final String? streamingText;
 
-  /// 撤回倒计时截止时间（null 表示不在倒计时）
-  final DateTime? countdownEndsAt;
-
   /// 待撤回的变更处数
   final int pendingUndoCount;
 
@@ -111,7 +156,6 @@ class FloatingQState {
     this.messages = const [],
     this.statusText,
     this.streamingText,
-    this.countdownEndsAt,
     this.pendingUndoCount = 0,
     this.isUndoing = false,
   });
@@ -130,13 +174,11 @@ class FloatingQState {
     List<ChatMessage>? messages,
     String? statusText,
     String? streamingText,
-    DateTime? countdownEndsAt,
     int? pendingUndoCount,
     bool? isUndoing,
     bool clearSignature = false,
     bool clearStatusText = false,
     bool clearStreamingText = false,
-    bool clearCountdownEndsAt = false,
   }) {
     return FloatingQState(
       baseContext: baseContext ?? this.baseContext,
@@ -151,9 +193,6 @@ class FloatingQState {
           clearStatusText ? null : (statusText ?? this.statusText),
       streamingText:
           clearStreamingText ? null : (streamingText ?? this.streamingText),
-      countdownEndsAt: clearCountdownEndsAt
-          ? null
-          : (countdownEndsAt ?? this.countdownEndsAt),
       pendingUndoCount: pendingUndoCount ?? this.pendingUndoCount,
       isUndoing: isUndoing ?? this.isUndoing,
     );
@@ -166,9 +205,6 @@ final floatingQProvider =
 );
 
 class FloatingQNotifier extends Notifier<FloatingQState> {
-  /// 撤回倒计时窗口
-  static const _undoWindow = Duration(seconds: 5);
-
   AgentCancellationToken? _currentToken;
 
   /// 本次会话累积的待撤回变更（跨多轮累加，撤回语义 = 撤销本会话小Q的全部修改）
@@ -181,13 +217,11 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
   bool _contextSwitchedDuringRun = false;
 
   final StringBuffer _streamBuffer = StringBuffer();
-  Timer? _countdownTimer;
   Timer? _flushTimer;
 
   @override
   FloatingQState build() {
     ref.onDispose(() {
-      _countdownTimer?.cancel();
       _flushTimer?.cancel();
     });
     return const FloatingQState();
@@ -246,7 +280,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
 
   void closePanel() => state = state.copyWith(panelOpen: false);
 
-  /// 手动开启新对话（清空历史；进行中的任务与撤回窗口不受影响）
+  /// 手动开启新对话（清空历史；进行中的任务与待撤回变更不受影响）
   void newConversation() {
     if (state.phase == FloatingQPhase.working) return;
     state = state.copyWith(
@@ -270,13 +304,8 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
     final ctx = state.effectiveContext;
     final signature = ctx?.signature ?? 'page:none';
 
-    // 撤回倒计时期间发起新任务：放弃未撤回的旧修改（新任务基于新结果）
-    if (state.phase == FloatingQPhase.countdown) {
-      _countdownTimer?.cancel();
-      _countdownTimer = null;
-      _pendingUndo.clear();
-    }
-
+    // 撤回就绪期发起新任务：保留并继续累加旧修改，撤回语义仍为
+    // "撤销本会话小Q的全部修改"（逆序恢复天然按时间倒序覆盖多次任务）
     final isNewConversation = signature != state.contextSignature;
     final userMessage = ChatMessage(
       role: 'user',
@@ -291,8 +320,6 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       messages: isNewConversation ? [userMessage] : [...state.messages, userMessage],
       statusText: '小Q准备中',
       clearStreamingText: true,
-      clearCountdownEndsAt: true,
-      pendingUndoCount: 0,
     );
     _sessionMessages = List.of(state.messages);
     _contextSwitchedDuringRun = false;
@@ -303,7 +330,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
     await _runAgentTask(ctx, signature);
   }
 
-  /// 中断当前任务（已执行的部分修改同样进入撤回倒计时）
+  /// 中断当前任务（已执行的部分修改同样进入撤回就绪状态）
   void stop() {
     _currentToken?.cancel('用户主动中止操作');
     AgentInteractionService.instance.cancelPending('用户主动中止操作');
@@ -317,8 +344,6 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       return null;
     }
     state = state.copyWith(isUndoing: true);
-    _countdownTimer?.cancel();
-    _countdownTimer = null;
     try {
       final entries = List.of(_pendingUndo);
       final result = await restoreWorkspaceUndoEntries(ref, entries);
@@ -331,7 +356,6 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
         phase: FloatingQPhase.idle,
         messages: const [],
         clearSignature: true,
-        clearCountdownEndsAt: true,
         pendingUndoCount: 0,
         isUndoing: false,
       );
@@ -493,17 +517,19 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
         _sessionMessages = const [];
       }
 
-      if (undoEntries.isNotEmpty) {
-        _pendingUndo.addAll(undoEntries);
+      // 本轮任务的修改并入待撤回集合（跨任务累加，撤回 = 撤销本会话全部修改）
+      _pendingUndo.addAll(undoEntries);
+
+      if (_pendingUndo.isNotEmpty) {
+        // 存在待撤回变更即进入撤回就绪：横幅常驻面板、不再自动过期，
+        // 直到用户执行撤回；本轮无新修改但此前仍有待撤回变更时同样保持就绪
         state = state.copyWith(
           phase: FloatingQPhase.countdown,
-          countdownEndsAt: DateTime.now().add(_undoWindow),
           pendingUndoCount: _pendingUndo.length,
           messages: List.of(_sessionMessages),
           clearStatusText: true,
           clearStreamingText: true,
         );
-        _startCountdownTimer();
       } else {
         state = state.copyWith(
           phase: FloatingQPhase.idle,
@@ -538,23 +564,5 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
         clearStatusText: true,
       );
     });
-  }
-
-  void _startCountdownTimer() {
-    _countdownTimer?.cancel();
-    _countdownTimer = Timer(_undoWindow, _expireCountdown);
-  }
-
-  /// 倒计时自然结束：放弃撤回机会，回到待机
-  void _expireCountdown() {
-    _countdownTimer?.cancel();
-    _countdownTimer = null;
-    if (state.phase != FloatingQPhase.countdown) return;
-    _pendingUndo.clear();
-    state = state.copyWith(
-      phase: FloatingQPhase.idle,
-      clearCountdownEndsAt: true,
-      pendingUndoCount: 0,
-    );
   }
 }

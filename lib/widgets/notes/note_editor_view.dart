@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:dio/dio.dart' show CancelToken, DioException, DioExceptionType;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:qnote_flutter/config/defaults.dart' show defaultSystemPrompts;
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
@@ -19,7 +20,9 @@ import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/utils/delta_markdown.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
+import 'package:qnote_flutter/core/utils/note_file_type.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
+import 'package:qnote_flutter/widgets/notes/html_preview/html_preview_view.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/core/utils/link_preview_helper.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -36,9 +39,18 @@ class _TextSegment extends _Segment {
   final MarkdownTextEditingController controller;
   final FocusNode focusNode;
   bool listenersAttached = false;
-  _TextSegment({required BuildContext context, String text = ''})
-      : focusNode = FocusNode(),
-        controller = MarkdownTextEditingController(context: context, text: text) {
+  /// 等宽源码模式：不解析 Markdown 行内语法（html/svg/json/code 笔记使用）
+  final bool plainCode;
+  _TextSegment({
+    required BuildContext context,
+    String text = '',
+    this.plainCode = false,
+  })  : focusNode = FocusNode(),
+        controller = MarkdownTextEditingController(
+          context: context,
+          text: text,
+          plainCode: plainCode,
+        ) {
     controller.focusNode = focusNode;
     focusNode.addListener(_onFocusChanged);
   }
@@ -123,6 +135,19 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
 
   final List<_Segment> _segments = [];
 
+  // 渲染预览模式：HTML/SVG 笔记默认开启，AppBar 可切换回源码编辑
+  bool _previewMode = false;
+
+  /// 按标题后缀实时识别的文件类型（标题改名时跟随变化）
+  NoteFileType get _fileType =>
+      NoteFileTypeHelper.fromTitle(_titleController.text);
+
+  /// 是否按源码类内容处理：等宽字体、不做 Markdown 行内渲染与 URL 自动拆分
+  bool get _isCodeLikeFile => NoteFileTypeHelper.isCodeLike(_fileType);
+
+  /// 当前是否处于渲染预览状态（仅 html/svg 生效，json/code 始终为源码模式）
+  bool get _isPreviewActive => _previewMode && !_isCodeLikeFile;
+
   // Track which text segment is currently focused
   int _focusedSegmentIndex = 0;
 
@@ -170,6 +195,11 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     final rawContent = _initContentString();
     _lastSavedContent = rawContent;
     _parseContentIntoSegments(rawContent);
+
+    // HTML/SVG 笔记默认进入渲染预览模式，源码可通过 AppBar 一键切换
+    final initialType = NoteFileTypeHelper.fromTitle(widget.note.title);
+    _previewMode =
+        initialType == NoteFileType.html || initialType == NoteFileType.svg;
 
     _titleController.addListener(_triggerAutoSave);
 
@@ -224,6 +254,13 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   /// Parse a markdown string into alternating text/image segments.
   void _parseContentIntoSegments(String content) {
     _segments.clear();
+    // 代码类内容（html/svg/json/code）整体作为单个等宽文本段：
+    // 不解析图片/链接语法，避免 HTML 标签、URL 被误拆成链接卡片
+    if (_isCodeLikeFile) {
+      _segments.add(_TextSegment(context: context, text: content, plainCode: true));
+      _attachListeners();
+      return;
+    }
     // Split on image lines: lines matching ^![...](...)$
     final imageReg = RegExp(r'^!\[.*?\]\((.*?)\)$', multiLine: true);
     int lastEnd = 0;
@@ -264,7 +301,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   }
 
   void _addTextSegment(String text) {
-    final seg = _TextSegment(context: context, text: text);
+    final seg = _TextSegment(context: context, text: text, plainCode: _isCodeLikeFile);
     _segments.add(seg);
   }
 
@@ -358,6 +395,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   }
 
   void _splitUrlsInSegment(int index) {
+    // 源码类内容中的 URL 是网页源码的一部分，禁止自动拆分为链接卡片
+    if (_isCodeLikeFile) return;
     if (index < 0 || index >= _segments.length) return;
     final seg = _segments[index];
     if (seg is! _TextSegment) return;
@@ -479,7 +518,11 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
       current.dispose();
       prev.dispose();
 
-      final merged = _TextSegment(context: context, text: mergedText);
+      final merged = _TextSegment(
+        context: context,
+        text: mergedText,
+        plainCode: _isCodeLikeFile,
+      );
       merged.listenersAttached = false;
 
       setState(() {
@@ -665,7 +708,11 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     // 2. Re-create segments
     for (final segState in state.segments) {
       if (segState is _TextSegmentState) {
-        final seg = _TextSegment(context: context, text: segState.text);
+        final seg = _TextSegment(
+          context: context,
+          text: segState.text,
+          plainCode: _isCodeLikeFile,
+        );
         _segments.add(seg);
       } else if (segState is _ImageSegmentState) {
         _segments.add(_ImageSegment(segState.path));
@@ -964,7 +1011,11 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         (_segments[nextIdx] as _TextSegment).dispose();
       }
 
-      final merged = _TextSegment(context: context, text: mergedText);
+      final merged = _TextSegment(
+        context: context,
+        text: mergedText,
+        plainCode: _isCodeLikeFile,
+      );
 
       final start = (prevIdx >= 0 && _segments[prevIdx] is _TextSegment) ? prevIdx : segmentIndex;
       final end = (afterExtractIdx < _segments.length && _segments[afterExtractIdx] is _TextSegment)
@@ -1191,6 +1242,28 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     Toast.success(context, '已复制', duration: const Duration(seconds: 1));
   }
 
+  /// JSON 笔记一键格式化：美化缩进便于阅读与编辑
+  void _formatJson() {
+    final seg = _focusedTextSeg;
+    if (seg == null || seg.controller.text.trim().isEmpty) return;
+    try {
+      final decoded = jsonDecode(seg.controller.text);
+      const encoder = JsonEncoder.withIndent('  ');
+      final pretty = encoder.convert(decoded);
+      _historyTimer?.cancel();
+      _saveHistoryState();
+      seg.controller.value = TextEditingValue(
+        text: pretty,
+        selection: TextSelection.collapsed(offset: pretty.length),
+      );
+      Toast.success(context, '已格式化', duration: const Duration(seconds: 1));
+    } on FormatException catch (e) {
+      Toast.error(context, 'JSON 格式错误：${e.message}');
+    } catch (_) {
+      Toast.error(context, 'JSON 解析失败');
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Toolbar actions on focused segment
   // ---------------------------------------------------------------------------
@@ -1333,13 +1406,45 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
               ),
             ),
           actions: [
-            IconButton(icon: const Icon(Icons.copy), onPressed: _copyMarkdown, tooltip: '复制 Markdown'),
+            // JSON 笔记：一键格式化缩进
+            if (_fileType == NoteFileType.json)
+              IconButton(
+                icon: const Icon(Icons.data_object),
+                onPressed: _formatJson,
+                tooltip: '格式化 JSON',
+              ),
+            // HTML/SVG 笔记：渲染预览与源码编辑切换
+            if (_fileType == NoteFileType.html || _fileType == NoteFileType.svg)
+              IconButton(
+                icon: Icon(_isPreviewActive ? Icons.code : Icons.visibility_outlined),
+                onPressed: () => setState(() => _previewMode = !_previewMode),
+                tooltip: _isPreviewActive ? '查看源码' : '渲染预览',
+              ),
+            IconButton(
+              icon: const Icon(Icons.copy),
+              onPressed: _copyMarkdown,
+              tooltip: _isCodeLikeFile ? '复制源码' : '复制 Markdown',
+            ),
           ],
         ),
         body: Column(
           children: [
             Expanded(
-              child: GestureDetector(
+              child: _isPreviewActive
+                  ? _buildPreviewBody(theme)
+                  : _buildEditorBody(theme),
+            ),
+            // 渲染预览模式下隐藏编辑工具栏
+            if (!_isPreviewActive) _buildToolbar(theme),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 源码编辑主体（原有分段编辑视图）
+  Widget _buildEditorBody(ThemeData theme) {
+    return GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () {
                   if (_segments.isNotEmpty) {
@@ -1369,13 +1474,37 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
                     children: _buildSegmentWidgets(theme),
                   ),
                 ),
-              ),
-            ),
-            _buildToolbar(theme),
-          ],
-        ),
-      ),
     );
+  }
+
+  /// 渲染预览主体：html 走 WebView/iframe 真实渲染，svg 走矢量渲染
+  Widget _buildPreviewBody(ThemeData theme) {
+    final source = _serializeToMarkdown();
+    if (source.trim().isEmpty) {
+      return Center(
+        child: Text(
+          '暂无内容，点击右上角切换到源码编辑',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
+    if (_fileType == NoteFileType.svg) {
+      return SingleChildScrollView(
+        controller: _scrollController,
+        padding: const EdgeInsets.all(16),
+        child: Center(
+          child: SvgPicture.string(
+            source,
+            fit: BoxFit.contain,
+            // 无宽高声明的 SVG 以可用宽度等比展示
+            width: double.infinity,
+          ),
+        ),
+      );
+    }
+    return HtmlPreviewView(htmlContent: source);
   }
 
   List<Widget> _buildSegmentWidgets(ThemeData theme) {
@@ -1400,7 +1529,10 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
       maxLines: null,
       keyboardType: TextInputType.multiline,
       textCapitalization: TextCapitalization.sentences,
-      style: theme.textTheme.bodyLarge?.copyWith(height: 1.6, letterSpacing: 0.3),
+      // 源码类笔记（html/svg/json/code）使用等宽字体，结构更易读
+      style: seg.plainCode
+          ? theme.textTheme.bodyMedium?.copyWith(height: 1.6, fontFamily: 'monospace')
+          : theme.textTheme.bodyLarge?.copyWith(height: 1.6, letterSpacing: 0.3),
       decoration: const InputDecoration(
         border: InputBorder.none,
         focusedBorder: InputBorder.none,
@@ -1570,7 +1702,11 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         (_segments[nextIdx] as _TextSegment).dispose();
       }
 
-      final merged = _TextSegment(context: context, text: mergedText);
+      final merged = _TextSegment(
+        context: context,
+        text: mergedText,
+        plainCode: _isCodeLikeFile,
+      );
 
       final start = (prevIdx >= 0 && _segments[prevIdx] is _TextSegment) ? prevIdx : index;
       final end = (nextIdx < _segments.length && _segments[nextIdx] is _TextSegment) ? nextIdx : index;
@@ -2304,8 +2440,15 @@ class _ToolbarButton extends StatelessWidget {
 class MarkdownTextEditingController extends TextEditingController {
   final BuildContext context;
   FocusNode? focusNode;
+  /// 为 true 时跳过 Markdown 行内渲染，按纯文本输出（代码类笔记使用）
+  final bool plainCode;
 
-  MarkdownTextEditingController({required this.context, this.focusNode, super.text});
+  MarkdownTextEditingController({
+    required this.context,
+    this.focusNode,
+    super.text,
+    this.plainCode = false,
+  });
 
   void refresh() {
     notifyListeners();
@@ -2313,6 +2456,10 @@ class MarkdownTextEditingController extends TextEditingController {
 
   @override
   TextSpan buildTextSpan({required BuildContext context, TextStyle? style, required bool withComposing}) {
+    // 源码模式：整体纯文本输出，HTML/JSON 等内容不做任何 Markdown 解析
+    if (plainCode) {
+      return TextSpan(text: text, style: style);
+    }
     final selection = this.selection;
     final cursorOffset = (focusNode == null || focusNode!.hasFocus) ? selection.baseOffset : -1;
     final activeLineIndex = _getActiveLineIndex(text, cursorOffset);
