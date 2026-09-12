@@ -249,8 +249,8 @@ class FreeModelKeyManager {
   /// 涵盖：
   /// - 状态码：429（限速）、400（商汤常见并发超限/40003/1102）、401（鉴权失效）、403（禁用）、
   ///          408（请求超时）、500（偶发服务故障）、502/503/504（网关超时与拥塞）
-  /// - 网络抖动：超时（connect/send/receive）、连接重置、网络断开等
-  /// - 文本关键词：并发、超限、配额、rate limit、qps、quota 等
+  /// - 网络抖动：超时（connect/send/receive）、TLS 握手中断、连接重置、连接中止、网络断开等
+  /// - 文本关键词：并发、超限、配额、rate limit、qps、quota、handshake 等
   bool isRecoverableError(dynamic error) {
     if (error == null) return false;
     if (error is DioException) {
@@ -260,6 +260,26 @@ class FreeModelKeyManager {
           error.type == DioExceptionType.receiveTimeout ||
           error.type == DioExceptionType.connectionError) {
         return true;
+      }
+
+      // 1.1 Dio 未映射的底层异常一律被包成 unknown，TLS 握手中断
+      //     （HandshakeException: Connection terminated during handshake）、
+      //     连接被重置（SocketException）都落在这个桶里，必须按瞬时网络故障重试。
+      //     这里用 runtimeType 名称判断而非 `is`：dart:io 的异常类型无法在 Web 上编译期引用。
+      //     唯一排除的是响应体解析失败（FormatException）—— 那是数据问题，重试无意义。
+      if (error.type == DioExceptionType.unknown) {
+        final inner = error.error;
+        if (inner != null && inner is! FormatException) {
+          final innerType = inner.runtimeType.toString();
+          if (innerType.contains('HandshakeException') ||
+              innerType.contains('TlsException') ||
+              innerType.contains('SocketException') ||
+              innerType.contains('HttpException') ||
+              innerType.contains('ClientException') ||
+              innerType.contains('TimeoutException')) {
+            return true;
+          }
+        }
       }
 
       // 2. HTTP 状态码判定
@@ -278,12 +298,12 @@ class FreeModelKeyManager {
 
       // 3. 检查状态文本与错误描述
       final statusMessage = error.response?.statusMessage?.toLowerCase() ?? '';
-      if (_hasRateOrQuotaKeywords(statusMessage)) {
+      if (_hasRetryableKeywords(statusMessage)) {
         return true;
       }
 
       final errorMsg = error.message?.toLowerCase() ?? '';
-      if (_hasRateOrQuotaKeywords(errorMsg)) {
+      if (_hasRetryableKeywords(errorMsg)) {
         return true;
       }
 
@@ -291,14 +311,14 @@ class FreeModelKeyManager {
       final respData = error.response?.data;
       if (respData != null && respData is! ResponseBody) {
         final respStr = respData.toString().toLowerCase();
-        if (_hasRateOrQuotaKeywords(respStr)) {
+        if (_hasRetryableKeywords(respStr)) {
           return true;
         }
       }
     }
 
     final errorStr = error.toString().toLowerCase();
-    if (_hasRateOrQuotaKeywords(errorStr)) {
+    if (_hasRetryableKeywords(errorStr)) {
       return true;
     }
 
@@ -306,7 +326,7 @@ class FreeModelKeyManager {
   }
 
   /// 检查文本是否包含限频、配额、并发超限或服务端网络异常等关键词
-  bool _hasRateOrQuotaKeywords(String text) {
+  bool _hasRetryableKeywords(String text) {
     if (text.isEmpty) return false;
     return text.contains('429') ||
         text.contains('401') ||
@@ -330,12 +350,21 @@ class FreeModelKeyManager {
         text.contains('connection refused') ||
         text.contains('connection closed') ||
         text.contains('connection reset') ||
+        // TLS 握手阶段被掐断：网关抖动、中间设备重置、网络切换时高频出现，退避重连即可恢复
+        text.contains('handshake') ||
+        text.contains('connection terminated') ||
+        text.contains('connection abort') ||
+        text.contains('tls') ||
+        text.contains('socket') ||
+        text.contains('network') ||
         text.contains('配额') ||
         text.contains('超限') ||
         text.contains('并发') ||
         text.contains('频率') ||
         text.contains('限制') ||
         text.contains('超时') ||
+        text.contains('握手') ||
+        text.contains('网络') ||
         text.contains('繁忙');
   }
 

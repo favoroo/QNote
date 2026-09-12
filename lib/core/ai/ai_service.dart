@@ -113,11 +113,56 @@ class AiService {
         .replaceAll(RegExp(r'/+$'), ''); // 去除末尾多余斜杠
   }
 
-  /// 免费模型重试深度：SenseNova 网关遍历 Key 池容量，其它独立端点为 1
-  int get _maxFreeRetries {
-    if (_config?.vendorId != 'free_model') return 1;
-    final isSenseNova = _config?.baseUrl.contains('sensenova') == true;
-    return isSenseNova ? FreeModelKeyManager.instance.totalKeysCount : 1;
+  /// 通用重试次数上限（无 Key 池可轮换的端点）
+  ///
+  /// 这类端点（用户自定义模型、非 SenseNova 的免费网关）没有备用 Key 可切，
+  /// 只能靠时间退避穿越瞬时故障（TLS 握手中断、连接重置、网关 5xx 等），固定 3 次。
+  static const int _genericMaxRetries = 3;
+
+  /// 单次请求的重试深度
+  ///
+  /// - SenseNova 免费网关：等于 Key 池容量，每个 Key 各试一次
+  /// - 其它（含用户自定义模型）：[_genericMaxRetries] 次纯退避重试
+  int get _maxRetries {
+    final isSenseNovaPool = _config?.vendorId == 'free_model' &&
+        _config?.baseUrl.contains('sensenova') == true;
+    return isSenseNovaPool
+        ? FreeModelKeyManager.instance.totalKeysCount
+        : _genericMaxRetries;
+  }
+
+  /// 统一的重试决策：判断本次失败是否值得重试，值得则切换可用 Key（若有）并退避等待
+  ///
+  /// [hasYielded] 供流式场景使用 —— 首包已产出后不再重试，否则调用方会收到重复内容。
+  /// 返回 `true` 时调用方应 `retryCount++` 后 `continue` 重发本轮请求。
+  Future<bool> _shouldRetryAndWait(
+    Object error,
+    int retryCount, {
+    bool hasYielded = false,
+    required String scene,
+  }) async {
+    if (hasYielded) return false;
+    if (retryCount >= _maxRetries) return false;
+    if (!FreeModelKeyManager.instance.isRecoverableError(error)) return false;
+
+    final next = retryCount + 1;
+    // 仅 SenseNova Key 池会真正轮到新 Key；自定义模型 / 独立端点此处为 no-op
+    final switched = switchFreeModelKey();
+    final delay = FreeModelKeyManager.instance.getBackoffDelay(next);
+    LoggerService.instance.logAI(
+      '$scene 遭遇瞬时故障（${_briefError(error)}），'
+      '${switched ? '已切换备用 API Key' : '保持当前配置'}，'
+      '退避 ${delay.inMilliseconds}ms 后发起第 $next/$_maxRetries 次重试',
+      level: LogLevel.warning,
+    );
+    await Future.delayed(delay);
+    return true;
+  }
+
+  /// 把异常压成单行摘要，避免重试日志被堆栈刷屏
+  String _briefError(Object error) {
+    final text = error.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
+    return text.length > 160 ? '${text.substring(0, 160)}…' : text;
   }
 
   /// 为免费模型自动切换下一个备用 Key，并更新请求头
@@ -158,7 +203,6 @@ class AiService {
     );
 
     int retryCount = 0;
-    final maxRetries = _maxFreeRetries;
 
     while (true) {
       try {
@@ -211,20 +255,9 @@ class AiService {
           timestamp: DateTime.now(),
         );
       } catch (e, stackTrace) {
-        if (_config?.vendorId == 'free_model' &&
-            retryCount < maxRetries &&
-            FreeModelKeyManager.instance.isRecoverableError(e)) {
+        if (await _shouldRetryAndWait(e, retryCount, scene: '对话请求')) {
           retryCount++;
-          final switched = switchFreeModelKey();
-          if (switched) {
-            final delay = FreeModelKeyManager.instance.getBackoffDelay(retryCount);
-            LoggerService.instance.logAI(
-              '免费模型对话遭遇限速/鉴权异常，已自动切换 API Key，退避等待 ${delay.inMilliseconds}ms 后发起第 $retryCount 次重试',
-              level: LogLevel.warning,
-            );
-            await Future.delayed(delay);
-            continue;
-          }
+          continue;
         }
 
         String details = stackTrace.toString();
@@ -274,7 +307,6 @@ class AiService {
     );
 
     int retryCount = 0;
-    final maxRetries = _maxFreeRetries;
 
     while (true) {
       bool hasYielded = false;
@@ -375,21 +407,14 @@ class AiService {
         _deliverToolCalls(toolCallBuilders, onToolCallsReady);
         return;
       } catch (e, stackTrace) {
-        if (!hasYielded &&
-            _config?.vendorId == 'free_model' &&
-            retryCount < maxRetries &&
-            FreeModelKeyManager.instance.isRecoverableError(e)) {
+        if (await _shouldRetryAndWait(
+          e,
+          retryCount,
+          hasYielded: hasYielded,
+          scene: '带工具流式对话',
+        )) {
           retryCount++;
-          final switched = switchFreeModelKey();
-          if (switched) {
-            final delay = FreeModelKeyManager.instance.getBackoffDelay(retryCount);
-            LoggerService.instance.logAI(
-              '流式对话首包阶段遭遇限速/故障，已切换 Key，退避等待 ${delay.inMilliseconds}ms 后发起第 $retryCount 次重试',
-              level: LogLevel.warning,
-            );
-            await Future.delayed(delay);
-            continue;
-          }
+          continue;
         }
         LoggerService.instance.logAI(
           '带工具流式对话失败: $e',
@@ -434,7 +459,6 @@ class AiService {
     );
 
     int retryCount = 0;
-    final maxRetries = _maxFreeRetries;
 
     while (true) {
       bool hasYielded = false;
@@ -515,21 +539,14 @@ class AiService {
         );
         return;
       } catch (e, stackTrace) {
-        if (!hasYielded &&
-            _config?.vendorId == 'free_model' &&
-            retryCount < maxRetries &&
-            FreeModelKeyManager.instance.isRecoverableError(e)) {
+        if (await _shouldRetryAndWait(
+          e,
+          retryCount,
+          hasYielded: hasYielded,
+          scene: '普通流式对话',
+        )) {
           retryCount++;
-          final switched = switchFreeModelKey();
-          if (switched) {
-            final delay = FreeModelKeyManager.instance.getBackoffDelay(retryCount);
-            LoggerService.instance.logAI(
-              '普通流式对话首包阶段遭遇限速/故障，已切换 Key，退避等待 ${delay.inMilliseconds}ms 后发起第 $retryCount 次重试',
-              level: LogLevel.warning,
-            );
-            await Future.delayed(delay);
-            continue;
-          }
+          continue;
         }
 
         String details = stackTrace.toString();
@@ -1048,7 +1065,6 @@ class AiService {
     );
 
     int retryCount = 0;
-    final maxRetries = _maxFreeRetries;
 
     while (true) {
       try {
@@ -1124,20 +1140,9 @@ class AiService {
 
         return results.map(_convertSimplifiedExtractResult).toList();
       } catch (e, stackTrace) {
-        if (_config?.vendorId == 'free_model' &&
-            retryCount < maxRetries &&
-            FreeModelKeyManager.instance.isRecoverableError(e)) {
+        if (await _shouldRetryAndWait(e, retryCount, scene: '日记统一提取')) {
           retryCount++;
-          final switched = switchFreeModelKey();
-          if (switched) {
-            final delay = FreeModelKeyManager.instance.getBackoffDelay(retryCount);
-            LoggerService.instance.logAI(
-              '免费模型日记提取遭遇限速/鉴权异常，已自动切换 API Key，退避等待 ${delay.inMilliseconds}ms 后发起第 $retryCount 次重试',
-              level: LogLevel.warning,
-            );
-            await Future.delayed(delay);
-            continue;
-          }
+          continue;
         }
         LoggerService.instance.logAI(
           '统一提取失败: $e',
@@ -1182,7 +1187,6 @@ class AiService {
     );
 
     int retryCount = 0;
-    final maxRetries = _maxFreeRetries;
 
     while (true) {
       try {
@@ -1201,20 +1205,9 @@ class AiService {
         );
         return result;
       } catch (e, stackTrace) {
-        if (_config?.vendorId == 'free_model' &&
-            retryCount < maxRetries &&
-            FreeModelKeyManager.instance.isRecoverableError(e)) {
+        if (await _shouldRetryAndWait(e, retryCount, scene: '图片识别')) {
           retryCount++;
-          final switched = switchFreeModelKey();
-          if (switched) {
-            final delay = FreeModelKeyManager.instance.getBackoffDelay(retryCount);
-            LoggerService.instance.logAI(
-              '图片识别遭遇限速/鉴权异常，已自动切换 API Key，退避等待 ${delay.inMilliseconds}ms 后发起第 $retryCount 次重试',
-              level: LogLevel.warning,
-            );
-            await Future.delayed(delay);
-            continue;
-          }
+          continue;
         }
 
         String details = stackTrace.toString();
