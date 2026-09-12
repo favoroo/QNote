@@ -42,6 +42,10 @@ class _JournalEditorViewState extends ConsumerState<JournalEditorView> {
 
   DateTime get _date => widget.date;
 
+  /// 当天日期字符串（YYYY-MM-DD），小Q引用与上下文注册共用
+  String get _dateStr =>
+      '${_date.year}-${_date.month.toString().padLeft(2, '0')}-${_date.day.toString().padLeft(2, '0')}';
+
   @override
   void initState() {
     super.initState();
@@ -52,14 +56,12 @@ class _JournalEditorViewState extends ConsumerState<JournalEditorView> {
 
     // 注册悬浮小Q页面上下文与重载钩子：任务结束后从 JournalService 重读，
     // 避免编辑器旧内容在小Q修改后仍被防抖保存覆盖
-    final dateStr =
-        '${_date.year}-${_date.month.toString().padLeft(2, '0')}-${_date.day.toString().padLeft(2, '0')}';
     _qContext = QPageContext(
       type: QContextType.journal,
-      targetId: dateStr,
-      targetTitle: dateStr,
-      signature: 'journal:$dateStr',
-      displayLabel: '每日日记 $dateStr',
+      targetId: _dateStr,
+      targetTitle: _dateStr,
+      signature: 'journal:$_dateStr',
+      displayLabel: '每日日记 $_dateStr',
     );
     ref.read(floatingQProvider.notifier).pushOverlayContext(_qContext);
     QTargetBridge.instance.register(
@@ -130,6 +132,27 @@ class _JournalEditorViewState extends ConsumerState<JournalEditorView> {
       _hasSavedLatest = true;
       _controller.text = _lastSavedContent!;
     });
+  }
+
+  /// 「给小Q」：把选中文本连同近似行号引用给悬浮小Q，
+  /// 便于用户让小Q修改这段指定文本或针对它提问
+  void _sendSelectionToQ() {
+    final sel = _controller.selection;
+    final text = _controller.text;
+    if (!sel.isValid || sel.isCollapsed) return;
+    final quoted = text.substring(sel.start, sel.end).trim();
+    if (quoted.isEmpty) return;
+
+    final line = '\n'.allMatches(text.substring(0, sel.start)).length + 1;
+    // 收起键盘与选择菜单，把焦点让给小Q面板输入框（选中文本已在上面捕获）
+    FocusManager.instance.primaryFocus?.unfocus();
+    ref.read(floatingQProvider.notifier).openWithQuote(QTextQuote(
+          source: QQuoteSource.journal,
+          sourceId: _dateStr,
+          sourceTitle: _dateStr,
+          quotedText: quoted,
+          locationDesc: '第 $line 行附近',
+        ));
   }
 
   Future<void> _handleBack() async {
@@ -266,6 +289,19 @@ class _JournalEditorViewState extends ConsumerState<JournalEditorView> {
                 filled: false,
                 isDense: true,
               ),
+              // 保留默认菜单项，末尾追加「给小Q」：把选中文本连同位置引用给悬浮小Q
+              contextMenuBuilder: (context, editableTextState) {
+                return AdaptiveTextSelectionToolbar.buttonItems(
+                  anchors: editableTextState.contextMenuAnchors,
+                  buttonItems: [
+                    ...editableTextState.contextMenuButtonItems,
+                    ContextMenuButtonItem(
+                      label: '给小Q',
+                      onPressed: _sendSelectionToQ,
+                    ),
+                  ],
+                );
+              },
             ),
           ],
         ),

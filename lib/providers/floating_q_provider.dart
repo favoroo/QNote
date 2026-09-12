@@ -111,6 +111,51 @@ enum FloatingQPhase {
   countdown,
 }
 
+/// 「给小Q」引用的内容来源类型
+enum QQuoteSource {
+  /// 笔记（编辑器选中文本或列表整篇引用）
+  note,
+
+  /// 时间线流水记录
+  diary,
+
+  /// 每日日记
+  journal,
+
+  /// 待办
+  todo,
+}
+
+/// 用户通过「给小Q」引用给小Q的内容片段（含来源实体与位置描述）。
+///
+/// 挂起在 [FloatingQState.pendingQuote] 中随面板展示为引用卡片，
+/// 用户发送指令时一次性消费：作为动态上下文注入（不污染消息原文），
+/// 小Q据此用 VFS 文件工具精确定位并操作来源内容。
+class QTextQuote {
+  /// 内容来源类型
+  final QQuoteSource source;
+
+  /// 来源实体 id：笔记 id / 时间线记录 id / 日期字符串（YYYY-MM-DD）/ 待办 id
+  final String sourceId;
+
+  /// 来源标题（面板卡片展示）
+  final String sourceTitle;
+
+  /// 引用的文本内容（编辑器选中文本，或实体内容摘录）
+  final String quotedText;
+
+  /// 位置描述（如「第 3 行附近」「09-12 17:52」），列表级引用可为 null
+  final String? locationDesc;
+
+  const QTextQuote({
+    required this.source,
+    required this.sourceId,
+    required this.sourceTitle,
+    required this.quotedText,
+    this.locationDesc,
+  });
+}
+
 /// 悬浮小Q状态
 class FloatingQState {
   /// 路由推导的基础上下文
@@ -146,6 +191,9 @@ class FloatingQState {
   /// 是否正在执行撤回（防重入）
   final bool isUndoing;
 
+  /// 「给小Q」挂起的待发送引用（面板展示为引用卡片，发送时一次性消费）
+  final QTextQuote? pendingQuote;
+
   const FloatingQState({
     this.baseContext,
     this.overlayStack = const [],
@@ -158,6 +206,7 @@ class FloatingQState {
     this.streamingText,
     this.pendingUndoCount = 0,
     this.isUndoing = false,
+    this.pendingQuote,
   });
 
   /// 生效上下文：编辑页覆盖栈顶优先，否则取基础上下文
@@ -176,9 +225,11 @@ class FloatingQState {
     String? streamingText,
     int? pendingUndoCount,
     bool? isUndoing,
+    QTextQuote? pendingQuote,
     bool clearSignature = false,
     bool clearStatusText = false,
     bool clearStreamingText = false,
+    bool clearQuote = false,
   }) {
     return FloatingQState(
       baseContext: baseContext ?? this.baseContext,
@@ -195,6 +246,7 @@ class FloatingQState {
           clearStreamingText ? null : (streamingText ?? this.streamingText),
       pendingUndoCount: pendingUndoCount ?? this.pendingUndoCount,
       isUndoing: isUndoing ?? this.isUndoing,
+      pendingQuote: clearQuote ? null : (pendingQuote ?? this.pendingQuote),
     );
   }
 }
@@ -269,6 +321,8 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       messages: const [],
       // 生效上下文为空（无基础上下文且无编辑页）时显式清空会话签名
       clearSignature: signature == null,
+      // 挂起引用与来源页面绑定，会话随签名切换即作废
+      clearQuote: true,
     );
   }
 
@@ -280,6 +334,16 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
 
   void closePanel() => state = state.copyWith(panelOpen: false);
 
+  /// 「给小Q」引用入口：挂起引用并展开面板。
+  ///
+  /// 小Q工作中同样允许挂起（send 在 working 期是 no-op，引用保留待发），
+  /// 引用在发送时一次性消费，期间可在面板引用卡片上移除
+  void openWithQuote(QTextQuote quote) =>
+      state = state.copyWith(pendingQuote: quote, panelOpen: true);
+
+  /// 移除挂起的引用（引用卡片 × 按钮）
+  void clearPendingQuote() => state = state.copyWith(clearQuote: true);
+
   /// 手动开启新对话（清空历史；进行中的任务与待撤回变更不受影响）
   void newConversation() {
     if (state.phase == FloatingQPhase.working) return;
@@ -288,6 +352,8 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       clearSignature: true,
       clearStatusText: true,
       clearStreamingText: true,
+      // 挂起引用属于旧会话上下文，随会话重置一并清空
+      clearQuote: true,
     );
     _sessionMessages = const [];
   }
@@ -313,6 +379,9 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       timestamp: DateTime.now(),
     );
 
+    // 「给小Q」引用一次性消费：随本次任务注入动态上下文（引用卡片同步移除）
+    final quote = state.pendingQuote;
+
     state = state.copyWith(
       phase: FloatingQPhase.working,
       contextSignature: signature,
@@ -320,6 +389,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       messages: isNewConversation ? [userMessage] : [...state.messages, userMessage],
       statusText: '小Q准备中',
       clearStreamingText: true,
+      clearQuote: true,
     );
     _sessionMessages = List.of(state.messages);
     _contextSwitchedDuringRun = false;
@@ -327,7 +397,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
     // 通知目标编辑页任务开始（暂停自动保存）并记录编辑器指纹
     QTargetBridge.instance.notifyTaskStart(ctx?.signature);
 
-    await _runAgentTask(ctx, signature);
+    await _runAgentTask(ctx, signature, quote: quote);
   }
 
   /// 中断当前任务（已执行的部分修改同样进入撤回就绪状态）
@@ -376,18 +446,24 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
 
   Future<void> _runAgentTask(
     QPageContext? ctx,
-    String signature,
-  ) async {
+    String signature, {
+    QTextQuote? quote,
+  }) async {
     final token = AgentCancellationToken();
     _currentToken = token;
     _streamBuffer.clear();
     final recorderHandle = VirtualWorkspaceService.instance.startRecording();
 
     try {
-      // 页面上下文说明块：告诉小Q当前界面与目标文件（无目标页面则省略）
+      // 页面上下文说明块：告诉小Q当前界面与目标文件（无目标页面则省略）；
+      // 「给小Q」引用说明块：告诉小Q用户引用了哪段内容、位于哪个文件
       final pageBlock = await ctx?.toPromptBlock();
+      final quoteBlock = quote == null ? null : await _quotePromptBlock(quote);
       final dynamicContext = await buildBaseDynamicContext(
-        extraSections: [if (pageBlock != null) pageBlock],
+        extraSections: [
+          if (pageBlock != null) pageBlock,
+          if (quoteBlock != null) quoteBlock,
+        ],
       );
 
       final aiService = ref.read(aiServiceProvider);
@@ -539,6 +615,57 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
         );
       }
     }
+  }
+
+  /// 组装「给小Q」引用说明块：告诉小Q用户引用了哪条内容、位于哪个虚拟工作区
+  /// 文件，让小Q无需猜测即可 read_file 定位。返回 null 表示无法解析来源
+  Future<String?> _quotePromptBlock(QTextQuote quote) async {
+    final workspace = VirtualWorkspaceService.instance;
+    final sourceLabel = switch (quote.source) {
+      QQuoteSource.note => '笔记',
+      QQuoteSource.diary => '时间线记录',
+      QQuoteSource.journal => '每日日记',
+      QQuoteSource.todo => '待办',
+    };
+
+    // 按来源类型解析 VFS 规范路径与 id 提示（与 undo 录制的归一化键一致）
+    String? path;
+    String idHint;
+    switch (quote.source) {
+      case QQuoteSource.note:
+        path = await workspace.resolveNotePath(quote.sourceId);
+        idHint = '笔记 id: ${quote.sourceId}';
+      case QQuoteSource.diary:
+        // 记录内嵌在天文件中，修改时必须保留 <!-- id: ... --> 标记
+        path = await workspace.resolveTimelineDayPath(quote.sourceId);
+        idHint =
+            '记录 id: ${quote.sourceId}（记录以 <!-- id: ... --> 标记内嵌在天文件中，修改单条记录时保留其标记）';
+      case QQuoteSource.journal:
+        final date = DateTime.tryParse(quote.sourceId);
+        if (date == null) return null;
+        path = workspace.journalPathForDate(date);
+        idHint = '日期: ${quote.sourceId}';
+      case QQuoteSource.todo:
+        path = await workspace.resolveTodoPath(quote.sourceId);
+        idHint = '待办 id: ${quote.sourceId}（文件头部为 YAML frontmatter，修改时保留其中的 id 字段）';
+    }
+
+    // 引用过长时截断：引用文本主要用于定位，完整内容以 read_file 实际读取为准
+    var text = quote.quotedText.trim();
+    if (text.isEmpty) text = '（用户未附加摘录，请直接根据来源定位完整内容）';
+    if (text.length > 2000) text = '${text.substring(0, 2000)}…（引用过长已截断）';
+
+    return [
+      '用户引用的内容（用户通过「给小Q」主动引用，接下来的指令通常针对这段内容提问或要求修改）',
+      '来源：$sourceLabel《${quote.sourceTitle}》（$idHint${path == null ? '' : '，虚拟工作区文件: $path'}）',
+      if (quote.locationDesc != null)
+        '位置：${quote.locationDesc}（按引用时的内容估算，可能与文件当前实际内容有细微出入）',
+      '引用文本：',
+      '"""',
+      text,
+      '"""',
+      '请先 read_file 上述文件定位该内容（以文件实际内容为准），需要修改时用 edit_file 精确替换；若指令与引用内容无关则按通用指令处理',
+    ].join('\n');
   }
 
   /// 追加会话消息：会话已因切页重置时不再回写界面

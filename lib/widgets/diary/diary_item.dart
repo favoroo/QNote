@@ -14,6 +14,8 @@ class DiaryItem extends StatefulWidget {
   final void Function(DiaryRecord)? onDelete;
   final VoidCallback? onAiExtract;
   final VoidCallback? onAiExtractLongPress;
+  /// 「给小Q」引用该条记录（非 null 时操作菜单与卡片长按展示该入口）
+  final void Function(DiaryRecord)? onQuoteToQ;
   final bool isExtracting;
   final VoidCallback? onUndo;
   final bool isUndoable;
@@ -27,6 +29,7 @@ class DiaryItem extends StatefulWidget {
     this.onDelete,
     this.onAiExtract,
     this.onAiExtractLongPress,
+    this.onQuoteToQ,
     this.isExtracting = false,
     this.onUndo,
     this.isUndoable = false,
@@ -46,10 +49,39 @@ class _DiaryItemState extends State<DiaryItem> {
   void Function(DiaryRecord)? get onDelete => widget.onDelete;
   VoidCallback? get onAiExtract => widget.onAiExtract;
   VoidCallback? get onAiExtractLongPress => widget.onAiExtractLongPress;
+  void Function(DiaryRecord)? get onQuoteToQ => widget.onQuoteToQ;
   bool get isExtracting => widget.isExtracting;
   VoidCallback? get onUndo => widget.onUndo;
   bool get isUndoable => widget.isUndoable;
   Animation<double>? get undoAnimation => widget.undoAnimation;
+
+  /// 卡片操作菜单：more_vert 按钮与长按卡片共用；
+  /// 配置了 onQuoteToQ 时追加「给小Q」引用入口
+  void _showActionMenu() {
+    ActionMenu.show(
+      context: context,
+      key: _actionMenuKey,
+      items: [
+        if (onQuoteToQ != null)
+          ActionMenuItem(
+            icon: Icons.smart_toy_rounded,
+            label: '给小Q',
+            onTap: () => onQuoteToQ?.call(record),
+          ),
+        ActionMenuItem(
+          icon: Icons.edit,
+          label: '编辑',
+          onTap: () => onEdit?.call(record),
+        ),
+        ActionMenuItem(
+          icon: Icons.delete_outline,
+          label: '删除',
+          isDestructive: true,
+          onTap: () => onDelete?.call(record),
+        ),
+      ],
+    );
+  }
 
   static const _tagIcons = <String, IconData>{
     '睡眠': Icons.nightlight_round,
@@ -373,6 +405,8 @@ class _DiaryItemState extends State<DiaryItem> {
             padding: const EdgeInsets.only(bottom: 16, right: 12),
             child: GestureDetector(
               onTap: onTap,
+              // 长按卡片弹出操作菜单（与 more_vert 按钮共用，含「给小Q」引用入口）
+              onLongPress: _showActionMenu,
               behavior: HitTestBehavior.opaque,
               child: AnimatedGradientBorder(
                 isAnimating: isExtracting,
@@ -481,25 +515,7 @@ class _DiaryItemState extends State<DiaryItem> {
                             size: 18,
                             color: theme.colorScheme.outline,
                           ),
-                          onPressed: () {
-                            ActionMenu.show(
-                              context: context,
-                              key: _actionMenuKey,
-                              items: [
-                                ActionMenuItem(
-                                  icon: Icons.edit,
-                                  label: '编辑',
-                                  onTap: () => onEdit?.call(record),
-                                ),
-                                ActionMenuItem(
-                                  icon: Icons.delete_outline,
-                                  label: '删除',
-                                  isDestructive: true,
-                                  onTap: () => onDelete?.call(record),
-                                ),
-                              ],
-                            );
-                          },
+                          onPressed: _showActionMenu,
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(
                             minWidth: 32,

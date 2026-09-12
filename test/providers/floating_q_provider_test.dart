@@ -120,6 +120,71 @@ void main() {
     });
   });
 
+  group('「给小Q」引用挂起与消费', () {
+    const quote = QTextQuote(
+      source: QQuoteSource.note,
+      sourceId: 'n1',
+      sourceTitle: '自我介绍',
+      quotedText: '我是 QNote 内置的全能终端管家',
+      locationDesc: '第 3 行附近',
+    );
+
+    test('openWithQuote 挂起引用并展开面板', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(floatingQProvider.notifier);
+
+      notifier.openWithQuote(quote);
+      final state = container.read(floatingQProvider);
+      expect(state.pendingQuote, quote);
+      expect(state.panelOpen, isTrue);
+    });
+
+    test('clearPendingQuote 移除挂起引用（面板保持打开）', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(floatingQProvider.notifier);
+
+      notifier.openWithQuote(quote);
+      notifier.clearPendingQuote();
+
+      final state = container.read(floatingQProvider);
+      expect(state.pendingQuote, isNull);
+      expect(state.panelOpen, isTrue);
+    });
+
+    test('会话签名切换（切页）时挂起引用一并作废', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(floatingQProvider.notifier);
+
+      // 笔记编辑页内挂起引用
+      const note = QPageContext(
+        type: QContextType.noteDetail,
+        targetId: 'n1',
+        signature: 'note:n1',
+        displayLabel: '笔记《A》',
+      );
+      notifier.pushOverlayContext(note);
+      notifier.openWithQuote(quote);
+      expect(container.read(floatingQProvider).pendingQuote, quote);
+
+      // 返回列表页（签名变化）→ 引用属于旧会话上下文，随之清空
+      notifier.popOverlayContext(note);
+      expect(container.read(floatingQProvider).pendingQuote, isNull);
+    });
+
+    test('手动开启新对话清空挂起引用', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(floatingQProvider.notifier);
+
+      notifier.openWithQuote(quote);
+      notifier.newConversation();
+      expect(container.read(floatingQProvider).pendingQuote, isNull);
+    });
+  });
+
   group('QTargetBridge 编辑页桥接', () {
     test('指纹未变时任务结束触发重载', () async {
       final bridge = QTargetBridge.test();

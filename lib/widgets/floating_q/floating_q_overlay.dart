@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:qnote_flutter/core/router/app_router.dart';
 import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
@@ -118,44 +119,96 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
       valueListenable: floatingQModalCount,
       builder: (context, modalCount, _) {
         // /ai 页有完整小Q对话；模态弹窗（对话框/底部弹层）打开时隐藏悬浮层。
-        // 键盘弹起不再隐藏，改为钳制上移，杜绝 inset 异常残留导致的"永久消失"
-        if (isAiPage || modalCount > 0) {
-          return const SizedBox.shrink();
-        }
+        // 改用淡出+禁点而非整层卸载：隐藏/恢复获得淡入淡出过渡，
+        // 面板开着时弹出补充提问框也不再丢失输入框文本；
+        // 键盘弹起仍不隐藏，改为钳制上移，杜绝 inset 异常残留导致的"永久消失"
+        final layerHidden = isAiPage || modalCount > 0;
 
-        return Stack(
-          children: [
-            // 面板打开时的全屏透明点击层：点面板外收起面板（任务继续后台执行）
-            if (panelOpen)
-              Positioned.fill(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () =>
-                      ref.read(floatingQProvider.notifier).closePanel(),
+        return IgnorePointer(
+          ignoring: layerHidden,
+          child: AnimatedOpacity(
+            opacity: layerHidden ? 0 : 1,
+            duration: AppDurations.normal,
+            curve: Curves.easeOut,
+            child: Stack(
+              children: [
+                // 面板打开时的全屏透明点击层：点面板外收起面板（任务继续后台执行）；
+                // 常驻 + IgnorePointer 切换，避免面板收起动画期间瞬间失去点击遮挡
+                Positioned.fill(
+                  child: IgnorePointer(
+                    ignoring: !panelOpen,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () =>
+                          ref.read(floatingQProvider.notifier).closePanel(),
+                    ),
+                  ),
                 ),
-              ),
-            if (panelOpen)
-              Positioned(
-                left: _edgeMargin,
-                right: _edgeMargin,
-                // 钳制上限：即使 inset 异常残留，面板也不会被推出屏幕外
-                bottom: math.min(keyboardInset, size.height * 0.55) + 12,
-                child: _FloatingQPanel(onUndo: _handleUndo),
-              )
-            else
-              Positioned(
-                left: _displayBallPosition(size, keyboardInset).dx,
-                top: _displayBallPosition(size, keyboardInset).dy,
-                child: _FloatingBall(
-                  size: _ballSize,
-                  position: _displayBallPosition(size, keyboardInset),
-                  isWorking: isWorking,
-                  onTap: () =>
-                      ref.read(floatingQProvider.notifier).openPanel(),
-                  onDragUpdate: _onDragBall,
+                // 对话面板：弹出时自底边向上生长淡入，收起时缩回淡出，
+                // 动画结束才卸载（autofocus 输入框每次打开重新挂载，行为不变）
+                Positioned(
+                  left: _edgeMargin,
+                  right: _edgeMargin,
+                  // 钳制上限：即使 inset 异常残留，面板也不会被推出屏幕外
+                  bottom: math.min(keyboardInset, size.height * 0.55) + 12,
+                  child: AnimatedSwitcher(
+                    duration: AppDurations.normal,
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeIn,
+                    transitionBuilder: (child, animation) => FadeTransition(
+                      opacity: animation,
+                      child: ScaleTransition(
+                        // 以面板底边中心为锚点缩放：视觉上从球的位置向上展开
+                        alignment: Alignment.bottomCenter,
+                        scale: Tween<double>(begin: 0.88, end: 1)
+                            .animate(animation),
+                        child: child,
+                      ),
+                    ),
+                    child: panelOpen
+                        ? SizedBox(
+                            // AnimatedSwitcher 内部 Stack 是松约束，
+                            // 需显式撑满宽度，面板才能保持左右贴边
+                            key: const ValueKey('panel'),
+                            width: double.infinity,
+                            child: _FloatingQPanel(onUndo: _handleUndo),
+                          )
+                        : const SizedBox.shrink(key: ValueKey('panel-hidden')),
+                  ),
                 ),
-              ),
-          ],
+                // 悬浮球：面板打开时原地缩小淡出，面板收起后带轻微回弹归位
+                Positioned(
+                  left: _displayBallPosition(size, keyboardInset).dx,
+                  top: _displayBallPosition(size, keyboardInset).dy,
+                  child: AnimatedSwitcher(
+                    duration: AppDurations.normal,
+                    switchInCurve: Curves.easeOutBack,
+                    switchOutCurve: Curves.easeIn,
+                    transitionBuilder: (child, animation) => FadeTransition(
+                      opacity: animation,
+                      child: ScaleTransition(
+                        scale: Tween<double>(begin: 0.6, end: 1)
+                            .animate(animation),
+                        child: child,
+                      ),
+                    ),
+                    child: panelOpen
+                        ? const SizedBox.shrink(key: ValueKey('ball-hidden'))
+                        : _FloatingBall(
+                            key: const ValueKey('ball'),
+                            size: _ballSize,
+                            position: _displayBallPosition(size, keyboardInset),
+                            isWorking: isWorking,
+                            onTap: () => ref
+                                .read(floatingQProvider.notifier)
+                                .openPanel(),
+                            onDragUpdate: _onDragBall,
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         );
       },
     );
@@ -193,6 +246,7 @@ class _FloatingBall extends StatefulWidget {
   final ValueChanged<Offset> onDragUpdate;
 
   const _FloatingBall({
+    super.key,
     required this.size,
     required this.position,
     required this.isWorking,
@@ -216,11 +270,15 @@ class _FloatingBallState extends State<_FloatingBall> {
   Offset? _origin;
   bool _dragging = false;
 
+  /// 按压态：驱动球体轻微缩放的按压反馈，松开或转入拖动即恢复
+  bool _pressed = false;
+
   void _onPointerDown(PointerDownEvent event) {
     // 只跟踪首个按下的指针，多指触控时忽略后续指针
     _pointerStart ??= event.position;
     _origin ??= widget.position;
     _dragging = false;
+    if (!_pressed) setState(() => _pressed = true);
   }
 
   void _onPointerMove(PointerMoveEvent event) {
@@ -232,6 +290,8 @@ class _FloatingBallState extends State<_FloatingBall> {
       HapticFeedback.selectionClick();
     }
     if (_dragging) {
+      // 拖动即脱离按压语义，球体恢复正常大小随指针移动
+      if (_pressed) setState(() => _pressed = false);
       widget.onDragUpdate(origin + (event.position - start));
     }
   }
@@ -241,6 +301,7 @@ class _FloatingBallState extends State<_FloatingBall> {
     _pointerStart = null;
     _origin = null;
     _dragging = false;
+    if (_pressed) setState(() => _pressed = false);
     if (!wasDragging) {
       HapticFeedback.lightImpact();
       widget.onTap();
@@ -251,6 +312,7 @@ class _FloatingBallState extends State<_FloatingBall> {
     _pointerStart = null;
     _origin = null;
     _dragging = false;
+    if (_pressed) setState(() => _pressed = false);
   }
 
   @override
@@ -264,33 +326,56 @@ class _FloatingBallState extends State<_FloatingBall> {
       onPointerCancel: _onPointerCancel,
       // 撤回入口只保留在面板横幅中：悬浮球不再切换撤回倒计时形态，
       // 撤回就绪期点击球同样是弹出面板
-      child: widget.isWorking
-          ? _WorkingBall(size: widget.size)
-          : Container(
-              width: widget.size,
-              height: widget.size,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primary,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: theme.colorScheme.surface.withValues(alpha: 0.6),
-                  width: 1.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: theme.colorScheme.shadow.withValues(alpha: 0.25),
-                    blurRadius: 10,
-                    offset: const Offset(0, 3),
+      child: AnimatedScale(
+        // 按压反馈：球体轻微缩小，松开回弹
+        scale: _pressed ? 0.92 : 1.0,
+        duration: AppDurations.fast,
+        curve: Curves.easeOut,
+        child: AnimatedSwitcher(
+          duration: AppDurations.normal,
+          switchInCurve: Curves.easeOut,
+          switchOutCurve: Curves.easeIn,
+          // 工作态脉冲环会溢出 44px 球体边界，布局 Stack 需关闭裁剪
+          layoutBuilder: (currentChild, previousChildren) => Stack(
+            alignment: Alignment.center,
+            clipBehavior: Clip.none,
+            children: [
+              ...previousChildren,
+              ?currentChild,
+            ],
+          ),
+          child: widget.isWorking
+              ? _WorkingBall(
+                  key: const ValueKey('working'), size: widget.size)
+              : Container(
+                  key: const ValueKey('idle'),
+                  width: widget.size,
+                  height: widget.size,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: theme.colorScheme.surface.withValues(alpha: 0.6),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color:
+                            theme.colorScheme.shadow.withValues(alpha: 0.25),
+                        blurRadius: 10,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              child: Icon(
-                Icons.smart_toy_rounded,
-                color: theme.colorScheme.onPrimary,
-                // 图标随球缩小（44px），与提取按钮的图标比例一致
-                size: 20,
-              ),
-            ),
+                  child: Icon(
+                    Icons.smart_toy_rounded,
+                    color: theme.colorScheme.onPrimary,
+                    // 图标随球缩小（44px），与提取按钮的图标比例一致
+                    size: 20,
+                  ),
+                ),
+        ),
+      ),
     );
   }
 }
@@ -299,7 +384,7 @@ class _FloatingBallState extends State<_FloatingBall> {
 class _WorkingBall extends StatefulWidget {
   final double size;
 
-  const _WorkingBall({required this.size});
+  const _WorkingBall({super.key, required this.size});
 
   @override
   State<_WorkingBall> createState() => _WorkingBallState();
@@ -412,6 +497,8 @@ class _FloatingQPanelState extends ConsumerState<_FloatingQPanel> {
             const Flexible(child: _PanelMessages()),
             // 撤回横幅自管显隐（内部按 phase 判定），常驻面板不自动消失
             _PanelUndoBanner(onUndo: widget.onUndo),
+            // 「给小Q」引用卡片自管显隐（无挂起引用时不占位）
+            const _PanelQuoteCard(),
             Divider(height: 1, color: theme.colorScheme.outlineVariant),
             const _PanelInputRow(),
           ],
@@ -513,14 +600,14 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
       // 中转消息（与 AI 主页面 _isVisibleMessage 过滤的是同一类消息），快捷面板
       // 不渲染思考胶囊，这类消息只会渲染成空白胶囊卡片，直接跳过
       if (message.content.trim().isEmpty) continue;
-      children.add(_buildBubble(theme, message));
+      children.add(_buildEntrance(_buildBubble(theme, message)));
     }
 
     if (fq.statusText != null) {
-      children.add(_buildStatusLine(theme, fq.statusText!));
+      children.add(_buildEntrance(_buildStatusLine(theme, fq.statusText!)));
     } else if (fq.streamingText != null && fq.streamingText!.isNotEmpty) {
       children.add(
-        _buildAssistantBubble(theme, fq.streamingText!),
+        _buildEntrance(_buildAssistantBubble(theme, fq.streamingText!)),
       );
     }
 
@@ -541,6 +628,27 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
       shrinkWrap: true,
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       children: children,
+    );
+  }
+
+  /// 新内容入场微动画：淡入 + 轻微上移归位。
+  ///
+  /// tween 终值恒定，仅在气泡/状态行首次挂载时播放一次；流式期间约 60ms
+  /// 一次的高频重建复用同一 Element，不会重复触发动画，也不产生持续重建
+  Widget _buildEntrance(Widget child) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0.0, end: 1.0),
+      duration: AppDurations.fast,
+      curve: Curves.easeOut,
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.translate(
+          // 位移只作用于绘制阶段，不影响布局，避免列表抖动
+          offset: Offset(0, 8 * (1 - t)),
+          child: child,
+        ),
+      ),
+      child: child,
     );
   }
 
@@ -632,34 +740,145 @@ class _PanelUndoBanner extends ConsumerWidget {
         ),
       ),
     );
-    if (!showBanner) return const SizedBox.shrink();
+    // 高度展开/收合 + 淡入：横幅插入/移除不再硬切挤压消息区；
+    // 空态保持等宽零高，宽度稳定后只做高度方向动画
+    return AnimatedSize(
+      duration: AppDurations.normal,
+      curve: Curves.easeOut,
+      child: AnimatedSwitcher(
+        duration: AppDurations.fast,
+        switchInCurve: Curves.easeOut,
+        child: showBanner
+            ? Container(
+                key: const ValueKey('undo-banner'),
+                width: double.infinity,
+                color:
+                    theme.colorScheme.tertiaryContainer.withValues(alpha: 0.4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                child: Row(
+                  children: [
+                    Icon(Icons.history_rounded,
+                        size: 16, color: theme.colorScheme.tertiary),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        '可撤回小Q本次的 $undoCount 处修改',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onTertiaryContainer,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: isUndoing ? null : onUndo,
+                      child: isUndoing
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('撤回'),
+                    ),
+                  ],
+                ),
+              )
+            : const SizedBox(
+                width: double.infinity, key: ValueKey('undo-empty')),
+      ),
+    );
+  }
+}
 
+/// 引用卡片：展示用户通过「给小Q」挂起的引用内容（来源 + 位置 + 文本摘录），
+/// 发送时随任务注入给小Q；× 可随时移除。null 时不渲染、不占位，
+/// 且只精确订阅 pendingQuote，流式刷新不重建本卡片外的面板结构
+class _PanelQuoteCard extends ConsumerWidget {
+  const _PanelQuoteCard();
+
+  IconData _sourceIcon(QQuoteSource source) => switch (source) {
+        QQuoteSource.note => Icons.sticky_note_2_outlined,
+        QQuoteSource.diary => Icons.schedule_rounded,
+        QQuoteSource.journal => Icons.menu_book_outlined,
+        QQuoteSource.todo => Icons.task_alt_outlined,
+      };
+
+  String _sourceLabel(QQuoteSource source) => switch (source) {
+        QQuoteSource.note => '笔记',
+        QQuoteSource.diary => '流水记录',
+        QQuoteSource.journal => '每日日记',
+        QQuoteSource.todo => '待办',
+      };
+
+  /// 标题行：日记来源为日期字符串不加书名号，其余《标题》+ 位置
+  String _titleLine(QTextQuote quote) {
+    final label = _sourceLabel(quote.source);
+    final title = quote.source == QQuoteSource.journal
+        ? '$label ${quote.sourceTitle}'
+        : '$label《${quote.sourceTitle}》';
+    final location = quote.locationDesc;
+    return location == null ? title : '$title · $location';
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final quote = ref.watch(floatingQProvider.select((s) => s.pendingQuote));
+    if (quote == null) {
+      return const SizedBox.shrink(key: ValueKey('quote-card-hidden'));
+    }
+    final theme = Theme.of(context);
     return Container(
-      width: double.infinity,
-      color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.4),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      key: const ValueKey('quote-card'),
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.fromLTRB(10, 8, 2, 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(AppRadius.medium),
+      ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.history_rounded,
-              size: 16, color: theme.colorScheme.tertiary),
-          const SizedBox(width: 6),
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Icon(_sourceIcon(quote.source),
+                size: 16, color: theme.colorScheme.primary),
+          ),
+          const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              '可撤回小Q本次的 $undoCount 处修改',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onTertiaryContainer,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _titleLine(quote),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  quote.quotedText.isEmpty ? '（引用完整内容）' : quote.quotedText,
+                  style: theme.textTheme.bodySmall,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
           ),
-          TextButton(
-            onPressed: isUndoing ? null : onUndo,
-            child: isUndoing
-                ? const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('撤回'),
+          const SizedBox(width: 4),
+          SizedBox(
+            width: 28,
+            height: 28,
+            child: IconButton(
+              padding: EdgeInsets.zero,
+              iconSize: 16,
+              tooltip: '移除引用',
+              icon: const Icon(Icons.close_rounded),
+              color: theme.colorScheme.onSurfaceVariant,
+              onPressed: () =>
+                  ref.read(floatingQProvider.notifier).clearPendingQuote(),
+            ),
           ),
         ],
       ),

@@ -16,6 +16,7 @@ import 'package:qnote_flutter/models/date_color_mark.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
+import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
@@ -984,6 +985,26 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     _clearUndoForRecord(record.id);
     Toast.dismiss();
     context.push('/diary/editor', extra: record);
+  }
+
+  /// 「给小Q」：把该条流水记录引用给悬浮小Q（修改这条事件、针对它提问均可），
+  /// 记录 id 与当天文件路径在发送时由引用块注入，这里只带摘录与时间展示
+  void _quoteRecordToQ(DiaryRecord record) {
+    HapticFeedback.lightImpact();
+    final excerpt = record.content.trim().isNotEmpty
+        ? record.content.trim()
+        : record.title.trim();
+    ref.read(floatingQProvider.notifier).openWithQuote(QTextQuote(
+          source: QQuoteSource.diary,
+          sourceId: record.id,
+          sourceTitle: record.title.trim().isNotEmpty
+              ? record.title.trim()
+              : '一条流水记录',
+          quotedText:
+              excerpt.length > 500 ? '${excerpt.substring(0, 500)}…' : excerpt,
+          locationDesc:
+              DateFormat('MM-dd HH:mm').format(record.startTime ?? record.time),
+        ));
   }
 
   Future<void> _handleAiExtract(DiaryRecord record) async {
@@ -2168,6 +2189,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                                           onTap: () => _handleEdit(record),
                                           onEdit: _handleEdit,
                                           onDelete: _handleDelete,
+                                          onQuoteToQ: _quoteRecordToQ,
                                           onAiExtract: () =>
                                               _handleAiExtract(record),
                                           onAiExtractLongPress: () =>

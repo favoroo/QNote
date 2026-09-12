@@ -296,6 +296,29 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     });
   }
 
+  /// 「给小Q」：把正文选中文本连同近似行号引用给悬浮小Q，
+  /// 便于用户让小Q修改这段指定文本或针对它提问
+  void _sendSelectionToQ() {
+    final sel = _contentController.selection;
+    final text = _contentController.text;
+    if (!sel.isValid || sel.isCollapsed) return;
+    final quoted = text.substring(sel.start, sel.end).trim();
+    if (quoted.isEmpty) return;
+
+    final line = '\n'.allMatches(text.substring(0, sel.start)).length + 1;
+    // 收起键盘与选择菜单，把焦点让给小Q面板输入框（选中文本已在上面捕获）
+    FocusManager.instance.primaryFocus?.unfocus();
+    ref.read(floatingQProvider.notifier).openWithQuote(QTextQuote(
+          source: QQuoteSource.diary,
+          sourceId: widget.record.id,
+          sourceTitle: widget.record.title.trim().isNotEmpty
+              ? widget.record.title.trim()
+              : '一条流水记录',
+          quotedText: quoted,
+          locationDesc: '第 $line 行附近',
+        ));
+  }
+
   @override
   void dispose() {
     // 注销悬浮小Q上下文与重载钩子
@@ -2230,6 +2253,19 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             filled: false,
           ),
           style: theme.textTheme.bodyLarge,
+          // 保留默认菜单项，末尾追加「给小Q」：把选中文本连同位置引用给悬浮小Q
+          contextMenuBuilder: (context, editableTextState) {
+            return AdaptiveTextSelectionToolbar.buttonItems(
+              anchors: editableTextState.contextMenuAnchors,
+              buttonItems: [
+                ...editableTextState.contextMenuButtonItems,
+                ContextMenuButtonItem(
+                  label: '给小Q',
+                  onPressed: _sendSelectionToQ,
+                ),
+              ],
+            );
+          },
         ),
       ],
     );

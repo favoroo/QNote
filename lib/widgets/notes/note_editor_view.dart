@@ -119,6 +119,21 @@ class _EditorHistoryState {
 // ---------------------------------------------------------------------------
 // Widget
 // ---------------------------------------------------------------------------
+/// 解码笔记内容：兼容旧 Quill delta JSON，统一转为 Markdown 纯文本
+/// （编辑器与笔记列表的「给小Q」整篇引用共用）
+String decodeNoteContent(String content) {
+  if (content.isNotEmpty) {
+    try {
+      final deltaJson = jsonDecode(content);
+      if (deltaJson is List) {
+        final doc = Document.fromJson(deltaJson);
+        return deltaToMarkdown(doc.toDelta());
+      }
+    } catch (_) {}
+  }
+  return content;
+}
+
 class NoteEditorView extends ConsumerStatefulWidget {
   final Note note;
   const NoteEditorView({required this.note, super.key});
@@ -235,21 +250,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     _qContainer ??= ProviderScope.containerOf(context, listen: false);
   }
 
-  String _initContentString() => _decodeNoteContent(widget.note.content);
-
-  /// 解码笔记内容：兼容旧 Quill delta JSON，统一转为 Markdown 纯文本
-  String _decodeNoteContent(String content) {
-    if (content.isNotEmpty) {
-      try {
-        final deltaJson = jsonDecode(content);
-        if (deltaJson is List) {
-          final doc = Document.fromJson(deltaJson);
-          return deltaToMarkdown(doc.toDelta());
-        }
-      } catch (_) {}
-    }
-    return content;
-  }
+  String _initContentString() => decodeNoteContent(widget.note.content);
 
   /// Parse a markdown string into alternating text/image segments.
   void _parseContentIntoSegments(String content) {
@@ -626,7 +627,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     _titleController.text = fresh.title;
     _lastSavedTitle = fresh.title.isEmpty ? '无标题' : fresh.title;
 
-    final rawContent = _decodeNoteContent(fresh.content);
+    final rawContent = decodeNoteContent(fresh.content);
     for (final seg in _segments) {
       if (seg is _TextSegment) seg.dispose();
     }
@@ -1544,7 +1545,62 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         isDense: true,
         contentPadding: EdgeInsets.symmetric(vertical: 4),
       ),
+      // 保留默认菜单项（剪切/复制/粘贴/全选等），末尾追加「给小Q」：
+      // 把选中文本连同位置引用给悬浮小Q（移动端与 Web 均为 Flutter 自绘菜单）
+      contextMenuBuilder: (context, editableTextState) {
+        return AdaptiveTextSelectionToolbar.buttonItems(
+          anchors: editableTextState.contextMenuAnchors,
+          buttonItems: [
+            ...editableTextState.contextMenuButtonItems,
+            ContextMenuButtonItem(
+              label: '给小Q',
+              onPressed: () => _sendSelectionToQ(seg),
+            ),
+          ],
+        );
+      },
     );
+  }
+
+  /// 「给小Q」：把正文选中文本连同近似行号引用给悬浮小Q，
+  /// 便于用户让小Q修改这段指定文本或针对它提问
+  void _sendSelectionToQ(_TextSegment seg) {
+    final sel = seg.controller.selection;
+    final text = seg.controller.text;
+    if (!sel.isValid || sel.isCollapsed) return;
+    final quoted = text.substring(sel.start, sel.end).trim();
+    if (quoted.isEmpty) return;
+
+    final line = _estimateSelectionLine(seg, sel.start);
+    // 收起键盘与选择菜单，把焦点让给小Q面板输入框（选中文本已在上面捕获）
+    FocusManager.instance.primaryFocus?.unfocus();
+    ref.read(floatingQProvider.notifier).openWithQuote(QTextQuote(
+          source: QQuoteSource.note,
+          sourceId: widget.note.id,
+          sourceTitle:
+              _titleController.text.isEmpty ? '无标题' : _titleController.text,
+          quotedText: quoted,
+          locationDesc: '第 $line 行附近',
+        ));
+  }
+
+  /// 估算选区起点在整篇序列化 Markdown 中的行号（与 [_serializeToMarkdown]
+  /// 的拼接逻辑一致：前序段按序列化输出累计换行，再加段内选区前换行数），
+  /// 仅作为给小Q的定位提示，非精确文件行号
+  int _estimateSelectionLine(_TextSegment seg, int offsetInSeg) {
+    int newlines = 0;
+    for (final s in _segments) {
+      if (identical(s, seg)) break;
+      if (s is _ImageSegment || s is _LinkSegment) {
+        // 图片/链接段序列化时固定占一行且以 \n 结尾
+        newlines++;
+      } else if (s is _TextSegment && s.controller.text.isNotEmpty) {
+        // 文本段自身换行数 + 段后分隔符（末段除外，估算多算一次无碍）
+        newlines += '\n'.allMatches(s.controller.text).length + 1;
+      }
+    }
+    newlines += '\n'.allMatches(seg.controller.text.substring(0, offsetInSeg)).length;
+    return newlines + 1;
   }
 
   Widget _buildLinkSegment(_LinkSegment seg, int index, ThemeData theme) {

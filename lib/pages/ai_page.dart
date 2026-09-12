@@ -23,7 +23,6 @@ import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/config/defaults.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
-import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/widgets/empty_state.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/widgets/common/animated_ellipsis.dart';
@@ -44,10 +43,6 @@ class _AiPageState extends ConsumerState<AiPage> {
   double _lastBottomInset = 0.0;
 
   bool _isTyping = false;
-  DateTime? _filterStartDate;
-  DateTime? _filterEndDate;
-  String? _selectedPeriodPreset; // '今日', '本周', '本月', '全部', '自定义'
-  String get _periodPreset => _selectedPeriodPreset ?? '本周';
   bool _isBatchMode = false;
   List<String> _selectedSessionIds = [];
   String? _activeModelId;
@@ -65,16 +60,9 @@ class _AiPageState extends ConsumerState<AiPage> {
   void initState() {
     super.initState();
     _inputFocusNode.addListener(_onInputFocusChanged);
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    // 默认本周（周一至今天）
-    _filterStartDate = today.subtract(Duration(days: today.weekday - 1));
-    _filterEndDate = today;
-    _selectedPeriodPreset = '本周';
     _initActiveModelId();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(currentChatProvider.notifier).initLastSession();
-      _syncContextFilter();
       _scrollToBottom();
     });
   }
@@ -151,17 +139,6 @@ class _AiPageState extends ConsumerState<AiPage> {
     }
   }
 
-  void _syncContextFilter() {
-    ref.read(contextFilterProvider.notifier).state = AiContextFilter(
-      scope: 'all',
-      startDate: _filterStartDate,
-      endDate: _filterEndDate,
-      selectedNoteIds: const [],
-      selectedTodoIds: const [],
-      selectedTags: const [],
-    );
-  }
-
   Future<void> _sendMessage() async {
     final text = _inputController.text.trim();
     final hasImages = _attachedImages.isNotEmpty;
@@ -192,7 +169,6 @@ class _AiPageState extends ConsumerState<AiPage> {
     });
     FocusScope.of(context).unfocus();
     setState(() => _isTyping = true);
-    _syncContextFilter();
     _scrollToBottom();
 
     try {
@@ -402,153 +378,6 @@ class _AiPageState extends ConsumerState<AiPage> {
       _attachedTodoIds.clear();
     });
     _inputFocusNode.requestFocus();
-  }
-
-  Future<void> _openDatePicker() async {
-    final theme = Theme.of(context);
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final startOfWeek = today.subtract(Duration(days: today.weekday - 1));
-    final startOfMonth = DateTime(today.year, today.month, 1);
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: theme.colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 36,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 8),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.calendar_view_week, size: 20),
-                  title: const Text('本周（默认）', style: TextStyle(fontSize: 14)),
-                  trailing: _periodPreset == '本周'
-                      ? Icon(Icons.check, color: theme.colorScheme.primary, size: 20)
-                      : null,
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    setState(() {
-                      _filterStartDate = startOfWeek;
-                      _filterEndDate = today;
-                      _selectedPeriodPreset = '本周';
-                    });
-                    _syncContextFilter();
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.today, size: 20),
-                  title: const Text('今日', style: TextStyle(fontSize: 14)),
-                  trailing: _periodPreset == '今日'
-                      ? Icon(Icons.check, color: theme.colorScheme.primary, size: 20)
-                      : null,
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    setState(() {
-                      _filterStartDate = today;
-                      _filterEndDate = today;
-                      _selectedPeriodPreset = '今日';
-                    });
-                    _syncContextFilter();
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.calendar_month, size: 20),
-                  title: const Text('本月', style: TextStyle(fontSize: 14)),
-                  trailing: _periodPreset == '本月'
-                      ? Icon(Icons.check, color: theme.colorScheme.primary, size: 20)
-                      : null,
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    setState(() {
-                      _filterStartDate = startOfMonth;
-                      _filterEndDate = today;
-                      _selectedPeriodPreset = '本月';
-                    });
-                    _syncContextFilter();
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.all_inclusive, size: 20),
-                  title: const Text('全部', style: TextStyle(fontSize: 14)),
-                  trailing: _periodPreset == '全部'
-                      ? Icon(Icons.check, color: theme.colorScheme.primary, size: 20)
-                      : null,
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    setState(() {
-                      _filterStartDate = null;
-                      _filterEndDate = null;
-                      _selectedPeriodPreset = '全部';
-                    });
-                    _syncContextFilter();
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.calendar_today_outlined, size: 20),
-                  title: const Text('选择特定单日...', style: TextStyle(fontSize: 14)),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: _filterStartDate ?? today,
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime(2100),
-                      locale: const Locale('zh', 'CN'),
-                    );
-                    if (picked != null) {
-                      setState(() {
-                        _filterStartDate = picked;
-                        _filterEndDate = picked;
-                        _selectedPeriodPreset = '自定义';
-                      });
-                      _syncContextFilter();
-                    }
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.date_range_outlined, size: 20),
-                  title: const Text('选择自定义范围...', style: TextStyle(fontSize: 14)),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    final picked = await showDateRangePicker(
-                      context: context,
-                      initialDateRange: _filterStartDate != null && _filterEndDate != null
-                          ? DateTimeRange(start: _filterStartDate!, end: _filterEndDate!)
-                          : null,
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime(2100),
-                      locale: const Locale('zh', 'CN'),
-                    );
-                    if (picked != null) {
-                      setState(() {
-                        _filterStartDate = picked.start;
-                        _filterEndDate = picked.end;
-                        _selectedPeriodPreset = '自定义';
-                      });
-                      _syncContextFilter();
-                    }
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
   }
 
   Future<void> _pickFromCamera() async {
@@ -800,20 +629,6 @@ class _AiPageState extends ConsumerState<AiPage> {
     );
   }
 
-  Future<void> _openExportDialog() async {
-    final contextText = await ref
-        .read(currentChatProvider.notifier)
-        .exportContext();
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (ctx) => _ExportDialog(
-        contextText: contextText,
-        initialQuestion: _inputController.text,
-      ),
-    );
-  }
-
   Future<void> _openModelSelector() async {
     final configs = await ref.read(aiConfigListProvider.future);
     if (!mounted) return;
@@ -941,149 +756,8 @@ class _AiPageState extends ConsumerState<AiPage> {
       ),
       body: Column(
         children: [
-          _buildDateFilterBar(theme),
           Expanded(child: _buildChatArea(currentChat, theme)),
           _buildInputArea(aiConfigsAsync, theme),
-        ],
-      ),
-    );
-  }
-
-  bool _isSameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
-
-  Widget _buildDateFilterBar(ThemeData theme) {
-    String dateText;
-    if (_periodPreset == '今日') {
-      dateText = '今日';
-    } else if (_periodPreset == '本周') {
-      dateText = '本周';
-    } else if (_periodPreset == '本月') {
-      dateText = '本月';
-    } else if (_periodPreset == '全部') {
-      dateText = '全部';
-    } else if (_filterStartDate != null) {
-      if (_filterEndDate != null && !_isSameDay(_filterStartDate!, _filterEndDate!)) {
-        dateText =
-            '${DateFormat('MM/dd').format(_filterStartDate!)}-${DateFormat('MM/dd').format(_filterEndDate!)}';
-      } else {
-        dateText = DateFormat('yyyy/MM/dd').format(_filterStartDate!);
-      }
-    } else {
-      dateText = '全部';
-    }
-
-    final isDefaultWeek = _periodPreset == '本周';
-    final hasActiveFilter = _periodPreset != '全部';
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.25),
-            width: 0.8,
-          ),
-        ),
-      ),
-      child: Row(
-        children: [
-          InkWell(
-            onTap: _openDatePicker,
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: hasActiveFilter
-                    ? theme.colorScheme.primary.withValues(alpha: 0.12)
-                    : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: hasActiveFilter
-                      ? theme.colorScheme.primary.withValues(alpha: 0.3)
-                      : theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    _periodPreset == '今日'
-                        ? Icons.today
-                        : (_periodPreset == '本月'
-                            ? Icons.calendar_month
-                            : (_periodPreset == '全部'
-                                ? Icons.all_inclusive
-                                : Icons.calendar_view_week)),
-                    size: 14,
-                    color: hasActiveFilter
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    dateText,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: hasActiveFilter ? FontWeight.w600 : FontWeight.normal,
-                      color: hasActiveFilter
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.onSurface,
-                    ),
-                  ),
-                  const SizedBox(width: 2),
-                  Icon(
-                    Icons.arrow_drop_down,
-                    size: 16,
-                    color: hasActiveFilter
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurfaceVariant,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (!isDefaultWeek) ...[
-            const SizedBox(width: 6),
-            InkWell(
-              onTap: () {
-                final now = DateTime.now();
-                final today = DateTime(now.year, now.month, now.day);
-                setState(() {
-                  _filterStartDate = today.subtract(Duration(days: today.weekday - 1));
-                  _filterEndDate = today;
-                  _selectedPeriodPreset = '本周';
-                });
-                _syncContextFilter();
-              },
-              borderRadius: BorderRadius.circular(12),
-              child: Padding(
-                padding: const EdgeInsets.all(4),
-                child: Tooltip(
-                  message: '恢复为默认本周',
-                  child: Icon(
-                    Icons.refresh,
-                    size: 16,
-                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                  ),
-                ),
-              ),
-            ),
-          ],
-          const Spacer(),
-          IconButton(
-            icon: Icon(
-              Icons.ios_share,
-              size: 16,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            onPressed: _openExportDialog,
-            tooltip: '导出上下文与Prompt',
-            visualDensity: VisualDensity.compact,
-            padding: const EdgeInsets.all(6),
-            constraints: const BoxConstraints(),
-          ),
         ],
       ),
     );
@@ -3137,247 +2811,6 @@ class _ThoughtProcessViewState extends State<_ThoughtProcessView> {
                 ],
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ExportDialog extends StatefulWidget {
-  final String contextText;
-  final String initialQuestion;
-  const _ExportDialog({
-    required this.contextText,
-    required this.initialQuestion,
-  });
-
-  @override
-  State<_ExportDialog> createState() => _ExportDialogState();
-}
-
-class _ExportDialogState extends State<_ExportDialog> {
-  late TextEditingController _questionController;
-  bool _copied = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _questionController = TextEditingController(text: widget.initialQuestion);
-  }
-
-  @override
-  void dispose() {
-    _questionController.dispose();
-    super.dispose();
-  }
-
-  String _getFullContent() {
-    final question = _questionController.text.trim();
-    final q = question.isEmpty ? '请基于以上数据，给我一些分析和改善建议。' : question;
-    return '${widget.contextText}\n\n---\n\n**我的提问是：**\n$q';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.large)),
-      clipBehavior: Clip.antiAlias,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: 500,
-          maxHeight: MediaQuery.of(context).size.height * 0.85,
-        ),
-        child: Container(
-          color: theme.colorScheme.surface,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // 1. Header
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        Icons.file_upload_outlined,
-                        color: theme.colorScheme.primary,
-                        size: 22,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '导出分析上下文',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '复制以下内容到其他 AI 软件中提问',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                              fontSize: 11,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, size: 20),
-                      onPressed: () => Navigator.pop(context),
-                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-                    ),
-                  ],
-                ),
-              ),
-              Divider(
-                height: 1,
-                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-              ),
-
-              // 2. Question Area
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '想问 AI 的问题',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _questionController,
-                      maxLines: 2,
-                      style: const TextStyle(fontSize: 13),
-                      decoration: InputDecoration(
-                        hintText: '想对 AI 说什么？（不输入则使用默认建议）',
-                        hintStyle: TextStyle(
-                          fontSize: 13,
-                          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-                        ),
-                        filled: true,
-                        fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide(color: theme.colorScheme.primary.withValues(alpha: 0.3), width: 1.5),
-                        ),
-                      ),
-                      onChanged: (_) {
-                        setState(() {}); // Trigger refresh to update preview text
-                      },
-                    ),
-                  ],
-                ),
-              ),
-
-              // 3. Preview Container
-              Expanded(
-                child: Container(
-                  color: theme.colorScheme.surfaceContainerLowest.withValues(alpha: 0.5),
-                  padding: const EdgeInsets.all(16.0),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surface,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.01),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: Scrollbar(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.all(16.0),
-                          child: SelectionArea(
-                            child: Text(
-                              _getFullContent(),
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                fontFamily: 'monospace',
-                                fontSize: 12,
-                                height: 1.5,
-                                color: theme.colorScheme.onSurface,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-
-              // 4. Bottom Copy Button
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: FilledButton(
-                    onPressed: () {
-                      Clipboard.setData(ClipboardData(text: _getFullContent()));
-                      setState(() => _copied = true);
-                      Future.delayed(const Duration(seconds: 2), () {
-                        if (mounted) setState(() => _copied = false);
-                      });
-                    },
-                    style: FilledButton.styleFrom(
-                      backgroundColor: theme.colorScheme.primary,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(_copied ? Icons.check : Icons.copy, size: 18),
-                        const SizedBox(width: 8),
-                        Text(
-                          _copied ? '内容已复制到剪贴板！' : '复制全部内容',
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
           ),
         ),
       ),

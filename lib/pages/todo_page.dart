@@ -9,6 +9,7 @@ import 'package:qnote_flutter/models/todo.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/providers/todo_folder_provider.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
+import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
 import 'package:qnote_flutter/widgets/time_picker.dart';
 
@@ -319,6 +320,11 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     final folders = ref.read(todoFolderListProvider).valueOrNull ?? [];
     final items = <ActionMenuItem>[
       ActionMenuItem(
+        icon: Icons.smart_toy_rounded,
+        label: '给小Q',
+        onTap: () => _quoteTodoToQ(todo),
+      ),
+      ActionMenuItem(
         icon: todo.priority == 'important' ? Icons.flag_outlined : Icons.flag,
         label: todo.priority == 'important' ? '设为普通' : '设为重要',
         onTap: () => ref.read(todoListProvider.notifier).togglePriority(todo.id),
@@ -355,6 +361,25 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     ];
 
     ActionMenu.show(context: context, key: key, items: items);
+  }
+
+  /// 「给小Q」：把该条待办引用给悬浮小Q（修改内容/时间、拆解子任务均可），
+  /// 待办 id 与 VFS 路径在发送时由引用块注入，这里只带标题/描述摘录展示
+  void _quoteTodoToQ(Todo todo) {
+    HapticFeedback.lightImpact();
+    final title = todo.title.trim();
+    final desc = todo.description.trim();
+    final due = todo.dueDate;
+    ref.read(floatingQProvider.notifier).openWithQuote(QTextQuote(
+          source: QQuoteSource.todo,
+          sourceId: todo.id,
+          sourceTitle: title.isEmpty ? '一条待办' : title,
+          quotedText: desc.isNotEmpty ? desc : title,
+          locationDesc: due == null
+              ? null
+              : '截止 ${due.month.toString().padLeft(2, '0')}-${due.day.toString().padLeft(2, '0')} '
+                  '${due.hour.toString().padLeft(2, '0')}:${due.minute.toString().padLeft(2, '0')}',
+        ));
   }
 
   /// 设置待办重复周期
@@ -1139,6 +1164,8 @@ class _TodoItemState extends State<_TodoItem> with SingleTickerProviderStateMixi
                         else
                           GestureDetector(
                             behavior: HitTestBehavior.opaque,
+                            // 长按标题弹出操作菜单（与 more_vert 共用，含「给小Q」）
+                            onLongPress: () => widget.onShowMenu(_menuKey),
                             onTap: () {
                               if (isDone) return;
                               setState(() {

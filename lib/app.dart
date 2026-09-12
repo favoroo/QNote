@@ -279,8 +279,16 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
               child: Stack(
               children: [
                 child ?? const SizedBox.shrink(),
-                // 全局悬浮小Q入口：覆盖所有路由页面（含编辑器），内部自带隐藏规则
-                const FloatingQOverlay(),
+                // 全局悬浮小Q入口：覆盖所有路由页面（含编辑器），内部自带隐藏规则。
+                // 面板内 Tooltip 需要 Overlay 祖先，而 builder 子树位于路由 Navigator
+                // 之外、无法找到路由内的 Overlay（否则 Tooltip 构建/展示时报错），
+                // 故包一层局部 Overlay 作挂载根；小Q 自身经 Riverpod/InheritedWidget
+                // 自更新，entry 闭包捕获 const 实例，应用重建不会导致其重挂载
+                Overlay(
+                  initialEntries: [
+                    OverlayEntry(builder: (_) => const FloatingQOverlay()),
+                  ],
+                ),
               ],
             ),
             ),

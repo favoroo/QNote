@@ -16,61 +16,17 @@ import 'package:qnote_flutter/core/agent/vfs/virtual_workspace_service.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
-import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
-import 'package:qnote_flutter/providers/todo_folder_provider.dart';
-import 'package:qnote_flutter/providers/todo_provider.dart';
 import 'package:qnote_flutter/providers/agent_support.dart';
-import 'package:qnote_flutter/providers/diary_provider.dart';
-import 'package:qnote_flutter/providers/journal_provider.dart';
-import 'package:qnote_flutter/providers/folder_provider.dart';
-import 'package:qnote_flutter/providers/note_provider.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
-import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/free_model_config.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/models/todo.dart';
 import 'package:uuid/uuid.dart';
-
-class AiContextFilter {
-  final String scope;
-  final DateTime? startDate;
-  final DateTime? endDate;
-  final List<String> selectedNoteIds;
-  final List<String> selectedTodoIds;
-  final List<String> selectedTags;
-
-  const AiContextFilter({
-    this.scope = 'all',
-    this.startDate,
-    this.endDate,
-    this.selectedNoteIds = const [],
-    this.selectedTodoIds = const [],
-    this.selectedTags = const [],
-  });
-
-  AiContextFilter copyWith({
-    String? scope,
-    DateTime? startDate,
-    DateTime? endDate,
-    List<String>? selectedNoteIds,
-    List<String>? selectedTodoIds,
-    List<String>? selectedTags,
-  }) {
-    return AiContextFilter(
-      scope: scope ?? this.scope,
-      startDate: startDate ?? this.startDate,
-      endDate: endDate ?? this.endDate,
-      selectedNoteIds: selectedNoteIds ?? this.selectedNoteIds,
-      selectedTodoIds: selectedTodoIds ?? this.selectedTodoIds,
-      selectedTags: selectedTags ?? this.selectedTags,
-    );
-  }
-}
 
 final aiServiceProvider = Provider<AiService>((ref) {
   return AiService();
@@ -126,10 +82,6 @@ final selectedFreeModelProvider = StateProvider<String?>((ref) => null);
 
 // 免费模型更新状态
 final freeModelUpdatingProvider = StateProvider<bool>((ref) => false);
-
-final contextFilterProvider = StateProvider<AiContextFilter>(
-  (ref) => const AiContextFilter(),
-);
 
 final aiConfigListProvider =
     AsyncNotifierProvider<AiConfigListNotifier, List<AiConfig>>(() {
@@ -348,60 +300,17 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
     }
   }
 
-  Future<String> exportContext({
+  /// 构建本次消息手动分享附件（日记/笔记/待办）的上下文数据块。
+  ///
+  /// Agent 模式下不再自动预注入时间线流水与长文日记（由小Q通过 VFS 工具自主探索），
+  /// 仅注入用户显式分享的附件；无有效附件时返回空串。
+  Future<String> buildAttachmentsContext({
     List<String>? attachNoteIds,
     List<String>? attachTodoIds,
     List<String>? attachJournalIds,
   }) async {
-    final filter = _ref.read(contextFilterProvider);
-    final diaryRepo = DiaryRepository();
-    final buffer = StringBuffer();
-
-    if (filter.scope == 'none') return '';
-
-    List<DiaryRecord> filteredDiary = [];
-    List<DiaryRecord> records;
-    if (filter.startDate != null && filter.endDate != null) {
-      final start = DateTime(
-        filter.startDate!.year,
-        filter.startDate!.month,
-        filter.startDate!.day,
-      );
-      final end = DateTime(
-        filter.endDate!.year,
-        filter.endDate!.month,
-        filter.endDate!.day,
-        23,
-        59,
-        59,
-        999,
-      );
-      records = await diaryRepo.getByDateRange(start, end);
-    } else {
-      records = await diaryRepo.getAll();
-    }
-
-    if (filter.selectedTags.isNotEmpty) {
-      filteredDiary = records.where((r) {
-        return r.tags.any((t) => filter.selectedTags.contains(t));
-      }).toList();
-    } else {
-      filteredDiary = records;
-    }
-
-    // 1. 自动获取日期范围内的每日长文日记（Journal Notes），并合并手动附加分享的日记
-    final journalService = JournalService.instance;
-    List<Note> rangeJournals = [];
-    if (filter.startDate != null && filter.endDate != null) {
-      rangeJournals = await journalService.getJournalsByDateRange(
-        filter.startDate!,
-        filter.endDate!,
-      );
-    } else {
-      rangeJournals = await journalService.getAllJournals();
-    }
-
-    final allJournalNotes = <Note>[...rangeJournals];
+    // 1. 手动分享的日记（长文 Note）
+    final allJournalNotes = <Note>[];
     if (attachJournalIds != null && attachJournalIds.isNotEmpty) {
       final noteRepo = NoteRepository();
       for (final jId in attachJournalIds) {
@@ -415,16 +324,11 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
     }
     allJournalNotes.sort((a, b) => b.title.compareTo(a.title));
 
-    // 2. 收集所有需要关联的普通笔记（排除日记，避免重复展示）
-    final allNoteIds = <String>{
-      if (filter.scope == 'notes' || filter.scope == 'mixed')
-        ...filter.selectedNoteIds,
-      if (attachNoteIds != null) ...attachNoteIds,
-    };
-    List<Note> filteredNotes = [];
-    if (allNoteIds.isNotEmpty) {
+    // 2. 手动分享的普通笔记（排除日记，避免重复展示）
+    final filteredNotes = <Note>[];
+    if (attachNoteIds != null && attachNoteIds.isNotEmpty) {
       final noteRepo = NoteRepository();
-      for (final id in allNoteIds) {
+      for (final id in attachNoteIds) {
         if (JournalService.isJournalNote(id)) continue;
         final note = await noteRepo.getById(id);
         if (note != null && !note.isDeleted) {
@@ -433,16 +337,11 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       }
     }
 
-    // 3. 收集所有需要关联的待办（包含上下文过滤与当次附加分享的待办）
-    final allTodoIds = <String>{
-      if (filter.scope == 'todos' || filter.scope == 'mixed')
-        ...filter.selectedTodoIds,
-      if (attachTodoIds != null) ...attachTodoIds,
-    };
-    List<Todo> filteredTodos = [];
-    if (allTodoIds.isNotEmpty) {
+    // 3. 手动分享的待办
+    final filteredTodos = <Todo>[];
+    if (attachTodoIds != null && attachTodoIds.isNotEmpty) {
       final todoRepo = TodoRepository();
-      for (final id in allTodoIds) {
+      for (final id in attachTodoIds) {
         final todo = await todoRepo.getById(id);
         if (todo != null && !todo.isDeleted) {
           filteredTodos.add(todo);
@@ -450,6 +349,13 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       }
     }
 
+    if (allJournalNotes.isEmpty &&
+        filteredNotes.isEmpty &&
+        filteredTodos.isEmpty) {
+      return '';
+    }
+
+    final buffer = StringBuffer();
     buffer.writeln('请基于以下数据回答我的问题：\n');
 
     // 拼接每日长篇日记
@@ -462,70 +368,6 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
           buffer.writeln('- **标签**: ${j.tags}');
         }
         buffer.writeln('- **内容**:\n${j.content.trim()}\n');
-      }
-    }
-
-    // 拼接时间线日记流水记录
-    if (filteredDiary.isNotEmpty) {
-      buffer.writeln('### 时间线流水记录\n');
-      for (int i = 0; i < filteredDiary.length; i++) {
-        final r = filteredDiary[i];
-        buffer.writeln('#### 条目 ${i + 1}');
-        buffer.writeln('- **时间**: ${_formatDateTime(r.time)}');
-        if (r.startTime != null) {
-          buffer.writeln('- **开始时间**: ${_formatDateTime(r.startTime!)}');
-        }
-        if (r.endTime != null) {
-          buffer.writeln('- **结束时间**: ${_formatDateTime(r.endTime!)}');
-        }
-        if (r.weather.trim().isNotEmpty) {
-          buffer.writeln('- **天气**: ${r.weather.trim()}');
-        }
-        if (r.mood > 0) {
-          final stars = '⭐' * r.mood;
-          buffer.writeln('- **心情**: $stars (${r.mood}分)');
-        }
-        if (r.displayTag.isNotEmpty) {
-          buffer.writeln('- **类型**: ${r.displayTag}');
-        }
-        if (r.tags.isNotEmpty) {
-          buffer.writeln('- **标签**: ${r.tags.join(', ')}');
-        }
-        if (r.bodyState != null && r.bodyState!.isNotEmpty) {
-          final bs = r.bodyState!;
-          final name = bs['name']?.toString() ?? '';
-          final severity = bs['severity']?.toString() ?? '';
-          final duration = bs['duration']?.toString() ?? '';
-          final triggers = bs['triggers'] is List
-              ? (bs['triggers'] as List).join('、')
-              : (bs['triggers']?.toString() ?? '');
-          final notes = bs['notes']?.toString() ?? '';
-
-          String bsDesc = name;
-          if (severity.isNotEmpty) bsDesc += ' (程度: $severity)';
-          if (duration.isNotEmpty) bsDesc += ', 持续: $duration';
-          if (triggers.isNotEmpty) bsDesc += ', 诱因: $triggers';
-          if (notes.isNotEmpty) bsDesc += ', 备注: $notes';
-
-          buffer.writeln('- **身体状态**: $bsDesc');
-        }
-        if (r.tagEntries.isNotEmpty) {
-          for (final te in r.tagEntries) {
-            if (te.fields.isNotEmpty) {
-              final fieldParts = te.fields.entries
-                  .where((e) => e.value != null && e.value.toString().isNotEmpty)
-                  .map((e) => '${e.key}: ${e.value}')
-                  .join(', ');
-              if (fieldParts.isNotEmpty) {
-                buffer.writeln('- **${te.name}**: $fieldParts');
-              }
-            }
-          }
-        }
-        if (r.content.isNotEmpty) {
-          buffer.writeln('- **内容**: ${r.content}');
-        }
-        buffer.writeln();
       }
     }
 
@@ -558,54 +400,6 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         if (t.tags.isNotEmpty) buffer.writeln('- **标签**: ${t.tags}');
         buffer.writeln();
       }
-    }
-
-    final configRepo = ConfigRepository.instance;
-    final userProfile = await configRepo.getUserProfile();
-    if (userProfile != null &&
-        ((userProfile.nickname != null && userProfile.nickname!.isNotEmpty) ||
-            (userProfile.birthday != null &&
-                userProfile.birthday!.isNotEmpty) ||
-            userProfile.height != null ||
-            userProfile.weightHistory.isNotEmpty ||
-            (userProfile.otherInfo != null &&
-                userProfile.otherInfo!.isNotEmpty) ||
-            userProfile.customFields.values.any((v) => v.isNotEmpty))) {
-      buffer.writeln('### 个人背景信息\n');
-      if (userProfile.nickname != null && userProfile.nickname!.isNotEmpty) {
-        buffer.writeln('- **昵称**: ${userProfile.nickname}');
-      }
-      if (userProfile.birthday != null && userProfile.birthday!.isNotEmpty) {
-        buffer.writeln('- **生日**: ${userProfile.birthday}');
-      }
-      if (userProfile.height != null) {
-        buffer.writeln('- **身高**: ${userProfile.height}cm');
-      }
-      if (userProfile.gender != null && userProfile.gender!.isNotEmpty) {
-        String genderLabel = userProfile.gender!;
-        if (genderLabel == 'male') {
-          genderLabel = '男';
-        } else if (genderLabel == 'female')
-          genderLabel = '女';
-        else if (genderLabel == 'other')
-          genderLabel = '保密';
-        buffer.writeln('- **性别**: $genderLabel');
-      }
-      if (userProfile.weightHistory.isNotEmpty) {
-        buffer.writeln('- **体重记录**:');
-        for (final w in userProfile.weightHistory) {
-          buffer.writeln('  - ${_formatDateTime(w.time)}: ${w.weight}kg');
-        }
-      }
-      if (userProfile.otherInfo != null && userProfile.otherInfo!.isNotEmpty) {
-        buffer.writeln('- **其他信息**: ${userProfile.otherInfo}');
-      }
-      userProfile.customFields.forEach((key, value) {
-        if (value.isNotEmpty) {
-          buffer.writeln('- **$key**: $value');
-        }
-      });
-      buffer.writeln();
     }
 
     return buffer.toString().trim();
@@ -655,24 +449,19 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
     // 开始录制本轮 VFS 变更（撤回/再次编辑功能的数据来源）；句柄制支持与悬浮小Q任务并发录制
     final recorderHandle = VirtualWorkspaceService.instance.startRecording();
 
-    // 取消令牌必须在最前创建：否则"准备中"阶段（资料/关联数据导出）点停止时为 null，取消静默失效
+    // 取消令牌必须在最前创建：否则"准备中"阶段（附件上下文构建）点停止时为 null，取消静默失效
     final token = AgentCancellationToken();
     _currentCancellationToken = token;
 
     try {
-      // 2. Prepare Data Context
-      final filter = _ref.read(contextFilterProvider);
-      String? dataContext;
-      if (filter.scope != 'none') {
-        final context = await exportContext(
-          attachNoteIds: noteIds,
-          attachTodoIds: todoIds,
-          attachJournalIds: journalIds,
-        );
-        if (context.isNotEmpty) {
-          dataContext = context.trim();
-        }
-      }
+      // 2. 仅注入用户手动分享的附件上下文，其余数据由小Q通过VFS工具自主探索
+      final attachmentContext = await buildAttachmentsContext(
+        attachNoteIds: noteIds,
+        attachTodoIds: todoIds,
+        attachJournalIds: journalIds,
+      );
+      final String? dataContext =
+          attachmentContext.isEmpty ? null : attachmentContext;
 
       // 准备阶段（资料/关联数据导出）可能较久：若用户已点停止，补一条中止提示后直接收尾
       if (token.isCancelled) {

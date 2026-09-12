@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/models/folder.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/core/utils/note_file_type.dart';
 import 'package:qnote_flutter/providers/note_provider.dart';
+import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/folder_provider.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
 import 'package:qnote_flutter/widgets/search_view.dart';
@@ -882,6 +884,11 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       key: key,
       items: [
         ActionMenuItem(
+          icon: Icons.smart_toy_rounded,
+          label: '给小Q',
+          onTap: () => _quoteNoteToQ(note),
+        ),
+        ActionMenuItem(
           icon: Icons.edit_outlined,
           label: '编辑笔记',
           onTap: () => _editNote(note),
@@ -910,6 +917,22 @@ class _NotesPageState extends ConsumerState<NotesPage> {
         ),
       ],
     );
+  }
+
+  /// 「给小Q」：把整篇笔记引用给悬浮小Q（总结/改写/提问均可，无需先打开笔记），
+  /// 笔记 id 与 VFS 路径在发送时由引用块注入，这里只带内容摘录展示
+  void _quoteNoteToQ(Note note) {
+    HapticFeedback.lightImpact();
+    final content = decodeNoteContent(note.content).trim();
+    final excerpt = content.isNotEmpty ? content : note.title.trim();
+    ref.read(floatingQProvider.notifier).openWithQuote(QTextQuote(
+          source: QQuoteSource.note,
+          sourceId: note.id,
+          sourceTitle:
+              note.title.trim().isEmpty ? '无标题' : note.title.trim(),
+          quotedText:
+              excerpt.length > 500 ? '${excerpt.substring(0, 500)}…' : excerpt,
+        ));
   }
 
   void _showFolderMenu(Folder folder, GlobalKey key) {
