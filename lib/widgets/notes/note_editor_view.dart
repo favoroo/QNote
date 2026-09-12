@@ -23,6 +23,7 @@ import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/core/utils/note_file_type.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/widgets/notes/html_preview/html_preview_view.dart';
+import 'package:qnote_flutter/widgets/q_text_selection_toolbar.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/core/utils/link_preview_helper.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -239,6 +240,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         reload: _reloadFromRepository,
         onTaskStart: () => _qSuppressAutoSave = true,
         onTaskEnd: () => _qSuppressAutoSave = false,
+        // 框选状态下点悬浮球时捕获选中文本引用给小Q
+        quoteSelection: _captureSelectionQuote,
       ),
     );
   }
@@ -1546,15 +1549,15 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         contentPadding: EdgeInsets.symmetric(vertical: 4),
       ),
       // 保留默认菜单项（剪切/复制/粘贴/全选等），末尾追加「给小Q」：
-      // 把选中文本连同位置引用给悬浮小Q（移动端与 Web 均为 Flutter 自绘菜单）
+      // 把选中文本连同位置引用给悬浮小Q；用平铺工具栏避免「给小Q」被折叠进 ⋮
       contextMenuBuilder: (context, editableTextState) {
-        return AdaptiveTextSelectionToolbar.buttonItems(
+        return QTextSelectionToolbar(
           anchors: editableTextState.contextMenuAnchors,
           buttonItems: [
             ...editableTextState.contextMenuButtonItems,
             ContextMenuButtonItem(
               label: '给小Q',
-              onPressed: () => _sendSelectionToQ(seg),
+              onPressed: _sendSelectionToQ,
             ),
           ],
         );
@@ -1562,26 +1565,36 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     );
   }
 
-  /// 「给小Q」：把正文选中文本连同近似行号引用给悬浮小Q，
-  /// 便于用户让小Q修改这段指定文本或针对它提问
-  void _sendSelectionToQ(_TextSegment seg) {
+  /// 捕获当前框选内容为引用（选择菜单「给小Q」与悬浮球点按共用）。
+  /// 仅当正文段持有焦点且选区非空时返回，避免陈旧选区被误引用
+  QTextQuote? _captureSelectionQuote() {
+    final seg = _focusedTextSeg;
+    if (seg == null || !seg.focusNode.hasFocus) return null;
     final sel = seg.controller.selection;
     final text = seg.controller.text;
-    if (!sel.isValid || sel.isCollapsed) return;
+    if (!sel.isValid || sel.isCollapsed) return null;
     final quoted = text.substring(sel.start, sel.end).trim();
-    if (quoted.isEmpty) return;
+    if (quoted.isEmpty) return null;
 
     final line = _estimateSelectionLine(seg, sel.start);
+    return QTextQuote(
+      source: QQuoteSource.note,
+      sourceId: widget.note.id,
+      sourceTitle:
+          _titleController.text.isEmpty ? '无标题' : _titleController.text,
+      quotedText: quoted,
+      locationDesc: '第 $line 行附近',
+    );
+  }
+
+  /// 「给小Q」：把正文选中文本连同近似行号引用给悬浮小Q，
+  /// 便于用户让小Q修改这段指定文本或针对它提问
+  void _sendSelectionToQ() {
+    final quote = _captureSelectionQuote();
+    if (quote == null) return;
     // 收起键盘与选择菜单，把焦点让给小Q面板输入框（选中文本已在上面捕获）
     FocusManager.instance.primaryFocus?.unfocus();
-    ref.read(floatingQProvider.notifier).openWithQuote(QTextQuote(
-          source: QQuoteSource.note,
-          sourceId: widget.note.id,
-          sourceTitle:
-              _titleController.text.isEmpty ? '无标题' : _titleController.text,
-          quotedText: quoted,
-          locationDesc: '第 $line 行附近',
-        ));
+    ref.read(floatingQProvider.notifier).openWithQuote(quote);
   }
 
   /// 估算选区起点在整篇序列化 Markdown 中的行号（与 [_serializeToMarkdown]

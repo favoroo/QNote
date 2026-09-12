@@ -248,5 +248,31 @@ void main() {
       expect(await bridge.notifyTaskEnd('note:u1'), isFalse);
       expect(reloaded, isFalse);
     });
+
+    test('captureQuote 返回编辑页注册的框选捕获结果', () {
+      final bridge = QTargetBridge.test();
+      const quote = QTextQuote(
+        source: QQuoteSource.note,
+        sourceId: 'n1',
+        sourceTitle: '自我介绍',
+        quotedText: '选中的文本',
+        locationDesc: '第 1 行附近',
+      );
+      bridge.register('note:q1', QTargetHooks(quoteSelection: () => quote));
+
+      expect(bridge.captureQuote('note:q1'), quote);
+      // 未注册签名 / 空签名均视为无框选
+      expect(bridge.captureQuote('note:none'), isNull);
+      expect(bridge.captureQuote(null), isNull);
+    });
+
+    test('captureQuote 钩子抛异常时安全返回 null', () {
+      final bridge = QTargetBridge.test();
+      bridge.register(
+        'note:q2',
+        QTargetHooks(quoteSelection: () => throw Exception('boom')),
+      );
+      expect(bridge.captureQuote('note:q2'), isNull);
+    });
   });
 }

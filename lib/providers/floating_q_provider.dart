@@ -11,6 +11,7 @@ import 'package:qnote_flutter/core/agent/prompts/q_system_prompt.dart';
 import 'package:qnote_flutter/core/agent/services/agent_interaction_service.dart';
 import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
 import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
+import 'package:qnote_flutter/core/agent/services/q_text_quote.dart';
 import 'package:qnote_flutter/core/agent/vfs/virtual_workspace_service.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
@@ -18,6 +19,11 @@ import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/providers/agent_support.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
+
+// 引用模型本体在 core 层（QTargetBridge 桥接钩子需要该类型），
+// 这里 re-export 保持既有 import 路径兼容
+export 'package:qnote_flutter/core/agent/services/q_text_quote.dart'
+    show QQuoteSource, QTextQuote;
 
 // ==========================================
 // 全局悬浮小Q快捷入口
@@ -109,51 +115,6 @@ enum FloatingQPhase {
   /// 撤回就绪：任务（或中断）结束后可随时在面板中撤回，
   /// 直到撤回执行；期间发起新任务则待撤回变更跨任务累加
   countdown,
-}
-
-/// 「给小Q」引用的内容来源类型
-enum QQuoteSource {
-  /// 笔记（编辑器选中文本或列表整篇引用）
-  note,
-
-  /// 时间线流水记录
-  diary,
-
-  /// 每日日记
-  journal,
-
-  /// 待办
-  todo,
-}
-
-/// 用户通过「给小Q」引用给小Q的内容片段（含来源实体与位置描述）。
-///
-/// 挂起在 [FloatingQState.pendingQuote] 中随面板展示为引用卡片，
-/// 用户发送指令时一次性消费：作为动态上下文注入（不污染消息原文），
-/// 小Q据此用 VFS 文件工具精确定位并操作来源内容。
-class QTextQuote {
-  /// 内容来源类型
-  final QQuoteSource source;
-
-  /// 来源实体 id：笔记 id / 时间线记录 id / 日期字符串（YYYY-MM-DD）/ 待办 id
-  final String sourceId;
-
-  /// 来源标题（面板卡片展示）
-  final String sourceTitle;
-
-  /// 引用的文本内容（编辑器选中文本，或实体内容摘录）
-  final String quotedText;
-
-  /// 位置描述（如「第 3 行附近」「09-12 17:52」），列表级引用可为 null
-  final String? locationDesc;
-
-  const QTextQuote({
-    required this.source,
-    required this.sourceId,
-    required this.sourceTitle,
-    required this.quotedText,
-    this.locationDesc,
-  });
 }
 
 /// 悬浮小Q状态

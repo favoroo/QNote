@@ -1,6 +1,7 @@
 import 'package:qnote_flutter/core/agent/engine/tool_dispatcher.dart';
 import 'package:qnote_flutter/core/agent/tools/general/ask_user_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/general/fetch_url_tool.dart';
+import 'package:qnote_flutter/core/agent/tools/general/generate_image_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/general/grep_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/general/web_search_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/delete_file_tool.dart';
@@ -33,6 +34,7 @@ class AgentToolRegistry {
       GrepTool(),
       FetchUrlTool(),
       WebSearchTool(),
+      GenerateImageTool(),
       AskUserTool(),
     ]);
 

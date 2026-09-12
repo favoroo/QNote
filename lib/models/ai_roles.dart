@@ -9,6 +9,8 @@ class AiRoles {
   // 角色具体使用的免费模型 ID (如 'sensenova-flash-lite', 'glm-5.2', 'deepseek-v4-flash')
   final String? assistantFreeModelId;
   final String? timelineOptimizationFreeModelId;
+  // 小Q生图工具绑定的内置生图模型 ID (如 'gemini-3.1-flash-image', 'sensenova-u1.5-lite')
+  final String? imageGenerationFreeModelId;
 
   const AiRoles({
     this.assistant,
@@ -17,6 +19,7 @@ class AiRoles {
     this.timelineOptimizationUseFreeModel = false,
     this.assistantFreeModelId = 'gemini-3.5-flash-lite',
     this.timelineOptimizationFreeModelId = 'gemini-3.5-flash-lite',
+    this.imageGenerationFreeModelId = 'gemini-3.1-flash-image',
   });
 
   Map<String, dynamic> toMap() {
@@ -28,6 +31,8 @@ class AiRoles {
       if (assistantFreeModelId != null) 'assistantFreeModelId': assistantFreeModelId,
       if (timelineOptimizationFreeModelId != null)
         'timelineOptimizationFreeModelId': timelineOptimizationFreeModelId,
+      if (imageGenerationFreeModelId != null)
+        'imageGenerationFreeModelId': imageGenerationFreeModelId,
     };
   }
 
@@ -41,6 +46,8 @@ class AiRoles {
       assistantFreeModelId: map['assistantFreeModelId'] as String? ?? 'gemini-3.5-flash-lite',
       timelineOptimizationFreeModelId:
           map['timelineOptimizationFreeModelId'] as String? ?? 'gemini-3.5-flash-lite',
+      imageGenerationFreeModelId:
+          map['imageGenerationFreeModelId'] as String? ?? 'gemini-3.1-flash-image',
     );
   }
 
@@ -60,6 +67,7 @@ class AiRoles {
     bool? timelineOptimizationUseFreeModel,
     Object? assistantFreeModelId = _unset,
     Object? timelineOptimizationFreeModelId = _unset,
+    Object? imageGenerationFreeModelId = _unset,
   }) {
     return AiRoles(
       assistant: identical(assistant, _unset)
@@ -80,6 +88,10 @@ class AiRoles {
           identical(timelineOptimizationFreeModelId, _unset)
               ? this.timelineOptimizationFreeModelId
               : timelineOptimizationFreeModelId as String?,
+      imageGenerationFreeModelId:
+          identical(imageGenerationFreeModelId, _unset)
+              ? this.imageGenerationFreeModelId
+              : imageGenerationFreeModelId as String?,
     );
   }
 }

@@ -28,6 +28,7 @@ import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/widgets/diary/ai_extract_helper.dart';
 import 'package:qnote_flutter/widgets/diary/model_selection_dialog.dart';
 import 'package:qnote_flutter/widgets/diary/edit_tag_time_sheet.dart';
+import 'package:qnote_flutter/widgets/q_text_selection_toolbar.dart';
 import 'package:qnote_flutter/widgets/time_picker.dart';
 import 'package:qnote_flutter/widgets/time_scroll_picker.dart';
 import 'package:qnote_flutter/widgets/tag_picker.dart';
@@ -44,6 +45,8 @@ class DiaryEditorView extends ConsumerStatefulWidget {
 
 class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   late TextEditingController _contentController;
+  // 正文焦点节点：供「给小Q」框选捕获判定（仅正文持有焦点时才捕获选区）
+  final FocusNode _contentFocusNode = FocusNode();
   late DateTime _time;
   late DateTime? _startTime;
   late DateTime? _endTime;
@@ -261,6 +264,8 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         fingerprint: () => '${_contentController.text}\u0000'
             '${_formControllers.values.map((c) => c.text).join('\u0000')}',
         reload: _reloadFromRecord,
+        // 框选状态下点悬浮球时捕获正文选中文本引用给小Q
+        quoteSelection: _captureSelectionQuote,
       ),
     );
   }
@@ -296,27 +301,36 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     });
   }
 
+  /// 捕获正文当前框选内容为引用（选择菜单「给小Q」与悬浮球点按共用）。
+  /// 仅当正文持有焦点且选区非空时返回，避免陈旧选区被误引用
+  QTextQuote? _captureSelectionQuote() {
+    if (!_contentFocusNode.hasFocus) return null;
+    final sel = _contentController.selection;
+    final text = _contentController.text;
+    if (!sel.isValid || sel.isCollapsed) return null;
+    final quoted = text.substring(sel.start, sel.end).trim();
+    if (quoted.isEmpty) return null;
+
+    final line = '\n'.allMatches(text.substring(0, sel.start)).length + 1;
+    return QTextQuote(
+      source: QQuoteSource.diary,
+      sourceId: widget.record.id,
+      sourceTitle: widget.record.title.trim().isNotEmpty
+          ? widget.record.title.trim()
+          : '一条流水记录',
+      quotedText: quoted,
+      locationDesc: '第 $line 行附近',
+    );
+  }
+
   /// 「给小Q」：把正文选中文本连同近似行号引用给悬浮小Q，
   /// 便于用户让小Q修改这段指定文本或针对它提问
   void _sendSelectionToQ() {
-    final sel = _contentController.selection;
-    final text = _contentController.text;
-    if (!sel.isValid || sel.isCollapsed) return;
-    final quoted = text.substring(sel.start, sel.end).trim();
-    if (quoted.isEmpty) return;
-
-    final line = '\n'.allMatches(text.substring(0, sel.start)).length + 1;
+    final quote = _captureSelectionQuote();
+    if (quote == null) return;
     // 收起键盘与选择菜单，把焦点让给小Q面板输入框（选中文本已在上面捕获）
     FocusManager.instance.primaryFocus?.unfocus();
-    ref.read(floatingQProvider.notifier).openWithQuote(QTextQuote(
-          source: QQuoteSource.diary,
-          sourceId: widget.record.id,
-          sourceTitle: widget.record.title.trim().isNotEmpty
-              ? widget.record.title.trim()
-              : '一条流水记录',
-          quotedText: quoted,
-          locationDesc: '第 $line 行附近',
-        ));
+    ref.read(floatingQProvider.notifier).openWithQuote(quote);
   }
 
   @override
@@ -327,6 +341,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         ?.read(floatingQProvider.notifier)
         .popOverlayContext(_qContext);
     _contentController.dispose();
+    _contentFocusNode.dispose();
     for (final c in _formControllers.values) {
       c.dispose();
     }
@@ -2245,6 +2260,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         const SizedBox(height: 8),
         TextField(
           controller: _contentController,
+          focusNode: _contentFocusNode,
           maxLines: null,
           minLines: 5,
           decoration: InputDecoration(
@@ -2253,9 +2269,10 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             filled: false,
           ),
           style: theme.textTheme.bodyLarge,
-          // 保留默认菜单项，末尾追加「给小Q」：把选中文本连同位置引用给悬浮小Q
+          // 保留默认菜单项，末尾追加「给小Q」：把选中文本连同位置引用给悬浮小Q；
+          // 用平铺工具栏避免「给小Q」被折叠进 ⋮
           contextMenuBuilder: (context, editableTextState) {
-            return AdaptiveTextSelectionToolbar.buttonItems(
+            return QTextSelectionToolbar(
               anchors: editableTextState.contextMenuAnchors,
               buttonItems: [
                 ...editableTextState.contextMenuButtonItems,

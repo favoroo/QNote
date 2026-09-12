@@ -29,6 +29,22 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   AiRoles _roles = const AiRoles();
   AiTemperatures _roleSettings = const AiTemperatures();
   bool _rolesLoaded = false;
+
+  // 小Q生图模型候选（与 FreeModelService.getImageGenerationModels 保持一致）
+  static const List<Map<String, String>> _imageGenerationModels = [
+    {'id': 'gemini-3.1-flash-image', 'name': '内置 Gemini 生图（默认）'},
+    {'id': 'sensenova-u1.5-lite', 'name': '内置 SenseNova 生图'},
+  ];
+
+  /// 当前生图模型下拉选中值（绑定失效时回落默认 Gemini 生图）
+  String get _imageModelDropdownValue {
+    final bound = _roles.imageGenerationFreeModelId;
+    if (bound != null && _imageGenerationModels.any((m) => m['id'] == bound)) {
+      return bound;
+    }
+    return _imageGenerationModels.first['id']!;
+  }
+
   final Map<String, bool> _testingMap = {};
   final Map<String, String> _latencyMap = {};
   bool _batchTesting = false;
@@ -1452,6 +1468,79 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
               ],
             ),
           ),
+          // 小Q特化：生图模型选择次级功能岛（generate_image 工具使用的内置生图后端）
+          if (roleKey == 'assistant') ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Text(
+                    '生图模型',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String?>(
+                        isExpanded: true,
+                        value: _imageModelDropdownValue,
+                        hint: const Text(
+                          '默认 Gemini 生图',
+                          style: TextStyle(fontSize: 12),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        style: theme.textTheme.bodyMedium?.copyWith(fontSize: 12),
+                        items: _imageGenerationModels
+                            .map(
+                              (m) => DropdownMenuItem<String?>(
+                                value: m['id'],
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.image_outlined,
+                                      size: 13,
+                                      color: colorScheme.primary,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        m['name']!,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) async {
+                          if (value == null) return;
+                          final newRoles =
+                              _roles.copyWith(imageGenerationFreeModelId: value);
+                          await AiRoleService.instance.saveRoles(newRoles);
+                          ref.invalidate(aiRolesProvider);
+                          if (mounted) setState(() => _roles = newRoles);
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           // 时间轴特化：图片识别次级功能岛
           if (roleKey == 'timelineOptimization') ...[
             const SizedBox(height: 10),

@@ -1164,6 +1164,11 @@ class VirtualWorkspaceService {
         ? (meta['tags'] as List).join(', ')
         : (meta['tags']?.toString() ?? '');
 
+    // 从 Markdown 正文提取图片链接回填 images 索引列：
+    // WebDAV 同步只认 notes.images 列收集活动图片，不回填会导致小Q插入的
+    // 生成图片/外链图片被视为孤儿文件而在同步时被清理
+    final extractedImages = _extractImagesFromMarkdown(noteContent);
+
     final now = DateTime.now();
     if (existing != null) {
       final updated = existing.copyWith(
@@ -1172,6 +1177,7 @@ class VirtualWorkspaceService {
         folderId: folderId ?? existing.folderId,
         isPinned: meta['pinned'] == true,
         tags: tagsStr.isNotEmpty ? tagsStr : existing.tags,
+        images: extractedImages.isNotEmpty ? extractedImages : existing.images,
         isDeleted: false,
         updatedAt: now,
       );
@@ -1186,6 +1192,7 @@ class VirtualWorkspaceService {
         folderId: folderId,
         isPinned: meta['pinned'] == true,
         tags: tagsStr,
+        images: extractedImages,
         createdAt: now,
         updatedAt: now,
       );
@@ -1193,6 +1200,21 @@ class VirtualWorkspaceService {
       WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.created, newNote);
       return {'status': 'created', 'path': path, 'id': newNote.id, 'title': newNote.title};
     }
+  }
+
+  /// 从 Markdown 正文提取图片链接路径（`![...](路径)`），保持出现顺序并去重
+  ///
+  /// 与笔记编辑器的图片段识别规则一致：仅匹配独立成行的图片语法；
+  /// data URI（Web 端内嵌图）体积过大且无需同步，跳过不入索引。
+  static List<String> _extractImagesFromMarkdown(String content) {
+    final pattern = RegExp(r'^!\[.*?\]\((.*?)\)\s*$', multiLine: true);
+    final paths = <String>[];
+    for (final match in pattern.allMatches(content)) {
+      final path = match.group(1)?.trim() ?? '';
+      if (path.isEmpty || path.startsWith('data:')) continue;
+      if (!paths.contains(path)) paths.add(path);
+    }
+    return paths;
   }
 
   Future<Map<String, dynamic>> _writeTimelineFile(String path, String content) async {

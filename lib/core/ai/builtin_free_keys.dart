@@ -136,6 +136,36 @@ class BuiltinFreeKeys {
       priority: 0,
     );
   }
+
+  /// 创建内置的 Gemini 3.1 Flash Image 生图模型配置（小Q生图默认模型）
+  static FreeModelConfig createGemini31ImageConfig([String? apiKey]) {
+    final effectiveKey = apiKey ?? getGeminiApiKey();
+    return FreeModelConfig(
+      id: 'gemini-3.1-flash-image',
+      displayName: 'Gemini 生图',
+      provider: 'openai',
+      baseUrl: 'https://1demacbook-pro.tail77f123.ts.net/v1',
+      modelName: 'gemini-3.1-flash-image',
+      obfuscatedApiKey: effectiveKey,
+      authType: 'bearer',
+      priority: 0,
+    );
+  }
+
+  /// 创建内置的 SenseNova U1.5 Lite 生图模型配置（商汤日日新文生图，无水印公测）
+  static FreeModelConfig createSenseNovaU15ImageConfig([String? apiKey]) {
+    final effectiveKey = apiKey ?? FreeModelKeyManager.instance.acquireNextKey();
+    return FreeModelConfig(
+      id: 'sensenova-u1.5-lite',
+      displayName: 'SenseNova 生图',
+      provider: 'openai',
+      baseUrl: 'https://token.sensenova.cn/v1',
+      modelName: 'sensenova-u1.5-lite',
+      obfuscatedApiKey: effectiveKey,
+      authType: 'bearer',
+      priority: 1,
+    );
+  }
 }
 
 /// 免费模型 API Key 轮询与故障转移管理器

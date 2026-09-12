@@ -2151,6 +2151,74 @@ class _ChatBubble extends StatelessWidget {
       );
     }
 
+    // generate_image 生图完成：气泡内直接大图预览，附模型与提示词摘要
+    if (message.toolName == 'generate_image' && message.isError != true) {
+      final paths = (uiDetails?['paths'] as List?)?.whereType<String>().toList() ?? const [];
+      final model = uiDetails?['model'] as String? ?? '';
+      final prompt = uiDetails?['prompt'] as String? ?? '';
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.auto_awesome_rounded,
+                  size: 14,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  model.isEmpty ? '生图完成' : '生图完成 · $model',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ...paths.map(
+              (path) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: GestureDetector(
+                  onTap: () => _showFullImageDialog(context, path),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 240),
+                      child: UnifiedImage(imagePath: path, fit: BoxFit.cover),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (prompt.isNotEmpty)
+              Text(
+                prompt,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+
     // view_image 成功时图片已注入模型上下文，气泡里显示缩略图与路径摘要；失败走通用错误卡片
     if (message.toolName == 'view_image' && message.isError != true) {
       final path = uiDetails?['path'] as String? ?? '';

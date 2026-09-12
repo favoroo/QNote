@@ -240,6 +240,21 @@ class AiRoleService {
     return FreeModelService.instance.getOrderedModels(models, preferredId);
   }
 
+  /// 获取小Q生图工具的生效配置
+  ///
+  /// 读取 AiRoles.imageGenerationFreeModelId 绑定的内置生图模型 id，
+  /// 绑定缺失或失效时回落到默认的 Gemini 生图模型。
+  Future<AiConfig> getImageGenerationModelConfig() async {
+    final roles = await getRoles();
+    final models = FreeModelService.instance.getImageGenerationModels();
+    final boundId = roles.imageGenerationFreeModelId;
+    final config = models.firstWhere(
+      (m) => m.id == boundId,
+      orElse: () => models.first,
+    );
+    return FreeModelService.instance.toAiConfig(config);
+  }
+
   /// 获取角色的有效配置
   ///
   /// 如果角色启用了免费模型，返回主模型的 AiConfig；

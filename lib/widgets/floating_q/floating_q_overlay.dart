@@ -6,12 +6,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:qnote_flutter/core/router/app_router.dart';
 import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
+import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/widgets/common/animated_ellipsis.dart';
+import 'package:qnote_flutter/widgets/unified_image.dart';
 
 /// 全局悬浮小Q入口：悬浮球 + 快捷对话面板。
 ///
@@ -199,9 +201,7 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
                             size: _ballSize,
                             position: _displayBallPosition(size, keyboardInset),
                             isWorking: isWorking,
-                            onTap: () => ref
-                                .read(floatingQProvider.notifier)
-                                .openPanel(),
+                            onTap: _handleBallTap,
                             onDragUpdate: _onDragBall,
                           ),
                   ),
@@ -212,6 +212,23 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
         );
       },
     );
+  }
+
+  /// 悬浮球点按：当前编辑页正文处于框选状态时，把选中文本作为引用打开面板
+  /// （等同选择菜单「给小Q」）；否则普通打开面板。
+  /// 球体用原生 Listener 处理指针，点按不会打断编辑器焦点与选区，
+  /// 捕获在点按回调内同步完成，不存在丢失窗口
+  void _handleBallTap() {
+    final notifier = ref.read(floatingQProvider.notifier);
+    final signature = ref.read(floatingQProvider).effectiveContext?.signature;
+    final quote = QTargetBridge.instance.captureQuote(signature);
+    if (quote == null) {
+      notifier.openPanel();
+      return;
+    }
+    // 收起键盘与选择菜单，把焦点让给面板输入框（选中文本已在捕获时取得）
+    FocusManager.instance.primaryFocus?.unfocus();
+    notifier.openWithQuote(quote);
   }
 
   /// 撤回小Q本会话的全部修改并提示结果
@@ -594,8 +611,13 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
     final children = <Widget>[];
 
     for (final message in fq.messages) {
-      // 工具中间消息不在快捷面板展示（进行中的操作由状态行实时表达）
-      if (message.role == 'tool') continue;
+      // 生图结果直接以图片卡预览；其余工具中间消息不在快捷面板展示
+      //（进行中的操作由状态行实时表达）
+      if (message.role == 'tool') {
+        final imageCard = _buildGeneratedImageCard(theme, message);
+        if (imageCard != null) children.add(_buildEntrance(imageCard));
+        continue;
+      }
       // Agent 每轮发起工具调用前会生成「正文为空、仅承载 tool_calls」的 assistant
       // 中转消息（与 AI 主页面 _isVisibleMessage 过滤的是同一类消息），快捷面板
       // 不渲染思考胶囊，这类消息只会渲染成空白胶囊卡片，直接跳过
@@ -649,6 +671,46 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
         ),
       ),
       child: child,
+    );
+  }
+
+  /// 生图工具结果卡：在快捷面板中直接预览生成的图片
+  ///
+  /// 仅渲染 generate_image 成功且带路径的结果，其余工具消息返回 null 由调用方跳过。
+  Widget? _buildGeneratedImageCard(ThemeData theme, ChatMessage message) {
+    if (message.toolName != 'generate_image' || message.isError == true) {
+      return null;
+    }
+    final paths =
+        (message.uiDetails?['paths'] as List?)?.whereType<String>().toList() ?? const [];
+    if (paths.isEmpty) return null;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8, right: 48),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(AppRadius.medium),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final path in paths)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 180),
+                    child: UnifiedImage(imagePath: path, fit: BoxFit.cover),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 

@@ -81,6 +81,17 @@ class FreeModelService {
     ];
   }
 
+  /// 获取内置生图模型列表（专供小Q generate_image 工具与角色绑定使用）
+  ///
+  /// 刻意不并入 [getCachedModels]：生图模型不能出现在聊天模型选择器与
+  /// 对话 fallback 链中（文本对话端点不支持图片输出模型）。
+  List<FreeModelConfig> getImageGenerationModels() {
+    return [
+      BuiltinFreeKeys.createGemini31ImageConfig(),
+      BuiltinFreeKeys.createSenseNovaU15ImageConfig(),
+    ];
+  }
+
   /// 规范化并迁移清单中的模型（修复旧版下线模型名称，如 6.7 迁移为 6.8）
   FreeModelsManifest _migrateManifest(FreeModelsManifest manifest) {
     bool hasChanges = false;
@@ -164,9 +175,10 @@ class FreeModelService {
     final isSenseNovaBuiltinKey = model.id.contains('sensenova') ||
         model.id == 'glm-5.2' ||
         model.id == 'deepseek-v4-flash';
-    // Gemini 专用网关的内置模型
-    final isGeminiBuiltinKey =
-        model.id == 'gemini-3.8-flash-low' || model.id == 'gemini-3.5-flash-lite';
+    // Gemini 专用网关的内置模型（含生图模型 gemini-3.1-flash-image）
+    final isGeminiBuiltinKey = model.id == 'gemini-3.8-flash-low' ||
+        model.id == 'gemini-3.5-flash-lite' ||
+        model.id == 'gemini-3.1-flash-image';
 
     final String effectiveKey;
     if (explicitApiKey != null && explicitApiKey.isNotEmpty) {

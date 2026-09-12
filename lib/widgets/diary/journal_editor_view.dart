@@ -9,6 +9,7 @@ import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/journal_provider.dart';
+import 'package:qnote_flutter/widgets/q_text_selection_toolbar.dart';
 
 const List<String> _weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
@@ -69,6 +70,8 @@ class _JournalEditorViewState extends ConsumerState<JournalEditorView> {
       QTargetHooks(
         fingerprint: () => _controller.text,
         reload: _reloadFromJournal,
+        // 框选状态下点悬浮球时捕获选中文本引用给小Q
+        quoteSelection: _captureSelectionQuote,
       ),
     );
   }
@@ -134,25 +137,34 @@ class _JournalEditorViewState extends ConsumerState<JournalEditorView> {
     });
   }
 
+  /// 捕获当前框选内容为引用（选择菜单「给小Q」与悬浮球点按共用）。
+  /// 仅当正文持有焦点且选区非空时返回，避免陈旧选区被误引用
+  QTextQuote? _captureSelectionQuote() {
+    if (!_focusNode.hasFocus) return null;
+    final sel = _controller.selection;
+    final text = _controller.text;
+    if (!sel.isValid || sel.isCollapsed) return null;
+    final quoted = text.substring(sel.start, sel.end).trim();
+    if (quoted.isEmpty) return null;
+
+    final line = '\n'.allMatches(text.substring(0, sel.start)).length + 1;
+    return QTextQuote(
+      source: QQuoteSource.journal,
+      sourceId: _dateStr,
+      sourceTitle: _dateStr,
+      quotedText: quoted,
+      locationDesc: '第 $line 行附近',
+    );
+  }
+
   /// 「给小Q」：把选中文本连同近似行号引用给悬浮小Q，
   /// 便于用户让小Q修改这段指定文本或针对它提问
   void _sendSelectionToQ() {
-    final sel = _controller.selection;
-    final text = _controller.text;
-    if (!sel.isValid || sel.isCollapsed) return;
-    final quoted = text.substring(sel.start, sel.end).trim();
-    if (quoted.isEmpty) return;
-
-    final line = '\n'.allMatches(text.substring(0, sel.start)).length + 1;
+    final quote = _captureSelectionQuote();
+    if (quote == null) return;
     // 收起键盘与选择菜单，把焦点让给小Q面板输入框（选中文本已在上面捕获）
     FocusManager.instance.primaryFocus?.unfocus();
-    ref.read(floatingQProvider.notifier).openWithQuote(QTextQuote(
-          source: QQuoteSource.journal,
-          sourceId: _dateStr,
-          sourceTitle: _dateStr,
-          quotedText: quoted,
-          locationDesc: '第 $line 行附近',
-        ));
+    ref.read(floatingQProvider.notifier).openWithQuote(quote);
   }
 
   Future<void> _handleBack() async {
@@ -289,9 +301,10 @@ class _JournalEditorViewState extends ConsumerState<JournalEditorView> {
                 filled: false,
                 isDense: true,
               ),
-              // 保留默认菜单项，末尾追加「给小Q」：把选中文本连同位置引用给悬浮小Q
+              // 保留默认菜单项，末尾追加「给小Q」：把选中文本连同位置引用给悬浮小Q；
+              // 用平铺工具栏避免「给小Q」被折叠进 ⋮
               contextMenuBuilder: (context, editableTextState) {
-                return AdaptiveTextSelectionToolbar.buttonItems(
+                return QTextSelectionToolbar(
                   anchors: editableTextState.contextMenuAnchors,
                   buttonItems: [
                     ...editableTextState.contextMenuButtonItems,

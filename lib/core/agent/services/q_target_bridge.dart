@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:qnote_flutter/core/agent/services/q_text_quote.dart';
 
 /// 悬浮小Q任务与打开中的编辑页之间的联动桥。
 ///
@@ -93,6 +94,18 @@ class QTargetBridge {
       } catch (_) {}
     }
   }
+
+  /// 捕获目标编辑页当前的框选内容（悬浮球点按时调用，配合「给小Q」引用）。
+  /// 未注册签名、未提供钩子或钩子抛异常时返回 null（保持普通开面板行为）
+  QTextQuote? captureQuote(String? signature) {
+    final hooks = signature == null ? null : _hooks[signature];
+    if (hooks?.quoteSelection == null) return null;
+    try {
+      return hooks!.quoteSelection!();
+    } catch (_) {
+      return null;
+    }
+  }
 }
 
 /// 编辑页向桥接注册的钩子集合
@@ -109,10 +122,15 @@ class QTargetHooks {
   /// 任务结束回调（如恢复自动保存）
   final void Function()? onTaskEnd;
 
+  /// 框选捕获钩子：编辑器正文持有焦点且有非空选区时返回引用（否则返回 null），
+  /// 供悬浮球点按时把选中文本连同位置引用给小Q（与选择菜单「给小Q」同一判定）
+  final QTextQuote? Function()? quoteSelection;
+
   const QTargetHooks({
     this.fingerprint,
     this.reload,
     this.onTaskStart,
     this.onTaskEnd,
+    this.quoteSelection,
   });
 }

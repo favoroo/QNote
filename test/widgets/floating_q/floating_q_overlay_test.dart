@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
+import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
 import 'package:qnote_flutter/core/router/app_router.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/widgets/floating_q/floating_q_overlay.dart';
@@ -192,6 +193,53 @@ void main() {
           .popOverlayContext(noteContext);
       await tester.pumpAndSettle();
 
+      expect(find.byKey(const ValueKey('quote-card')), findsNothing);
+    });
+
+    testWidgets('框选状态下点悬浮球：捕获引用打开面板并渲染引用卡片', (tester) async {
+      await tester.pumpWidget(_host());
+      await tester.pumpAndSettle();
+
+      // 模拟笔记编辑页打开且正文有框选（桥钩子返回捕获结果）
+      const noteContext = QPageContext(
+        type: QContextType.noteDetail,
+        targetId: 'n1',
+        signature: 'note:sel',
+        displayLabel: '笔记《小Q的自我介绍》',
+      );
+      final context = tester.element(find.byType(FloatingQOverlay));
+      final container = ProviderScope.containerOf(context, listen: false);
+      container.read(floatingQProvider.notifier).pushOverlayContext(noteContext);
+      QTargetBridge.instance.register(
+        'note:sel',
+        QTargetHooks(
+          quoteSelection: () => const QTextQuote(
+            source: QQuoteSource.note,
+            sourceId: 'n1',
+            sourceTitle: '小Q的自我介绍',
+            quotedText: '悬浮球框选引用的文本',
+            locationDesc: '第 5 行附近',
+          ),
+        ),
+      );
+      addTearDown(() => QTargetBridge.instance.unregister('note:sel'));
+
+      await tester.tap(find.byKey(const ValueKey('ball')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('panel')), findsOneWidget);
+      expect(find.byKey(const ValueKey('quote-card')), findsOneWidget);
+      expect(find.text('笔记《小Q的自我介绍》 · 第 5 行附近'), findsOneWidget);
+    });
+
+    testWidgets('无框选时点悬浮球仅打开面板（不渲染引用卡片）', (tester) async {
+      await tester.pumpWidget(_host());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('ball')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('panel')), findsOneWidget);
       expect(find.byKey(const ValueKey('quote-card')), findsNothing);
     });
   });
