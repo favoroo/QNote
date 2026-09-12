@@ -17,6 +17,7 @@ import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/agent/agent_tool_labels.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
@@ -25,6 +26,7 @@ import 'package:qnote_flutter/config/defaults.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/widgets/empty_state.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
+import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
 import 'package:qnote_flutter/widgets/common/animated_ellipsis.dart';
 import 'package:qnote_flutter/core/agent/services/agent_interaction_service.dart';
 
@@ -863,6 +865,11 @@ class _AiPageState extends ConsumerState<AiPage> {
             message: currentMsg,
             isFirstInGroup: isFirstInGroup,
             isLastInGroup: isLastInGroup,
+            actionsEnabled: !hasStreaming,
+            onContinue: () =>
+                ref.read(currentChatProvider.notifier).continueAfterTurnLimit(),
+            onPause: () =>
+                ref.read(currentChatProvider.notifier).pauseAfterTurnLimit(),
           );
           // 用户消息长按弹出操作菜单（撤回本轮 / 再次编辑 / 复制）
           return RepaintBoundary(
@@ -1767,12 +1774,27 @@ class _ChatBubble extends StatelessWidget {
   final bool isFirstInGroup;
   final bool isLastInGroup;
 
+  /// 步数上限消息的操作回调（非 null 且待处理时在气泡下方渲染「继续/暂停」按钮）
+  final VoidCallback? onContinue;
+  final VoidCallback? onPause;
+
+  /// 按钮是否可点（Agent 执行中禁用，防止并发任务）
+  final bool actionsEnabled;
+
   const _ChatBubble({
     required this.message,
     this.statusText,
     this.isFirstInGroup = true,
     this.isLastInGroup = true,
+    this.onContinue,
+    this.onPause,
+    this.actionsEnabled = false,
   });
+
+  /// 是否为待处理的步数上限消息（渲染「继续/暂停」按钮）
+  bool get _isTurnLimitPending =>
+      message.uiDetails?['type'] == 'turn_limit' &&
+      message.uiDetails?['handled'] != true;
 
   @override
   Widget build(BuildContext context) {
@@ -2035,6 +2057,13 @@ class _ChatBubble extends StatelessWidget {
                   ),
           ),
         ),
+        // 步数上限提示：待处理时在气泡下方渲染「继续/暂停」按钮
+        if (!isUser && _isTurnLimitPending)
+          AgentTurnLimitActions(
+            onContinue: onContinue,
+            onPause: onPause,
+            enabled: actionsEnabled,
+          ),
       ],
     ),
     );
@@ -2377,7 +2406,7 @@ class _ChatBubble extends StatelessWidget {
               ),
               const SizedBox(width: 4),
               Text(
-                '操作反馈 [${message.toolName ?? "tool"}]',
+                AgentToolLabels.resultLabel(message.toolName ?? '', message.uiDetails),
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.bold,

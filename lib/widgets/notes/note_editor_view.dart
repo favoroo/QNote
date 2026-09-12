@@ -1,19 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:dio/dio.dart' show CancelToken, DioException, DioExceptionType;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:qnote_flutter/config/defaults.dart' show defaultSystemPrompts;
-import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
 import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
-import 'package:qnote_flutter/core/logger/logger_service.dart';
-import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/note.dart';
-import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/note_provider.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
@@ -162,7 +156,9 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   bool get _isCodeLikeFile => NoteFileTypeHelper.isCodeLike(_fileType);
 
   /// 当前是否处于渲染预览状态（仅 html/svg 生效，json/code 始终为源码模式）
-  bool get _isPreviewActive => _previewMode && !_isCodeLikeFile;
+  bool get _isPreviewActive =>
+      _previewMode &&
+      (_fileType == NoteFileType.html || _fileType == NoteFileType.svg);
 
   // Track which text segment is currently focused
   int _focusedSegmentIndex = 0;
@@ -190,12 +186,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
 
   bool _isToolbarExpanded = false;
 
-  // 笔记图片长按 AI 提取：正在提取的图片段索引，null 表示未在提取
-  int? _extractingImageIndex;
-  // 笔记图片长按 AI 提取：用于取消进行中的请求
-  CancelToken? _extractCancelToken;
-  // 长按图片弹出的操作菜单 Overlay
-  OverlayEntry? _imageActionMenuOverlay;
+  // 图片长按拖拽排序：当前悬停高亮的放置目标段索引，null 表示未在拖拽
+  int? _dragHoverSegmentIndex;
 
   // 全局悬浮小Q联动：页面上下文注册与任务期间自动保存抑制
   late final QPageContext _qContext;
@@ -654,10 +646,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         ?.read(floatingQProvider.notifier)
         .popOverlayContext(_qContext);
     _hideHeadingMenu();
-    _hideImageActionMenu();
     _autoSaveTimer?.cancel();
     _historyTimer?.cancel();
-    _extractCancelToken?.cancel('editor disposed');
     _titleController.dispose();
     _scrollController.dispose();
     for (final seg in _segments) {
@@ -1515,15 +1505,72 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     final widgets = <Widget>[];
     for (int i = 0; i < _segments.length; i++) {
       final seg = _segments[i];
+      Widget? child;
       if (seg is _TextSegment) {
-        widgets.add(_buildTextSegment(seg, theme));
+        child = _buildTextSegment(seg, theme);
       } else if (seg is _ImageSegment) {
-        widgets.add(_buildImageSegment(seg, i, theme));
+        child = _buildImageSegment(seg, i, theme);
       } else if (seg is _LinkSegment) {
-        widgets.add(_buildLinkSegment(seg, i, theme));
+        child = _buildLinkSegment(seg, i, theme);
       }
+      if (child == null) continue;
+      widgets.add(_buildDragTargetForSegment(child, i, theme));
     }
     return widgets;
+  }
+
+  /// 把每个段包成图片拖拽的放置目标：拖拽悬停时高亮该段，松手后图片移动到该段之前。
+  Widget _buildDragTargetForSegment(Widget child, int index, ThemeData theme) {
+    return DragTarget<_ImageSegment>(
+      // 目标是图片自身原位置时拒绝放置
+      onWillAcceptWithDetails: (details) => _segments.indexOf(details.data) != index,
+      onMove: (details) {
+        if (_dragHoverSegmentIndex != index) {
+          setState(() => _dragHoverSegmentIndex = index);
+        }
+      },
+      onLeave: (data) {
+        if (_dragHoverSegmentIndex == index) {
+          setState(() => _dragHoverSegmentIndex = null);
+        }
+      },
+      onAcceptWithDetails: (details) {
+        setState(() => _dragHoverSegmentIndex = null);
+        _moveImageSegment(details.data, index);
+      },
+      builder: (context, candidate, rejected) {
+        if (candidate.isEmpty) return child;
+        // 悬停高亮：primary 描边包裹目标段，提示松手后图片将插入到该段之前
+        return Container(
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: theme.colorScheme.primary.withValues(alpha: 0.6),
+              width: 2,
+            ),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: child,
+        );
+      },
+    );
+  }
+
+  /// 将拖拽的图片段移动到目标段之前，并记录历史快照、触发防抖保存。
+  void _moveImageSegment(_ImageSegment seg, int targetIndex) {
+    final from = _segments.indexOf(seg);
+    if (from < 0) return;
+    // 移除自身后，目标索引在原索引之后时需前移一位
+    final to = targetIndex > from ? targetIndex - 1 : targetIndex;
+    if (to == from) return;
+
+    _historyTimer?.cancel();
+    _saveHistoryState();
+
+    setState(() {
+      _segments.removeAt(from);
+      _segments.insert(to, seg);
+    });
+    _triggerAutoSave();
   }
 
   Widget _buildTextSegment(_TextSegment seg, ThemeData theme) {
@@ -1956,37 +2003,59 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   }
 
   Widget _buildImageSegment(_ImageSegment seg, int index, ThemeData theme) {
-    final isExtracting = _extractingImageIndex == index;
+    final imageCard = Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(maxHeight: 280),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: UnifiedImage(
+          imagePath: seg.path,
+          width: double.infinity,
+          fit: BoxFit.cover,
+        ),
+      ),
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Stack(
         children: [
-          Builder(
-            builder: (imgContext) => GestureDetector(
-              onTap: () => _previewImage(seg.path),
-              onLongPress: () => _showImageActionMenu(seg, index, anchorContext: imgContext),
-              child: Container(
-                width: double.infinity,
-                constraints: const BoxConstraints(maxHeight: 280),
-                decoration: BoxDecoration(
+          // 长按图片拖动到其他段的位置，实现正文内图片排序
+          LongPressDraggable<_ImageSegment>(
+            data: seg,
+            maxSimultaneousDrags: 1,
+            feedback: Transform.scale(
+              scale: 0.6,
+              child: SizedBox(
+                width: 260,
+                child: Material(
+                  elevation: 8,
+                  shadowColor: Colors.black.withValues(alpha: 0.35),
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.06),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: UnifiedImage(
+                      imagePath: seg.path,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
                     ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: UnifiedImage(
-                    imagePath: seg.path,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
                   ),
                 ),
               ),
+            ),
+            childWhenDragging: Opacity(opacity: 0.35, child: imageCard),
+            child: GestureDetector(
+              onTap: () => _previewImage(seg.path),
+              child: imageCard,
             ),
           ),
           Positioned(
@@ -2008,286 +2077,9 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
               ),
             ),
           ),
-          // AI 提取中遮罩
-          if (isExtracting)
-            Positioned.fill(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Container(
-                  color: Colors.black.withValues(alpha: 0.5),
-                  child: const Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 28,
-                          height: 28,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        ),
-                        SizedBox(height: 10),
-                        Text(
-                          '正在提取图片内容...',
-                          style: TextStyle(color: Colors.white, fontSize: 13),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
         ],
       ),
     );
-  }
-
-  /// 长按图片时弹出操作菜单（AI 提取 / 预览 / 删除）。
-  /// 复用 [_showHeadingMenu] 的 OverlayEntry 模式，避免 GlobalKey 生命周期问题。
-  void _showImageActionMenu(_ImageSegment seg, int index, {BuildContext? anchorContext}) {
-    if (_extractingImageIndex != null) return; // 提取中不弹菜单
-    _hideImageActionMenu();
-
-    final BuildContext ctx = anchorContext ?? context;
-    final RenderBox? button = ctx.findRenderObject() as RenderBox?;
-    if (button == null) return;
-    final RenderBox overlay = Overlay.of(ctx).context.findRenderObject() as RenderBox;
-    final Offset position = button.localToGlobal(Offset.zero, ancestor: overlay);
-    final screenSize = MediaQuery.of(ctx).size;
-
-    const menuWidth = 200.0;
-    const itemHeight = 48.0;
-    const menuHeight = itemHeight * 3 + 16;
-
-    // 智能选择上方/下方弹出
-    final showAbove = position.dy + button.size.height + menuHeight > screenSize.height - 16;
-    double top;
-    if (showAbove) {
-      top = position.dy - menuHeight;
-      if (top < 16) top = 16;
-    } else {
-      top = position.dy + button.size.height + 4;
-    }
-    double left = position.dx;
-    if (left + menuWidth > screenSize.width - 16) {
-      left = screenSize.width - menuWidth - 16;
-    }
-    if (left < 16) left = 16;
-
-    _imageActionMenuOverlay = OverlayEntry(
-      builder: (context) {
-        final theme = Theme.of(context);
-        final colorScheme = theme.colorScheme;
-        return Stack(
-          children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _hideImageActionMenu,
-              child: const SizedBox.expand(),
-            ),
-            Positioned(
-              left: left,
-              top: top,
-              child: Material(
-                elevation: 8,
-                shadowColor: Colors.black.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(16),
-                color: colorScheme.surface,
-                child: Container(
-                  width: menuWidth,
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-                    ),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildImageMenuItem(
-                        icon: Icons.auto_awesome,
-                        label: 'AI 提取图片内容',
-                        color: colorScheme.primary,
-                        onTap: () {
-                          _hideImageActionMenu();
-                          _extractImageContent(index);
-                        },
-                      ),
-                      _buildImageMenuItem(
-                        icon: Icons.visibility_outlined,
-                        label: '预览图片',
-                        color: colorScheme.onSurface,
-                        onTap: () {
-                          _hideImageActionMenu();
-                          _previewImage(seg.path);
-                        },
-                      ),
-                      _buildImageMenuItem(
-                        icon: Icons.delete_outline,
-                        label: '删除图片',
-                        color: colorScheme.error,
-                        onTap: () {
-                          _hideImageActionMenu();
-                          _removeImage(index);
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-    Overlay.of(ctx).insert(_imageActionMenuOverlay!);
-  }
-
-  void _hideImageActionMenu() {
-    _imageActionMenuOverlay?.remove();
-    _imageActionMenuOverlay = null;
-  }
-
-  Widget _buildImageMenuItem({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            Icon(icon, size: 20, color: color),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// 调用 AI 模型提取图片内容，并把结果以引用块形式追加到图片下方。
-  Future<void> _extractImageContent(int index) async {
-    if (_extractingImageIndex != null) return; // 已有提取在进行
-    if (index < 0 || index >= _segments.length || _segments[index] is! _ImageSegment) {
-      return;
-    }
-    final imgSeg = _segments[index] as _ImageSegment;
-
-    // 1. 获取 AI 配置（支持免费模型）
-    final AiConfig aiConfig;
-    try {
-      aiConfig = await AiRoleService.instance.getEffectiveConfigForRole('timelineOptimization');
-    } catch (e) {
-      if (mounted) Toast.warning(context, 'AI 模型配置失败，请检查设置');
-      return;
-    }
-
-    // 2. 进入 loading 状态
-    _extractCancelToken = CancelToken();
-    setState(() => _extractingImageIndex = index);
-    if (mounted) Toast.info(context, '正在提取图片内容...');
-
-    try {
-      // 3. 图片转 base64
-      final imageBase64 = await _imageRepo.getBase64Image(imgSeg.path);
-      if (imageBase64.isEmpty) {
-        if (mounted) Toast.error(context, '图片文件不存在');
-        return;
-      }
-      final mimeType = ImageRepository.getMimeType(imgSeg.path);
-
-      // 4. 配置 AI 服务并调用
-      final aiService = ref.read(aiServiceProvider);
-      final roleSettings = await AiRoleService.instance.getSettingsForRole('timelineOptimization');
-      aiService.updateConfig(aiConfig, temperature: roleSettings.temperature, maxTokens: roleSettings.maxTokens);
-      final systemPrompt = defaultSystemPrompts['note_image_analysis'] ?? '';
-      final result = await aiService.chatWithImage(
-        imageBase64: imageBase64,
-        mimeType: mimeType,
-        userText: '提取图片中的相关内容',
-        systemPrompt: systemPrompt,
-        cancelToken: _extractCancelToken,
-      );
-
-      final trimmed = result.trim();
-      if (trimmed.isEmpty) {
-        if (mounted) Toast.warning(context, '未识别到内容');
-        return;
-      }
-
-      // 5. 把文本追加到图片下方的文本段
-      _appendTextBelowImage(index, trimmed);
-      if (mounted) Toast.success(context, '已提取并追加到图片下方');
-    } on DioException catch (e) {
-      if (CancelToken.isCancel(e)) {
-        if (mounted) Toast.info(context, '已停止提取');
-      } else if (e.type == DioExceptionType.connectionError) {
-        if (mounted) Toast.error(context, '网络连接失败，请检查网络或API配置');
-      } else if (e.response?.statusCode == 401) {
-        if (mounted) Toast.error(context, 'API密钥无效，请检查AI配置');
-      } else {
-        if (mounted) Toast.error(context, '提取失败：${e.message ?? '网络错误'}');
-      }
-    } catch (e, stackTrace) {
-      LoggerService.instance.logAI(
-        '笔记图片内容提取失败: $e',
-        level: LogLevel.error,
-        details: stackTrace.toString(),
-      );
-      if (mounted) Toast.error(context, '提取失败');
-    } finally {
-      if (mounted) setState(() => _extractingImageIndex = null);
-      _extractCancelToken = null;
-    }
-  }
-
-  /// 把提取到的文本以 Markdown 引用块形式追加到指定图片段下方。
-  ///
-  /// 若图片下方已是文本段，则在开头插入（保留原有内容）；否则新建一个文本段。
-  /// 引用块格式 `> 图：xxx` 便于分享笔记时被识别为图片描述。
-  void _appendTextBelowImage(int imageIndex, String extractedText) {
-    _historyTimer?.cancel();
-    _saveHistoryState();
-
-    final wrapped = extractedText.trim().isEmpty ? '' : '> 图：${extractedText.trim()}';
-
-    setState(() {
-      final nextIdx = imageIndex + 1;
-      if (nextIdx < _segments.length && _segments[nextIdx] is _TextSegment) {
-        // 已有文本段：合并为新的文本段（避免旧 selection 越界）
-        final seg = _segments[nextIdx] as _TextSegment;
-        final original = seg.controller.text;
-        final combined = original.isEmpty ? wrapped : '$wrapped\n\n$original';
-        seg.dispose();
-        _segments[nextIdx] = _TextSegment(context: context, text: combined);
-        _attachListeners();
-      } else {
-        // 无文本段：插入新文本段
-        if (wrapped.isNotEmpty) {
-          final newSeg = _TextSegment(context: context, text: wrapped);
-          _segments.insert(nextIdx, newSeg);
-          _attachListeners();
-        }
-      }
-    });
-
-    _saveHistoryState();
-    _triggerAutoSave();
   }
 
   OverlayEntry? _headingMenuOverlay;

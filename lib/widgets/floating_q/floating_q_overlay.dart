@@ -13,6 +13,7 @@ import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
+import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
 import 'package:qnote_flutter/widgets/common/animated_ellipsis.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 
@@ -668,6 +669,19 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
       // 不渲染思考胶囊，这类消息只会渲染成空白胶囊卡片，直接跳过
       if (message.content.trim().isEmpty) continue;
       children.add(_buildEntrance(_buildBubble(theme, message)));
+      // 步数上限提示：待处理时在气泡下方渲染「继续/暂停」按钮
+      if (message.role == 'assistant' &&
+          message.uiDetails?['type'] == 'turn_limit' &&
+          message.uiDetails?['handled'] != true) {
+        children.add(
+          AgentTurnLimitActions(
+            enabled: fq.phase != FloatingQPhase.working,
+            onContinue: () =>
+                ref.read(floatingQProvider.notifier).continueTask(),
+            onPause: () => ref.read(floatingQProvider.notifier).pauseTask(),
+          ),
+        );
+      }
     }
 
     if (fq.statusText != null) {

@@ -7,6 +7,7 @@ import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/free_model_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/agent/agent_tool_labels.dart';
 import 'package:qnote_flutter/core/agent/agent_tool_registry.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_cancellation_token.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_events.dart';
@@ -197,20 +198,34 @@ class ChatSessionListNotifier extends AsyncNotifier<List<ChatSession>> {
       updatedAt: now,
     );
     await repo.insertChatSession(session);
-    // 内存增量更新，避免全表重查
-    state = AsyncData([...(state.valueOrNull ?? []), session]);
+    // 内存增量更新（最新在前，与 updated_at DESC 排序一致），避免全表重查
+    state = AsyncData([session, ...(state.valueOrNull ?? [])]);
     return session;
+  }
+
+  /// 将 [session] 回写到内存列表（替换或插入并按 updatedAt 降序重排），不写库。
+  ///
+  /// 供 CurrentChatNotifier 等直接落库的场景同步历史抽屉，避免重复持久化
+  void upsertLocal(ChatSession session) {
+    final list = (state.valueOrNull ?? [])
+        .map((s) => s.id == session.id ? session : s)
+        .toList();
+    if (!list.any((s) => s.id == session.id)) {
+      list.add(session);
+    }
+    list.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    state = AsyncData(list);
   }
 
   Future<void> updateSession(ChatSession session) async {
     final repo = ConfigRepository.instance;
     await repo.updateChatSession(session);
-    // 内存替换目标项
-    state = AsyncData(
-      (state.valueOrNull ?? [])
-          .map((s) => s.id == session.id ? session : s)
-          .toList(),
-    );
+    // 内存替换目标项并按 updatedAt 降序重排，保持与数据库查询排序一致
+    final list = (state.valueOrNull ?? [])
+        .map((s) => s.id == session.id ? session : s)
+        .toList();
+    list.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    state = AsyncData(list);
   }
 
   Future<void> deleteSession(String id) async {
@@ -255,6 +270,57 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
   /// 主动取消/中止当前 Agent 执行（对齐 Pi Agent 的 abort 控制）
   void cancelCurrentAgent([String? reason]) {
     _currentCancellationToken?.cancel(reason);
+  }
+
+  /// 将最近一条步数上限消息标记为已处理（隐藏「继续/暂停」按钮）并持久化
+  Future<void> _markTurnLimitHandled() async {
+    if (state == null) return;
+    final messages = List<ChatMessage>.from(state!.messages);
+    int? index;
+    for (var i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].uiDetails?['type'] == 'turn_limit') {
+        index = i;
+        break;
+      }
+    }
+    if (index == null) return;
+    messages[index] = messages[index].copyWith(
+      uiDetails: {...?messages[index].uiDetails, 'handled': true},
+    );
+    state = state!.copyWith(messages: messages);
+    await ConfigRepository.instance.updateChatSession(state!);
+    _syncSessionToList();
+  }
+
+  /// 把当前会话回写到会话列表的内存态（不重复写库），
+  /// 让历史抽屉即时看到最新标题与时间（否则要等重启或 /chats/ 事件才刷新）
+  void _syncSessionToList() {
+    final session = state;
+    if (session == null) return;
+    _ref.read(chatSessionListProvider.notifier).upsertLocal(session);
+  }
+
+  /// 步数上限消息是否待处理（UI 据此渲染/启用「继续/暂停」按钮）
+  bool get hasPendingTurnLimit {
+    return state?.messages.any(
+          (m) =>
+              m.uiDetails?['type'] == 'turn_limit' &&
+              m.uiDetails?['handled'] != true,
+        ) ??
+        false;
+  }
+
+  /// 点击「继续」：标记按钮已处理后以「继续」指令重启 Agent 循环接着执行
+  Future<void> continueAfterTurnLimit() async {
+    if (_isStreaming) return;
+    await _markTurnLimitHandled();
+    await sendMessage('继续');
+  }
+
+  /// 点击「暂停」：仅隐藏按钮，已完成的工作保留，任务就此结束
+  Future<void> pauseAfterTurnLimit() async {
+    if (_isStreaming) return;
+    await _markTurnLimitHandled();
   }
 
   /// 以约 60ms 的节奏批量刷新流式文本到 UI（人眼流畅且不逐 token 重建）
@@ -506,7 +572,7 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       final agentLoop = AgentLoop(
         aiService: aiService,
         dispatcher: dispatcher,
-        maxTurns: 8,
+        maxTurns: 20,
         afterToolCall: (call, result) async {
           // 按 VFS 路径前缀联动刷新对应业务数据
           refreshWorkspaceSideEffects(
@@ -552,9 +618,11 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
             break;
           case AgentEventType.toolExecuting:
             final toolName = event.toolCall?.name ?? '';
-            final extraProgress = event.text != null ? ' (${event.text})' : '';
+            final extraProgress = event.text != null ? '（${event.text}）' : '';
             // 尾部不再拼字面省略号，由 UI 的动态省略号动画表达进行中
-            _setStreamingStatus('⚡ 小Q正在执行操作: [$toolName]$extraProgress');
+            _setStreamingStatus(
+              '⚡ ${AgentToolLabels.progressLabel(toolName, event.toolCall?.arguments)}$extraProgress',
+            );
             break;
           case AgentEventType.toolCompleted:
             // 每当工具执行完成后，推入中间消息
@@ -632,6 +700,7 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
 
       if (state != null) {
         await repo.updateChatSession(state!);
+        _syncSessionToList();
       }
     }
   }
@@ -667,6 +736,7 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       // 截断该轮起的所有消息（含 assistant/tool 中间消息与后续轮次）并落库
       state = state!.copyWith(messages: messages.sublist(0, userMessageIndex));
       await ConfigRepository.instance.updateChatSession(state!);
+      _syncSessionToList();
 
       // 恢复写入不走 AgentLoop 的 afterToolCall 钩子，手动补齐业务数据联动刷新
       refreshAllBusinessData(_ref);

@@ -51,6 +51,16 @@ is_long_term: false      # 是否为长期待办(选填)
 - **标记完成**：使用 `edit_file` 将 `status: pending` 替换为 `status: completed`。
 - **修改分类**：通过创建新路径并删除旧路径，或使用 `edit_file`。
 - **查看待办**：使用 `list_dir(path: "/todos")` 查看分类；使用 `list_dir(path: "/todos/今日")` 查看分类下的所有待办。
+
+## 4. GTD 四象限速查
+- 重要且紧急 → `/todos/今日/` 并标记 `priority: important`
+- 重要不紧急 → `/todos/长期/`
+- 紧急不重要 → `/todos/今日/`（普通优先级）
+- 不重要不紧急 → 建议不记录，或归入 `/todos/学习/` 等低优先级分类
+
+## 5. 批量操作
+- **批量完成**：逐个 `edit_file` 将 `status: pending` 替换为 `status: completed`。
+- **批量删除**：属不可逆操作，必须先 `ask_user` 二次确认，确认后才逐个执行。
 ''';
 
   static const String noteManagerDoc = '''---
@@ -79,8 +89,37 @@ pinned: false           # 是否置顶
 
 ## 3. 核心操作规范
 - **新建笔记**：使用 `write_file(path: "/notes/笔记本/标题.md", content: ...)`。若笔记本不存在将自动创建。
-- **检索笔记**：使用 `grep(query: "关键词", path: "/notes")` 进行跨笔记检索。
+- **检索笔记**：使用 `grep(query: "关键词", scope: "notes")` 进行跨笔记检索（`scope` 可选 `all` / `notes` / `todos` / `timeline`，附 `max_results` 控制返回条数；注意 grep 没有 path 参数）。
 - **局部修改**：使用 `edit_file(path: ..., old_text: ..., new_text: ...)` 进行高精度修改。
+
+## 4. 多文件类型支持
+- 除 `.md` 外，`/notes/` 下还支持写入 `.html` 网页、`.svg` 矢量图、`.json` 数据文件及常见代码文件，App 内会按后缀自动渲染预览。
+- 生成展示型内容（卡片、海报、可视化页面）时，优先写入**带内联样式的单文件 HTML**。
+- 非 `.md` 文件的扩展名会保留在笔记标题中（`.md` 后缀会被自动去掉）。
+
+## 5. 图片插入规范
+- 正文图片独立成行写 `![image](<路径>)`；路径必须来自 `generate_image` 工具回显或已有记录中的真实路径，**严禁编造**。
+- 插入后系统会自动回填图片索引供云同步识别，无需额外操作。
+
+## 6. 长文排版模板
+```markdown
+# 笔记主标题
+> 一句话导语：本文解决什么问题、结论是什么。
+
+## 一、背景与问题
+段落正文……每节结尾配一两句小结。
+
+## 二、核心方案
+- 要点一
+- 要点二
+
+| 方案 | 优点 | 缺点 |
+| --- | --- | --- |
+
+## 三、行动与后续
+- [ ] 待跟进事项
+```
+- 标题层级不超过三级（`#` ~ `###`）；长文建议开头导语点题、每节收尾小结。
 ''';
 
   static const String timelineManagerDoc = '''---
@@ -136,12 +175,40 @@ description: 每日深度日记技能：长篇日记、反思复盘、情绪体�
 ## 1. 路径规则
 - 路径格式：`/journal/YYYY-MM-DD.md`
 
-## 2. 内容建议结构
+## 2. 写作前素材准备（联动时间线）
+- 用户说「帮我写今天的日记」时，先 `read_file(path: "/timeline/YYYY-MM-DD.md")` 获取当天事实素材（周记/月记则读取对应多天的文件），再组织成文，**严禁凭空虚构当天事件**。
+- 分工：时间线是**客观流水**（何时做了什么），日记是**主观深度复盘**（感受、原因、领悟）——日记应引用事实、升华洞察，而不是重复流水。
+
+## 3. 内容结构（按需选择）
+### 3.1 默认三段结构
 - **今日亮点**：1~3 件最值得称赞或有成就感的事
 - **反思与觉察**：遇到的阻碍、情绪波动与应对策略
 - **明日期待**：明天最重要的一件事
 
-## 3. 核心操作
+### 3.2 GRAI 复盘法（目标导向，适合项目/学习复盘）
+- **G**oal 回顾目标：当初要达成什么
+- **R**esult 对比结果：实际达成与差距
+- **A**nalysis 分析原因：主观/客观因素各是什么
+- **I**nsight 总结规律：下次可复用的经验
+
+### 3.3 KPT 复盘法（轻量，适合日常迭代）
+- **Keep**：今天做得好、要保持的
+- **Problem**：遇到的问题
+- **Try**：明天想尝试的改进
+
+### 3.4 九宫格总结（快速全景复盘）
+用 Markdown 表格呈现 3×3 主题格，主题可按当天情况调整：
+```markdown
+| 今日亮点 | 情绪 | 健康 |
+| --- | --- | --- |
+| 学习成长 | 人际 | 消费 |
+| 时间利用 | 反思 | 明日期待 |
+```
+
+## 4. 情绪记录维度建议
+写情绪相关内容时建议覆盖四要素：**心情分（1~5）**、**触发事件**（什么引发的情绪）、**身体感受**（疲惫/紧绷/轻松等）、**应对方式**（做了什么缓解）。
+
+## 5. 核心操作
 - **查看日记**：`read_file(path: "/journal/YYYY-MM-DD.md")`
 - **编写/覆写**：`write_file(path: "/journal/YYYY-MM-DD.md", content: ...)`
 - **追加感悟**：`read_file` 取得内容后在文末追加新的段落并 `write_file`。
@@ -216,6 +283,7 @@ description: 系统偏好与配置技能：个性化外观、AI模型分配与�
   }
 ]
 ```
+- 写入仅支持 `id` / `name` / `hasPopup`（兼容 `has_popup`）/ `sortOrder` / `isVisible`；读取输出中的 `fields`（弹窗预设字段）与 `categories` **写入不会持久化**，需要修改弹窗字段时提醒用户在 App 设置页手动操作。
 
 ### 1.4 `/settings/fixed_events.json`（每日固定作息与习惯模板）
 管理每天的固定时间段模板（如睡眠、就餐、工作）：
@@ -227,10 +295,13 @@ description: 系统偏好与配置技能：个性化外观、AI模型分配与�
     "startTime": "23:30",
     "endTime": "07:30",
     "isTimePoint": false,
-    "isEnabled": true
+    "content": "睡眠",
+    "isEnabled": true,
+    "sortOrder": 0
   }
 ]
 ```
+- `isTimePoint`: `true` 为时间点事件（仅 `startTime` 生效），`false` 为时间段事件；`content` 为打卡时写入时间线的默认内容（选填）。
 
 ### 1.5 `/settings/profile.json`（个人画像资料）
 管理个人昵称、生日、身高、体重、生活目标：
@@ -244,7 +315,18 @@ description: 系统偏好与配置技能：个性化外观、AI模型分配与�
 ```
 
 ### 1.6 `/settings/webdav.json`（WebDAV 云端同步）
-配置 WebDAV 服务器地址、用户名、密码与自动同步。
+配置 WebDAV 服务器地址、账号与自动同步（字段为下划线风格，`auto_sync` 用 1/0 整数）：
+```json
+{
+  "server_url": "https://dav.example.com",
+  "username": "user",
+  "password": "pass",
+  "remote_path": "QNote",
+  "auto_sync": 0,
+  "sync_interval": 30
+}
+```
+- `sync_interval` 为自动同步间隔（分钟）；未配置时读取返回 `{"enabled": false}`；写入支持增量合并，只传要改的字段即可。
 
 ### 1.7 `/settings/weight.json`（体重与身体健康）
 读取当前体重测量历史、BMI 与趋势，写入时可快捷追加一条打卡：`{"weight": 68.5}`。
@@ -268,14 +350,18 @@ description: 分类与笔记本目录管理技能：查看待办/笔记分类树
 
 ## 1. 虚拟文件清单
 - `/folders/todos.json`: 待办分类列表（`id`, `name`, `sortOrder`, `isExpanded`）
-- `/folders/notes.json`: 笔记本目录列表（支持 `parentId` 树形嵌套层级）
+- `/folders/notes.json`: 笔记本目录列表（同上字段，另含 `parentId`：父笔记本 id，为 null 即顶层，构成树形嵌套层级）
 
-## 2. 核心操作规范
+## 2. 系统默认分类（不可删除）
+- 待办分类 `今日`、`长期` 为系统内置默认分类（id 形如 `todo_default_*`），删除操作对其自动跳过；其余分类删除时会级联软删除下属所有条目。
+
+## 3. 核心操作规范
 - **查看分类**：使用 `read_file(path: "/folders/todos.json")` 或 `/folders/notes.json`；
-- **重命名分类**：使用 `write_file` 传入包含原 ID 和新名称的 JSON：
-  `[{"id": "xxx", "name": "新名称"}]`，系统会自动保存并保持下属已有待办/笔记关联；
-- **新增分类**：传入不带 ID 或新 ID 的对象：
-  `[{"name": "投资理财", "sortOrder": 3}]`；
+- **重命名分类**：使用 `write_file(path: "/folders/todos.json", content: ...)` 传入包含原 ID 和新名称的请求体，系统会保持下属已有待办/笔记关联：
+  `[{"id": "原分类ID", "name": "新名称"}]`
+- **新增分类**：传入不带 ID 的对象，系统自动生成 ID：
+  `[{"name": "投资理财", "sortOrder": 3}]`
+- **调整排序**：传入 `[{"id": "xxx", "sortOrder": 5}]`，或传整个数组按新顺序重排（每项含 `id` 与新 `sortOrder`）；
 - **删除分类目录**：直接调用 `delete_file(path: "/todos/<分类名>/")` 或 `/notes/<笔记本名>/`，底层会自动级联软删除该分类及其下属的所有条目（系统默认分类除外）。
 ''';
 
@@ -288,13 +374,30 @@ description: 数据洞察与生活评分分析技能：调阅待办完成率、�
 
 在 QNote 中，统计数据组织在 `/stats/` 虚拟目录下：
 
-## 1. 数据端点
-- `/stats/summary.json`: 宏观完成度概览（待办总数、完成率、近 7 天时间线打卡总数、分类分布、平均情绪分等）
-- `/stats/daily_scores.json`: 每日健康与生活评分（AI 综合总分 0-100、各维度细分评分、日常总结与个性化建议）
+## 1. 数据端点与字段
+- `/stats/summary.json`（近 7 天宏观概览）：
+  - `todos`: `total` 总数 / `completed` 已完成 / `pending` 待办 / `completionRate` 完成率
+  - `timeline`: `recent7DaysRecordCount` 打卡总数 / `averageMood` 平均情绪 / `categoryDistribution` 分类分布
+  - `timeRange`: 统计区间
+- `/stats/daily_scores.json`（近 14 天评分数组）：每项含 `date`、`totalScore`（0-100）、`dimensionScores`、`summary`、`suggestions`、`recordCount`
 
-## 2. 典型使用场景
+## 2. 评分维度（dimensionScores 键名）
+- `sleep` 睡眠：时长 7-9 小时满分，质量良好加分，熬夜扣分
+- `diet` 饮食：健康饮食加分，外卖/零食/不健康食物扣分
+- `activity` 活动：运动/学习/工作加分，久坐/无活动扣分
+- `health` 健康：按时用药、补水、休息等健康管理行为加分
+- 评分规则：基础分 60 加减分；症状本身（头痛、感冒等非人为可控因素）不扣分，但忽视健康、不及时处理会扣分。
+
+## 3. 空数据处理
+- 数据为空、完成率为 0 或评分记录缺失时，如实告知「记录不足，暂无法有效分析」，并建议用户先记录时间线/待办；**严禁编造数据或评分**。
+
+## 4. 典型使用场景
 - 用户：“总结下我这周的工作和生活” → 查阅 `/stats/summary.json`，根据客观数据总结
 - 用户：“我最近作息健康吗？有什么建议？” → 查阅 `/stats/daily_scores.json`，给出基于评分的专业建议
+- 用户：“根据完成率调整下周计划” → 读 `summary.json` 与待办列表，给出调整建议，用户认可后再写入新待办
+
+## 5. 个性化分析联动
+- 健康类分析建议结合 `/settings/profile.json`（身高、生活目标等画像）与 `/settings/weight.json`（体重趋势、BMI）交叉解读，给出贴合用户个人情况的建议。
 ''';
 
   /// 获取所有可用 Skill 清单

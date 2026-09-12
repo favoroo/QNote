@@ -34,7 +34,7 @@ class AgentLoop {
   AgentLoop({
     required this.aiService,
     required this.dispatcher,
-    this.maxTurns = 8,
+    this.maxTurns = 20,
     this.maxHistoryMessages = 30,
     this.beforeToolCall,
     this.afterToolCall,
@@ -246,7 +246,7 @@ class AgentLoop {
         if (canRunParallel) {
           LoggerService.instance.logAI('触发并行工具调度 (数量=${toolCalls.length})');
           for (final call in toolCalls) {
-            yield AgentEvent.toolExecuting(call, progress: '并行执行中...');
+            yield AgentEvent.toolExecuting(call, progress: '并行处理中');
             await beforeToolCall?.call(call);
           }
 
@@ -295,7 +295,8 @@ class AgentLoop {
         }
       }
 
-      // 超过最大轮次保护：附带已执行操作摘要，方便用户接续指令
+      // 超过最大轮次保护：附带已执行操作摘要，方便用户接续指令。
+      // uiDetails 打上 turn_limit 标记，UI 据此在消息下方渲染「继续/暂停」按钮
       final executedTools = activeMessages
           .where((m) => m.role == 'tool' && m.toolName != null)
           .map((m) => m.toolName!)
@@ -304,8 +305,9 @@ class AgentLoop {
       final timeoutMsg = ChatMessage(
         role: 'assistant',
         content: executedTools.isEmpty
-            ? '小Q执行步骤较多，已达到本轮安全上限。请查看已完成的操作，如有需要可继续向我提问！'
-            : '小Q已连续执行多步操作（$executedTools），达到本轮安全上限，已完成的工作均已生效。如需继续，请告诉我下一步！',
+            ? '小Q已连续执行 $maxTurns 步，先暂停一下。可点击下方「继续」接着执行，或点「暂停」就此结束。'
+            : '小Q已连续执行多步操作（$executedTools），达到 $maxTurns 步上限，先暂停一下。已完成的工作均已生效，可点击下方「继续」接着执行，或点「暂停」就此结束。',
+        uiDetails: const {'type': 'turn_limit', 'handled': false},
         timestamp: DateTime.now(),
       );
       yield AgentEvent.finished(timeoutMsg);

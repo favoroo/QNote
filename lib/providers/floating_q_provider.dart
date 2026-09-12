@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qnote_flutter/core/agent/agent_tool_labels.dart';
 import 'package:qnote_flutter/core/agent/agent_tool_registry.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_cancellation_token.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_events.dart';
@@ -367,6 +368,34 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
     AgentInteractionService.instance.cancelPending('用户主动中止操作');
   }
 
+  /// 将最近一条步数上限消息标记为已处理（隐藏「继续/暂停」按钮）
+  void _markTurnLimitHandled() {
+    final messages = List<ChatMessage>.from(_sessionMessages);
+    for (var i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].uiDetails?['type'] == 'turn_limit') {
+        messages[i] = messages[i].copyWith(
+          uiDetails: {...?messages[i].uiDetails, 'handled': true},
+        );
+        _sessionMessages = messages;
+        state = state.copyWith(messages: List.of(messages));
+        return;
+      }
+    }
+  }
+
+  /// 点击「继续」：以「继续」指令重启 Agent 循环接着执行未完成的任务
+  Future<void> continueTask() async {
+    if (state.phase == FloatingQPhase.working) return;
+    _markTurnLimitHandled();
+    await send('继续');
+  }
+
+  /// 点击「暂停」：仅隐藏按钮，已完成的工作保留，任务就此结束
+  void pauseTask() {
+    if (state.phase == FloatingQPhase.working) return;
+    _markTurnLimitHandled();
+  }
+
   /// 撤回本会话小Q的全部修改，返回 (恢复成功处数, 失败处数)；不可撤回时返回 null
   Future<(int restored, int failed)?> undo() async {
     if (state.phase != FloatingQPhase.countdown ||
@@ -443,7 +472,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       final agentLoop = AgentLoop(
         aiService: aiService,
         dispatcher: dispatcher,
-        maxTurns: 8,
+        maxTurns: 20,
         afterToolCall: (call, result) async {
           // 按 VFS 路径前缀联动刷新对应业务数据
           refreshWorkspaceSideEffects(
@@ -484,8 +513,10 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
             break;
           case AgentEventType.toolExecuting:
             final toolName = event.toolCall?.name ?? '';
-            final extraProgress = event.text != null ? ' (${event.text})' : '';
-            _setStatus('小Q正在执行操作: [$toolName]$extraProgress');
+            final extraProgress = event.text != null ? '（${event.text}）' : '';
+            _setStatus(
+              '${AgentToolLabels.progressLabel(toolName, event.toolCall?.arguments)}$extraProgress',
+            );
             break;
           case AgentEventType.toolCompleted:
           case AgentEventType.assistantMessage:

@@ -553,11 +553,15 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                           size: 20,
                           color: theme.colorScheme.primary.withValues(alpha: 0.8),
                         ),
+                        // 收窄图标占位（默认 48px 会挤压数值导致「110.0 斤」换行）
+                        suffixIconConstraints: const BoxConstraints(minWidth: 24, minHeight: 24),
                       ),
                       child: Text(
                         _latestWeight != null
                             ? '${_weightUnit == '斤' ? (_latestWeight! * 2).toStringAsFixed(1) : _latestWeight!.toStringAsFixed(1)} $_weightUnit'
                             : '点击记录',
+                        maxLines: 1,
+                        overflow: TextOverflow.visible,
                         style: theme.textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w500,
                           color: _latestWeight != null
