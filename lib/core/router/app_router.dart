@@ -7,6 +7,7 @@ import 'package:qnote_flutter/pages/todo_page.dart';
 import 'package:qnote_flutter/pages/ai_page.dart';
 import 'package:qnote_flutter/pages/statistics_page.dart';
 import 'package:qnote_flutter/pages/settings/user_profile_page.dart';
+import 'package:qnote_flutter/pages/settings/q_memory_page.dart';
 import 'package:qnote_flutter/pages/settings/ai_config_page.dart';
 import 'package:qnote_flutter/pages/settings/shortcuts_page.dart';
 import 'package:qnote_flutter/pages/settings/fixed_events_page.dart';
@@ -20,6 +21,7 @@ import 'package:qnote_flutter/widgets/bottom_nav_bar.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
+import 'package:qnote_flutter/providers/floating_q_provider.dart';
 
 /// 根导航键。
 ///
@@ -32,6 +34,8 @@ final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     navigatorKey: rootNavigatorKey,
     initialLocation: '/diary',
+    // 模态路由观察者：Dialog/BottomSheet 打开时全局悬浮小Q自动隐藏
+    observers: [FloatingQModalRouteObserver()],
     routes: [
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {
@@ -125,6 +129,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/settings/profile',
         parentNavigatorKey: rootNavigatorKey,
         pageBuilder: (context, state) => _fadeTransitionPage(const UserProfilePage()),
+      ),
+      GoRoute(
+        path: '/settings/q-memory',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => _fadeTransitionPage(const QMemoryPage()),
       ),
       GoRoute(
         path: '/settings/ai-config',

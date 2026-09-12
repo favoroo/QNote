@@ -7,12 +7,16 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:qnote_flutter/config/defaults.dart' show defaultSystemPrompts;
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
+import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
+import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/note_provider.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
+import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/utils/delta_markdown.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
@@ -152,6 +156,11 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   // 长按图片弹出的操作菜单 Overlay
   OverlayEntry? _imageActionMenuOverlay;
 
+  // 全局悬浮小Q联动：页面上下文注册与任务期间自动保存抑制
+  late final QPageContext _qContext;
+  ProviderContainer? _qContainer;
+  bool _qSuppressAutoSave = false;
+
   @override
   void initState() {
     super.initState();
@@ -163,13 +172,43 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     _parseContentIntoSegments(rawContent);
 
     _titleController.addListener(_triggerAutoSave);
-    
+
     // Seed initial history state
     _undoList.add(_captureHistoryState());
+
+    // 注册悬浮小Q页面上下文与编辑器联动钩子：任务开始暂停自动保存，
+    // 任务结束后若用户未手动编辑则从仓库重读，避免编辑器旧内容覆盖小Q的修改
+    _qContext = QPageContext(
+      type: QContextType.noteDetail,
+      targetId: widget.note.id,
+      targetTitle: widget.note.title,
+      signature: 'note:${widget.note.id}',
+      displayLabel: '笔记《${widget.note.title}》',
+    );
+    ref.read(floatingQProvider.notifier).pushOverlayContext(_qContext);
+    QTargetBridge.instance.register(
+      _qContext.signature,
+      QTargetHooks(
+        fingerprint: () =>
+            '${_titleController.text}\u0000${_serializeToMarkdown()}',
+        reload: _reloadFromRepository,
+        onTaskStart: () => _qSuppressAutoSave = true,
+        onTaskEnd: () => _qSuppressAutoSave = false,
+      ),
+    );
   }
 
-  String _initContentString() {
-    final content = widget.note.content;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // dispose 中 ref 不可靠，提前捕获容器供注销悬浮小Q上下文使用
+    _qContainer ??= ProviderScope.containerOf(context, listen: false);
+  }
+
+  String _initContentString() => _decodeNoteContent(widget.note.content);
+
+  /// 解码笔记内容：兼容旧 Quill delta JSON，统一转为 Markdown 纯文本
+  String _decodeNoteContent(String content) {
     if (content.isNotEmpty) {
       try {
         final deltaJson = jsonDecode(content);
@@ -488,6 +527,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   }
 
   void _triggerAutoSave() {
+    // 悬浮小Q任务进行中或程序化刷新时暂停自动保存，避免编辑器旧内容覆盖小Q的工作区修改
+    if (_qSuppressAutoSave) return;
     _autoSaveTimer?.cancel();
     _autoSaveTimer = Timer(const Duration(seconds: 2), () {
       if (mounted) _saveNote();
@@ -527,8 +568,44 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     if (mounted) Navigator.of(context).pop();
   }
 
+  /// 悬浮小Q任务结束后从仓库重读最新内容刷新编辑器
+  /// （桥接仅在用户任务期间未手动编辑时调用，用户编辑过的版本不会被覆盖）
+  Future<void> _reloadFromRepository() async {
+    if (!mounted) return;
+    final fresh = await NoteRepository().getById(widget.note.id);
+    if (!mounted) return;
+    if (fresh == null) {
+      Toast.info(context, '这篇笔记已被小Q删除');
+      return;
+    }
+    // 抑制监听器：程序化刷新不触发自动保存
+    _qSuppressAutoSave = true;
+    _titleController.text = fresh.title;
+    _lastSavedTitle = fresh.title.isEmpty ? '无标题' : fresh.title;
+
+    final rawContent = _decodeNoteContent(fresh.content);
+    for (final seg in _segments) {
+      if (seg is _TextSegment) seg.dispose();
+    }
+    _segments.clear();
+    _parseContentIntoSegments(rawContent);
+    _focusedSegmentIndex = 0;
+    _lastSavedContent = _serializeToMarkdown();
+    // 重建撤销历史基线，避免撤销栈跨越小Q修改点产生错乱
+    _undoList.clear();
+    _redoList.clear();
+    _undoList.add(_captureHistoryState());
+    _qSuppressAutoSave = false;
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    // 注销悬浮小Q上下文与编辑器联动钩子
+    QTargetBridge.instance.unregister(_qContext.signature);
+    _qContainer
+        ?.read(floatingQProvider.notifier)
+        .popOverlayContext(_qContext);
     _hideHeadingMenu();
     _hideImageActionMenu();
     _autoSaveTimer?.cancel();

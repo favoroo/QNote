@@ -23,6 +23,7 @@ import 'package:qnote_flutter/database_init.dart'
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/theme_provider.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
+import 'package:qnote_flutter/widgets/floating_q/floating_q_overlay.dart';
 import 'package:qnote_flutter/widgets/update_dialog.dart';
 
 /// 关键路径初始化：必须在 runApp 前完成，确保数据库和配置就绪。
@@ -275,7 +276,13 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
                 }
                 router.pop();
               },
-              child: child ?? const SizedBox.shrink(),
+              child: Stack(
+              children: [
+                child ?? const SizedBox.shrink(),
+                // 全局悬浮小Q入口：覆盖所有路由页面（含编辑器），内部自带隐藏规则
+                const FloatingQOverlay(),
+              ],
+            ),
             ),
           ),
         );

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -23,11 +22,11 @@ import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/providers/todo_folder_provider.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
+import 'package:qnote_flutter/providers/agent_support.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/journal_provider.dart';
 import 'package:qnote_flutter/providers/folder_provider.dart';
 import 'package:qnote_flutter/providers/note_provider.dart';
-import 'package:qnote_flutter/core/utils/widget_utils.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
@@ -653,58 +652,15 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
 
     _isStreaming = true;
     _streamingContent.clear();
-    // 开始录制本轮 VFS 变更（撤回/再次编辑功能的数据来源）
-    VirtualWorkspaceService.instance.startRecording();
+    // 开始录制本轮 VFS 变更（撤回/再次编辑功能的数据来源）；句柄制支持与悬浮小Q任务并发录制
+    final recorderHandle = VirtualWorkspaceService.instance.startRecording();
 
     // 取消令牌必须在最前创建：否则"准备中"阶段（资料/关联数据导出）点停止时为 null，取消静默失效
     final token = AgentCancellationToken();
     _currentCancellationToken = token;
 
     try {
-      // 2. Prepare Time Context (in Chinese format, e.g., "2026/05/17 星期日 09:31")
-      const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
-      final weekdayStr = weekdays[now.weekday % 7];
-      final dateStr = DateFormat('yyyy/MM/dd').format(now);
-      final timeStr = DateFormat('HH:mm').format(now);
-      final timeContext = '$dateStr $weekdayStr $timeStr';
-
-      // 3. Prepare User Info (enriched with calculated age and latest weight)
-      final userProfile = await repo.getUserProfile();
-      String? userInfo;
-      if (userProfile != null &&
-          ((userProfile.name != null && userProfile.name!.isNotEmpty) ||
-              (userProfile.nickname != null &&
-                  userProfile.nickname!.isNotEmpty) ||
-              (userProfile.birthday != null &&
-                  userProfile.birthday!.isNotEmpty))) {
-        final Map<String, dynamic> enrichedProfile = {
-          'id': userProfile.id,
-          'name': userProfile.name,
-          'nickname': userProfile.nickname,
-          'birthday': userProfile.birthday,
-          'height': userProfile.height,
-          'gender': userProfile.gender,
-          'otherInfo': userProfile.otherInfo,
-          'customFields': userProfile.customFields,
-        };
-
-        if (userProfile.birthday != null && userProfile.birthday!.isNotEmpty) {
-          try {
-            final birthDate = DateTime.parse(userProfile.birthday!);
-            enrichedProfile['age'] = now.year - birthDate.year;
-          } catch (_) {}
-        }
-
-        if (userProfile.weightHistory.isNotEmpty) {
-          final sortedWeights = [...userProfile.weightHistory]
-            ..sort((a, b) => b.time.compareTo(a.time));
-          enrichedProfile['latestWeight'] = sortedWeights.first.weight;
-        }
-
-        userInfo = const JsonEncoder.withIndent('  ').convert(enrichedProfile);
-      }
-
-      // 4. Prepare Data Context
+      // 2. Prepare Data Context
       final filter = _ref.read(contextFilterProvider);
       String? dataContext;
       if (filter.scope != 'none') {
@@ -731,18 +687,13 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         return;
       }
 
-      // 5. 构建动态环境上下文（时间/用户资料/关联数据），注入 system 尾部而非污染用户消息原文
-      final dynamicContextBuffer = StringBuffer();
-      if (timeContext.isNotEmpty) {
-        dynamicContextBuffer.writeln('- 当前时间: $timeContext');
-      }
-      if (userInfo != null && userInfo.isNotEmpty) {
-        dynamicContextBuffer.writeln('- 用户资料: $userInfo');
-      }
-      if (dataContext != null && dataContext.isNotEmpty) {
-        dynamicContextBuffer.writeln('- 关联数据（用户引用的待办/笔记/日记等）:\n$dataContext');
-      }
-      final dynamicContext = dynamicContextBuffer.toString().trim();
+      // 3. 构建动态环境上下文（时间/用户资料/关联数据），注入 system 尾部而非污染用户消息原文
+      final dynamicContext = await buildBaseDynamicContext(
+        extraSections: [
+          if (dataContext != null && dataContext.isNotEmpty)
+            '关联数据（用户引用的待办/笔记/日记等）:\n$dataContext',
+        ],
+      );
 
       final aiService = _ref.read(aiServiceProvider);
       final roleSettings = await AiRoleService.instance.getSettingsForRole(
@@ -769,40 +720,10 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         maxTurns: 8,
         afterToolCall: (call, result) async {
           // 按 VFS 路径前缀联动刷新对应业务数据
-          final targetPath = (call.arguments['path'] as String? ?? '').toLowerCase();
-
-          // 1. 待办系统联动刷新
-          if (targetPath.startsWith('/todos')) {
-            try {
-              _ref.read(todoListProvider.notifier).refresh();
-              _ref.read(todoFolderListProvider.notifier).refresh();
-              _ref.invalidate(completedTodoListProvider);
-              _ref.invalidate(upcomingRemindersProvider);
-              WidgetUtils.updateHomeWidgets();
-            } catch (_) {}
-          }
-
-          // 2. 日记与时间线流水联动刷新
-          if (targetPath.startsWith('/journal') || targetPath.startsWith('/timeline')) {
-            try {
-              _ref.read(diaryListProvider.notifier).refresh();
-              _ref.invalidate(journalByDateProvider);
-              // 日记复用 notes/folders 表存储（JournalService），删除日记只是硬删数据库行，
-              // 笔记树的 noteListProvider/folderListProvider 仍是内存旧缓存，
-              // 不刷新会导致笔记页残留"内容被清空"的已删日记节点
-              _ref.read(noteListProvider.notifier).refresh();
-              _ref.read(folderListProvider.notifier).refresh();
-            } catch (_) {}
-          }
-
-          // 3. 笔记知识库联动刷新
-          if (targetPath.startsWith('/notes')) {
-            try {
-              _ref.read(noteListProvider.notifier).refresh();
-              // 文件夹列表同样需要联动（如 AI 新建/移动笔记到文件夹）
-              _ref.read(folderListProvider.notifier).refresh();
-            } catch (_) {}
-          }
+          refreshWorkspaceSideEffects(
+            _ref,
+            call.arguments['path'] as String? ?? '',
+          );
         },
       );
 
@@ -906,7 +827,7 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       _ref.read(aiStreamingStatusProvider.notifier).state = null;
 
       // 结束录制，把本轮 VFS 变更快照挂到本轮用户消息上（随会话落库，撤回时按此恢复）
-      final undoEntries = VirtualWorkspaceService.instance.stopRecording();
+      final undoEntries = VirtualWorkspaceService.instance.stopRecording(recorderHandle);
       if (undoEntries.isNotEmpty && state != null) {
         final userIndex = updatedMessages.length - 1;
         final messages = List<ChatMessage>.from(state!.messages);
@@ -947,76 +868,23 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
     int failed = 0;
     try {
       // 收集该轮（含）之后所有用户消息的变更快照，逆序恢复（后一轮的修改先撤销）
-      final rounds = messages
+      final entries = messages
           .skip(userMessageIndex)
           .where((m) => m.role == 'user')
+          .expand((m) => WorkspaceUndoEntry.decodeList(m.undoLog))
           .toList();
-
-      for (final roundMessage in rounds.reversed) {
-        for (final entry in WorkspaceUndoEntry.decodeList(roundMessage.undoLog)) {
-          try {
-            if (entry.existedBefore) {
-              if (entry.beforeContent != null) {
-                await VirtualWorkspaceService.instance.writeFile(
-                  entry.path,
-                  entry.beforeContent!,
-                );
-                restored++;
-              }
-            } else {
-              // 本轮新建的文件应删除；若已不存在（读取失败或占位文案）则状态已符合，无需删除
-              if (!await _workspacePathAbsent(entry.path)) {
-                await VirtualWorkspaceService.instance.deleteFile(entry.path);
-              }
-              restored++;
-            }
-          } catch (e) {
-            failed++;
-            LoggerService.instance.logAI(
-              '撤回恢复工作区变更失败: ${entry.path}, $e',
-              level: LogLevel.warning,
-            );
-          }
-        }
-      }
+      (restored, failed) = await restoreWorkspaceUndoEntries(_ref, entries);
 
       // 截断该轮起的所有消息（含 assistant/tool 中间消息与后续轮次）并落库
       state = state!.copyWith(messages: messages.sublist(0, userMessageIndex));
       await ConfigRepository.instance.updateChatSession(state!);
 
       // 恢复写入不走 AgentLoop 的 afterToolCall 钩子，手动补齐业务数据联动刷新
-      _refreshBusinessDataAfterRollback();
+      refreshAllBusinessData(_ref);
     } finally {
       _isRollingBack = false;
     }
 
     return (restored, failed);
-  }
-
-  /// 判断虚拟路径当前是否处于"不存在"（读取失败或空态占位文案）
-  Future<bool> _workspacePathAbsent(String path) async {
-    try {
-      final content = await VirtualWorkspaceService.instance.readFile(path);
-      return content.contains('暂无流水事件打卡') ||
-          content.contains('尚未开始编写这天的深度反思日记');
-    } catch (_) {
-      return true;
-    }
-  }
-
-  /// 撤回后全量刷新受影响的业务数据（对齐 AgentLoop.afterToolCall 的联动逻辑）
-  void _refreshBusinessDataAfterRollback() {
-    try {
-      _ref.read(todoListProvider.notifier).refresh();
-      _ref.read(todoFolderListProvider.notifier).refresh();
-      _ref.invalidate(completedTodoListProvider);
-      _ref.invalidate(upcomingRemindersProvider);
-      _ref.read(diaryListProvider.notifier).refresh();
-      _ref.invalidate(journalByDateProvider);
-      // 日记复用 notes/folders 表存储，笔记树同样需要刷新（同 afterToolCall 钩子的处理）
-      _ref.read(noteListProvider.notifier).refresh();
-      _ref.read(folderListProvider.notifier).refresh();
-      WidgetUtils.updateHomeWidgets();
-    } catch (_) {}
   }
 }

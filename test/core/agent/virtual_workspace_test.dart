@@ -533,6 +533,80 @@ tags: "运动,健康"
       expect(folderSkill, contains('分类与笔记本目录管理技能'));
       expect(folderSkill, contains('/folders/todos.json'));
     });
+
+    test('23. memory: /memory/ 长期记忆读取、写入、修订、容量与清空', () async {
+      // 1. 根目录与 /memory 目录清单
+      final rootItems = await vfs.listDir('/');
+      expect(rootItems, contains('memory/'));
+      final memoryFiles = await vfs.listDir('/memory');
+      expect(memoryFiles, containsAll(['user.md', 'agent.md']));
+
+      // 2. 空记忆读取返回占位文案
+      final emptyRead = await vfs.readFile('/memory/user.md');
+      expect(emptyRead, contains('暂无记忆条目'));
+
+      // 3. 写入条目并回读
+      final writeRes = await vfs.writeFile(
+        '/memory/user.md',
+        '- 习惯晚上 11 点前睡觉\n- 偏好简洁的回复风格',
+      );
+      expect(writeRes['status'], 'updated');
+      expect(writeRes['usage'], isNotNull);
+
+      final readBack = await vfs.readFile('/memory/user.md');
+      expect(readBack, contains('习惯晚上 11 点前睡觉'));
+
+      // 4. edit_file 修订单条记忆
+      final editRes = await vfs.editFile(
+        '/memory/user.md',
+        '- 习惯晚上 11 点前睡觉',
+        '- 习惯晚上 12 点前睡觉',
+      );
+      expect(editRes['status'], 'updated');
+      final readAfterEdit = await vfs.readFile('/memory/user.md');
+      expect(readAfterEdit, contains('12 点前睡觉'));
+      expect(readAfterEdit, isNot(contains('11 点前睡觉')));
+
+      // 5. 容量超限抛错（user.md 上限 1500 字符）
+      await expectLater(
+        () => vfs.writeFile('/memory/user.md', 'x' * 1501),
+        throwsException,
+      );
+
+      // 6. 非法记忆路径抛错
+      await expectLater(
+        () => vfs.writeFile('/memory/other.md', '- test'),
+        throwsException,
+      );
+
+      // 7. delete_file 清空记忆后回到占位文案
+      final delRes = await vfs.deleteFile('/memory/user.md');
+      expect(delRes['status'], 'deleted');
+      final readAfterDel = await vfs.readFile('/memory/user.md');
+      expect(readAfterDel, contains('暂无记忆条目'));
+    });
+
+    test('24. memory: 记忆变更纳入撤回录制，空态捕获按不存在处理', () async {
+      // 1. 此前为空 → 本轮写入捕获为 existedBefore=false
+      final handle = vfs.startRecording();
+      await vfs.writeFile('/memory/agent.md', '- 用户设备为 iPhone');
+      final entries = vfs.stopRecording(handle);
+      final created = entries.where((e) => e.path == '/memory/agent.md').firstOrNull;
+      expect(created, isNotNull);
+      expect(created!.existedBefore, false);
+
+      // 2. 已有内容时捕获旧快照，撤回恢复时按原内容写回
+      final handle2 = vfs.startRecording();
+      await vfs.writeFile('/memory/agent.md', '- 用户设备为 Android');
+      final entries2 = vfs.stopRecording(handle2);
+      final updated = entries2.where((e) => e.path == '/memory/agent.md').firstOrNull;
+      expect(updated, isNotNull);
+      expect(updated!.existedBefore, true);
+      expect(updated.beforeContent, contains('iPhone'));
+
+      // 清理测试数据
+      await vfs.deleteFile('/memory/agent.md');
+    });
   });
 
   group('VFS 变更录制（对话撤回 undoLog）测试', () {
@@ -541,12 +615,12 @@ tags: "运动,健康"
     final diaryRepo = DiaryRepository();
 
     test('1. 本轮新建的文件捕获为 existedBefore=false，恢复时删除', () async {
-      vfs.startRecording();
+      final recorder = vfs.startRecording();
       await vfs.writeFile(
         '/todos/撤回测试/新建待办.md',
         '---\npriority: normal\n---\n本轮新建',
       );
-      final entries = vfs.stopRecording();
+      final entries = vfs.stopRecording(recorder);
 
       final todoEntries = entries.where((e) => e.existedBefore == false).toList();
       expect(todoEntries, isNotEmpty);
@@ -564,10 +638,10 @@ tags: "运动,健康"
       final all = await todoRepo.getAll();
       final todo = all.where((t) => t.title == '多次修改').first;
 
-      vfs.startRecording();
+      final recorder = vfs.startRecording();
       await vfs.writeFile('/todos/撤回测试/多次修改.md', '---\nid: "${todo.id}"\n---\n版本2');
       await vfs.editFile('/todos/撤回测试/多次修改.md', '版本2', '版本3');
-      final entries = vfs.stopRecording();
+      final entries = vfs.stopRecording(recorder);
 
       // 标题路径与 id 路径（editFile 内部走 writeFile）都应去重为一条，且是最旧内容
       final todoEntries = entries
@@ -587,9 +661,9 @@ tags: "运动,健康"
       );
       final todoId = res['id'] as String;
 
-      vfs.startRecording();
+      final recorder = vfs.startRecording();
       await vfs.deleteFile('/todos/撤回测试/$todoId.md');
-      final entries = vfs.stopRecording();
+      final entries = vfs.stopRecording(recorder);
       expect(entries.first.existedBefore, isTrue);
       expect(entries.first.path, '/todos/撤回测试/$todoId.md');
 
@@ -615,10 +689,10 @@ tags: "运动,健康"
       final record = records.where((r) => r.title == '撤回测试事件').firstOrNull;
       expect(record, isNotNull);
 
-      vfs.startRecording();
+      final recorder = vfs.startRecording();
       // 用单条 id 路径删除（模型实际会用的路径形态）
       await vfs.deleteFile('/timeline/${record!.id}.md');
-      final entries = vfs.stopRecording();
+      final entries = vfs.stopRecording(recorder);
 
       // 归一化为天文件快照
       expect(entries.first.path, '/timeline/2026-01-10.md');

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/pages/settings/user_profile_page.dart';
+import 'package:qnote_flutter/pages/settings/q_memory_page.dart';
 import 'package:qnote_flutter/pages/settings/personalization_page.dart';
 import 'package:qnote_flutter/pages/settings/ai_config_page.dart';
 import 'package:qnote_flutter/pages/settings/shortcuts_page.dart';
@@ -121,6 +122,13 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
                     iconColor: itemColor,
                     label: '个人信息',
                     onTap: () => _navigateTo(context, const UserProfilePage()),
+                  ),
+                  _DrawerMenuItem(
+                    icon: Icons.psychology_outlined,
+                    iconBgColor: itemBgColor,
+                    iconColor: itemColor,
+                    label: '小Q记忆',
+                    onTap: () => _navigateTo(context, const QMemoryPage()),
                   ),
                   _DrawerMenuItem(
                     icon: Icons.smart_toy_outlined,

@@ -3,6 +3,7 @@ import 'package:qnote_flutter/core/storage/database_helper.dart';
 import 'package:qnote_flutter/core/storage/sync_log_repository.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
+import 'package:qnote_flutter/models/agent_memory.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/user_profile.dart';
 import 'package:qnote_flutter/models/weight_record.dart';
@@ -303,6 +304,34 @@ class ConfigRepository {
 
   Future<void> saveAiTemperatures(AiTemperatures temps) async {
     await setAppConfig('ai_temperatures', temps.toJson());
+  }
+
+  /// 读取小Q长期记忆文档（app_configs 键 `agent_memory_` + 分类名）；不存在返回空文档
+  Future<AgentMemoryDocument> getAgentMemory(String category) async {
+    final value = await getAppConfig('agent_memory_$category');
+    if (value == null || value.isEmpty) {
+      return AgentMemoryDocument(category: category);
+    }
+    try {
+      return AgentMemoryDocument.fromJson(value);
+    } catch (_) {
+      // 历史数据损坏时按空文档兜底，避免阻断对话上下文组装
+      return AgentMemoryDocument(category: category);
+    }
+  }
+
+  /// 保存小Q长期记忆文档（经 setAppConfig 自动写入同步日志，参与 WebDAV 云同步）
+  Future<void> saveAgentMemory(AgentMemoryDocument doc) async {
+    await setAppConfig('agent_memory_${doc.category}', doc.toJson());
+  }
+
+  /// 读取全部分类的小Q长期记忆文档（顺序固定为 user → agent）
+  Future<List<AgentMemoryDocument>> getAllAgentMemories() async {
+    final result = <AgentMemoryDocument>[];
+    for (final category in AgentMemoryCategory.all) {
+      result.add(await getAgentMemory(category));
+    }
+    return result;
   }
 
   Future<List<WeightRecord>> getWeightHistory() async {

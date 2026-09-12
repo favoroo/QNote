@@ -25,6 +25,7 @@ import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/widgets/empty_state.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
+import 'package:qnote_flutter/widgets/common/animated_ellipsis.dart';
 import 'package:qnote_flutter/core/agent/services/agent_interaction_service.dart';
 
 class AiPage extends ConsumerStatefulWidget {
@@ -2273,7 +2274,7 @@ class _ChatBubble extends StatelessWidget {
                         // 底部留 5px 让圆点与文字基线视觉对齐
                         const Padding(
                           padding: EdgeInsets.only(left: 4, bottom: 5),
-                          child: _AnimatedEllipsis(),
+                          child: AnimatedEllipsis(),
                         ),
                       ],
                     ),
@@ -2873,76 +2874,6 @@ class _TypingDotsState extends State<_TypingDots>
 
 /// 动态省略号：三个圆点依次渐显、周期尾整体淡出后循环，
 /// 用于流式占位状态行，弱化"卡住不动"的等待感
-class _AnimatedEllipsis extends StatefulWidget {
-  const _AnimatedEllipsis();
-
-  @override
-  State<_AnimatedEllipsis> createState() => _AnimatedEllipsisState();
-}
-
-class _AnimatedEllipsisState extends State<_AnimatedEllipsis>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1350),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  /// 第 [index] 个点在周期进度 [t]（0~1）下的透明度：错峰渐显 + 尾段整体淡出
-  double _dotOpacity(double t, int index) {
-    final start = 0.05 + index * 0.2;
-    double opacity;
-    if (t <= start) {
-      opacity = 0.0;
-    } else if (t < start + 0.2) {
-      opacity = Curves.easeOut.transform((t - start) / 0.2);
-    } else {
-      opacity = 1.0;
-    }
-    // 周期最后 15% 整体淡出，循环衔接更自然
-    if (t > 0.85) {
-      opacity *= 1 - (t - 0.85) / 0.15;
-    }
-    return opacity.clamp(0.0, 1.0);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.primary;
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) {
-        final t = _controller.value;
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: List.generate(3, (i) {
-            return Opacity(
-              opacity: _dotOpacity(t, i),
-              child: Container(
-                width: 4,
-                height: 4,
-                margin: const EdgeInsets.symmetric(horizontal: 1.5),
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              ),
-            );
-          }),
-        );
-      },
-    );
-  }
-}
-
 class _ThoughtProcessView extends StatefulWidget {
   final String thought;
 

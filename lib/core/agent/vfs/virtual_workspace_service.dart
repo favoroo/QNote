@@ -16,6 +16,7 @@ import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/core/utils/reminder_utils.dart';
+import 'package:qnote_flutter/models/agent_memory.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
@@ -50,8 +51,9 @@ class VirtualWorkspaceService {
   // ==========================================
   // 变更录制（对话轮次级撤销快照，支撑小Q对话的撤回/再次编辑）
   // ==========================================
-  /// 当前轮次的录制缓冲；null 表示未在录制
-  List<WorkspaceUndoEntry>? _recorder;
+  /// 录制句柄 → 该任务捕获的变更缓冲；句柄制使 AI 主会话与悬浮小Q任务可并发录制互不污染
+  final Map<int, List<WorkspaceUndoEntry>> _recorders = {};
+  int _recorderSeq = 0;
 
   /// 可录制的业务路径前缀；/chats/ 涉及会话自身（撤回时消息正在截断落库），跳过录制
   static const List<String> _recordablePrefixes = [
@@ -61,24 +63,25 @@ class VirtualWorkspaceService {
     '/journal/',
     '/settings/',
     '/folders/',
+    '/memory/',
   ];
 
-  /// 开始录制一轮对话的 VFS 变更：捕获每个路径被本轮首次修改前的旧状态
-  void startRecording() {
-    _recorder = [];
+  /// 开始录制一轮对话的 VFS 变更：捕获每个路径被本轮首次修改前的旧状态。
+  /// 返回录制句柄，交由 [stopRecording] 结束录制（支持多任务并发录制）
+  int startRecording() {
+    final handle = _recorderSeq++;
+    _recorders[handle] = [];
+    return handle;
   }
 
-  /// 结束录制并返回本轮捕获的变更条目（同一归一化路径只保留首次、即最旧的状态）
-  List<WorkspaceUndoEntry> stopRecording() {
-    final captured = _recorder ?? <WorkspaceUndoEntry>[];
-    _recorder = null;
-    return captured;
+  /// 结束录制并返回该句柄捕获的变更条目（同一归一化路径只保留首次、即最旧的状态）
+  List<WorkspaceUndoEntry> stopRecording(int handle) {
+    return _recorders.remove(handle) ?? <WorkspaceUndoEntry>[];
   }
 
   /// 录制中则捕获指定路径修改前的旧状态；捕获失败静默跳过，绝不阻断正常写操作
   Future<void> _captureUndoState(String rawPath) async {
-    final recorder = _recorder;
-    if (recorder == null) return;
+    if (_recorders.isEmpty) return;
 
     String path;
     try {
@@ -103,25 +106,53 @@ class VirtualWorkspaceService {
       path = await _canonicalNotePath(path) ?? path;
     }
 
-    if (recorder.any((e) => e.path == path)) return;
+    WorkspaceUndoEntry? entry;
+    for (final buffer in _recorders.values) {
+      if (buffer.any((e) => e.path == path)) continue;
+      // 各录制缓冲的去重独立进行：首个需要该路径快照的缓冲触发一次捕获即可
+      entry ??= await _buildUndoEntry(path);
+      if (entry == null) return;
+      buffer.add(entry);
+    }
+  }
 
+  /// 构建指定路径修改前的撤销快照；路径读取异常时按"本轮前不存在"处理
+  Future<WorkspaceUndoEntry?> _buildUndoEntry(String path) async {
     // 日记的空态读取不抛错而是返回占位文案，需单独判定真实存在性
     if (path.startsWith('/journal/')) {
       try {
         final dateStr = path.substring('/journal/'.length).replaceAll('.md', '').trim();
         final date = DateTime.parse(dateStr);
         final existing = await _journalService.getNoteForDate(date);
-        recorder.add(WorkspaceUndoEntry(
+        return WorkspaceUndoEntry(
           path: path,
           existedBefore: existing != null && existing.content.trim().isNotEmpty,
           beforeContent: (existing != null && existing.content.trim().isNotEmpty)
               ? existing.content
               : null,
-        ));
+        );
       } catch (_) {
-        recorder.add(WorkspaceUndoEntry(path: path, existedBefore: false));
+        return WorkspaceUndoEntry(path: path, existedBefore: false);
       }
-      return;
+    }
+
+    // 小Q记忆的空态读取不抛错而是返回占位文案，需按真实存储判定存在性
+    if (path.startsWith('/memory/')) {
+      final category = AgentMemoryCategory.fromPath(path);
+      if (category == null) {
+        return WorkspaceUndoEntry(path: path, existedBefore: false);
+      }
+      try {
+        final doc = await _configRepo.getAgentMemory(category);
+        final hasContent = doc.content.trim().isNotEmpty;
+        return WorkspaceUndoEntry(
+          path: path,
+          existedBefore: hasContent,
+          beforeContent: hasContent ? doc.content : null,
+        );
+      } catch (_) {
+        return WorkspaceUndoEntry(path: path, existedBefore: false);
+      }
     }
 
     try {
@@ -134,14 +165,40 @@ class VirtualWorkspaceService {
       // 时间线空天文件的占位文案写回会被差量逻辑拒绝，按"本轮前不存在"处理
       final isEmptyTimeline =
           path.startsWith('/timeline/') && before.contains('暂无流水事件打卡');
-      recorder.add(WorkspaceUndoEntry(
+      return WorkspaceUndoEntry(
         path: path,
         existedBefore: !isEmptyTimeline,
         beforeContent: isEmptyTimeline ? null : before,
-      ));
+      );
     } catch (_) {
-      recorder.add(WorkspaceUndoEntry(path: path, existedBefore: false));
+      return WorkspaceUndoEntry(path: path, existedBefore: false);
     }
+  }
+
+  // ==========================================
+  // 页面上下文路径解析（全局悬浮小Q快捷入口提示 Agent 精确操作目标用）
+  // 复用录制捕获的归一化逻辑，保证提示路径与 undo 快照路径一致
+  // ==========================================
+  /// 解析笔记实体的规范虚拟路径（`/notes/<id>.md`）；实体不存在返回 null
+  Future<String?> resolveNotePath(String noteId) async {
+    return _canonicalNotePath('/notes/$noteId.md');
+  }
+
+  /// 解析待办实体的规范虚拟路径（`/todos/<分类名>/<id>.md`）；实体不存在返回 null
+  Future<String?> resolveTodoPath(String todoId) async {
+    return _canonicalTodoPath('/todos/$todoId.md');
+  }
+
+  /// 解析时间线记录所属天文件的虚拟路径（`/timeline/YYYY-MM-DD.md`）；记录不存在返回 null
+  Future<String?> resolveTimelineDayPath(String recordId) async {
+    return _resolveTimelineDayPath('/timeline/$recordId.md');
+  }
+
+  /// 每日日记的固定虚拟路径
+  String journalPathForDate(DateTime date) {
+    final m = date.month.toString().padLeft(2, '0');
+    final d = date.day.toString().padLeft(2, '0');
+    return '/journal/${date.year}-$m-$d.md';
   }
 
   /// 将 /timeline/ 下的单条记录路径归一化为天文件路径；记录不存在时返回 null（跳过捕获以保证撤回安全）
@@ -222,6 +279,7 @@ class VirtualWorkspaceService {
 ## 1. 虚拟文件系统结构
 - `/AGENTS.md`: 本工作区指南与系统说明（只读）。
 - `/skills/`: 专业技能手册库（查阅对应领域的规范与操作手册）。
+- `/memory/`: 小Q长期记忆（`user.md` 用户画像与习惯、`agent.md` 小Q手记；每次对话自动载入上下文，支持查看与增改）。
 - `/todos/`: 待办事项库（目录名对应分类，如 `/todos/今日/`、`/todos/长期/`、`/todos/工作/`）。
 - `/notes/`: 笔记与知识库（目录名对应笔记本，如 `/notes/技术架构/`、`/notes/读书笔记/`）。
 - `/timeline/`: 时间线流水日志（按日期归档，如 `/timeline/2026-09-11.md`，支持单点打卡与时间段打卡）。
@@ -258,6 +316,7 @@ class VirtualWorkspaceService {
       return [
         'AGENTS.md',
         'skills/',
+        'memory/',
         'todos/',
         'notes/',
         'timeline/',
@@ -271,6 +330,10 @@ class VirtualWorkspaceService {
 
     if (path == '/skills' || path == '/skills/') {
       return _skillRegistry.listSkills().map((s) => '${s['name']}.md').toList();
+    }
+
+    if (path == '/memory' || path == '/memory/') {
+      return ['user.md', 'agent.md'];
     }
 
     if (path == '/folders' || path == '/folders/') {
@@ -419,6 +482,8 @@ class VirtualWorkspaceService {
       fullContent = await _readTimelineFile(path);
     } else if (path.startsWith('/journal/')) {
       fullContent = await _readJournalFile(path);
+    } else if (path.startsWith('/memory/')) {
+      fullContent = await _readMemoryFile(path);
     } else if (path.startsWith('/folders/')) {
       fullContent = await _readFoldersFile(path);
     } else if (path.startsWith('/stats/')) {
@@ -577,6 +642,20 @@ class VirtualWorkspaceService {
     }
     final note = await _journalService.getNoteForDate(date);
     return note?.content ?? '# $dateStr 日记\n\n> 尚未开始编写这天的深度反思日记。';
+  }
+
+  /// 读取小Q长期记忆文档；空记忆返回占位文案（存在性由 _buildUndoEntry 按真实存储另行判定）
+  Future<String> _readMemoryFile(String path) async {
+    final category = AgentMemoryCategory.fromPath(path);
+    if (category == null) {
+      throw Exception('未知的记忆文件: $path（仅支持 /memory/user.md 与 /memory/agent.md）');
+    }
+    final doc = await _configRepo.getAgentMemory(category);
+    if (doc.content.trim().isEmpty) {
+      final title = AgentMemoryCategory.displayName(category);
+      return '# $title\n\n> 暂无记忆条目。可以通过 write_file / edit_file 写入，一条一行、以 "- " 开头。';
+    }
+    return doc.content;
   }
 
   Future<String> _readSettingsFile(String path) async {
@@ -832,6 +911,8 @@ class VirtualWorkspaceService {
       return await _writeTimelineFile(path, content);
     } else if (path.startsWith('/journal/')) {
       return await _writeJournalFile(path, content);
+    } else if (path.startsWith('/memory/')) {
+      return await _writeMemoryFile(path, content);
     } else if (path.startsWith('/folders/')) {
       return await _writeFoldersFile(path, content);
     } else if (path.startsWith('/chats/')) {
@@ -1406,6 +1487,30 @@ class VirtualWorkspaceService {
     await _journalService.saveJournal(date, content);
     WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, {'date': dateStr});
     return {'status': 'saved', 'path': path, 'date': dateStr};
+  }
+
+  /// 写入小Q长期记忆文档：校验分类与容量上限，保存并广播事件。
+  /// 容量超限直接抛错（对齐 Hermes 有界记忆），引导小Q先整合再写入
+  Future<Map<String, dynamic>> _writeMemoryFile(String path, String content) async {
+    final category = AgentMemoryCategory.fromPath(path);
+    if (category == null) {
+      throw Exception('未知的记忆文件: $path（仅支持 /memory/user.md 与 /memory/agent.md）');
+    }
+    final normalized = content.trim();
+    final maxChars = AgentMemoryCategory.maxChars(category);
+    if (normalized.length > maxChars) {
+      throw Exception(
+        '记忆容量已超限（${normalized.length}/$maxChars 字符）。请先 read_file 查阅现有条目，整合或删除过时内容后再写入。',
+      );
+    }
+    final doc = AgentMemoryDocument(category: category, content: normalized);
+    await _configRepo.saveAgentMemory(doc);
+    WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, doc.toMap());
+    return {
+      'status': 'updated',
+      'path': path,
+      'usage': '${doc.usagePercent}%（${normalized.length}/$maxChars 字符）',
+    };
   }
 
   Future<Map<String, dynamic>> _writeSettingsFile(String path, String content) async {
@@ -2089,6 +2194,23 @@ class VirtualWorkspaceService {
       }
 
       throw Exception('未找到对应的时间线记录或无效的日期路径: $path (必须为 /timeline/YYYY-MM-DD.md 或 /timeline/<id>.md)');
+    }
+
+    if (path.startsWith('/memory/')) {
+      final category = AgentMemoryCategory.fromPath(path);
+      if (category == null) {
+        throw Exception('未知的记忆文件: $path（仅支持 /memory/user.md 与 /memory/agent.md）');
+      }
+      // 删除记忆文档 = 清空全部条目（保留分类本身，可随时重新写入）
+      await _configRepo.saveAgentMemory(
+        AgentMemoryDocument(category: category, content: ''),
+      );
+      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.deleted, {'category': category});
+      return {
+        'status': 'deleted',
+        'path': path,
+        'title': '${AgentMemoryCategory.displayName(category)}已清空',
+      };
     }
 
     if (path.startsWith('/chats/')) {

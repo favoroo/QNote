@@ -2,9 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
+import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/models/note.dart';
+import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/journal_provider.dart';
 
 const List<String> _weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
@@ -34,6 +37,9 @@ class _JournalEditorViewState extends ConsumerState<JournalEditorView> {
 
   Note? _existingNote;
 
+  // 全局悬浮小Q联动：页面上下文注册（撤销工作区修改后需重载编辑器）
+  late final QPageContext _qContext;
+
   DateTime get _date => widget.date;
 
   @override
@@ -43,6 +49,26 @@ class _JournalEditorViewState extends ConsumerState<JournalEditorView> {
     _scrollController = ScrollController();
     _controller.addListener(_onContentChanged);
     _loadExisting();
+
+    // 注册悬浮小Q页面上下文与重载钩子：任务结束后从 JournalService 重读，
+    // 避免编辑器旧内容在小Q修改后仍被防抖保存覆盖
+    final dateStr =
+        '${_date.year}-${_date.month.toString().padLeft(2, '0')}-${_date.day.toString().padLeft(2, '0')}';
+    _qContext = QPageContext(
+      type: QContextType.journal,
+      targetId: dateStr,
+      targetTitle: dateStr,
+      signature: 'journal:$dateStr',
+      displayLabel: '每日日记 $dateStr',
+    );
+    ref.read(floatingQProvider.notifier).pushOverlayContext(_qContext);
+    QTargetBridge.instance.register(
+      _qContext.signature,
+      QTargetHooks(
+        fingerprint: () => _controller.text,
+        reload: _reloadFromJournal,
+      ),
+    );
   }
 
   @override
@@ -93,6 +119,19 @@ class _JournalEditorViewState extends ConsumerState<JournalEditorView> {
     }
   }
 
+  /// 悬浮小Q任务结束后重读当天日记刷新编辑器
+  /// （桥接仅在用户任务期间未手动编辑时调用）
+  Future<void> _reloadFromJournal() async {
+    final note = await JournalService.instance.getNoteForDate(_date);
+    if (!mounted) return;
+    _lastSavedContent = note?.content ?? '';
+    setState(() {
+      _existingNote = note;
+      _hasSavedLatest = true;
+      _controller.text = _lastSavedContent!;
+    });
+  }
+
   Future<void> _handleBack() async {
     _autoSaveTimer?.cancel();
     await _save();
@@ -101,6 +140,11 @@ class _JournalEditorViewState extends ConsumerState<JournalEditorView> {
 
   @override
   void dispose() {
+    // 注销悬浮小Q上下文与重载钩子（容器在 didChangeDependencies 已捕获）
+    QTargetBridge.instance.unregister(_qContext.signature);
+    _container
+        ?.read(floatingQProvider.notifier)
+        .popOverlayContext(_qContext);
     _autoSaveTimer?.cancel();
     // PopScope 已保证正常返回前完成保存，这里兜底页面被程序化移除的场景
     final unsaved = _controller.text != _lastSavedContent &&

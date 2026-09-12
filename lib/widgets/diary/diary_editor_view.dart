@@ -6,6 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
+import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
+import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/theme/tag_colors.dart';
@@ -19,6 +22,7 @@ import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/shortcut_field.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
+import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/widgets/diary/ai_extract_helper.dart';
@@ -52,6 +56,10 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   bool _isExtracting = false;
   CancelToken? _cancelToken;
   final Map<String, Future<String>> _compressingTasks = {};
+
+  // 全局悬浮小Q联动：页面上下文注册（小Q修改该记录后需重载编辑器）
+  late final QPageContext _qContext;
+  ProviderContainer? _qContainer;
 
   final Map<String, TextEditingController> _formControllers = {};
 
@@ -236,10 +244,65 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     _contentController = TextEditingController(
       text: _parseUserRemarks(r.content, _tagEntries),
     );
+
+    // 注册悬浮小Q页面上下文与重载钩子：任务结束后从仓库重读该记录，
+    // 避免编辑器旧字段在小Q修改后仍被随后的显式保存覆盖
+    _qContext = QPageContext(
+      type: QContextType.diaryDetail,
+      targetId: r.id,
+      targetTitle: r.title.isNotEmpty ? r.title : '一条流水记录',
+      signature: 'diary:${r.id}',
+      displayLabel: r.title.isNotEmpty ? '流水记录《${r.title}》' : '时间线记录',
+    );
+    ref.read(floatingQProvider.notifier).pushOverlayContext(_qContext);
+    QTargetBridge.instance.register(
+      _qContext.signature,
+      QTargetHooks(
+        fingerprint: () => '${_contentController.text}\u0000'
+            '${_formControllers.values.map((c) => c.text).join('\u0000')}',
+        reload: _reloadFromRecord,
+      ),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // dispose 中 ref 不可靠，提前捕获容器供注销悬浮小Q上下文使用
+    _qContainer ??= ProviderScope.containerOf(context, listen: false);
+  }
+
+  /// 悬浮小Q任务结束后从仓库重读该记录刷新编辑器
+  /// （桥接仅在用户任务期间未手动编辑时调用，用户编辑过的版本不会被覆盖）
+  Future<void> _reloadFromRecord() async {
+    if (!mounted) return;
+    final fresh = await DiaryRepository().getById(widget.record.id);
+    if (!mounted) return;
+    if (fresh == null) {
+      Toast.info(context, '这条记录已被小Q删除');
+      return;
+    }
+    setState(() {
+      _time = fresh.time;
+      _startTime = fresh.startTime;
+      _endTime = fresh.endTime;
+      _tags = List.from(fresh.tags);
+      _displayTag = fresh.displayTag;
+      _photos = List.from(fresh.photos);
+      _tagEntries = List.from(fresh.tagEntries);
+      _contentController.text = _parseUserRemarks(fresh.content, _tagEntries);
+      // 表单控制器由 build 懒创建，清空后随新数据重建
+      _formControllers.clear();
+    });
   }
 
   @override
   void dispose() {
+    // 注销悬浮小Q上下文与重载钩子
+    QTargetBridge.instance.unregister(_qContext.signature);
+    _qContainer
+        ?.read(floatingQProvider.notifier)
+        .popOverlayContext(_qContext);
     _contentController.dispose();
     for (final c in _formControllers.values) {
       c.dispose();
