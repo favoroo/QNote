@@ -10,7 +10,12 @@ class EditFileTool extends AgentTool {
 
   @override
   String get description =>
-      '对虚拟工作区中指定文件执行精准的局部字符串替换（Exact String Replacement）。常用于将待办状态由 "status: pending" 改为 "status: completed"（标记完成）、修改待办截止时间或优先级、修改笔记中的某个段落、或修改配置 JSON 中的某些键值，避免全文件重写。';
+      '对文件做精准的局部字符串替换，用于「改一处」而不是「重写整篇」：'
+      '把待办 status 改成 completed（标记完成）、改标题/优先级/提醒时间、'
+      '替换笔记中的某个段落、改配置 JSON 里的某些键值。'
+      'old_text 必须是文件正文里的原样片段（含足够上下文以保证唯一），'
+      'VFS 会自动忽略行号前缀，因此照抄 read_file 回显里的文本也能匹配上。'
+      '匹配失败说明文本与现状不符——此时先 read_file 核对，不要反复重试同一写法。';
 
   @override
   Map<String, dynamic> get parametersSchema => {
@@ -22,15 +27,15 @@ class EditFileTool extends AgentTool {
           },
           'old_text': {
             'type': 'string',
-            'description': '文件中待替换的现有原字符串（必须在原文件中精确匹配，不要包含行号前缀）',
+            'description': '待替换的现有原文（须在原文件中精确匹配；带不带行号前缀都可以）',
           },
           'new_text': {
             'type': 'string',
-            'description': '替换后的新字符串',
+            'description': '替换后的新文本',
           },
           'replace_all': {
             'type': 'boolean',
-            'description': '是否替换所有匹配项（默认为 false，仅替换第一处）',
+            'description': '是否替换所有匹配项（默认 false，仅替换第一处）',
           },
         },
         'required': ['path', 'old_text', 'new_text'],
@@ -48,6 +53,9 @@ class EditFileTool extends AgentTool {
 
     if (path.isEmpty || oldText.isEmpty) {
       return ToolResult.error('路径与待替换的原文本不能为空');
+    }
+    if (oldText == newText) {
+      return ToolResult.error('old_text 与 new_text 完全相同，无需替换');
     }
 
     try {

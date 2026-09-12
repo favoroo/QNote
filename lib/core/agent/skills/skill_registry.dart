@@ -49,8 +49,9 @@ is_long_term: false      # 是否为长期待办(选填)
   - 写完以后核对工具回显里的「提醒时间」，缺失就是没写进去，必须补写后重试，严禁口头声称已设置提醒。
   - 只写 `due_date` 而不写 `reminder_time` 是**错误示范**，会造成「AI 说设置了提醒，用户却收不到任何通知」。
 - **标记完成**：使用 `edit_file` 将 `status: pending` 替换为 `status: completed`。
-- **修改分类**：通过创建新路径并删除旧路径，或使用 `edit_file`。
-- **查看待办**：使用 `list_dir(path: "/todos")` 查看分类；使用 `list_dir(path: "/todos/今日")` 查看分类下的所有待办。
+- **修改分类**：使用 `move_file(from: "/todos/今日/拿快递.md", to: "/todos/工作/拿快递.md")` 一步完成，**不要**用「新建一条 + 删掉旧的」——中途失败会留下重复待办。
+- **追加备注**：使用 `write_file(path: ..., content: "...", mode: "append")` 在正文末尾续写，无需先读取整篇。
+- **查看待办**：使用 `list_dir(path: "/todos")` 查看分类；使用 `list_dir(path: "/todos/今日")` 查看分类下的所有待办；不知道待办在哪个分类时，用 `grep(query: "关键词", scope: "todos")` 直接定位（返回的路径可直接用于改写）。
 
 ## 4. GTD 四象限速查
 - 重要且紧急 → `/todos/今日/` 并标记 `priority: important`
@@ -59,7 +60,9 @@ is_long_term: false      # 是否为长期待办(选填)
 - 不重要不紧急 → 建议不记录，或归入 `/todos/学习/` 等低优先级分类
 
 ## 5. 批量操作
-- **批量完成**：逐个 `edit_file` 将 `status: pending` 替换为 `status: completed`。
+- **批量新建**（一条指令要加好几条待办，如从笔记提取行动项）：使用 `write_files(files: [{path: "/todos/今日/A.md", content: "..."}, {path: "/todos/今日/B.md", content: "..."}])` 一次写入，比逐条 `write_file` 省轮次；
+- **批量完成**：逐个 `edit_file` 将 `status: pending` 替换为 `status: completed`（可在同一条回复里并列多个调用）；
+- **批量移动/改分类**：逐个 `move_file`，或整理整个分类时直接用 `folder-manager` 的重命名能力；
 - **批量删除**：属不可逆操作，必须先 `ask_user` 二次确认，确认后才逐个执行。
 ''';
 
@@ -89,8 +92,10 @@ pinned: false           # 是否置顶
 
 ## 3. 核心操作规范
 - **新建笔记**：使用 `write_file(path: "/notes/笔记本/标题.md", content: ...)`。若笔记本不存在将自动创建。
-- **检索笔记**：使用 `grep(query: "关键词", scope: "notes")` 进行跨笔记检索（`scope` 可选 `all` / `notes` / `todos` / `timeline`，附 `max_results` 控制返回条数；注意 grep 没有 path 参数）。
+- **检索笔记**：使用 `grep(query: "关键词", scope: "notes")` 进行跨笔记检索（`scope` 可选 `all` / `notes` / `todos` / `timeline` / `journal` / `memory` / `settings` / `chats`，附 `max_results` 控制返回条数；注意 grep 没有 path 参数）。返回的 `path` 可直接用于 `read_file` / `edit_file`，不用再猜路径。
 - **局部修改**：使用 `edit_file(path: ..., old_text: ..., new_text: ...)` 进行高精度修改。
+- **追加内容**：使用 `write_file(path: ..., content: "...", mode: "append")` 在正文末尾续写；`mode` 缺省为 `overwrite`（整篇覆写）。
+- **移动/换笔记本/改名**：使用 `move_file(from: "/notes/临时/方案.md", to: "/notes/技术/方案.md")` 一步完成；写到 `/notes/<标题>.md`（不带笔记本段）表示移出到根目录。
 
 ## 4. 多文件类型支持
 - 除 `.md` 外，`/notes/` 下还支持写入 `.html` 网页、`.svg` 矢量图、`.json` 数据文件及常见代码文件，App 内会按后缀自动渲染预览。
@@ -154,7 +159,8 @@ description: 时间线流水记录技能：每日流水记事、时间戳打卡�
 > **严禁使用 YAML Frontmatter 描述时间事件**。时间事件只有「二级时间标题 + 字段行」这一种合法格式。
 
 ## 2. 核心操作规范
-- **追加流水**：通过 `read_file` 查阅当天文件后，使用 `write_file` 在文件末尾追加新的时序块（新块无需 id 注释），或使用 `edit_file` 更新指定事件。
+- **追加流水（首选）**：直接用 `write_file(path: "/timeline/YYYY-MM-DD.md", content: "## [HH:MM] 标题\n- 分类: ...", mode: "append")` 追加新时间块，一步到位、无需先读文件；新块无需 id 注释。仅当需要改已有事件内容时才先 `read_file`。
+- **不追加时避免整篇重写**：整篇 `write_file` 覆写若漏掉某个块的 `<!-- id: xxx -->`，该事件会被判定为新事件而重复创建——追加与局部编辑正是为了绕开这个坑。
 - **id 注释必须原样保留（最高优先级）**：重写或整理当天文件时，已有块的 `<!-- id: xxx -->` 必须一字不差地带回。若 id 丢失，对应记录会被判定为新事件而重复创建，造成时间线出现重复条目！
 - **修改与删除单条事件**：
   - 修改：优先使用 `edit_file` 精准替换对应行。
@@ -211,7 +217,8 @@ description: 每日深度日记技能：长篇日记、反思复盘、情绪体�
 ## 5. 核心操作
 - **查看日记**：`read_file(path: "/journal/YYYY-MM-DD.md")`
 - **编写/覆写**：`write_file(path: "/journal/YYYY-MM-DD.md", content: ...)`
-- **追加感悟**：`read_file` 取得内容后在文末追加新的段落并 `write_file`。
+- **追加感悟**：`write_file(path: "/journal/YYYY-MM-DD.md", content: "## 晚间补充\n...", mode: "append")` 直接追加到文末，无需先读整篇；
+- **日记不可移动**：日记按日期自动归档，`move_file` 会拒绝——需要改的就直接编辑正文。
 ''';
 
   static const String settingsManagerDoc = '''---
@@ -337,6 +344,8 @@ description: 系统偏好与配置技能：个性化外观、AI模型分配与�
 ## 2. 核心操作
 - **读取**：调用 `read_file(path: "/settings/xxx.json")` 获悉当前设置；
 - **增量或全量保存**：调用 `write_file(path: "/settings/xxx.json", content: "...")` 或 `edit_file` 精准替换。底层 VFS 会自动做增量合并（Partial Merge），无需担心丢失未修改的字段。
+- **配置类文件不支持追加模式**：`/settings/*.json`、`/folders/*.json`、`/chats/*.json` 属结构化数据，`mode: "append"` 会写出非法 JSON 而被拒绝——改配置一律用全量覆写或 `edit_file` 定点修改。
+- **不要移动配置文件**：`move_file` 仅支持待办与笔记，配置类路径会直接报错。
 ''';
 
   static const String folderManagerDoc = '''---
@@ -362,6 +371,7 @@ description: 分类与笔记本目录管理技能：查看待办/笔记分类树
 - **新增分类**：传入不带 ID 的对象，系统自动生成 ID：
   `[{"name": "投资理财", "sortOrder": 3}]`
 - **调整排序**：传入 `[{"id": "xxx", "sortOrder": 5}]`，或传整个数组按新顺序重排（每项含 `id` 与新 `sortOrder`）；
+- **把条目移到别的分类/笔记本**：用 `move_file(from: "/todos/今日/周报.md", to: "/todos/工作/周报.md")`（笔记同理，`/notes/<笔记本>/<标题>.md`）；目标分类不存在会自动创建。批量整理时逐个调用，**不要**新建+删除；
 - **删除分类目录**：直接调用 `delete_file(path: "/todos/<分类名>/")` 或 `/notes/<笔记本名>/`，底层会自动级联软删除该分类及其下属的所有条目（系统默认分类除外）。
 ''';
 

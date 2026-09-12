@@ -13,7 +13,9 @@ class ListDirTool extends AgentTool {
 
   @override
   String get description =>
-      '列出指定虚拟目录下的文件与子文件夹。用于探索工作区全貌、查看分类、浏览待办/笔记/时间线/系统配置等。常用目录：根目录 list_dir(path: "/")，待办分类 list_dir(path: "/todos")，分类管理 list_dir(path: "/folders")，数据洞察 list_dir(path: "/stats")，会话管理 list_dir(path: "/chats")，系统配置 list_dir(path: "/settings")。';
+      '列出指定虚拟目录下的文件与子文件夹，用于了解工作区结构与浏览分类。'
+      '不确定条目在哪个分类时，优先用 grep 直接定位（更快），list_dir 更适合摸清结构。'
+      '需要一次性看全貌时传 recursive: true，会返回整棵目录树的完整路径（条目过多会自动截断）。';
 
   @override
   Map<String, dynamic> get parametersSchema => {
@@ -21,7 +23,12 @@ class ListDirTool extends AgentTool {
         'properties': {
           'path': {
             'type': 'string',
-            'description': '要查看的虚拟目录路径（如 "/"、"/todos"、"/folders"、"/stats"、"/chats"、"/settings"、"/notes"、"/skills" 等，默认为 "/"）',
+            'description': '要查看的虚拟目录路径（如 "/"、"/todos"、"/notes"、"/timeline"、'
+                '"/settings"、"/folders" 等，默认为 "/"）',
+          },
+          'recursive': {
+            'type': 'boolean',
+            'description': '是否递归展开整棵目录树，默认 false（仅列一层）',
           },
         },
         'required': ['path'],
@@ -33,18 +40,18 @@ class ListDirTool extends AgentTool {
     void Function(String progress)? onProgress,
   }) async {
     final path = arguments['path'] as String? ?? '/';
+    final recursive = arguments['recursive'] as bool? ?? false;
     try {
-      final items = await _vfs.listDir(path);
+      final items = await _vfs.listDir(path, recursive: recursive);
       if (items.isEmpty) {
         return ToolResult.success(
           '目录 [$path] 为空',
-          uiDetails: {'path': path, 'items': []},
+          uiDetails: {'path': path, 'recursive': recursive, 'items': []},
         );
       }
-      final output = items.join('\n');
       return ToolResult.success(
-        output,
-        uiDetails: {'path': path, 'items': items},
+        items.join('\n'),
+        uiDetails: {'path': path, 'recursive': recursive, 'items': items},
       );
     } catch (e) {
       return ToolResult.error('列出目录失败: $e');

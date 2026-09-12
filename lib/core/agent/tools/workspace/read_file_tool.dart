@@ -13,7 +13,10 @@ class ReadFileTool extends AgentTool {
 
   @override
   String get description =>
-      '读取虚拟工作区中指定文件的内容（包含行号及 Frontmatter 元数据）。支持读取待办详情（如 "/todos/今日/拿快递.md"）、笔记内容（如 "/notes/技术/架构.md"）、时间流水（如 "/timeline/2026-09-11.md"）、分类管理（如 "/folders/todos.json"、"/folders/notes.json"）、数据洞察（如 "/stats/summary.json"、"/stats/daily_scores.json"）、会话历史（如 "/chats/sessions.json"）、系统与健康设置（如 "/settings/appearance.json"、"/settings/weight.json"、"/settings/color_marks.json"）或专业技能手册（如 "/skills/todo-manager.md"）。支持行号切片。';
+      '读取虚拟工作区中某个文件的完整内容（返回带行号的正文与 Frontmatter 元数据）。'
+      '用在这些场合：改写前核对原文（edit_file 的 old_text 要照它取）、查看某条待办/笔记/日记详情、'
+      '读统计端点（/stats/summary.json、/stats/daily_scores.json）做分析、读配置确认当前设置。'
+      '长文可用 offset/limit 分段读；各目录的路径与格式规范见 /AGENTS.md。';
 
   @override
   Map<String, dynamic> get parametersSchema => {
@@ -21,15 +24,17 @@ class ReadFileTool extends AgentTool {
         'properties': {
           'path': {
             'type': 'string',
-            'description': '虚拟文件绝对路径（以 "/" 开头）',
+            'description': '虚拟文件绝对路径（以 "/" 开头），如 "/todos/今日/拿快递.md"、'
+                '"/notes/技术/架构.md"、"/timeline/2026-09-11.md"、"/journal/2026-09-11.md"、'
+                '"/stats/summary.json"、"/settings/appearance.json"、"/memory/user.md"',
           },
           'offset': {
             'type': 'integer',
-            'description': '起始读取行号（从 1 开始，选填）',
+            'description': '起始行号（从 1 开始，选填；grep 返回的行号可直接用作起点）',
           },
           'limit': {
             'type': 'integer',
-            'description': '读取行数限制（选填）',
+            'description': '读取行数上限（选填）',
           },
         },
         'required': ['path'],
@@ -43,6 +48,10 @@ class ReadFileTool extends AgentTool {
     final path = arguments['path'] as String? ?? '';
     final offset = arguments['offset'] as int?;
     final limit = arguments['limit'] as int?;
+
+    if (path.trim().isEmpty) {
+      return ToolResult.error('文件路径不能为空');
+    }
 
     try {
       final content = await _vfs.readFile(path, offset: offset, limit: limit);

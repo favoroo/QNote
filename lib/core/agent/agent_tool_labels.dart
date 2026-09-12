@@ -3,14 +3,16 @@
 /// 仅用于 UI 展示（执行中状态、反馈卡标题等），不改动发给模型的工具定义
 /// 与会话持久化里的原始工具名，历史消息在渲染时读此映射做转换。
 abstract final class AgentToolLabels {
-  /// 各工具的执行中文案（进行时措辞），覆盖 12 个注册工具。
+  /// 各工具的执行中文案（进行时措辞），覆盖 14 个注册工具。
   static const Map<String, String> _progressLabels = {
     'generate_image': '正在生成图片',
     'web_search': '正在联网搜索',
     'fetch_url': '正在读取网页',
     'read_file': '正在读取文件',
     'write_file': '正在写入文件',
+    'write_files': '正在批量写入',
     'edit_file': '正在编辑文件',
+    'move_file': '正在移动文件',
     'delete_file': '正在删除文件',
     'list_dir': '正在查看目录',
     'view_image': '正在查看图片',
@@ -26,7 +28,9 @@ abstract final class AgentToolLabels {
     'fetch_url': '读取网页',
     'read_file': '读取文件',
     'write_file': '写入文件',
+    'write_files': '批量写入',
     'edit_file': '编辑文件',
+    'move_file': '移动文件',
     'delete_file': '删除文件',
     'list_dir': '查看目录',
     'view_image': '查看图片',
@@ -66,6 +70,14 @@ abstract final class AgentToolLabels {
       case 'list_dir':
       case 'view_image':
         return _stringOf(data, const ['path']);
+      case 'write_files':
+        final files = data['files'];
+        return files is List ? '${files.length} 个文件' : null;
+      case 'move_file':
+        final from = _stringOf(data, const ['from']);
+        final to = _stringOf(data, const ['to']);
+        if (from == null) return to;
+        return to == null ? from : '$from → $to';
       case 'grep':
         return _stringOf(data, const ['pattern', 'query', 'keyword']);
       case 'web_search':

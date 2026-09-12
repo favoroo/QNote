@@ -17,9 +17,7 @@ import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/core/utils/reminder_utils.dart';
 import 'package:qnote_flutter/models/agent_memory.dart';
-import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
-import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/models/date_color_mark.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/fixed_event_template.dart';
@@ -65,6 +63,91 @@ class VirtualWorkspaceService {
     '/folders/',
     '/memory/',
   ];
+
+  /// /settings/ 下全部可读写的配置文件（目录列举、grep 检索、追加模式禁用判定共用）
+  static const List<String> _settingsFileNames = [
+    'appearance.json',
+    'ai.json',
+    'shortcuts.json',
+    'fixed_events.json',
+    'profile.json',
+    'weight.json',
+    'color_marks.json',
+    'webdav.json',
+  ];
+
+  /// 统一日期格式化（YYYY-MM-DD），供时间线/日记路径拼接使用
+  static String _formatDate(DateTime date) {
+    final y = date.year.toString().padLeft(4, '0');
+    final m = date.month.toString().padLeft(2, '0');
+    final d = date.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
+  }
+
+  /// 剥离 [readFile] 添加的「行号 + 制表符」前缀，还原文件真实文本
+  ///
+  /// 与读取端共用同一条锚定规则（仅匹配行首数字+制表符），避免误伤正文里
+  /// 本身含制表符的内容。edit_file 的参数清洗与追加写入的基底还原都依赖它。
+  static String stripLineNumbers(String text) {
+    return text.split('\n').map((l) => l.replaceFirst(RegExp(r'^\d+\t'), '')).join('\n');
+  }
+
+  /// 空态占位文案特征串：由读取端在「无数据/未编写」时生成，并非用户真实内容，
+  /// 追加写入时必须整段丢弃，否则占位提示会被固化成正文
+  static const List<String> placeholderMarkers = [
+    '暂无流水事件打卡',
+    '尚未开始编写这天的深度反思日记',
+    '暂无记忆条目',
+  ];
+
+  /// 判断读取结果是否为空态占位文案（无真实内容的端点）
+  static bool isPlaceholderText(String content) =>
+      placeholderMarkers.any(content.contains);
+
+  /// 路径末段是否为实体 id（UUID 形态）：用于识别 canonical 路径
+  /// （`/todos/<分类>/<id>.md`、`/notes/<id>.md`）并做 id 路径命中与脏数据防护
+  static final RegExp _uuidPathSegment = RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-'
+    r'[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+  );
+
+  /// 支持追加模式（mode: append）的路径前缀：文本累积型端点
+  ///
+  /// JSON 配置类端点（/settings/、/folders/、/chats/）追加会写出非法 JSON，
+  /// 因此不在支持范围内，由 [_mergeAppendContent] 显式拒绝并引导改用全量覆写。
+  static const List<String> _appendablePrefixes = [
+    '/todos/',
+    '/notes/',
+    '/timeline/',
+    '/journal/',
+    '/memory/',
+  ];
+
+  /// 追加写入的内容合并：读取既有真实内容后与新内容拼接
+  ///
+  /// 相比「先 read_file 再全量 write_file」的两步写法，追加模式由 VFS 内部完成
+  /// 读取与合并：既省掉一轮工具调用，也避免模型覆写时漏掉时间线的
+  /// `<!-- id: xxx -->` 注释而造成事件重复创建。
+  Future<String> _mergeAppendContent(String path, String content) async {
+    if (!_appendablePrefixes.any(path.startsWith)) {
+      throw Exception(
+        '路径 $path 不支持追加模式（仅待办、笔记、时间线、日记、记忆支持），请改用全量覆写：mode="overwrite"',
+      );
+    }
+    final incoming = content.trimRight();
+    if (incoming.isEmpty) return content;
+
+    String existing = '';
+    try {
+      existing = stripLineNumbers(await readFile(path)).trimRight();
+    } catch (_) {
+      // 文件尚不存在（或读取失败）：追加等价于新建
+      existing = '';
+    }
+    // 空态占位文案不是真实内容，不能作为追加基底
+    if (existing.isEmpty || isPlaceholderText(existing)) return incoming;
+    return '$existing\n\n$incoming';
+  }
 
   /// 开始录制一轮对话的 VFS 变更：捕获每个路径被本轮首次修改前的旧状态。
   /// 返回录制句柄，交由 [stopRecording] 结束录制（支持多任务并发录制）
@@ -311,6 +394,7 @@ class VirtualWorkspaceService {
   // ==========================================
   Future<List<String>> listDir(String rawPath, {bool recursive = false}) async {
     final path = normalizePath(rawPath);
+    if (recursive) return _listDirRecursive(path);
 
     if (path == '/' || path.isEmpty) {
       return [
@@ -349,16 +433,7 @@ class VirtualWorkspaceService {
     }
 
     if (path == '/settings' || path == '/settings/') {
-      return [
-        'appearance.json',
-        'ai.json',
-        'shortcuts.json',
-        'fixed_events.json',
-        'profile.json',
-        'weight.json',
-        'color_marks.json',
-        'webdav.json',
-      ];
+      return List<String>.from(_settingsFileNames);
     }
 
     // 1. /todos 目录
@@ -431,9 +506,7 @@ class VirtualWorkspaceService {
       final now = DateTime.now();
       final dateSet = <String>{};
       for (int i = 0; i < 7; i++) {
-        final d = now.subtract(Duration(days: i));
-        final dateStr = '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-        dateSet.add(dateStr);
+        dateSet.add(_formatDate(now.subtract(Duration(days: i))));
       }
       try {
         final active = await _diaryRepo.getActiveDates(limit: 30);
@@ -449,14 +522,39 @@ class VirtualWorkspaceService {
       final now = DateTime.now();
       final dates = <String>[];
       for (int i = 0; i < 7; i++) {
-        final d = now.subtract(Duration(days: i));
-        final dateStr = '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-        dates.add('$dateStr.md');
+        dates.add('${_formatDate(now.subtract(Duration(days: i)))}.md');
       }
       return dates;
     }
 
     return [];
+  }
+
+  /// 递归展开目录树，返回以 `/` 开头的完整虚拟路径（目录条目保留结尾 `/`）
+  ///
+  /// 采用广度优先：先把顶层各目录及其下一层铺开，再逐层深入。这样即便条目数
+  /// 达到 [maxEntries] 被截断，模型也已经看到工作区整体形状（不会整段子树消失）。
+  Future<List<String>> _listDirRecursive(String root, {int maxEntries = 200}) async {
+    final result = <String>[];
+    final queue = <String>[root];
+    while (queue.isNotEmpty && result.length < maxEntries) {
+      final dir = queue.removeAt(0);
+      // 目录路径统一补足结尾斜杠，避免拼出 /todos//今日 这类双斜杠路径
+      final base = dir.endsWith('/') ? dir : '$dir/';
+      final children = await listDir(dir);
+      for (final child in children) {
+        if (result.length >= maxEntries) break;
+        final full = '$base$child';
+        result.add(full);
+        if (child.endsWith('/')) {
+          queue.add(full);
+        }
+      }
+    }
+    if (result.length >= maxEntries) {
+      result.add('... (目录条目过多，已截断前 $maxEntries 项)');
+    }
+    return result;
   }
 
   // ==========================================
@@ -895,30 +993,36 @@ class VirtualWorkspaceService {
     throw Exception('未知的会话管理文件: $path');
   }
 
-  // ==========================================
-  // 3. writeFile: 写入/新建虚拟文件
-  // ==========================================
-  Future<Map<String, dynamic>> writeFile(String rawPath, String content) async {
+  /// 写入/新建虚拟文件
+  ///
+  /// [append] 为 true 时进入追加模式：VFS 内部读取既有内容后拼接（见
+  /// [_mergeAppendContent]），仅文本累积型端点支持。
+  Future<Map<String, dynamic>> writeFile(
+    String rawPath,
+    String content, {
+    bool append = false,
+  }) async {
     final path = normalizePath(rawPath);
+    final effectiveContent = append ? await _mergeAppendContent(path, content) : content;
     // 撤回录制：捕获本轮首次修改前的旧状态（editFile 内部最终也走 writeFile，靠同路径去重）
     await _captureUndoState(path);
 
     if (path.startsWith('/todos/')) {
-      return await _writeTodoFile(path, content);
+      return await _writeTodoFile(path, effectiveContent);
     } else if (path.startsWith('/notes/')) {
-      return await _writeNoteFile(path, content);
+      return await _writeNoteFile(path, effectiveContent);
     } else if (path.startsWith('/timeline/')) {
-      return await _writeTimelineFile(path, content);
+      return await _writeTimelineFile(path, effectiveContent);
     } else if (path.startsWith('/journal/')) {
-      return await _writeJournalFile(path, content);
+      return await _writeJournalFile(path, effectiveContent);
     } else if (path.startsWith('/memory/')) {
-      return await _writeMemoryFile(path, content);
+      return await _writeMemoryFile(path, effectiveContent);
     } else if (path.startsWith('/folders/')) {
-      return await _writeFoldersFile(path, content);
+      return await _writeFoldersFile(path, effectiveContent);
     } else if (path.startsWith('/chats/')) {
-      return await _writeChatsFile(path, content);
+      return await _writeChatsFile(path, effectiveContent);
     } else if (path.startsWith('/settings/')) {
-      return await _writeSettingsFile(path, content);
+      return await _writeSettingsFile(path, effectiveContent);
     }
     throw Exception('不支持写入只读或未知的路径: $path');
   }
@@ -1003,10 +1107,24 @@ class VirtualWorkspaceService {
     }
     existing ??= allTodos.where((t) => t.title.trim() == title && t.folderId == folderId).firstOrNull;
 
+    // 路径末段直接是实体 id 的 canonical 形态（/todos/<分类>/<id>.md：grep 命中、撤回快照、
+    // 页面上下文提示都会产出这种路径）。两条防护缺一不可：
+    // 1) 必须命中既有实体，否则会新建一条 UUID 标题的脏待办；
+    // 2) 标题必须沿用既有标题——撤回恢复的正文自带 `id:`，会先按 id 命中并原样保留路径末段
+    //    作为新标题，若照写就会把 UUID 顶成标题（历史脏数据的真实成因）。
+    final isEntityIdPath = _uuidPathSegment.hasMatch(title);
+    if (existing == null && isEntityIdPath) {
+      existing = allTodos.where((t) => t.id == title).firstOrNull;
+      if (existing == null) {
+        throw Exception('未找到待办: $path（路径末段为实体 id，但对应待办不存在，请先 grep 确认现状）');
+      }
+    }
+    final effectiveTitle = isEntityIdPath ? existing!.title : title;
+
     final now = DateTime.now();
     if (existing != null) {
       final updated = existing.copyWith(
-        title: title.isNotEmpty ? title : existing.title,
+        title: effectiveTitle.isNotEmpty ? effectiveTitle : existing.title,
         description: description,
         isCompleted: isCompleted,
         priority: priority,
@@ -1038,7 +1156,7 @@ class VirtualWorkspaceService {
     } else {
       final newTodo = Todo(
         id: const Uuid().v4(),
-        title: title,
+        title: effectiveTitle,
         description: description,
         isCompleted: isCompleted,
         priority: priority,
@@ -1112,6 +1230,26 @@ class VirtualWorkspaceService {
     return newFolder.id;
   }
 
+  /// 按名称解析笔记本目录 id，不存在则自动创建（写入与移动共用同一套归属规则）
+  Future<String> _resolveOrCreateNoteFolder(String folderName) async {
+    final trimmed = folderName.trim();
+    final noteFolders = await _folderRepo.getByType('note');
+    final matched = noteFolders.where((f) => f.name == trimmed).firstOrNull;
+    if (matched != null) return matched.id;
+
+    final now = DateTime.now();
+    final newFolder = Folder(
+      id: const Uuid().v4(),
+      name: trimmed,
+      type: 'note',
+      sortOrder: noteFolders.length,
+      createdAt: now,
+      updatedAt: now,
+    );
+    await _folderRepo.insert(newFolder);
+    return newFolder.id;
+  }
+
   Future<Map<String, dynamic>> _writeNoteFile(String path, String content) async {
     final segments = path.substring('/notes/'.length).split('/');
     String? folderName;
@@ -1128,24 +1266,9 @@ class VirtualWorkspaceService {
     final meta = parsed.meta;
     final noteContent = parsed.body;
 
-    String? folderId;
-    if (folderName != null && folderName.isNotEmpty) {
-      final noteFolders = await _folderRepo.getByType('note');
-      var matched = noteFolders.where((f) => f.name == folderName).firstOrNull;
-      if (matched == null) {
-        final now = DateTime.now();
-        matched = Folder(
-          id: const Uuid().v4(),
-          name: folderName,
-          type: 'note',
-          sortOrder: noteFolders.length,
-          createdAt: now,
-          updatedAt: now,
-        );
-        await _folderRepo.insert(matched);
-      }
-      folderId = matched.id;
-    }
+    final String? folderId = (folderName != null && folderName.isNotEmpty)
+        ? await _resolveOrCreateNoteFolder(folderName)
+        : null;
 
     final allNotes = await _noteRepo.getAll();
     final existingId = meta['id']?.toString().replaceAll('"', '');
@@ -1160,6 +1283,18 @@ class VirtualWorkspaceService {
     }
     existing ??= allNotes.where((n) => n.title.trim() == title && n.folderId == folderId).firstOrNull;
 
+    // 路径末段是笔记 id 的 canonical 形态（/notes/<id>.md）时，命中既有实体且标题沿用原值，
+    // 避免把 id 顶成笔记标题（撤回恢复的正文自带 `id:`，重写路径时会走到这里）；
+    // 原分类由下方 copyWith 的 `folderId ?? existing.folderId` 兜底保留
+    final isEntityIdPath = _uuidPathSegment.hasMatch(title);
+    if (existing == null && isEntityIdPath) {
+      existing = allNotes.where((n) => n.id == title).firstOrNull;
+      if (existing == null) {
+        throw Exception('未找到笔记: $path（路径末段为实体 id，但对应笔记不存在，请先 grep 确认现状）');
+      }
+    }
+    final effectiveTitle = isEntityIdPath ? existing!.title : title;
+
     final tagsStr = meta['tags'] is List
         ? (meta['tags'] as List).join(', ')
         : (meta['tags']?.toString() ?? '');
@@ -1172,7 +1307,7 @@ class VirtualWorkspaceService {
     final now = DateTime.now();
     if (existing != null) {
       final updated = existing.copyWith(
-        title: title.isNotEmpty ? title : existing.title,
+        title: effectiveTitle.isNotEmpty ? effectiveTitle : existing.title,
         content: noteContent,
         folderId: folderId ?? existing.folderId,
         isPinned: meta['pinned'] == true,
@@ -1187,7 +1322,7 @@ class VirtualWorkspaceService {
     } else {
       final newNote = Note(
         id: const Uuid().v4(),
-        title: title,
+        title: effectiveTitle,
         content: noteContent,
         folderId: folderId,
         isPinned: meta['pinned'] == true,
@@ -2049,19 +2184,23 @@ class VirtualWorkspaceService {
     final path = normalizePath(rawPath);
     // 撤回录制：捕获替换前的旧状态（后续 writeFile 入口的捕获会同路径去重）
     await _captureUndoState(path);
-    final rawLines = (await readFile(path)).split('\n');
     // 去掉行号前缀：锚定"行首数字+制表符"，避免误伤正文中含制表符的内容
-    final originalContent = rawLines
-        .map((l) => l.replaceFirst(RegExp(r'^\d+\t'), ''))
-        .join('\n');
+    final originalContent = stripLineNumbers(await readFile(path));
+    // 模型常把 read_file 回显里的行号连同正文一起复制进 old_text/new_text，
+    // 这里对参数做同样的剥离，否则「肉眼看完全一致」的文本也会匹配失败
+    final target = stripLineNumbers(oldText);
+    final replacement = stripLineNumbers(newText);
 
-    if (!originalContent.contains(oldText)) {
-      throw Exception('在文件 $path 中未找到要替换的文本:\n$oldText');
+    if (!originalContent.contains(target)) {
+      throw Exception(
+        '在文件 $path 中未找到要替换的文本。请先 read_file 核对原文，'
+        'old_text 应为文件正文原样片段（不要带行号前缀，也不要照抄整段回显）：\n$oldText',
+      );
     }
 
     final newContent = replaceAll
-        ? originalContent.replaceAll(oldText, newText)
-        : originalContent.replaceFirst(oldText, newText);
+        ? originalContent.replaceAll(target, replacement)
+        : originalContent.replaceFirst(target, replacement);
 
     return await writeFile(path, newContent);
   }
@@ -2250,62 +2389,354 @@ class VirtualWorkspaceService {
   }
 
   // ==========================================
-  // 6. grep: 全局检索
+  // 5.1 moveFile: 移动/改名（待办改分类、笔记换笔记本或重命名）
   // ==========================================
-  Future<List<Map<String, dynamic>>> grep(String query, {String rootPath = '/'}) async {
+  /// 把待办或笔记移动到新路径：目标路径的目录段决定新归属，末段决定新标题
+  ///
+  /// 替代「read → write → delete」三步写法——那三步会消耗三轮工具调用，且中间任一步
+  /// 失败都会留下重复条目；本方法在一次调用内完成归属与标题变更。
+  /// 目标路径写成 `/notes/<标题>.md`（无笔记本段）表示移出笔记本到根目录。
+  Future<Map<String, dynamic>> moveFile(String rawFrom, String rawTo) async {
+    final from = normalizePath(rawFrom);
+    final to = normalizePath(rawTo);
+    if (from == to) {
+      throw Exception('源路径与目标路径相同，无需移动: $from');
+    }
+
+    if (from.startsWith('/todos/') && to.startsWith('/todos/')) {
+      return _moveTodo(from, to);
+    }
+    if (from.startsWith('/notes/') && to.startsWith('/notes/')) {
+      return _moveNote(from, to);
+    }
+    throw Exception('暂不支持移动该路径: $from → $to（仅支持待办与笔记的移动/改名）');
+  }
+
+  Future<Map<String, dynamic>> _moveTodo(String from, String to) async {
+    final sourceKey = _entityKeyFromPath(from, '/todos/');
+    final allTodos = await _todoRepo.getAll();
+    final existing = allTodos.where((t) => t.id == sourceKey).firstOrNull ??
+        allTodos.where((t) => t.title.trim() == sourceKey).firstOrNull;
+    if (existing == null) {
+      throw Exception('未找到要移动的待办: $from');
+    }
+
+    final segments = to.substring('/todos/'.length).split('/');
+    final hasFolder = segments.length >= 2;
+    final folderName = hasFolder ? segments.first.trim() : '今日';
+    final targetTitle = _stripTodoTitlePrefix(
+      (hasFolder ? segments.sublist(1).join('/') : segments.first).replaceAll('.md', ''),
+    );
+    if (targetTitle.isEmpty) {
+      throw Exception('目标待办标题不能为空: $to');
+    }
+
+    // 撤回录制：源路径（移动前状态）与目标路径（可能覆盖同名文件）都要留快照
+    await _captureUndoState(from);
+    await _captureUndoState(to);
+
+    final isLongTerm = folderName == '长期';
+    final folderId = await _resolveTodoFolder(folderName, isLongTerm: isLongTerm);
+    final updated = existing.copyWith(
+      title: targetTitle,
+      folderId: folderId,
+      isLongTerm: isLongTerm,
+      updatedAt: DateTime.now(),
+    );
+    await _todoRepo.update(updated);
+    await NotificationService.instance.scheduleTodoReminder(updated);
+    WorkspaceEventBus.instance.emit(from, WorkspaceChangeType.deleted, existing);
+    WorkspaceEventBus.instance.emit(to, WorkspaceChangeType.created, updated);
+    return {
+      'status': 'moved',
+      'from': from,
+      'path': to,
+      'id': updated.id,
+      'title': updated.title,
+      'folder': folderName,
+      'folder_id': folderId,
+    };
+  }
+
+  Future<Map<String, dynamic>> _moveNote(String from, String to) async {
+    final sourceKey = _entityKeyFromPath(from, '/notes/');
+    final allNotes = await _noteRepo.getAll();
+    final existing = allNotes.where((n) => n.id == sourceKey).firstOrNull ??
+        allNotes.where((n) => n.title.trim() == sourceKey).firstOrNull;
+    if (existing == null) {
+      throw Exception('未找到要移动的笔记: $from');
+    }
+    // 日记按日期自动归档（id 前缀 journal_note_），改名会破坏日期检索
+    if (JournalService.isJournalNote(existing.id)) {
+      throw Exception('每日日记不支持移动或改名: $from（按日期自动归档，请直接编辑正文）');
+    }
+
+    final segments = to.substring('/notes/'.length).split('/');
+    final hasFolder = segments.length >= 2;
+    final targetTitle =
+        (hasFolder ? segments.sublist(1).join('/') : segments.first).replaceAll('.md', '').trim();
+    if (targetTitle.isEmpty) {
+      throw Exception('目标笔记标题不能为空: $to');
+    }
+
+    await _captureUndoState(from);
+    await _captureUndoState(to);
+
+    // 目标路径带笔记本段则移入该笔记本（不存在会自动创建）；不带则移出到根目录
+    final String? folderId =
+        hasFolder ? await _resolveOrCreateNoteFolder(segments.first.trim()) : null;
+    final updated = existing.copyWith(
+      title: targetTitle,
+      folderId: folderId,
+      updatedAt: DateTime.now(),
+    );
+    await _noteRepo.update(updated);
+    WorkspaceEventBus.instance.emit(from, WorkspaceChangeType.deleted, existing);
+    WorkspaceEventBus.instance.emit(to, WorkspaceChangeType.created, updated);
+    return {
+      'status': 'moved',
+      'from': from,
+      'path': to,
+      'id': updated.id,
+      'title': updated.title,
+    };
+  }
+
+  /// 取路径末段的实体标识（标题或 id），去掉 .md 后缀与待办勾选前缀
+  static String _entityKeyFromPath(String path, String prefix) {
+    final rest = path.substring(prefix.length);
+    return _stripTodoTitlePrefix(rest.split('/').last.replaceAll('.md', ''));
+  }
+
+  /// 去掉待办标题的勾选前缀（`[ ] ` / `[x] `）
+  static String _stripTodoTitlePrefix(String title) =>
+      title.replaceAll(RegExp(r'^\[[ x]\]\s*'), '').trim();
+
+  // ==========================================
+  // 6. grep: 全局检索（VFS 唯一检索实现，GrepTool 直接复用）
+  // ==========================================
+  /// 支持的检索范围；`all` 表示全库
+  static const List<String> grepScopes = [
+    'all',
+    'notes',
+    'todos',
+    'timeline',
+    'journal',
+    'memory',
+    'settings',
+    'chats',
+  ];
+
+  /// 单条命中文本（match）的最大长度，控制回传给模型的体积
+  static const int _grepMatchMaxLength = 200;
+
+  /// 全库关键词/正则检索，返回**带可操作虚拟路径**的命中列表
+  ///
+  /// 关键设计：每条命中都必须携带 `path`，而不是只有数据库 id。
+  /// 写入口按「导入路径末段 = 标题」匹配既有实体，模型若把裸 id 当路径去
+  /// write_file，会匹配不到实体而新建一条 UUID 标题的脏记录；因此这里统一回传
+  /// canonical 路径（read/write/edit/delete 四条链路都能解析的形态），
+  /// 让模型可以「检索 → 直接改写」闭环，无需二次试探。
+  Future<List<Map<String, dynamic>>> grep(
+    String query, {
+    String scope = 'all',
+    int maxResults = 20,
+  }) async {
     final results = <Map<String, dynamic>>[];
-    final reg = RegExp(query, caseSensitive: false);
+    final keyword = query.trim();
+    if (keyword.isEmpty) return results;
 
-    // 检索 todos
-    final todos = await _todoRepo.getAll();
-    final folders = await _folderRepo.getByType('todo');
-    final folderMap = {for (final f in folders) f.id: f.name};
+    final reg = _buildGrepRegExp(keyword);
+    final limit = maxResults.clamp(1, 200);
+    bool inScope(String name) => scope == 'all' || scope == name;
 
-    for (final t in todos) {
-      final folderName = folderMap[t.folderId] ?? (t.isLongTerm ? '长期' : '今日');
-      final path = '/todos/$folderName/${t.title}.md';
-      if (reg.hasMatch(t.title) || reg.hasMatch(t.description)) {
+    // 1. 待办（/todos/<分类>/<标题>.md）
+    if (inScope('todos')) {
+      final todos = await _todoRepo.getAll();
+      final folders = await _folderRepo.getByType('todo');
+      final folderMap = {for (final f in folders) f.id: f.name};
+      for (final t in todos) {
+        if (results.length >= limit) break;
+        if (!reg.hasMatch(t.title) && !reg.hasMatch(t.description)) continue;
+        final folderName = folderMap[t.folderId] ?? (t.isLongTerm ? '长期' : '今日');
+        final title = t.title.trim().isEmpty ? '未命名待办' : t.title.trim();
         results.add({
-          'path': path,
-          'line': 1,
-          'match': t.title,
           'type': 'todo',
+          'path': '/todos/$folderName/$title.md',
+          'id': t.id,
+          'title': title,
           'is_completed': t.isCompleted,
+          'snippet': _grepSnippet(
+            t.description.trim().isEmpty ? t.title : t.description,
+            reg,
+          ),
         });
       }
     }
 
-    // 检索 notes
-    final notes = await _noteRepo.getAll();
-    for (final n in notes) {
-      final path = '/notes/${n.title}.md';
-      if (reg.hasMatch(n.title) || reg.hasMatch(n.content)) {
+    // 2. 笔记（/notes/<笔记本>/<标题>.md）与每日日记（/journal/YYYY-MM-DD.md）
+    //    日记复用 notes 表存储（id 前缀 journal_note_），需按范围分流，避免日记被误标为笔记
+    if (inScope('notes') || inScope('journal')) {
+      final notes = await _noteRepo.getAll();
+      final noteFolders = await _folderRepo.getByType('note');
+      final noteFolderMap = {for (final f in noteFolders) f.id: f.name};
+      for (final n in notes) {
+        if (results.length >= limit) break;
+        final isJournal = JournalService.isJournalNote(n.id);
+        if (isJournal && !inScope('journal')) continue;
+        if (!isJournal && !inScope('notes')) continue;
+        if (!reg.hasMatch(n.title) && !reg.hasMatch(n.content)) continue;
+        if (isJournal) {
+          results.add({
+            'type': 'journal',
+            'path': '/journal/${n.title.trim()}.md',
+            'id': n.id,
+            'title': n.title,
+            'snippet': _grepSnippet(n.content, reg),
+          });
+          continue;
+        }
+        final folderName = noteFolderMap[n.folderId];
+        final title = n.title.trim().isEmpty ? '未命名笔记' : n.title.trim();
+        final path = (folderName == null || folderName.isEmpty)
+            ? '/notes/$title.md'
+            : '/notes/$folderName/$title.md';
         results.add({
-          'path': path,
-          'line': 1,
-          'match': n.title,
           'type': 'note',
+          'path': path,
+          'id': n.id,
+          'title': title,
+          'snippet': _grepSnippet(n.content, reg),
         });
       }
     }
 
-    // 检索 timeline
-    final timelineRecords = await _diaryRepo.getAll();
-    for (final r in timelineRecords) {
-      if (reg.hasMatch(r.title) || reg.hasMatch(r.content) || reg.hasMatch(r.displayTag)) {
-        final dateStr = r.time.toIso8601String().substring(0, 10);
-        final timeStr = '${r.time.hour.toString().padLeft(2, '0')}:${r.time.minute.toString().padLeft(2, '0')}';
+    // 3. 时间线流水（按天文件，单条事件用返回的 id 精确删除）
+    if (inScope('timeline')) {
+      final records = await _diaryRepo.getAll();
+      for (final r in records) {
+        if (results.length >= limit) break;
+        if (!reg.hasMatch(r.title) &&
+            !reg.hasMatch(r.content) &&
+            !reg.hasMatch(r.displayTag)) {
+          continue;
+        }
+        final dateStr = _formatDate(r.time);
+        final timeStr = '${r.time.hour.toString().padLeft(2, '0')}:'
+            '${r.time.minute.toString().padLeft(2, '0')}';
         results.add({
-          'path': '/timeline/$dateStr.md',
-          'line': 1,
-          'match': '[$timeStr] ${r.displayTag} - ${r.title}',
           'type': 'timeline',
+          'path': '/timeline/$dateStr.md',
           'id': r.id,
+          'title': r.title,
+          'time': r.time.toIso8601String(),
+          'tags': r.tags,
+          'match': '[$timeStr] ${r.displayTag} - ${r.title}',
+          'snippet': _grepSnippet(r.content, reg),
         });
       }
+    }
+
+    // 4. 长期记忆（/memory/user.md、/memory/agent.md）
+    if (inScope('memory')) {
+      for (final path in const ['/memory/user.md', '/memory/agent.md']) {
+        if (results.length >= limit) break;
+        await _collectLineHits(
+          path: path,
+          content: await _readMemoryFile(path),
+          reg: reg,
+          type: 'memory',
+          out: results,
+          limit: limit,
+        );
+      }
+    }
+
+    // 5. 系统配置（/settings/*.json）
+    if (inScope('settings')) {
+      for (final file in _settingsFileNames) {
+        if (results.length >= limit) break;
+        final path = '/settings/$file';
+        await _collectLineHits(
+          path: path,
+          content: await _readSettingsFile(path),
+          reg: reg,
+          type: 'settings',
+          out: results,
+          limit: limit,
+        );
+      }
+    }
+
+    // 6. 历史会话（/chats/sessions.json）
+    if (inScope('chats')) {
+      await _collectLineHits(
+        path: '/chats/sessions.json',
+        content: await _readChatsFile('/chats/sessions.json'),
+        reg: reg,
+        type: 'chats',
+        out: results,
+        limit: limit,
+      );
     }
 
     return results;
+  }
+
+  /// 构造检索正则：非法正则自动降级为按字面量匹配，避免模型传入的表达式直接抛错
+  RegExp _buildGrepRegExp(String query) {
+    try {
+      return RegExp(query, caseSensitive: false);
+    } catch (_) {
+      return RegExp(RegExp.escape(query), caseSensitive: false);
+    }
+  }
+
+  /// 为整篇内容类命中生成上下文摘要（命中点前后各取一段）
+  String _grepSnippet(String content, RegExp reg) {
+    final text = content.trim();
+    if (text.isEmpty) return '';
+    final match = reg.firstMatch(text);
+    if (match == null) {
+      return text.length > _grepMatchMaxLength
+          ? '${text.substring(0, _grepMatchMaxLength)}…'
+          : text;
+    }
+    final start = (match.start - 30).clamp(0, text.length);
+    final end = (match.end + 50).clamp(0, text.length);
+    var snippet = text.substring(start, end).replaceAll('\n', ' ').trim();
+    if (start > 0) snippet = '…$snippet';
+    if (end < text.length) snippet = '$snippet…';
+    return snippet.length > _grepMatchMaxLength
+        ? '${snippet.substring(0, _grepMatchMaxLength)}…'
+        : snippet;
+  }
+
+  /// 逐行收集命中（记忆/配置/会话等结构简单、整篇读取成本低的端点）
+  ///
+  /// 附带 `line` 行号，模型可据此用 read_file(path, offset) 精确定位上下文
+  Future<void> _collectLineHits({
+    required String path,
+    required String content,
+    required RegExp reg,
+    required String type,
+    required List<Map<String, dynamic>> out,
+    required int limit,
+  }) async {
+    final lines = content.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      if (out.length >= limit) return;
+      final line = lines[i].trim();
+      if (line.isEmpty || !reg.hasMatch(line)) continue;
+      out.add({
+        'type': type,
+        'path': path,
+        'line': i + 1,
+        'match': line.length > _grepMatchMaxLength
+            ? '${line.substring(0, _grepMatchMaxLength)}…'
+            : line,
+      });
+    }
   }
 
   /// 辅助方法：解析 Frontmatter

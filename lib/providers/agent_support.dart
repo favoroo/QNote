@@ -80,8 +80,8 @@ void refreshAllBusinessData(Ref ref) {
 Future<bool> isWorkspacePathAbsent(String path) async {
   try {
     final content = await VirtualWorkspaceService.instance.readFile(path);
-    return content.contains('暂无流水事件打卡') ||
-        content.contains('尚未开始编写这天的深度反思日记');
+    // 占位文案特征串统一由 VFS 维护，避免两处各写一份导致判定漂移
+    return VirtualWorkspaceService.isPlaceholderText(content);
   } catch (_) {
     return true;
   }

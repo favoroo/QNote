@@ -10,10 +10,11 @@ class DeleteFileTool extends AgentTool {
 
   @override
   String get description =>
-      '删除虚拟工作区中的文件或分类目录：\n'
-      '1. 单项删除：软删除单个待办（如 "/todos/今日/任务.md"）、单篇笔记（如 "/notes/旧笔记.md"）、单条时间线（如 "/timeline/<id>.md"）、历史会话（如 "/chats/<id>.json"）；\n'
-      '2. 分类目录级删除：支持传入待办分类目录路径（如 "/todos/工作/"）或笔记本目录路径（如 "/notes/临时/"），系统将自动级联软删除该分类及其下属的所有条目；\n'
-      '3. 整天流水清空：支持传入 "/timeline/2026-09-11.md" 清空当天所有流水。敏感删除请先调用 ask_user 确认。';
+      '删除虚拟文件或整个分类目录（软删除，可在对话撤回中恢复）：'
+      '删单个待办/笔记/单条时间线（传 /timeline/<id>.md）/清空整天流水（/timeline/YYYY-MM-DD.md）/'
+      '删分类目录（传目录路径即级联删除其下全部条目，系统默认分类「今日」「长期」除外）。'
+      '删除与清空不可逆，执行前必须先 ask_user 二次确认。'
+      '移动/改分类不要用「新建+删除」，用 move_file。';
 
   @override
   Map<String, dynamic> get parametersSchema => {
@@ -21,7 +22,9 @@ class DeleteFileTool extends AgentTool {
         'properties': {
           'path': {
             'type': 'string',
-            'description': '要删除的文件或分类目录绝对路径（如 "/todos/今日/拿快递.md"、"/todos/临时分类/"、"/timeline/<id>.md"、"/chats/<id>.json"）',
+            'description': '要删除的文件或分类目录绝对路径'
+                '（如 "/todos/今日/拿快递.md"、"/todos/临时分类/"、'
+                '"/timeline/<id>.md"、"/chats/<会话id>.json"）',
           },
         },
         'required': ['path'],
@@ -32,7 +35,7 @@ class DeleteFileTool extends AgentTool {
     Map<String, dynamic> arguments, {
     void Function(String progress)? onProgress,
   }) async {
-    final path = arguments['path'] as String? ?? '';
+    final path = (arguments['path'] as String? ?? '').trim();
     if (path.isEmpty) {
       return ToolResult.error('路径不能为空');
     }

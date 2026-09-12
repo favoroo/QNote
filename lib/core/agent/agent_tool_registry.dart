@@ -7,15 +7,18 @@ import 'package:qnote_flutter/core/agent/tools/general/web_search_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/delete_file_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/edit_file_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/list_dir_tool.dart';
+import 'package:qnote_flutter/core/agent/tools/workspace/move_file_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/read_file_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/skill_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/view_image_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/write_file_tool.dart';
+import 'package:qnote_flutter/core/agent/tools/workspace/write_files_tool.dart';
 
 /// 全局工具装配工厂
 ///
 /// 对齐 pi-agent 的"通用原语优先"理念：仅保留 VFS 文件原语 + 检索 + 人机确认，
 /// 不再注册 manage_todo 等与 VFS 语义重叠的业务工具，降低每轮 schema 开销与模型决策摇摆。
+/// 原语按「单条 / 批量」「读 / 写 / 移动」成对提供，避免多条目任务被迫逐条调用而吃满步数上限。
 class AgentToolRegistry {
   static ToolDispatcher createDefaultDispatcher() {
     final dispatcher = ToolDispatcher();
@@ -25,7 +28,9 @@ class AgentToolRegistry {
       ListDirTool(),
       ReadFileTool(),
       WriteFileTool(),
+      WriteFilesTool(),
       EditFileTool(),
+      MoveFileTool(),
       DeleteFileTool(),
       ViewImageTool(),
       SkillTool(),

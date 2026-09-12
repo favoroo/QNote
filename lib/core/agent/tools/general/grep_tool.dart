@@ -1,13 +1,23 @@
 import 'package:qnote_flutter/core/agent/models/agent_tool.dart';
-import 'package:qnote_flutter/core/storage/diary_repository.dart';
-import 'package:qnote_flutter/core/storage/note_repository.dart';
-import 'package:qnote_flutter/core/storage/todo_repository.dart';
+import 'package:qnote_flutter/core/agent/vfs/virtual_workspace_service.dart';
 
-/// 仿 opencode / pi-agent 的全库关键词/正则搜索工具
+/// 全库关键词/正则检索工具
+///
+/// 检索实现收敛在 [VirtualWorkspaceService.grep] 一处，工具层只做参数解析与结果排版，
+/// 避免两套检索语义各自演化（改了一处忘了另一处）。
 class GrepTool extends AgentTool {
-  final NoteRepository _noteRepo = NoteRepository();
-  final TodoRepository _todoRepo = TodoRepository();
-  final DiaryRepository _diaryRepo = DiaryRepository();
+  final VirtualWorkspaceService _vfs = VirtualWorkspaceService.instance;
+
+  /// 命中类型 → 中文标签，用于排版分组
+  static const Map<String, String> _typeLabels = {
+    'todo': '待办',
+    'note': '笔记',
+    'journal': '日记',
+    'timeline': '时间线',
+    'memory': '记忆',
+    'settings': '配置',
+    'chats': '会话',
+  };
 
   @override
   String get name => 'grep';
@@ -17,7 +27,10 @@ class GrepTool extends AgentTool {
 
   @override
   String get description =>
-      '在整个 App（笔记、待办、时间线流水日记）中检索包含指定关键词或正则表达式的内容。输出匹配项摘要与 ID。';
+      '在整个 App 内检索关键词或正则（笔记、待办、时间线流水、日记、长期记忆、系统配置、历史会话），'
+      '返回**可直接用于 read_file / edit_file / delete_file 的虚拟路径**与命中摘要。'
+      '这是「找内容」的默认入口：只要不确定条目在哪个分类、完整标题是什么，就先用它定位，'
+      '不要靠 list_dir 层层翻目录试探。需要完整正文时，再用返回的路径调 read_file。';
 
   @override
   Map<String, dynamic> get parametersSchema => {
@@ -29,8 +42,8 @@ class GrepTool extends AgentTool {
           },
           'scope': {
             'type': 'string',
-            'enum': ['all', 'notes', 'todos', 'timeline'],
-            'description': '搜索范围，默认为 all（全部）',
+            'enum': VirtualWorkspaceService.grepScopes,
+            'description': '检索范围，默认 all（全库）；查具体模块时可收窄以提升精度',
           },
           'max_results': {
             'type': 'integer',
@@ -45,103 +58,90 @@ class GrepTool extends AgentTool {
     Map<String, dynamic> arguments, {
     void Function(String progress)? onProgress,
   }) async {
-    final query = arguments['query'] as String? ?? '';
-    if (query.trim().isEmpty) {
+    final query = (arguments['query'] as String? ?? '').trim();
+    if (query.isEmpty) {
       return ToolResult.error('搜索关键词 query 不能为空');
     }
 
-    final scope = arguments['scope'] as String? ?? 'all';
-    final maxResults = arguments['max_results'] as int? ?? 20;
+    // 未知 scope 静默归一为 all，避免模型传错枚举值就直接失败
+    final rawScope = (arguments['scope'] as String? ?? 'all').trim();
+    final scope =
+        VirtualWorkspaceService.grepScopes.contains(rawScope) ? rawScope : 'all';
+    final maxResults = _parseMaxResults(arguments['max_results']);
 
-    RegExp? regExp;
+    List<Map<String, dynamic>> hits;
     try {
-      regExp = RegExp(query, caseSensitive: false);
-    } catch (_) {
-      regExp = RegExp(RegExp.escape(query), caseSensitive: false);
-    }
-
-    final buffer = StringBuffer();
-    final List<Map<String, dynamic>> hits = [];
-
-    // 1. 搜索笔记
-    if (scope == 'all' || scope == 'notes') {
-      final notes = await _noteRepo.getAll();
-      for (final note in notes) {
-        if (hits.length >= maxResults) break;
-        if (regExp.hasMatch(note.title) || regExp.hasMatch(note.content)) {
-          hits.add({
-            'type': 'note',
-            'id': note.id,
-            'title': note.title,
-            'snippet': _makeSnippet(note.content, regExp),
-          });
-          buffer.writeln('【笔记】ID: ${note.id} | 标题: ${note.title}');
-          buffer.writeln('  匹配摘要: ${_makeSnippet(note.content, regExp)}');
-        }
-      }
-    }
-
-    // 2. 搜索待办
-    if (scope == 'all' || scope == 'todos') {
-      final todos = await _todoRepo.getAll();
-      for (final todo in todos) {
-        if (hits.length >= maxResults) break;
-        final desc = todo.description;
-        if (regExp.hasMatch(todo.title) || regExp.hasMatch(desc)) {
-          hits.add({
-            'type': 'todo',
-            'id': todo.id,
-            'title': todo.title,
-            'is_completed': todo.isCompleted,
-            'snippet': _makeSnippet(desc.isNotEmpty ? desc : todo.title, regExp),
-          });
-          buffer.writeln('【待办】ID: ${todo.id} | 标题: ${todo.title} | 状态: ${todo.isCompleted ? "已完成" : "待办"}');
-        }
-      }
-    }
-
-    // 3. 搜索时间线流水
-    if (scope == 'all' || scope == 'timeline') {
-      final records = await _diaryRepo.getAll();
-      for (final r in records) {
-        if (hits.length >= maxResults) break;
-        final tagsStr = r.tags.join(',');
-        if (regExp.hasMatch(r.content) || regExp.hasMatch(tagsStr)) {
-          hits.add({
-            'type': 'timeline',
-            'id': r.id,
-            'time': r.time.toIso8601String(),
-            'tags': r.tags,
-            'snippet': _makeSnippet(r.content, regExp),
-          });
-          buffer.writeln('【时间线】ID: ${r.id} | 时间: ${r.time.toIso8601String().substring(0, 16)} | 标签: $tagsStr');
-          buffer.writeln('  内容: ${_makeSnippet(r.content, regExp)}');
-        }
-      }
+      hits = await _vfs.grep(query, scope: scope, maxResults: maxResults);
+    } catch (e) {
+      return ToolResult.error('检索失败: $e');
     }
 
     if (hits.isEmpty) {
-      return ToolResult.success('未找到匹配关键词 "$query" 的内容。');
+      return ToolResult.success(
+        '未找到与「$query」匹配的内容（检索范围：$scope）。'
+        '可尝试更换关键词、收窄或放宽 scope 后重试；确认没有时请如实告知用户，不要编造内容。',
+        uiDetails: {
+          'type': 'grep_result',
+          'query': query,
+          'scope': scope,
+          'total': 0,
+          'hits': const [],
+        },
+      );
     }
 
-    final outputText = '共找到 ${hits.length} 条匹配项:\n$buffer';
+    final buffer = StringBuffer(
+      '共找到 ${hits.length} 条匹配项（范围：$scope）。'
+      '下列路径可直接用于 read_file / edit_file / delete_file：\n',
+    );
+    for (final hit in hits) {
+      final type = hit['type']?.toString() ?? '';
+      final label = _typeLabels[type] ?? type;
+      buffer.write('\n【$label】${hit['path'] ?? ''}');
+      final line = hit['line'];
+      if (line is int) {
+        buffer.write('（第 $line 行）');
+      }
+      final title = hit['title'];
+      if (title is String && title.trim().isNotEmpty) {
+        buffer.write(' | 标题: ${title.trim()}');
+      }
+      if (hit['is_completed'] == true) {
+        buffer.write(' | 状态: 已完成');
+      }
+      final time = hit['time'];
+      if (time is String && time.length >= 16) {
+        buffer.write(' | 时间: ${time.substring(0, 16).replaceAll('T', ' ')}');
+      }
+      final match = hit['match'] ?? hit['snippet'];
+      if (match is String && match.trim().isNotEmpty) {
+        buffer.write('\n  匹配摘要: ${match.trim()}');
+      }
+    }
+
     return ToolResult.success(
-      truncateOutput(outputText),
-      uiDetails: {'type': 'grep_result', 'query': query, 'total': hits.length, 'hits': hits},
+      truncateOutput(buffer.toString(), maxLength: 6000),
+      uiDetails: {
+        'type': 'grep_result',
+        'query': query,
+        'scope': scope,
+        'total': hits.length,
+        'hits': hits,
+      },
     );
   }
 
-  String _makeSnippet(String content, RegExp regExp) {
-    if (content.isEmpty) return '';
-    final match = regExp.firstMatch(content);
-    if (match == null) {
-      return content.length > 80 ? '${content.substring(0, 80)}...' : content;
+  /// 解析 max_results：兼容 int / num / string，缺省 20，收敛到 [1, 100]
+  int _parseMaxResults(dynamic raw) {
+    int? value;
+    if (raw is int) {
+      value = raw;
+    } else if (raw is num) {
+      value = raw.round();
+    } else if (raw is String) {
+      value = int.tryParse(raw);
     }
-    final start = (match.start - 30).clamp(0, content.length);
-    final end = (match.end + 50).clamp(0, content.length);
-    String snippet = content.substring(start, end).replaceAll('\n', ' ');
-    if (start > 0) snippet = '...$snippet';
-    if (end < content.length) snippet = '$snippet...';
-    return snippet;
+    if (value == null) return 20;
+    return value.clamp(1, 100);
   }
 }
