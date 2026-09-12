@@ -3,22 +3,31 @@
 /// 借鉴 opencode / pi-agent 的双向设计：
 /// - [modelOutput]：作为字符串返回给 LLM 模型的精炼输出（带有最大字数截断保护，防止冲爆上下文）
 /// - [uiDetails]：结构化对象，传递给客户端 UI 渲染交互卡片（如待办列表、修改高亮等）
+/// - [images]：随结果附带给模型的图片（data URI 形式，如 view_image 工具），
+///   由 AgentLoop 转为合成 user 消息注入本轮上下文，不随会话落库
 /// - [isError]：执行是否异常
 class ToolResult {
   final String modelOutput;
   final Map<String, dynamic>? uiDetails;
+  final List<String>? images;
   final bool isError;
 
   const ToolResult({
     required this.modelOutput,
     this.uiDetails,
+    this.images,
     this.isError = false,
   });
 
-  factory ToolResult.success(String message, {Map<String, dynamic>? uiDetails}) {
+  factory ToolResult.success(
+    String message, {
+    Map<String, dynamic>? uiDetails,
+    List<String>? images,
+  }) {
     return ToolResult(
       modelOutput: message,
       uiDetails: uiDetails,
+      images: images,
       isError: false,
     );
   }

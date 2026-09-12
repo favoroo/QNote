@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
+import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
 import 'package:qnote_flutter/core/ai/free_model_service.dart';
 import 'package:qnote_flutter/core/notification/notification_service.dart';
 import 'package:qnote_flutter/core/storage/color_mark_repository.dart';
@@ -45,6 +46,173 @@ class VirtualWorkspaceService {
   final DailyScoreRepository _dailyScoreRepo = DailyScoreRepository();
   final ColorMarkRepository _colorMarkRepo = ColorMarkRepository();
   final SkillRegistry _skillRegistry = SkillRegistry.instance;
+
+  // ==========================================
+  // 变更录制（对话轮次级撤销快照，支撑小Q对话的撤回/再次编辑）
+  // ==========================================
+  /// 当前轮次的录制缓冲；null 表示未在录制
+  List<WorkspaceUndoEntry>? _recorder;
+
+  /// 可录制的业务路径前缀；/chats/ 涉及会话自身（撤回时消息正在截断落库），跳过录制
+  static const List<String> _recordablePrefixes = [
+    '/todos/',
+    '/notes/',
+    '/timeline/',
+    '/journal/',
+    '/settings/',
+    '/folders/',
+  ];
+
+  /// 开始录制一轮对话的 VFS 变更：捕获每个路径被本轮首次修改前的旧状态
+  void startRecording() {
+    _recorder = [];
+  }
+
+  /// 结束录制并返回本轮捕获的变更条目（同一归一化路径只保留首次、即最旧的状态）
+  List<WorkspaceUndoEntry> stopRecording() {
+    final captured = _recorder ?? <WorkspaceUndoEntry>[];
+    _recorder = null;
+    return captured;
+  }
+
+  /// 录制中则捕获指定路径修改前的旧状态；捕获失败静默跳过，绝不阻断正常写操作
+  Future<void> _captureUndoState(String rawPath) async {
+    final recorder = _recorder;
+    if (recorder == null) return;
+
+    String path;
+    try {
+      path = normalizePath(rawPath);
+    } catch (_) {
+      return;
+    }
+
+    if (!_recordablePrefixes.any(path.startsWith)) return;
+
+    // 捕获路径统一规范化，保证同一实体在一轮内多次操作（先按标题写入、又被目录连坐删除
+    // 按 id 捕获）只保留最旧快照：
+    // - timeline 单条路径读写解析不了日期会误落到"今天"，归一化到天文件
+    // - 待办/笔记以实体 id 为键（待办需携带原分类名，写回时才能落回原分类）
+    if (path.startsWith('/timeline/')) {
+      final resolved = await _resolveTimelineDayPath(path);
+      if (resolved == null) return;
+      path = resolved;
+    } else if (path.startsWith('/todos/')) {
+      path = await _canonicalTodoPath(path) ?? path;
+    } else if (path.startsWith('/notes/')) {
+      path = await _canonicalNotePath(path) ?? path;
+    }
+
+    if (recorder.any((e) => e.path == path)) return;
+
+    // 日记的空态读取不抛错而是返回占位文案，需单独判定真实存在性
+    if (path.startsWith('/journal/')) {
+      try {
+        final dateStr = path.substring('/journal/'.length).replaceAll('.md', '').trim();
+        final date = DateTime.parse(dateStr);
+        final existing = await _journalService.getNoteForDate(date);
+        recorder.add(WorkspaceUndoEntry(
+          path: path,
+          existedBefore: existing != null && existing.content.trim().isNotEmpty,
+          beforeContent: (existing != null && existing.content.trim().isNotEmpty)
+              ? existing.content
+              : null,
+        ));
+      } catch (_) {
+        recorder.add(WorkspaceUndoEntry(path: path, existedBefore: false));
+      }
+      return;
+    }
+
+    try {
+      final raw = await readFile(path);
+      // 剥离 readFile 输出的行号前缀，恢复时可直接作为 writeFile 输入完成回写
+      final before = raw
+          .split('\n')
+          .map((l) => l.replaceFirst(RegExp(r'^\d+\t'), ''))
+          .join('\n');
+      // 时间线空天文件的占位文案写回会被差量逻辑拒绝，按"本轮前不存在"处理
+      final isEmptyTimeline =
+          path.startsWith('/timeline/') && before.contains('暂无流水事件打卡');
+      recorder.add(WorkspaceUndoEntry(
+        path: path,
+        existedBefore: !isEmptyTimeline,
+        beforeContent: isEmptyTimeline ? null : before,
+      ));
+    } catch (_) {
+      recorder.add(WorkspaceUndoEntry(path: path, existedBefore: false));
+    }
+  }
+
+  /// 将 /timeline/ 下的单条记录路径归一化为天文件路径；记录不存在时返回 null（跳过捕获以保证撤回安全）
+  Future<String?> _resolveTimelineDayPath(String path) async {
+    final subPath = path.substring('/timeline/'.length).replaceAll('.md', '').trim();
+    if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(subPath)) return path;
+
+    // 支持带日期前缀（/timeline/日期/<id>.md）与纯 id（/timeline/<id>.md）两种形态
+    final recordId = subPath.split('/').last.trim();
+    if (recordId.isEmpty) return null;
+    try {
+      final record = await _diaryRepo.getById(recordId);
+      if (record == null) return null;
+      final m = record.time.month.toString().padLeft(2, '0');
+      final d = record.time.day.toString().padLeft(2, '0');
+      return '/timeline/${record.time.year}-$m-$d.md';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 将待办路径规范化为 `/todos/<分类名>/<id>.md`，作为录制去重与恢复的统一键
+  /// （写回时按路径首段分类落回原分类）；实体不存在或路径不合规时返回 null（沿用原路径）
+  Future<String?> _canonicalTodoPath(String path) async {
+    if (!path.endsWith('.md')) return null;
+    final segments = path.substring('/todos/'.length).split('/');
+    final titleWithExt = segments.length >= 2 ? segments.sublist(1).join('/') : segments[0];
+    final rawTitle = titleWithExt
+        .replaceAll('.md', '')
+        .replaceAll(RegExp(r'^\[[ x]\]\s*'), '')
+        .trim();
+    if (rawTitle.isEmpty) return null;
+    try {
+      final allTodos = await _todoRepo.getAll();
+      final matched = allTodos.where((t) => t.id == rawTitle).firstOrNull ??
+          allTodos.where((t) => t.title.trim() == rawTitle).firstOrNull;
+      if (matched == null) return null;
+      String folderName = '今日';
+      final folders = await _folderRepo.getByType('todo');
+      folderName = folders
+              .where((f) => f.id == matched.folderId)
+              .firstOrNull
+              ?.name ??
+          folderName;
+      return '/todos/$folderName/${matched.id}.md';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 将笔记路径规范化为 `/notes/<id>.md`（单段路径写回时 folderId 为空会保留原分类），
+  /// 作为录制去重与恢复的统一键；实体不存在或路径不合规时返回 null（沿用原路径）
+  Future<String?> _canonicalNotePath(String path) async {
+    if (!path.endsWith('.md')) return null;
+    final rawTitle = path
+        .substring('/notes/'.length)
+        .split('/')
+        .last
+        .replaceAll('.md', '')
+        .trim();
+    if (rawTitle.isEmpty) return null;
+    try {
+      final allNotes = await _noteRepo.getAll();
+      final matched = allNotes.where((n) => n.id == rawTitle).firstOrNull ??
+          allNotes.where((n) => n.title.trim() == rawTitle).firstOrNull;
+      if (matched == null) return null;
+      return '/notes/${matched.id}.md';
+    } catch (_) {
+      return null;
+    }
+  }
 
   static const String agentsDoc = '''# QNote Agent Operating System (AGENTS.md)
 
@@ -383,7 +551,8 @@ class VirtualWorkspaceService {
         buffer.writeln('- 天气: ${r.weather}');
       }
       if (r.photos.isNotEmpty) {
-        buffer.writeln('- 图片: ${r.photos.join(', ')}');
+        // 仅路径文本模型无法感知画面，附提示引导其调用 view_image 工具加载图片
+        buffer.writeln('- 图片: ${r.photos.join(', ')}（可调用 view_image 工具查看图片内容）');
       }
       for (final entry in r.tagEntries) {
         for (final entryField in entry.fields.entries) {
@@ -652,6 +821,8 @@ class VirtualWorkspaceService {
   // ==========================================
   Future<Map<String, dynamic>> writeFile(String rawPath, String content) async {
     final path = normalizePath(rawPath);
+    // 撤回录制：捕获本轮首次修改前的旧状态（editFile 内部最终也走 writeFile，靠同路径去重）
+    await _captureUndoState(path);
 
     if (path.startsWith('/todos/')) {
       return await _writeTodoFile(path, content);
@@ -743,6 +914,11 @@ class VirtualWorkspaceService {
     Todo? existing;
     if (existingId != null && existingId.isNotEmpty) {
       existing = allTodos.where((t) => t.id == existingId).firstOrNull;
+      // 撤回恢复场景：id 命中已软删除的记录时复活，否则被删待办写回后仍然不可见
+      if (existing == null) {
+        final allWithDeleted = await _todoRepo.getAll(includeDeleted: true);
+        existing = allWithDeleted.where((t) => t.id == existingId && t.isDeleted).firstOrNull;
+      }
     }
     existing ??= allTodos.where((t) => t.title.trim() == title && t.folderId == folderId).firstOrNull;
 
@@ -759,6 +935,7 @@ class VirtualWorkspaceService {
         tags: tags.isNotEmpty ? tags : existing.tags,
         folderId: folderId,
         isLongTerm: isLongTerm,
+        isDeleted: false,
         updatedAt: now,
       );
       await _todoRepo.update(updated);
@@ -892,8 +1069,13 @@ class VirtualWorkspaceService {
     final allNotes = await _noteRepo.getAll();
     final existingId = meta['id']?.toString().replaceAll('"', '');
     Note? existing;
-    if (existingId != null) {
+    if (existingId != null && existingId.isNotEmpty) {
       existing = allNotes.where((n) => n.id == existingId).firstOrNull;
+      // 撤回恢复场景：id 命中已软删除的记录时复活，否则被删笔记写回后仍然不可见
+      if (existing == null) {
+        final allWithDeleted = await _noteRepo.getAll(includeDeleted: true);
+        existing = allWithDeleted.where((n) => n.id == existingId && n.isDeleted).firstOrNull;
+      }
     }
     existing ??= allNotes.where((n) => n.title.trim() == title && n.folderId == folderId).firstOrNull;
 
@@ -909,6 +1091,7 @@ class VirtualWorkspaceService {
         folderId: folderId ?? existing.folderId,
         isPinned: meta['pinned'] == true,
         tags: tagsStr.isNotEmpty ? tagsStr : existing.tags,
+        isDeleted: false,
         updatedAt: now,
       );
       await _noteRepo.update(updated);
@@ -1034,7 +1217,9 @@ class VirtualWorkspaceService {
         } else if (l.startsWith('- 图片:') || l.startsWith('- photo:') || l.startsWith('- photos:')) {
           final pStr = _fieldValue(l);
           for (final p in pStr.split(',')) {
-            if (p.trim().isNotEmpty) photos.add(p.trim());
+            // 读取时行尾附加了 view_image 提示标注，写回解析时剥离，避免混入图片路径
+            final item = p.trim().replaceAll(RegExp('（可调用[^）]*）'), '').trim();
+            if (item.isNotEmpty) photos.add(item);
           }
         } else if (l.startsWith('- 详情:') ||
             l.startsWith('- detail:') ||
@@ -1085,6 +1270,8 @@ class VirtualWorkspaceService {
           weather: weather.isNotEmpty ? weather : existing.weather,
           photos: photos.isNotEmpty ? photos : existing.photos,
           tagEntries: tagEntries.isNotEmpty ? tagEntries : existing.tagEntries,
+          // 撤回恢复场景：id 命中已软删除的记录（getById 不过滤软删）时复活，否则写回后仍不可见
+          isDeleted: false,
           updatedAt: now,
         );
         await _diaryRepo.update(updated);
@@ -1733,6 +1920,8 @@ class VirtualWorkspaceService {
     bool replaceAll = false,
   }) async {
     final path = normalizePath(rawPath);
+    // 撤回录制：捕获替换前的旧状态（后续 writeFile 入口的捕获会同路径去重）
+    await _captureUndoState(path);
     final rawLines = (await readFile(path)).split('\n');
     // 去掉行号前缀：锚定"行首数字+制表符"，避免误伤正文中含制表符的内容
     final originalContent = rawLines
@@ -1755,6 +1944,9 @@ class VirtualWorkspaceService {
   // ==========================================
   Future<Map<String, dynamic>> deleteFile(String rawPath) async {
     final path = normalizePath(rawPath);
+    // 撤回录制：先捕获删除前的旧状态（目录路径 readFile 会失败记为不存在，
+    // 由下方目录分支对被连坐软删的实体逐一补捕获）
+    await _captureUndoState(path);
 
     if (path.startsWith('/todos/')) {
       // 1. 如果路径是分类目录（以 '/' 结尾或没有 .md 后缀）
@@ -1769,9 +1961,13 @@ class VirtualWorkspaceService {
           final allTodos = await _todoRepo.getAll();
           int deletedCount = 0;
           for (final t in allTodos.where((t) => t.folderId == matched.id)) {
+            // 连坐软删的每个待办单独捕获快照，撤回时可逐一还原
+            await _captureUndoState('/todos/${matched.name}/${t.id}.md');
             await _todoRepo.softDelete(t.id);
             deletedCount++;
           }
+          // 分类本身为硬删除，捕获分类清单快照以便撤回时重建
+          await _captureUndoState('/folders/todos.json');
           await _folderRepo.delete(matched.id);
           WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.deleted, matched);
           WorkspaceEventBus.instance.emit('/folders/todos.json', WorkspaceChangeType.updated, matched);
@@ -1802,9 +1998,13 @@ class VirtualWorkspaceService {
           final allNotes = await _noteRepo.getAll();
           int deletedCount = 0;
           for (final n in allNotes.where((n) => n.folderId == matched.id)) {
+            // 连坐软删的每个笔记单独捕获快照，撤回时可逐一还原
+            await _captureUndoState('/notes/${matched.name}/${n.id}.md');
             await _noteRepo.softDelete(n.id);
             deletedCount++;
           }
+          // 分类本身为硬删除，捕获分类清单快照以便撤回时重建
+          await _captureUndoState('/folders/notes.json');
           await _folderRepo.delete(matched.id);
           WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.deleted, matched);
           WorkspaceEventBus.instance.emit('/folders/notes.json', WorkspaceChangeType.updated, matched);

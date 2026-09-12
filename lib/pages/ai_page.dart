@@ -16,7 +16,9 @@ import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
+import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/config/defaults.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
@@ -221,6 +223,181 @@ class _AiPageState extends ConsumerState<AiPage> {
     HapticFeedback.mediumImpact();
     ref.read(currentChatProvider.notifier).cancelCurrentAgent('用户主动中止操作');
     AgentInteractionService.instance.cancelPending('用户主动中止操作');
+  }
+
+  // ==========================================
+  // 用户消息长按操作：再次编辑 / 撤回本轮对话 / 复制
+  // ==========================================
+
+  /// 长按用户消息弹出的操作菜单；[stateIndex] 为该消息在会话态中的真实下标
+  void _showUserMessageActions(int stateIndex, ChatMessage message) {
+    if (_isTyping || ref.read(aiStreamingMessageProvider) != null) {
+      Toast.warning(context, '小Q正在生成中，请等待完成后再操作');
+      return;
+    }
+
+    final theme = Theme.of(context);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: theme.colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.edit_note_rounded, size: 22),
+                  title: const Text('再次编辑', style: TextStyle(fontSize: 14)),
+                  subtitle: const Text(
+                    '回退到本轮对话发起前，内容填回输入框重新生成',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    _confirmRollback(stateIndex, refill: true);
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    Icons.undo_rounded,
+                    size: 22,
+                    color: theme.colorScheme.error,
+                  ),
+                  title: Text(
+                    '撤回本轮对话',
+                    style: TextStyle(fontSize: 14, color: theme.colorScheme.error),
+                  ),
+                  subtitle: const Text(
+                    '回退到本轮对话发起前，并撤销本轮对数据的修改',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    _confirmRollback(stateIndex, refill: false);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.copy_rounded, size: 20),
+                  title: const Text('复制', style: TextStyle(fontSize: 14)),
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    Clipboard.setData(ClipboardData(text: message.content));
+                    Toast.success(context, '已复制');
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// 撤回前的二次确认（破坏性操作：删除该轮起的消息并恢复数据修改，不可恢复）
+  Future<void> _confirmRollback(int stateIndex, {required bool refill}) async {
+    final session = ref.read(currentChatProvider);
+    final messages = session?.messages ?? const <ChatMessage>[];
+    if (stateIndex < 0 || stateIndex >= messages.length) return;
+
+    final removedCount = messages.length - stateIndex;
+    int changeCount = 0;
+    for (final m in messages.skip(stateIndex).where((m) => m.role == 'user')) {
+      changeCount += WorkspaceUndoEntry.decodeList(m.undoLog).length;
+    }
+
+    final description = StringBuffer('将删除该轮起的 $removedCount 条消息');
+    if (changeCount > 0) {
+      description.write('，并撤销本轮及之后的 $changeCount 处数据修改');
+    }
+    description.write('。此操作不可恢复。');
+
+    final theme = Theme.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: Text(refill ? '再次编辑并回退？' : '撤回本轮对话？'),
+        content: Text(description.toString()),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: theme.colorScheme.error,
+              foregroundColor: theme.colorScheme.onError,
+            ),
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            child: Text(refill ? '编辑并回退' : '撤回'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _executeRollback(stateIndex, refill: refill);
+  }
+
+  /// 执行撤回；[refill] 为 true 时把被撤回的用户消息内容与图片回填输入区（再次编辑）
+  Future<void> _executeRollback(int stateIndex, {required bool refill}) async {
+    final message = refill
+        ? ref.read(currentChatProvider)?.messages[stateIndex]
+        : null;
+
+    // 复用生成中状态禁用输入区，防止撤回期间发送新消息
+    setState(() => _isTyping = true);
+    try {
+      final result = await ref
+          .read(currentChatProvider.notifier)
+          .rollbackToMessage(stateIndex);
+      if (!mounted) return;
+      if (result == null) {
+        Toast.error(context, '当前状态无法撤回');
+        return;
+      }
+      final (restored, failed) = result;
+      if (failed > 0) {
+        Toast.warning(context, '已回退对话，但 $failed 处数据恢复失败，详情请查看日志');
+      } else if (restored > 0) {
+        Toast.success(context, '已回退对话并恢复 $restored 处数据修改');
+      } else {
+        Toast.success(context, '已回退对话');
+      }
+      if (refill && message != null) {
+        _refillInputFromMessage(message);
+      }
+      _scrollToBottom();
+    } finally {
+      if (mounted) setState(() => _isTyping = false);
+    }
+  }
+
+  /// 「再次编辑」：把被撤回的用户消息文本与图片回填到输入区（引用的日记/笔记/待办
+  /// 未持久化到消息上，无法回填，需重新选择）
+  void _refillInputFromMessage(ChatMessage message) {
+    setState(() {
+      _inputController.text = message.content;
+      _attachedImages
+        ..clear()
+        ..addAll(message.images ?? const []);
+      _attachedJournalIds.clear();
+      _attachedNoteIds.clear();
+      _attachedTodoIds.clear();
+    });
+    _inputFocusNode.requestFocus();
   }
 
   Future<void> _openDatePicker() async {
@@ -917,9 +1094,15 @@ class _AiPageState extends ConsumerState<AiPage> {
   }
 
   Widget _buildChatArea(ChatSession? currentChat, ThemeData theme) {
+    final stateMessages = currentChat?.messages ?? const <ChatMessage>[];
     // 过滤掉 Agent 内部的工具调用中转消息（正文为空、只承载 tool_calls 的 assistant 消息）。
     // 它们只为上下文协议完整而存在，渲染到会话流里只会变成永久转动的空白气泡。
-    final messages = (currentChat?.messages ?? []).where(_isVisibleMessage).toList();
+    // visibleIndexes 记录可见消息在会话态中的真实下标，供长按撤回/再次编辑定位截断点
+    final visibleIndexes = <int>[];
+    for (var i = 0; i < stateMessages.length; i++) {
+      if (_isVisibleMessage(stateMessages[i])) visibleIndexes.add(i);
+    }
+    final messages = visibleIndexes.map((i) => stateMessages[i]).toList();
     
     // If messages are empty, virtualize the assistant's greeting bubble so it's shown.
     final displayMessages = messages.isEmpty
@@ -991,12 +1174,20 @@ class _AiPageState extends ConsumerState<AiPage> {
             }
           }
 
+          final bubble = _ChatBubble(
+            message: currentMsg,
+            isFirstInGroup: isFirstInGroup,
+            isLastInGroup: isLastInGroup,
+          );
+          // 用户消息长按弹出操作菜单（撤回本轮 / 再次编辑 / 复制）
           return RepaintBoundary(
-            child: _ChatBubble(
-              message: currentMsg,
-              isFirstInGroup: isFirstInGroup,
-              isLastInGroup: isLastInGroup,
-            ),
+            child: currentIsUser && index < visibleIndexes.length
+                ? GestureDetector(
+                    onLongPress: () =>
+                        _showUserMessageActions(visibleIndexes[index], currentMsg),
+                    child: bubble,
+                  )
+                : bubble,
           );
         }
 
@@ -2059,7 +2250,7 @@ class _ChatBubble extends StatelessWidget {
 
                       // 工具调用或执行反馈卡片
                       if (message.role == 'tool')
-                        _buildToolFeedbackWidget(message, theme)
+                        _buildToolFeedbackWidget(context, message, theme)
                       else ...[
                         MarkdownBody(
                           data: message.content,
@@ -2132,7 +2323,7 @@ class _ChatBubble extends StatelessWidget {
   }
 
   /// 构建工具调用执行反馈与小Q确认交互卡片
-  Widget _buildToolFeedbackWidget(ChatMessage message, ThemeData theme) {
+  Widget _buildToolFeedbackWidget(BuildContext context, ChatMessage message, ThemeData theme) {
     final uiDetails = message.uiDetails;
     final isAskUser = message.toolName == 'ask_user' || uiDetails?['type'] == 'ask_user';
 
@@ -2234,6 +2425,52 @@ class _ChatBubble extends StatelessWidget {
                   color: theme.colorScheme.onSurface,
                   fontSize: 13,
                   height: 1.4,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // view_image 成功时图片已注入模型上下文，气泡里显示缩略图与路径摘要；失败走通用错误卡片
+    if (message.toolName == 'view_image' && message.isError != true) {
+      final path = uiDetails?['path'] as String? ?? '';
+      final sizeKB = uiDetails?['sizeKB'];
+      final sizeHint = sizeKB is int && sizeKB > 0 ? '（约 $sizeKB KB）' : '';
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            GestureDetector(
+              onTap: path.isEmpty ? null : () => _showFullImageDialog(context, path),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: UnifiedImage(imagePath: path, fit: BoxFit.cover),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                '已查看图片 $path$sizeHint',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
                 ),
               ),
             ),

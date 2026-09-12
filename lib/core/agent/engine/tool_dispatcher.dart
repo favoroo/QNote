@@ -30,6 +30,10 @@ class ToolDispatcher {
   AgentTool? getTool(String name) => _tools[name];
 
   /// 执行工具调用
+  ///
+  /// 当工具返回图片（如 view_image）时，图片以 data URI 挂在返回消息的 [ChatMessage.images]
+  /// 上，仅作为内存中的临时通道供 AgentLoop 提取；AgentLoop 会剥离图片后把消息
+  /// 加入上下文与 UI 事件流，因此落库的消息永远不携带 base64 图片数据。
   Future<ChatMessage> dispatch(
     ToolCall call, {
     void Function(String progress)? onProgress,
@@ -63,6 +67,7 @@ class ToolDispatcher {
         toolName: call.name,
         isError: result.isError,
         uiDetails: result.uiDetails,
+        images: result.images,
         timestamp: DateTime.now(),
       );
     } catch (e, stack) {

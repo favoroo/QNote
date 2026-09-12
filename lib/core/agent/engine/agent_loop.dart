@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:dio/dio.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_cancellation_token.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_events.dart';
 import 'package:qnote_flutter/core/agent/engine/tool_dispatcher.dart';
@@ -53,32 +54,54 @@ class AgentLoop {
   }) async* {
     yield AgentEvent.agentStart();
 
-    // 长会话压缩：裁剪早期消息并生成摘要（对齐 pi compaction）
-    final compactedHistory = await _compactHistory(conversationHistory);
-
-    final String fullSystemPrompt =
-        (dynamicContext == null || dynamicContext.trim().isEmpty)
-            ? systemPrompt
-            : '$systemPrompt\n\n# 当前环境上下文\n$dynamicContext';
-
-    final List<ChatMessage> activeMessages = [
-      ChatMessage(role: 'system', content: fullSystemPrompt),
-      ...compactedHistory,
-    ];
-
-    final toolDefinitions = dispatcher.toFunctionDefinitions();
-    int currentTurn = 0;
+    // 将动态取消令牌桥接到 Dio CancelToken：用户点停止的瞬间，
+    // 等待中的 HTTP 请求（含首包前的"思考中"阶段）立即断连，无需等下一个数据包到达
+    final httpCancelToken = CancelToken();
+    void bridgeCancel() {
+      if (!httpCancelToken.isCancelled) {
+        httpCancelToken.cancel(cancellationToken?.reason);
+      }
+    }
+    cancellationToken?.addListener(bridgeCancel);
 
     try {
+      // 取消检查点：上下文压缩前，点了停止就不再发起摘要请求
+      if (cancellationToken?.isCancelled == true) {
+        yield AgentEvent.finished(_cancelledMessage(''));
+        yield AgentEvent.agentEnd();
+        return;
+      }
+
+      // 长会话压缩：裁剪早期消息并生成摘要（对齐 pi compaction）
+      final compactedHistory =
+          await _compactHistory(conversationHistory, cancellationToken, httpCancelToken);
+
+      // 取消检查点：压缩完成后立即响应，不再进入推理循环
+      if (cancellationToken?.isCancelled == true) {
+        yield AgentEvent.finished(_cancelledMessage(''));
+        yield AgentEvent.agentEnd();
+        return;
+      }
+
+      final String fullSystemPrompt =
+          (dynamicContext == null || dynamicContext.trim().isEmpty)
+              ? systemPrompt
+              : '$systemPrompt\n\n# 当前环境上下文\n$dynamicContext';
+
+      final List<ChatMessage> activeMessages = [
+        ChatMessage(role: 'system', content: fullSystemPrompt),
+        ...compactedHistory,
+      ];
+
+      final toolDefinitions = dispatcher.toFunctionDefinitions();
+      int currentTurn = 0;
+      // 图片降级重试只允许一次，避免纯文本模型下反复重试浪费请求
+      bool imageFallbackTried = false;
+
       while (currentTurn < maxTurns) {
         if (cancellationToken?.isCancelled == true) {
           LoggerService.instance.logAI('AgentLoop 收到中止信号，提前退出');
-          final cancelMsg = ChatMessage(
-            role: 'assistant',
-            content: '已根据您的要求中止当前操作。',
-            timestamp: DateTime.now(),
-          );
-          yield AgentEvent.finished(cancelMsg);
+          yield AgentEvent.finished(_cancelledMessage(''));
           yield AgentEvent.agentEnd();
           return;
         }
@@ -106,17 +129,13 @@ class AgentLoop {
             onToolCallsReady: (calls) {
               streamedToolCalls.addAll(calls);
             },
+            cancelToken: httpCancelToken,
           );
 
           await for (final delta in stream) {
             if (cancellationToken?.isCancelled == true) {
               LoggerService.instance.logAI('流式生成中收到中止信号');
-              final cancelMsg = ChatMessage(
-                role: 'assistant',
-                content: '${accumulatedContent.toString().trim()}\n\n*(操作已被用户主动中止)*',
-                timestamp: DateTime.now(),
-              );
-              yield AgentEvent.finished(cancelMsg);
+              yield AgentEvent.finished(_cancelledMessage(accumulatedContent.toString()));
               yield AgentEvent.agentEnd();
               return;
             }
@@ -133,7 +152,26 @@ class AgentLoop {
             yield AgentEvent.contentDelta(tail);
           }
         } catch (e) {
+          // 用户主动中止（含 Dio 请求被断连抛出的取消异常）按正常中止收尾，不作为错误上报
+          if (cancellationToken?.isCancelled == true) {
+            LoggerService.instance.logAI('AgentLoop 流式因用户中止而中断');
+            yield AgentEvent.finished(_cancelledMessage(accumulatedContent.toString()));
+            yield AgentEvent.agentEnd();
+            return;
+          }
           LoggerService.instance.logAI('AgentLoop 流式发生错误: $e', level: LogLevel.error);
+
+          // 降级兜底：本轮上下文注入过图片时，可能是纯文本模型或网关拒收图片导致请求失败，
+          // 剥离全部图片后原地重试一次，避免整轮对话直接中断
+          if (!imageFallbackTried &&
+              activeMessages.any((m) => m.images != null && m.images!.isNotEmpty)) {
+            imageFallbackTried = true;
+            LoggerService.instance.logAI('上下文含图片消息，疑似模型不支持图片输入，剥离图片后重试本次请求');
+            _stripAllImages(activeMessages);
+            currentTurn--;
+            continue;
+          }
+
           yield AgentEvent.error('请求模型失败: $e');
           yield AgentEvent.agentEnd();
           return;
@@ -192,6 +230,8 @@ class AgentLoop {
         yield AgentEvent.assistantMessage(assistantResponse);
 
         if (cancellationToken?.isCancelled == true) {
+          // 中止发生在工具派发前：补发 finished 收尾，保证会话中有中止提示
+          yield AgentEvent.finished(_cancelledMessage(''));
           yield AgentEvent.agentEnd();
           return;
         }
@@ -214,10 +254,9 @@ class AgentLoop {
 
           for (int i = 0; i < toolCalls.length; i++) {
             final call = toolCalls[i];
-            final resultMsg = results[i];
-            activeMessages.add(resultMsg);
-            await afterToolCall?.call(call, resultMsg);
-            yield AgentEvent.toolCompleted(call, resultMsg);
+            final contextMsg = _resolveToolResultMessage(results[i], activeMessages);
+            await afterToolCall?.call(call, contextMsg);
+            yield AgentEvent.toolCompleted(call, contextMsg);
           }
         } else {
           // 串行安全执行 (Sequential Tool Execution)
@@ -236,9 +275,9 @@ class AgentLoop {
               },
             );
 
-            activeMessages.add(toolResultMsg);
-            await afterToolCall?.call(call, toolResultMsg);
-            yield AgentEvent.toolCompleted(call, toolResultMsg);
+            final contextMsg = _resolveToolResultMessage(toolResultMsg, activeMessages);
+            await afterToolCall?.call(call, contextMsg);
+            yield AgentEvent.toolCompleted(call, contextMsg);
           }
         }
 
@@ -271,8 +310,87 @@ class AgentLoop {
       );
       yield AgentEvent.finished(timeoutMsg);
       yield AgentEvent.agentEnd();
+    } catch (e) {
+      // 承接上下文压缩等阶段被取消的异常：按正常中止收尾，不作为错误上报
+      if (cancellationToken?.isCancelled == true) {
+        yield AgentEvent.finished(_cancelledMessage(''));
+        yield AgentEvent.agentEnd();
+        return;
+      }
+      LoggerService.instance.logAI('AgentLoop 执行异常: $e', level: LogLevel.error);
+      yield AgentEvent.error('Agent 执行异常: $e');
+      yield AgentEvent.agentEnd();
     } finally {
-      // 循环退出保障
+      cancellationToken?.removeListener(bridgeCancel);
+    }
+  }
+
+  /// 生成用户主动中止的收尾消息
+  ///
+  /// [partialContent] 为中止前已流式产出的正文（可为空），有内容时附注在正文之后。
+  ChatMessage _cancelledMessage(String partialContent) {
+    final trimmed = partialContent.trim();
+    return ChatMessage(
+      role: 'assistant',
+      content: trimmed.isEmpty ? '(操作已被用户主动中止)' : '$trimmed\n\n*(操作已被用户主动中止)*',
+      timestamp: DateTime.now(),
+    );
+  }
+
+  /// 处理工具返回消息并加入本轮上下文
+  ///
+  /// 若消息携带图片（如 view_image 工具的返回），先剥离图片生成干净的消息
+  /// （tool 角色在 OpenAI 协议下不支持图片内容，且该消息会随事件流落库），
+  /// 再以合成 user 消息把图片注入上下文。图片只存在于循环内部的
+  /// [activeMessages]，不随 toolCompleted 事件持久化，下一轮对话自然消失，
+  /// 因此模型本轮可见图片而数据库与后续请求不受 base64 体积影响。
+  ChatMessage _resolveToolResultMessage(ChatMessage resultMsg, List<ChatMessage> activeMessages) {
+    final images = resultMsg.images;
+    final contextMsg = (images == null || images.isEmpty) ? resultMsg : _stripImages(resultMsg);
+    activeMessages.add(contextMsg);
+
+    if (images != null && images.isNotEmpty) {
+      final source = resultMsg.uiDetails?['path'] as String? ?? '未知路径';
+      activeMessages.add(ChatMessage(
+        role: 'user',
+        content: '[系统注入] 工具 ${resultMsg.toolName ?? "tool"} 的结果附带 ${images.length} 张图片'
+            '（来源: $source）。图片已附加在本条消息中，请直接基于图片画面内容继续分析，无需再次调用工具读取。',
+        images: images,
+        timestamp: DateTime.now(),
+      ));
+    }
+    return contextMsg;
+  }
+
+  /// 剥离单条消息的图片字段（copyWith 的 `??` 语义无法置空字段，需新建对象）
+  ChatMessage _stripImages(ChatMessage msg) {
+    return ChatMessage(
+      role: msg.role,
+      content: msg.content,
+      timestamp: msg.timestamp,
+      thought: msg.thought,
+      toolCalls: msg.toolCalls,
+      toolCallId: msg.toolCallId,
+      toolName: msg.toolName,
+      isError: msg.isError,
+      uiDetails: msg.uiDetails,
+      undoLog: msg.undoLog,
+    );
+  }
+
+  /// 剥离上下文中全部图片（降级重试用），并把依赖图片存在的提示语改为降级说明
+  void _stripAllImages(List<ChatMessage> messages) {
+    for (int i = 0; i < messages.length; i++) {
+      final m = messages[i];
+      if (m.images == null || m.images!.isEmpty) continue;
+      String content = m.content;
+      if (m.role == 'user' && content.startsWith('[系统注入]')) {
+        content = '[系统注入] 图片已剥离：当前模型不支持图片输入，无法查看图片内容，'
+            '请如实告知用户当前模型无法看图，或改用文字方式处理。';
+      } else if (m.role == 'tool' && m.toolName == 'view_image') {
+        content = '图片加载失败：当前模型不支持图片输入，无法查看图片内容。';
+      }
+      messages[i] = _stripImages(m).copyWith(content: content);
     }
   }
 
@@ -281,7 +399,11 @@ class AgentLoop {
   /// 历史超过 [maxHistoryMessages] 时裁剪早期消息，并生成一条摘要注入窗口头部。
   /// 裁剪点必须保证 assistant(tool_calls) 与其 tool 结果成对完整，
   /// 否则 OpenAI 兼容接口会因 tool_call_id 失配直接返回 400。
-  Future<List<ChatMessage>> _compactHistory(List<ChatMessage> history) async {
+  Future<List<ChatMessage>> _compactHistory(
+    List<ChatMessage> history,
+    AgentCancellationToken? cancellationToken,
+    CancelToken? httpCancelToken,
+  ) async {
     if (history.length <= maxHistoryMessages) return history;
 
     int cut = history.length - maxHistoryMessages;
@@ -294,7 +416,7 @@ class AgentLoop {
     final removed = history.sublist(0, cut);
     final kept = history.sublist(cut);
 
-    final summary = await _summarizeMessages(removed);
+    final summary = await _summarizeMessages(removed, cancellationToken, httpCancelToken);
     LoggerService.instance.logAI(
       '触发上下文压缩: 裁剪 ${removed.length} 条早期消息, 保留 ${kept.length} 条',
     );
@@ -310,7 +432,11 @@ class AgentLoop {
   }
 
   /// 将被裁剪的历史压缩为结构化摘要：优先 LLM 生成，失败时降级为机械拼接
-  Future<String> _summarizeMessages(List<ChatMessage> messages) async {
+  Future<String> _summarizeMessages(
+    List<ChatMessage> messages,
+    AgentCancellationToken? cancellationToken,
+    CancelToken? httpCancelToken,
+  ) async {
     final buffer = StringBuffer();
     for (final m in messages) {
       if (m.role == 'system') continue;
@@ -336,9 +462,11 @@ class AgentLoop {
               '3) 关键决定；4) 未完成事项。控制在 300 字以内。',
         ),
         ChatMessage(role: 'user', content: transcript),
-      ]);
+      ], cancelToken: httpCancelToken);
       if (llmSummary.trim().isNotEmpty) return llmSummary.trim();
     } catch (e) {
+      // 用户主动中止：向上抛出由主循环按中止收尾，禁止降级为机械摘要后继续跑完任务
+      if (cancellationToken?.isCancelled == true) rethrow;
       LoggerService.instance.logAI(
         'LLM 会话摘要生成失败，降级为机械摘要: $e',
         level: LogLevel.warning,

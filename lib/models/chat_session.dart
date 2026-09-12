@@ -57,6 +57,7 @@ class ChatMessage {
   final String? toolName; // 当 role == 'tool' 时的工具名称
   final bool? isError; // 当 role == 'tool' 时表示执行是否出错
   final Map<String, dynamic>? uiDetails; // 供客户端 UI 渲染的结构化卡片数据
+  final String? undoLog; // 仅用户消息：本轮对话 VFS 变更快照（WorkspaceUndoEntry 列表 JSON），支撑撤回/再次编辑
 
   ChatMessage({
     required this.role,
@@ -69,6 +70,7 @@ class ChatMessage {
     this.toolName,
     this.isError,
     this.uiDetails,
+    this.undoLog,
   });
 
   Map<String, dynamic> toMap() {
@@ -84,6 +86,7 @@ class ChatMessage {
       if (toolName != null) 'tool_name': toolName,
       if (isError != null) 'is_error': isError,
       if (uiDetails != null) 'ui_details': uiDetails,
+      if (undoLog != null && undoLog!.isNotEmpty) 'undo_log': undoLog,
     };
   }
 
@@ -121,6 +124,7 @@ class ChatMessage {
       toolName: map['tool_name'] as String?,
       isError: map['is_error'] as bool?,
       uiDetails: uiDetails,
+      undoLog: map['undo_log'] as String?,
     );
   }
 
@@ -135,6 +139,7 @@ class ChatMessage {
     String? toolName,
     bool? isError,
     Map<String, dynamic>? uiDetails,
+    String? undoLog,
   }) {
     return ChatMessage(
       role: role ?? this.role,
@@ -147,6 +152,7 @@ class ChatMessage {
       toolName: toolName ?? this.toolName,
       isError: isError ?? this.isError,
       uiDetails: uiDetails ?? this.uiDetails,
+      undoLog: undoLog ?? this.undoLog,
     );
   }
 }

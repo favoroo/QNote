@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:dio/dio.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_cancellation_token.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_events.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_loop.dart';
@@ -27,6 +28,7 @@ class MockAiService extends AiService {
     required List<ChatMessage> messages,
     List<Map<String, dynamic>>? tools,
     void Function(List<ToolCall> toolCalls)? onToolCallsReady,
+    CancelToken? cancelToken,
   }) async* {
     for (final delta in textDeltas) {
       yield delta;
@@ -34,6 +36,22 @@ class MockAiService extends AiService {
     if (returnToolCalls.isNotEmpty) {
       onToolCallsReady?.call(returnToolCalls);
     }
+  }
+}
+
+// 首包后挂起并模拟请求被中止断连的 AiService 桩
+class MidStreamCancelAiService extends AiService {
+  @override
+  Stream<String> chatStreamWithTools({
+    required List<ChatMessage> messages,
+    List<Map<String, dynamic>>? tools,
+    void Function(List<ToolCall> toolCalls)? onToolCallsReady,
+    CancelToken? cancelToken,
+  }) async* {
+    yield '第一段';
+    // 模拟用户点停止后 Dio CancelToken 断连：流挂起片刻后抛出取消异常
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    throw Exception('请求已被用户取消');
   }
 }
 
@@ -125,6 +143,31 @@ void main() {
       expect(events, contains(AgentEventType.finished));
       expect(events, contains(AgentEventType.agentEnd));
       expect(events.contains(AgentEventType.turnStart), false); // 提前中止未开始第 1 轮
+    });
+
+    test('5. 流式进行中点击中止 → 立即优雅终止且不作为错误上报', () async {
+      final token = AgentCancellationToken();
+      final mockAi = MidStreamCancelAiService();
+      final dispatcher = ToolDispatcher();
+      final loop = AgentLoop(aiService: mockAi, dispatcher: dispatcher);
+
+      final events = <AgentEventType>[];
+      await for (final event in loop.run(
+        conversationHistory: [],
+        systemPrompt: '系统提示词',
+        cancellationToken: token,
+      )) {
+        events.add(event.type);
+        // 模拟用户在收到首个正文增量时点击停止
+        if (event.type == AgentEventType.contentDelta && !token.isCancelled) {
+          token.cancel('用户主动中止操作');
+        }
+      }
+
+      expect(events, contains(AgentEventType.finished));
+      expect(events, contains(AgentEventType.agentEnd));
+      // 中止属于正常收尾：绝不允许出现 error 事件（否则 UI 会显示"发生错误"）
+      expect(events.contains(AgentEventType.error), false);
     });
   });
 }

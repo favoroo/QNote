@@ -128,6 +128,27 @@ class ImageRepository {
     return base64Encode(bytes);
   }
 
+  /// 检查图片文件是否存在（兼容绝对路径与 /images/ 相对路径）
+  Future<bool> imageExists(String path) async {
+    if (path.isEmpty) return false;
+    final resolved = await resolveLocalPath(path);
+    return File(resolved).exists();
+  }
+
+  /// 读取图片并压缩后返回 base64（供 Agent 多模态输入等需要控制体积的场景）
+  ///
+  /// 复用 [saveImage] 落盘时的压缩策略（最长边 1080px / JPEG 80），
+  /// 避免聊天附件原图等未压缩的大图直接 base64 后冲爆请求体；
+  /// 文件不存在时返回空字符串。
+  Future<String> getCompressedBase64Image(String path) async {
+    final resolved = await resolveLocalPath(path);
+    final file = File(resolved);
+    if (!await file.exists()) return '';
+    final bytes = await file.readAsBytes();
+    final compressed = await compute(_compressImage, bytes);
+    return base64Encode(compressed);
+  }
+
   Future<String> saveBase64Image(String base64Data, {String? subfolder}) async {
     final appDir = await getApplicationDocumentsDirectory();
     final imagesDir = Directory(p.join(appDir.path, 'images', subfolder ?? ''));

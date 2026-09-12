@@ -184,8 +184,11 @@ class AiService {
     return true;
   }
 
-  Future<String> chat(List<ChatMessage> messages) async {
-    final response = await chatResponse(messages);
+  Future<String> chat(
+    List<ChatMessage> messages, {
+    CancelToken? cancelToken,
+  }) async {
+    final response = await chatResponse(messages, cancelToken: cancelToken);
     return response.content;
   }
 
@@ -193,6 +196,7 @@ class AiService {
   Future<ChatMessage> chatResponse(
     List<ChatMessage> messages, {
     List<Map<String, dynamic>>? tools,
+    CancelToken? cancelToken,
   }) async {
     if (_config == null) throw Exception('AI config not set');
 
@@ -218,7 +222,7 @@ class AiService {
           'AI请求 [${_config!.provider}] [${_config!.modelName}] $endpoint:\n${_formatJsonForLogging(sanitizedBody)}',
         );
 
-        final response = await _dio.post(endpoint, data: requestBody);
+        final response = await _dio.post(endpoint, data: requestBody, cancelToken: cancelToken);
 
         final duration = DateTime.now().difference(startTime).inMilliseconds;
         final data = response.data;
@@ -255,6 +259,8 @@ class AiService {
           timestamp: DateTime.now(),
         );
       } catch (e, stackTrace) {
+        // 用户主动中止（Dio CancelToken 触发）：直接抛出，禁止进入重试退避
+        if (cancelToken?.isCancelled == true) rethrow;
         if (await _shouldRetryAndWait(e, retryCount, scene: '对话请求')) {
           retryCount++;
           continue;
@@ -297,6 +303,7 @@ class AiService {
     required List<ChatMessage> messages,
     List<Map<String, dynamic>>? tools,
     void Function(List<ToolCall> toolCalls)? onToolCallsReady,
+    CancelToken? cancelToken,
   }) async* {
     if (_config == null) throw Exception('AI config not set');
 
@@ -318,6 +325,7 @@ class AiService {
           _chatEndpoint,
           data: requestBody,
           options: Options(responseType: ResponseType.stream),
+          cancelToken: cancelToken,
         );
 
         final stream = response.data?.stream;
@@ -407,6 +415,8 @@ class AiService {
         _deliverToolCalls(toolCallBuilders, onToolCallsReady);
         return;
       } catch (e, stackTrace) {
+        // 用户主动中止（Dio CancelToken 触发）：直接抛出，禁止进入重试退避
+        if (cancelToken?.isCancelled == true) rethrow;
         if (await _shouldRetryAndWait(
           e,
           retryCount,

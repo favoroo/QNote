@@ -67,5 +67,32 @@ void main() {
       expect(restored.messages[0].images, ['/image1.jpg']);
       expect(restored.messages[1].images, isNull);
     });
+
+    test('ChatMessage toMap/fromMap 应保留 undoLog', () {
+      const undoLog = '[{"path":"/todos/工作/abc.md","existed_before":true,"before_content":"原始"}]';
+      final msg = ChatMessage(
+        role: 'user',
+        content: '帮我加个待办',
+        undoLog: undoLog,
+      );
+
+      final restored = ChatMessage.fromMap(msg.toMap());
+      expect(restored.undoLog, undoLog);
+
+      // copyWith 支持（与其他可空字段同语义：传 null 保留原值）
+      const newLog = '[{"path":"/notes/b.md","existed_before":false}]';
+      expect(msg.copyWith(undoLog: newLog).undoLog, newLog);
+      expect(msg.copyWith().undoLog, undoLog);
+    });
+
+    test('ChatMessage 旧数据无 undo_log 字段时向后兼容', () {
+      final msg = ChatMessage.fromMap({
+        'role': 'user',
+        'content': '历史消息',
+      });
+      expect(msg.undoLog, isNull);
+      // toMap 不应写出空的 undo_log 键
+      expect(msg.toMap().containsKey('undo_log'), isFalse);
+    });
   });
 }

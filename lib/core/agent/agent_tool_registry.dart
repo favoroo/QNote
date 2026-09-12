@@ -6,6 +6,7 @@ import 'package:qnote_flutter/core/agent/tools/workspace/edit_file_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/list_dir_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/read_file_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/skill_tool.dart';
+import 'package:qnote_flutter/core/agent/tools/workspace/view_image_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/write_file_tool.dart';
 
 /// 全局工具装配工厂
@@ -23,6 +24,7 @@ class AgentToolRegistry {
       WriteFileTool(),
       EditFileTool(),
       DeleteFileTool(),
+      ViewImageTool(),
       SkillTool(),
 
       // 通用搜索与交互

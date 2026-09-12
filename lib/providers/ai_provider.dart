@@ -13,7 +13,9 @@ import 'package:qnote_flutter/core/agent/engine/agent_cancellation_token.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_events.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_loop.dart';
 import 'package:qnote_flutter/core/agent/prompts/q_system_prompt.dart';
+import 'package:qnote_flutter/core/agent/vfs/virtual_workspace_service.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
+import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
@@ -284,12 +286,16 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
 
   final StringBuffer _streamingContent = StringBuffer();
   bool _isStreaming = false;
+  bool _isRollingBack = false;
   AgentCancellationToken? _currentCancellationToken;
 
   /// 流式文本刷新节流定时器：批量合并 delta，避免每 token 触发 UI 重建
   Timer? _streamingFlushTimer;
 
   bool get isStreaming => _isStreaming;
+
+  /// 是否正在执行撤回（防重入，UI 据此禁用输入与重复触发）
+  bool get isRollingBack => _isRollingBack;
 
   /// 主动取消/中止当前 Agent 执行（对齐 Pi Agent 的 abort 控制）
   void cancelCurrentAgent([String? reason]) {
@@ -633,6 +639,12 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
 
     _isStreaming = true;
     _streamingContent.clear();
+    // 开始录制本轮 VFS 变更（撤回/再次编辑功能的数据来源）
+    VirtualWorkspaceService.instance.startRecording();
+
+    // 取消令牌必须在最前创建：否则"准备中"阶段（资料/关联数据导出）点停止时为 null，取消静默失效
+    final token = AgentCancellationToken();
+    _currentCancellationToken = token;
 
     try {
       // 2. Prepare Time Context (in Chinese format, e.g., "2026/05/17 星期日 09:31")
@@ -692,6 +704,19 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         }
       }
 
+      // 准备阶段（资料/关联数据导出）可能较久：若用户已点停止，补一条中止提示后直接收尾
+      if (token.isCancelled) {
+        state = state!.copyWith(messages: [
+          ...updatedMessages,
+          ChatMessage(
+            role: 'assistant',
+            content: '(操作已被用户主动中止)',
+            timestamp: DateTime.now(),
+          ),
+        ]);
+        return;
+      }
+
       // 5. 构建动态环境上下文（时间/用户资料/关联数据），注入 system 尾部而非污染用户消息原文
       final dynamicContextBuffer = StringBuffer();
       if (timeContext.isNotEmpty) {
@@ -723,9 +748,6 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         temperature: roleSettings.temperature,
         maxTokens: roleSettings.maxTokens,
       );
-
-      final token = AgentCancellationToken();
-      _currentCancellationToken = token;
 
       final agentLoop = AgentLoop(
         aiService: aiService,
@@ -866,9 +888,119 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       _streamingFlushTimer?.cancel();
       _streamingFlushTimer = null;
       _ref.read(aiStreamingMessageProvider.notifier).state = null;
+
+      // 结束录制，把本轮 VFS 变更快照挂到本轮用户消息上（随会话落库，撤回时按此恢复）
+      final undoEntries = VirtualWorkspaceService.instance.stopRecording();
+      if (undoEntries.isNotEmpty && state != null) {
+        final userIndex = updatedMessages.length - 1;
+        final messages = List<ChatMessage>.from(state!.messages);
+        if (userIndex >= 0 &&
+            userIndex < messages.length &&
+            messages[userIndex].role == 'user') {
+          messages[userIndex] = messages[userIndex].copyWith(
+            undoLog: WorkspaceUndoEntry.encodeList(undoEntries),
+          );
+          state = state!.copyWith(messages: messages);
+        }
+      }
+
       if (state != null) {
         await repo.updateChatSession(state!);
       }
     }
+  }
+
+  /// 撤回：回退到 [userMessageIndex] 这条用户消息发起前。
+  ///
+  /// 先逆序恢复该轮及其后所有轮次记录的 VFS 变更快照（数据回退），再截断该轮起的
+  /// 全部消息并落库（上下文回退）——由于 LLM 上下文每次发送都从会话消息现场构建，
+  /// 截断后对话上下文同步精确回到撤回节点。
+  ///
+  /// 返回 `(恢复成功处数, 恢复失败处数)`；返回 null 表示当前状态不可撤回
+  /// （生成中/正在撤回/越界/非用户消息）。
+  Future<(int restored, int failed)?> rollbackToMessage(int userMessageIndex) async {
+    if (state == null) return null;
+    if (_isStreaming) return null;
+    if (_isRollingBack) return null;
+    final messages = state!.messages;
+    if (userMessageIndex < 0 || userMessageIndex >= messages.length) return null;
+    if (messages[userMessageIndex].role != 'user') return null;
+
+    _isRollingBack = true;
+    int restored = 0;
+    int failed = 0;
+    try {
+      // 收集该轮（含）之后所有用户消息的变更快照，逆序恢复（后一轮的修改先撤销）
+      final rounds = messages
+          .skip(userMessageIndex)
+          .where((m) => m.role == 'user')
+          .toList();
+
+      for (final roundMessage in rounds.reversed) {
+        for (final entry in WorkspaceUndoEntry.decodeList(roundMessage.undoLog)) {
+          try {
+            if (entry.existedBefore) {
+              if (entry.beforeContent != null) {
+                await VirtualWorkspaceService.instance.writeFile(
+                  entry.path,
+                  entry.beforeContent!,
+                );
+                restored++;
+              }
+            } else {
+              // 本轮新建的文件应删除；若已不存在（读取失败或占位文案）则状态已符合，无需删除
+              if (!await _workspacePathAbsent(entry.path)) {
+                await VirtualWorkspaceService.instance.deleteFile(entry.path);
+              }
+              restored++;
+            }
+          } catch (e) {
+            failed++;
+            LoggerService.instance.logAI(
+              '撤回恢复工作区变更失败: ${entry.path}, $e',
+              level: LogLevel.warning,
+            );
+          }
+        }
+      }
+
+      // 截断该轮起的所有消息（含 assistant/tool 中间消息与后续轮次）并落库
+      state = state!.copyWith(messages: messages.sublist(0, userMessageIndex));
+      await ConfigRepository.instance.updateChatSession(state!);
+
+      // 恢复写入不走 AgentLoop 的 afterToolCall 钩子，手动补齐业务数据联动刷新
+      _refreshBusinessDataAfterRollback();
+    } finally {
+      _isRollingBack = false;
+    }
+
+    return (restored, failed);
+  }
+
+  /// 判断虚拟路径当前是否处于"不存在"（读取失败或空态占位文案）
+  Future<bool> _workspacePathAbsent(String path) async {
+    try {
+      final content = await VirtualWorkspaceService.instance.readFile(path);
+      return content.contains('暂无流水事件打卡') ||
+          content.contains('尚未开始编写这天的深度反思日记');
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// 撤回后全量刷新受影响的业务数据（对齐 AgentLoop.afterToolCall 的联动逻辑）
+  void _refreshBusinessDataAfterRollback() {
+    try {
+      _ref.read(todoListProvider.notifier).refresh();
+      _ref.read(todoFolderListProvider.notifier).refresh();
+      _ref.invalidate(completedTodoListProvider);
+      _ref.invalidate(upcomingRemindersProvider);
+      _ref.read(diaryListProvider.notifier).refresh();
+      _ref.invalidate(journalByDateProvider);
+      // 日记复用 notes/folders 表存储，笔记树同样需要刷新（同 afterToolCall 钩子的处理）
+      _ref.read(noteListProvider.notifier).refresh();
+      _ref.read(folderListProvider.notifier).refresh();
+      WidgetUtils.updateHomeWidgets();
+    } catch (_) {}
   }
 }

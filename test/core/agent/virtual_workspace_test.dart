@@ -534,4 +534,107 @@ tags: "运动,健康"
       expect(folderSkill, contains('/folders/todos.json'));
     });
   });
+
+  group('VFS 变更录制（对话撤回 undoLog）测试', () {
+    final vfs = VirtualWorkspaceService.instance;
+    final todoRepo = TodoRepository();
+    final diaryRepo = DiaryRepository();
+
+    test('1. 本轮新建的文件捕获为 existedBefore=false，恢复时删除', () async {
+      vfs.startRecording();
+      await vfs.writeFile(
+        '/todos/撤回测试/新建待办.md',
+        '---\npriority: normal\n---\n本轮新建',
+      );
+      final entries = vfs.stopRecording();
+
+      final todoEntries = entries.where((e) => e.existedBefore == false).toList();
+      expect(todoEntries, isNotEmpty);
+      // 新建捕获无法解析出实体 id，保留原路径
+      expect(todoEntries.first.path, '/todos/撤回测试/新建待办.md');
+
+      // 恢复语义：删除本轮新建的待办
+      await vfs.deleteFile(todoEntries.first.path);
+      final all = await todoRepo.getAll();
+      expect(all.any((t) => t.title == '新建待办'), isFalse);
+    });
+
+    test('2. 同轮多次修改同一路径只保留最旧快照', () async {
+      await vfs.writeFile('/todos/撤回测试/多次修改.md', '---\n---\n版本1');
+      final all = await todoRepo.getAll();
+      final todo = all.where((t) => t.title == '多次修改').first;
+
+      vfs.startRecording();
+      await vfs.writeFile('/todos/撤回测试/多次修改.md', '---\nid: "${todo.id}"\n---\n版本2');
+      await vfs.editFile('/todos/撤回测试/多次修改.md', '版本2', '版本3');
+      final entries = vfs.stopRecording();
+
+      // 标题路径与 id 路径（editFile 内部走 writeFile）都应去重为一条，且是最旧内容
+      final todoEntries = entries
+          .where((e) => e.path.startsWith('/todos/撤回测试/') && e.path.endsWith('.md'))
+          .toList();
+      expect(todoEntries.length, 1);
+      expect(todoEntries.first.existedBefore, isTrue);
+      expect(todoEntries.first.beforeContent, contains('版本1'));
+      // 捕获路径规范化为实体 id 键
+      expect(todoEntries.first.path, '/todos/撤回测试/${todo.id}.md');
+    });
+
+    test('3. 待办删除后按快照写回可复活软删记录', () async {
+      final res = await vfs.writeFile(
+        '/todos/撤回测试/待删除待办.md',
+        '---\npriority: important\n---\n删除我',
+      );
+      final todoId = res['id'] as String;
+
+      vfs.startRecording();
+      await vfs.deleteFile('/todos/撤回测试/$todoId.md');
+      final entries = vfs.stopRecording();
+      expect(entries.first.existedBefore, isTrue);
+      expect(entries.first.path, '/todos/撤回测试/$todoId.md');
+
+      // 已软删除
+      var all = await todoRepo.getAll();
+      expect(all.any((t) => t.id == todoId), isFalse);
+
+      // 写回快照 → 复活
+      await vfs.writeFile(entries.first.path, entries.first.beforeContent!);
+      all = await todoRepo.getAll();
+      final revived = all.where((t) => t.id == todoId).firstOrNull;
+      expect(revived, isNotNull);
+      expect(revived!.isDeleted, isFalse);
+      expect(revived.description, contains('删除我'));
+    });
+
+    test('4. timeline 单条删除的快照归一化到天文件，恢复后记录复活', () async {
+      await vfs.writeFile(
+        '/timeline/2026-01-10.md',
+        '## [09:00] 撤回测试事件\n- 分类: 工作\n- 详情: 待撤回的流水',
+      );
+      final records = await diaryRepo.getByDate(DateTime(2026, 1, 10));
+      final record = records.where((r) => r.title == '撤回测试事件').firstOrNull;
+      expect(record, isNotNull);
+
+      vfs.startRecording();
+      // 用单条 id 路径删除（模型实际会用的路径形态）
+      await vfs.deleteFile('/timeline/${record!.id}.md');
+      final entries = vfs.stopRecording();
+
+      // 归一化为天文件快照
+      expect(entries.first.path, '/timeline/2026-01-10.md');
+      expect(entries.first.existedBefore, isTrue);
+      expect(entries.first.beforeContent, contains('撤回测试事件'));
+
+      // 已软删除
+      var afterDelete = await diaryRepo.getByDate(DateTime(2026, 1, 10));
+      expect(afterDelete.any((r) => r.id == record.id), isFalse);
+
+      // 写回天文件快照 → 记录复活
+      await vfs.writeFile(entries.first.path, entries.first.beforeContent!);
+      afterDelete = await diaryRepo.getByDate(DateTime(2026, 1, 10));
+      final revived = afterDelete.where((r) => r.id == record.id).firstOrNull;
+      expect(revived, isNotNull);
+      expect(revived!.isDeleted, isFalse);
+    });
+  });
 }
