@@ -250,7 +250,17 @@ class GenerateImageTool extends AgentTool {
           if (bytes == null || bytes.isEmpty) continue;
           base64Data = base64Encode(bytes);
         } else {
-          base64Data = ref;
+          // data URI（Gemini 网关返回形态）需先剥前缀取纯 base64
+          final stripped = stripDataUriPrefix(ref);
+          if (stripped == null || stripped.isEmpty) {
+            LoggerService.instance.logAI(
+              '生图结果为无法识别的引用形态，跳过该张图片',
+              details: 'ref前缀=${ref.length > 24 ? ref.substring(0, 24) : ref}',
+              level: LogLevel.warning,
+            );
+            continue;
+          }
+          base64Data = stripped;
         }
 
         // Web 端无本地文件系统，直接以 data URI 形式交付（与笔记编辑器 Web 图片方案一致）
@@ -269,6 +279,18 @@ class GenerateImageTool extends AgentTool {
       }
     }
     return saved;
+  }
+
+  /// 剥离 data URI 前缀（`data:image/xxx;base64,`），返回纯 base64
+  ///
+  /// 裸 base64 原样返回；`data:` 开头但未携带 `base64,` 标记（如 URL-encoded 形态）
+  /// 无法解码，返回 null 由调用方跳过。
+  static String? stripDataUriPrefix(String ref) {
+    if (!ref.startsWith('data:')) return ref;
+    const marker = 'base64,';
+    final idx = ref.indexOf(marker);
+    if (idx == -1) return null;
+    return ref.substring(idx + marker.length);
   }
 
   /// 从 chat/completions 响应解析图片引用（data URI 或 http URL）

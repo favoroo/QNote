@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:qnote_flutter/core/router/app_router.dart';
 import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
 import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
@@ -33,14 +34,20 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
   static const double _edgeMargin = 16;
 
   /// 默认位置的底部净空：底部导航栏(60) + 收起态日记输入条(约48) +
-  /// 提取按钮(bottom 12 + 高 44) + 间距 12，球正好悬停在提取按钮正上方
+  /// 提取按钮(bottom 12 + 高 44) + 间距 12，球悬停在时间线输入栏上方，
+  /// 与右侧提取按钮同一水平线
   static const double _ballBottomClearance = 176;
+
+  /// 悬浮球位置的持久化键（设备本地 UI 偏好，不进同步链路）
+  static const String _prefsKeyDx = 'floating_q_ball_dx';
+  static const String _prefsKeyDy = 'floating_q_ball_dy';
 
   GoRouter? _router;
   late final VoidCallback _routeListener;
   String _location = '';
 
-  /// 悬浮球位置（相对屏幕左上角）；null 表示使用默认右下角位置
+  /// 悬浮球位置（相对屏幕左上角）；null 表示使用默认左下角位置。
+  /// 拖拽结束后持久化到 SharedPreferences，重启后恢复用户上次摆放的位置
   Offset? _ballPosition;
 
   @override
@@ -72,6 +79,8 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
           .read(floatingQProvider.notifier)
           .setBaseContext(QPageContext.fromLocation(_location));
     });
+    // 恢复用户上次拖拽的球位置：读取完成前先按默认位置渲染，读到后钳制再赋值
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadBallPosition());
   }
 
   @override
@@ -80,9 +89,35 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
     super.dispose();
   }
 
-  Offset _defaultBallPosition(Size size) => Offset(
-      size.width - _ballSize - _edgeMargin,
-      size.height - _ballSize - _ballBottomClearance);
+  Offset _defaultBallPosition(Size size) =>
+      Offset(_edgeMargin, size.height - _ballSize - _ballBottomClearance);
+
+  /// 从 SharedPreferences 恢复球位置；按当前屏幕钳制，
+  /// 防止跨设备/旋转后存储值越界（显示层还有每帧钳制兜底）
+  Future<void> _loadBallPosition() async {
+    final prefs = await SharedPreferences.getInstance();
+    final dx = prefs.getDouble(_prefsKeyDx);
+    final dy = prefs.getDouble(_prefsKeyDy);
+    if (dx == null || dy == null || !mounted) return;
+    final size = MediaQuery.sizeOf(context);
+    setState(() {
+      _ballPosition = Offset(
+        dx.clamp(_edgeMargin,
+            math.max(_edgeMargin, size.width - _ballSize - _edgeMargin)),
+        dy.clamp(_edgeMargin,
+            math.max(_edgeMargin, size.height - _ballSize - _edgeMargin)),
+      );
+    });
+  }
+
+  /// 拖拽结束时持久化位置（松手才写，避免拖动过程高频 IO）
+  Future<void> _persistBallPosition() async {
+    final pos = _ballPosition;
+    if (pos == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_prefsKeyDx, pos.dx);
+    await prefs.setDouble(_prefsKeyDy, pos.dy);
+  }
 
   /// 悬浮球显示位置：拖动存储位置基础上，键盘弹起时整体上移钳制避让。
   /// 渲染期计算、不改存储值，键盘收起自动回位；inset 异常残留时球也始终可见可点
@@ -203,6 +238,7 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
                             isWorking: isWorking,
                             onTap: _handleBallTap,
                             onDragUpdate: _onDragBall,
+                            onDragEnd: _persistBallPosition,
                           ),
                   ),
                 ),
@@ -262,6 +298,9 @@ class _FloatingBall extends StatefulWidget {
   /// 拖动回调：新的球左上角位置（屏幕坐标，未钳制，由宿主钳制后存储）
   final ValueChanged<Offset> onDragUpdate;
 
+  /// 拖动结束回调：松手或拖动中被打断时触发，宿主借此持久化位置
+  final VoidCallback onDragEnd;
+
   const _FloatingBall({
     super.key,
     required this.size,
@@ -269,6 +308,7 @@ class _FloatingBall extends StatefulWidget {
     required this.isWorking,
     required this.onTap,
     required this.onDragUpdate,
+    required this.onDragEnd,
   });
 
   @override
@@ -319,17 +359,22 @@ class _FloatingBallState extends State<_FloatingBall> {
     _origin = null;
     _dragging = false;
     if (_pressed) setState(() => _pressed = false);
-    if (!wasDragging) {
+    if (wasDragging) {
+      widget.onDragEnd();
+    } else {
       HapticFeedback.lightImpact();
       widget.onTap();
     }
   }
 
   void _onPointerCancel(PointerCancelEvent event) {
+    final wasDragging = _dragging;
     _pointerStart = null;
     _origin = null;
     _dragging = false;
     if (_pressed) setState(() => _pressed = false);
+    // 拖动中被打断时位置已随 move 更新，同样持久化，避免丢一次摆放
+    if (wasDragging) widget.onDragEnd();
   }
 
   @override

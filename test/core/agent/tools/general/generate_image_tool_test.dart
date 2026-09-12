@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qnote_flutter/core/agent/models/agent_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/general/generate_image_tool.dart';
@@ -112,4 +114,43 @@ void main() {
       );
     });
   });
+
+  group('GenerateImageTool.stripDataUriPrefix（保存前引用规范化）', () {
+    test('data URI 剥掉前缀返回纯 base64', () {
+      final base64 =
+          GenerateImageTool.stripDataUriPrefix('data:image/jpeg;base64,/9j/4AAQSkZJRg');
+      expect(base64, '/9j/4AAQSkZJRg');
+    });
+
+    test('裸 base64 原样返回', () {
+      expect(GenerateImageTool.stripDataUriPrefix('aW1nLWJhc2U2NA=='), 'aW1nLWJhc2U2NA==');
+    });
+
+    test('data: 开头但无 base64, 标记时返回 null（无法解码）', () {
+      expect(GenerateImageTool.stripDataUriPrefix('data:image/svg+xml;utf8,<svg/>'), isNull);
+    });
+
+    test('parseChatImages 输出的 data URI 可被规范化为合法 base64 并解码', () {
+      final refs = GenerateImageTool.parseChatImages({
+        'choices': [
+          {
+            'message': {
+              'images': [
+                {
+                  'type': 'image_url',
+                  'image_url': {'url': 'data:image/jpeg;base64,$aValidBase64'},
+                },
+              ],
+            },
+          },
+        ],
+      });
+      final stripped = GenerateImageTool.stripDataUriPrefix(refs.single);
+      expect(stripped, aValidBase64);
+      // 不抛异常即验证是合法 base64
+      expect(() => base64Decode(stripped!), returnsNormally);
+    });
+  });
 }
+
+const String aValidBase64 = 'SGVsbG8gUUhOb3RlIQ==';
