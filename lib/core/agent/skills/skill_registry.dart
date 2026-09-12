@@ -99,7 +99,7 @@ pinned: false           # 是否置顶
 
 ## 4. 多文件类型支持
 - 除 `.md` 外，`/notes/` 下还支持写入 `.html` 网页、`.svg` 矢量图、`.json` 数据文件及常见代码文件，App 内会按后缀自动渲染预览。
-- 生成展示型内容（卡片、海报、可视化页面）时，优先写入**带内联样式的单文件 HTML**。
+- 生成展示型内容（卡片、海报、可视化页面）时，优先写入**带内联样式的单文件 HTML**，美学与移动端适配规范详见 `frontend-design` 技能。
 - 非 `.md` 文件的扩展名会保留在笔记标题中（`.md` 后缀会被自动去掉）。
 
 ## 5. 图片插入规范
@@ -410,6 +410,69 @@ description: 数据洞察与生活评分分析技能：调阅待办完成率、�
 - 健康类分析建议结合 `/settings/profile.json`（身高、生活目标等画像）与 `/settings/weight.json`（体重趋势、BMI）交叉解读，给出贴合用户个人情况的建议。
 ''';
 
+  static const String frontendDesignDoc = '''---
+name: frontend-design
+description: 网页设计技能：精美单文件 HTML 网页/落地页/H5/海报/邀请函/贺卡/简历页/作品集/数据可视化页面等展示型内容的生成规范，涵盖美学方向选择、移动端适配、动效与工艺细节
+---
+
+# 网页设计技能 (Frontend Design)
+
+用户让你「做个网页/页面/海报/邀请函/贺卡/简历页/可视化大屏」时按本手册执行，产出**有设计感、适配手机屏幕**的单文件 HTML，避免千篇一律的「AI 生成感」。
+
+## 1. 交付规范（QNote 环境）
+- **输出方式**：一次 `write_file(path: "/notes/<标题>.html", content: ...)` 写入**完整单文件 HTML**（以 `<!DOCTYPE html>` 开头），App 会自动渲染网页预览；写完告知用户「已写入 /notes/xx.html，在笔记中点开即可预览」。
+- **必备骨架**：`<head>` 中必须有 `<meta name="viewport" content="width=device-width, initial-scale=1.0">` 与 `<title>`；CSS 统一内联在 `<style>` 中。
+- **外链资源**：预览支持 Tailwind CDN、Chart.js、Google Fonts 等外链；但字体必须写系统回退栈（如 `font-family: 'Noto Serif SC', 'Songti SC', serif`），关键内容不得依赖外链成功加载。图片优先用 CSS 图形或内联 SVG，外链图床仅作补充。
+- **页内导航**：跳转一律用锚点（`href="#section"`）或 JS；**严禁依赖 `<a href="http://...">` 在预览内跳转**——外链点击会被交给系统浏览器打开、脱离笔记预览。
+- **局部修改**：用户要求调整时用 `edit_file` 精准替换对应片段，不要整篇推倒重写。
+
+## 2. 设计思考（动笔前先定三件事）
+- **用途与受众**：这个页面解决什么问题？给谁看？在什么场合被打开？
+- **基调方向**：选定一个极端且自洽的美学方向执行到底，例如：极简留白、极繁铺陈、复古未来、自然有机、奢华精致、玩趣玩具感、编辑杂志风、粗野主义、装饰艺术几何、柔和粉彩、工业实用等。极简与极繁都可以精彩，关键是**有意图**，而非强度堆砌。
+- **记忆点**：用户看完能记住的一个东西——一个字体、一种构图、一处动效或一块色彩。先想清楚它，再动笔。
+
+## 3. 美学准则
+- **字体**：展示字体（标题）+ 正文字体成对配置形成对比；严禁 Inter/Roboto/Arial/system-ui 充当标识字体。中文可用 Noto Serif SC（宋体感）、LXGW WenKai（楷体手写感）、Noto Sans SC 多字重等，经 Google Fonts CDN 引入。
+- **色彩**：用 CSS variables 定义色板；主色主导大面积，强调色只点在 5%-10% 的关键处（按钮、数字、下划线），忌平均分配；明确选 light 或 dark 其一执行到底。
+- **动效**：CSS-only 优先。一次编排好的页面入场（`animation-delay` 逐级错峰的 staggered reveals）胜过零碎微交互；`transition` 只写具体属性（如 `transition: transform .3s, opacity .3s`），严禁 `transition: all`。
+- **空间构图**：敢于不对称、重叠、斜向流动、破格元素；要么慷慨留白，要么受控的高密度排版，忌不痛不痒的中间态。
+- **背景与氛围**：不要默认纯色平铺，用渐变网格、噪点纹理、几何图案、层叠半透明、细网格线等营造层次；装饰必须服务于既定基调。
+
+## 4. 移动端硬性规范（预览容器是手机 WebView，375px 是第一画布）
+- 布局先在 375px 宽下校准，再用 `media query` 向平板/宽屏扩展；
+- 触控目标 ≥ 44×44px，元素间距防误触；
+- `<input>`/`<textarea>` 字号 ≥ 16px（更小会触发 iOS 聚焦自动放大）；
+- 交互元素加 `touch-action: manipulation` 消除双击缩放延迟；
+- 用 `env(safe-area-inset-*)` 或 `viewport-fit=cover` 适配刘海屏与底部安全区；
+- 触屏没有 hover：关键信息与操作入口不能只靠 hover 呈现；
+- 只动画 `transform` 与 `opacity`（避免回流重绘），并提供 `@media (prefers-reduced-motion: reduce)` 降级；
+- 图片与视频给显式宽高或 `aspect-ratio`，防止加载时布局跳动。
+
+## 5. 工艺细节
+- 阴影至少两层：一层大而淡模拟环境光，一层小而实模拟直射光；
+- 半透明边框 + 阴影组合能让卡片边缘更锐利；
+- 嵌套圆角同心：子元素圆角 ≤ 父元素，且视觉上同心（约等于父圆角减内边距）；
+- 非中性色背景上，边框、阴影、文字色调向背景同色相微微偏移更协调；
+- 数字对齐比较场景用 `font-variant-numeric: tabular-nums`；
+- 语义化标签（header/main/section/footer）；可交互元素给 `:focus-visible` 焦点环；纯图标按钮加 `aria-label`；
+- 文案用规范排版字符：弯引号（“ ”）、省略号（…）、间隔号（·）；
+- 深色页面设 `color-scheme: dark` 并配 `<meta name="theme-color">`。
+
+## 6. 反模式清单（出现即不合格）
+- 紫色渐变 + 白底 + 等宽圆角卡片阵列 = 一眼 AI 生成，严禁；
+- Inter/Roboto/system-ui 当标题字体；
+- 所有模块同宽同高的均质卡片阵列；
+- emoji 满天飞充当图标与装饰；
+- 重阴影、大色块等过度装饰抢内容的风头；
+- 每次产出长得一样：明暗、字体、构图、风格应随内容轮换，两次产出不应雷同。
+
+## 7. 典型工作流
+- 用户「帮我做个 XX 网页/海报」→ 心里定下基调与记忆点（不必长篇复述给用户）→ 一次 `write_file` 产出完整单文件 HTML → 告知预览位置；
+- 简单小卡片可省略完整流程，但第 6 章反模式清单始终生效；
+- **数据可视化**：优先纯 CSS/内联 SVG（不依赖网络，最稳）；需要交互图表时用 Chart.js CDN，并确保断网时页面仍有可读的内容降级；
+- 大段数据（表格、榜单）用低饱和底 + 高对比文字，密度可以高，但层级必须清楚。
+''';
+
   /// 获取所有可用 Skill 清单
   List<Map<String, String>> listSkills() {
     return [
@@ -447,6 +510,11 @@ description: 数据洞察与生活评分分析技能：调阅待办完成率、�
         'name': 'stats-analyst',
         'path': '/skills/stats-analyst.md',
         'description': '数据洞察与生活评分分析：待办完成率汇总、近7天分类统计、每日生活健康总分与维度改进建议',
+      },
+      {
+        'name': 'frontend-design',
+        'path': '/skills/frontend-design.md',
+        'description': '网页设计：精美单文件 HTML 网页/海报/邀请函/简历/数据可视化页面，美学方向、移动端适配、动效与工艺规范',
       },
     ];
   }
@@ -491,6 +559,13 @@ description: 数据洞察与生活评分分析技能：调阅待办完成率、�
       case 'stats':
       case 'statistics':
         return statsAnalystDoc;
+      case 'frontend-design':
+      case 'frontend':
+      case 'web-design':
+      case 'web':
+      case 'design':
+      case 'ui':
+        return frontendDesignDoc;
       default:
         return null;
     }

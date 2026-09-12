@@ -28,6 +28,7 @@ import 'package:qnote_flutter/widgets/empty_state.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
 import 'package:qnote_flutter/widgets/common/animated_ellipsis.dart';
+import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
 import 'package:qnote_flutter/core/agent/services/agent_interaction_service.dart';
 
 class AiPage extends ConsumerStatefulWidget {
@@ -1753,6 +1754,9 @@ class _StreamingBubble extends ConsumerWidget {
     final hasContent =
         streamingContent != null && streamingContent.trim().isNotEmpty;
     final statusText = hasContent ? null : ref.watch(aiStreamingStatusProvider);
+    // 正文流式输出时本身在持续增长，无需已用时计时
+    final statusStartedAt =
+        hasContent ? null : ref.watch(aiStreamingStartedAtProvider);
     return _ChatBubble(
       message: ChatMessage(
         role: 'assistant',
@@ -1760,6 +1764,7 @@ class _StreamingBubble extends ConsumerWidget {
         timestamp: DateTime.now(),
       ),
       statusText: statusText,
+      statusStartedAt: statusStartedAt,
       isFirstInGroup: isFirstInGroup,
       isLastInGroup: isLastInGroup,
     );
@@ -1771,6 +1776,9 @@ class _ChatBubble extends StatelessWidget {
 
   /// 流式占位的阶段性状态文案（非 null 即占位模式），与正文互斥展示
   final String? statusText;
+
+  /// 本轮任务的开始时间，状态行尾部显示「已用时」递增计数
+  final DateTime? statusStartedAt;
   final bool isFirstInGroup;
   final bool isLastInGroup;
 
@@ -1784,6 +1792,7 @@ class _ChatBubble extends StatelessWidget {
   const _ChatBubble({
     required this.message,
     this.statusText,
+    this.statusStartedAt,
     this.isFirstInGroup = true,
     this.isLastInGroup = true,
     this.onContinue,
@@ -1972,6 +1981,17 @@ class _ChatBubble extends StatelessWidget {
                         const Padding(
                           padding: EdgeInsets.only(left: 4, bottom: 5),
                           child: AnimatedEllipsis(),
+                        ),
+                        // 已用时递增计数：长任务期间传达"仍在推进，没有卡住"
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4, bottom: 5),
+                          child: StreamingElapsedText(
+                            startedAt: statusStartedAt,
+                            style: TextStyle(
+                              color: theme.colorScheme.onSurfaceVariant,
+                              fontSize: 12,
+                            ),
+                          ),
                         ),
                       ],
                     ),

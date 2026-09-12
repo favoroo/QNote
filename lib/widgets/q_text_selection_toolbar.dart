@@ -26,6 +26,21 @@ class QTextSelectionToolbar extends StatelessWidget {
   static const double _kToolbarContentDistance = 8.0;
   static const double _kToolbarScreenPadding = 8.0;
 
+  /// 系统默认菜单项（剪切/复制/粘贴/分享/全选等）。
+  ///
+  /// Android 会把其他应用注册的"文本处理"（PROCESS_TEXT）动作以
+  /// [ContextMenuButtonType.custom] 类型并入
+  /// [EditableTextState.contextMenuButtonItems]（如欧路词典、Edge、Kimi 等），
+  /// 平铺后菜单极为拥挤；调用方追加的自定义项（如「给小Q」）不经过这里，
+  /// 不受影响
+  static List<ContextMenuButtonItem> defaultButtonItems(
+    EditableTextState editableTextState,
+  ) {
+    return editableTextState.contextMenuButtonItems
+        .where((item) => item.type != ContextMenuButtonType.custom)
+        .toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     // 与 SDK TextSelectionToolbar 相同的锚点换算：上下各留出与选区的间距

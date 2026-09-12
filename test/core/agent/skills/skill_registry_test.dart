@@ -12,10 +12,11 @@ void main() {
     'folder-manager',
     'settings-manager',
     'stats-analyst',
+    'frontend-design',
   ];
 
   group('SkillRegistry 技能手册文档', () {
-    test('七个技能均可加载且含 frontmatter', () {
+    test('八个技能均可加载且含 frontmatter', () {
       for (final name in skillNames) {
         final doc = registry.getSkillContent(name);
         expect(doc, isNotNull, reason: '$name 应可加载');
@@ -82,6 +83,41 @@ void main() {
       final doc = registry.getSkillContent('timeline-manager')!;
       expect(doc.contains('<!-- id: xxx -->'), isTrue);
       expect(doc.contains('严禁使用 YAML Frontmatter'), isTrue);
+    });
+
+    test('frontend-design 覆盖交付、移动端与反模式关键规范', () {
+      final doc = registry.getSkillContent('frontend-design')!;
+      expect(
+        doc.contains('width=device-width, initial-scale=1.0'),
+        isTrue,
+        reason: '应强调 viewport 必备',
+      );
+      expect(
+        doc.contains('/notes/<标题>.html'),
+        isTrue,
+        reason: '应说明单文件 HTML 写入路径',
+      );
+      expect(
+        doc.contains('系统浏览器'),
+        isTrue,
+        reason: '应说明外链点击会被系统浏览器接管',
+      );
+      expect(doc.contains('44'), isTrue, reason: '应含触控目标尺寸规范');
+      expect(doc.contains('16px'), isTrue, reason: '应含输入框字号规范');
+      expect(doc.contains('safe-area'), isTrue, reason: '应含刘海屏安全区适配');
+      expect(doc.contains('prefers-reduced-motion'), isTrue, reason: '应含动效降级');
+      expect(doc.contains('Inter'), isTrue, reason: '反模式应点名禁用字体');
+      expect(doc.contains('紫色渐变'), isTrue, reason: '应含反 AI 味反模式');
+    });
+
+    test('frontend-design 支持别名与虚拟路径解析', () {
+      for (final key in ['frontend', 'web', 'design', 'ui', '/skills/frontend-design.md']) {
+        expect(
+          registry.getSkillContent(key),
+          registry.getSkillContent('frontend-design'),
+          reason: '别名 "$key" 应解析到同一份手册',
+        );
+      }
     });
   });
 }

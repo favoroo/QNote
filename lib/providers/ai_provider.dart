@@ -249,6 +249,10 @@ final aiStreamingMessageProvider = StateProvider<String?>((ref) => null);
 /// 与 [aiStreamingMessageProvider] 互斥展示：写状态时清空正文，写正文时清空状态
 final aiStreamingStatusProvider = StateProvider<String?>((ref) => null);
 
+/// 本轮 Agent 任务的开始时间（agentStart 时记录，结束清理），
+/// 供状态行显示「已用时」计时，传达任务仍在进行
+final aiStreamingStartedAtProvider = StateProvider<DateTime?>((ref) => null);
+
 class CurrentChatNotifier extends StateNotifier<ChatSession?> {
   final Ref _ref;
 
@@ -596,6 +600,7 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       )) {
         switch (event.type) {
           case AgentEventType.agentStart:
+            _ref.read(aiStreamingStartedAtProvider.notifier).state = DateTime.now();
             _setStreamingStatus('小Q准备中');
             break;
           case AgentEventType.turnStart:
@@ -614,6 +619,16 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
           case AgentEventType.thoughtUpdate:
             if (event.text != null && event.text!.isNotEmpty) {
               _setStreamingStatus('💭 思考过程:\n${event.text}');
+            }
+            break;
+          case AgentEventType.toolCalling:
+            // 模型正在流式生成工具调用参数（大参数期间可达数十秒），
+            // 提前展示目标文件等信息，避免状态行停留在「思考中」形似卡死
+            final callingTool = event.toolCall;
+            if (callingTool != null && callingTool.name.isNotEmpty) {
+              _setStreamingStatus(
+                '⚡ ${AgentToolLabels.progressLabel(callingTool.name, callingTool.arguments)}',
+              );
             }
             break;
           case AgentEventType.toolExecuting:
@@ -682,6 +697,7 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       _streamingFlushTimer = null;
       _ref.read(aiStreamingMessageProvider.notifier).state = null;
       _ref.read(aiStreamingStatusProvider.notifier).state = null;
+      _ref.read(aiStreamingStartedAtProvider.notifier).state = null;
 
       // 结束录制，把本轮 VFS 变更快照挂到本轮用户消息上（随会话落库，撤回时按此恢复）
       final undoEntries = VirtualWorkspaceService.instance.stopRecording(recorderHandle);

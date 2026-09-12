@@ -13,8 +13,11 @@ import java.io.File
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.appone.qnote_flutter/widgets"
     private val INSTALLER_CHANNEL = "com.appone.qnote_flutter/installer"
+    private val SHARE_CHANNEL = "com.appone.qnote_flutter/share"
     private var pendingRoute: String? = null
+    private var pendingSharedText: String? = null
     private var methodChannel: MethodChannel? = null
+    private var shareChannel: MethodChannel? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -30,12 +33,37 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        val route = intent?.getStringExtra("route")
+        if (intent == null) return
+
+        // 1. 小组件路由跳转
+        val route = intent.getStringExtra("route")
         if (route != null) {
             pendingRoute = route
             // Flutter 引擎就绪时，立即推送路由，解决 App 前台时 didChangeAppLifecycleState 不触发的问题
             methodChannel?.invokeMethod("navigate", route)
         }
+
+        // 2. 外部划选文本（PROCESS_TEXT）
+        if (Intent.ACTION_PROCESS_TEXT == intent.action && intent.type == "text/plain") {
+            val text = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
+            if (!text.isNullOrBlank()) {
+                handleIncomingText(text)
+            }
+        }
+
+        // 3. 外部系统分享文本（ACTION_SEND）
+        if (Intent.ACTION_SEND == intent.action && intent.type?.startsWith("text/") == true) {
+            val text = intent.getStringExtra(Intent.EXTRA_TEXT)
+            if (!text.isNullOrBlank()) {
+                handleIncomingText(text)
+            }
+        }
+    }
+
+    private fun handleIncomingText(text: String) {
+        pendingSharedText = text
+        // Flutter 引擎就绪时，主动推送文本
+        shareChannel?.invokeMethod("onSharedText", text)
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -53,6 +81,20 @@ class MainActivity : FlutterActivity() {
                 "getPendingRoute" -> {
                     result.success(pendingRoute)
                     pendingRoute = null
+                }
+                else -> {
+                    result.notImplemented()
+                }
+            }
+        }
+
+        val shareChan = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SHARE_CHANNEL)
+        shareChannel = shareChan
+        shareChan.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getPendingSharedText" -> {
+                    result.success(pendingSharedText)
+                    pendingSharedText = null
                 }
                 else -> {
                     result.notImplemented()

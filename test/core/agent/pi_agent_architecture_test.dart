@@ -18,20 +18,27 @@ class MockAiService extends AiService {
   final List<String> textDeltas;
   final List<ToolCall> returnToolCalls;
 
+  /// 模拟的工具参数流式生成进度片段（在正文前依次吐出）
+  final List<ToolCallProgress> progressChunks;
+
   MockAiService({
     this.textDeltas = const ['测试回答'],
     this.returnToolCalls = const [],
+    this.progressChunks = const [],
   });
 
   @override
-  Stream<String> chatStreamWithTools({
+  Stream<AiToolStreamChunk> chatStreamWithTools({
     required List<ChatMessage> messages,
     List<Map<String, dynamic>>? tools,
     void Function(List<ToolCall> toolCalls)? onToolCallsReady,
     CancelToken? cancelToken,
   }) async* {
+    for (final progress in progressChunks) {
+      yield AiToolStreamChunk.toolProgress(progress);
+    }
     for (final delta in textDeltas) {
-      yield delta;
+      yield AiToolStreamChunk.text(delta);
     }
     if (returnToolCalls.isNotEmpty) {
       onToolCallsReady?.call(returnToolCalls);
@@ -42,13 +49,13 @@ class MockAiService extends AiService {
 // 首包后挂起并模拟请求被中止断连的 AiService 桩
 class MidStreamCancelAiService extends AiService {
   @override
-  Stream<String> chatStreamWithTools({
+  Stream<AiToolStreamChunk> chatStreamWithTools({
     required List<ChatMessage> messages,
     List<Map<String, dynamic>>? tools,
     void Function(List<ToolCall> toolCalls)? onToolCallsReady,
     CancelToken? cancelToken,
   }) async* {
-    yield '第一段';
+    yield const AiToolStreamChunk.text('第一段');
     // 模拟用户点停止后 Dio CancelToken 断连：流挂起片刻后抛出取消异常
     await Future<void>.delayed(const Duration(milliseconds: 20));
     throw Exception('请求已被用户取消');
@@ -168,6 +175,42 @@ void main() {
       expect(events, contains(AgentEventType.agentEnd));
       // 中止属于正常收尾：绝不允许出现 error 事件（否则 UI 会显示"发生错误"）
       expect(events.contains(AgentEventType.error), false);
+    });
+
+    test('6. 工具参数流式生成进度 → toolCalling 事件（提取详情并去重）', () async {
+      final mockAi = MockAiService(
+        progressChunks: const [
+          // path 已流出：应产出 toolCalling 事件并携带提取的路径
+          ToolCallProgress(
+            toolName: 'write_file',
+            partialArguments: '{"path": "/notes/a.md", "content": "第一段',
+          ),
+          // 工具与关键信息均未变化：应被去重
+          ToolCallProgress(
+            toolName: 'write_file',
+            partialArguments: '{"path": "/notes/a.md", "content": "第一段第二段',
+          ),
+          // 换了另一个工具：应再次产出事件
+          ToolCallProgress(toolName: 'read_file', partialArguments: '{"path": "/notes/b.md"}'),
+        ],
+      );
+      final loop = AgentLoop(aiService: mockAi, dispatcher: ToolDispatcher());
+
+      final callingEvents = <AgentEvent>[];
+      await for (final event in loop.run(
+        conversationHistory: [],
+        systemPrompt: '系统提示词',
+      )) {
+        if (event.type == AgentEventType.toolCalling) {
+          callingEvents.add(event);
+        }
+      }
+
+      expect(callingEvents.length, 2);
+      expect(callingEvents[0].toolCall!.name, 'write_file');
+      expect(callingEvents[0].toolCall!.arguments['path'], '/notes/a.md');
+      expect(callingEvents[1].toolCall!.name, 'read_file');
+      expect(callingEvents[1].toolCall!.arguments['path'], '/notes/b.md');
     });
   });
 }

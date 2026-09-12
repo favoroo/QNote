@@ -33,6 +33,18 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- 划选文字时的系统文本操作菜单（显示为「给小Q」） -->
+            <intent-filter android:label="给小Q">
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <!-- 系统分享文本到小Q -->
+            <intent-filter android:label="给小Q">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
         </activity>
         <meta-data
             android:name="flutterEmbedding"

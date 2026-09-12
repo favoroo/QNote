@@ -59,6 +59,84 @@ abstract final class AgentToolLabels {
     return detail == null ? label : '$label · $detail';
   }
 
+  /// 从流式生成中的部分参数 JSON 提取关键信息快照（仅展示用途）。
+  ///
+  /// 参数 JSON 可能尚未闭合（如 write_file 的 content 正在流出），
+  /// 无法整体 jsonDecode，这里按工具候选键用正则捕获已流出的字符串值，
+  /// 返回的 map 交给 [progressLabel] 复用副标题与截断逻辑。
+  static Map<String, dynamic> detailFromPartialArguments(
+    String toolName,
+    String partialArgs,
+  ) {
+    if (partialArgs.isEmpty) return const {};
+    final keys = switch (toolName) {
+      'read_file' ||
+      'write_file' ||
+      'edit_file' ||
+      'delete_file' ||
+      'list_dir' ||
+      'view_image' => const ['path'],
+      'move_file' => const ['from', 'to'],
+      'grep' => const ['pattern', 'query', 'keyword'],
+      'web_search' => const ['query'],
+      'skill' => const ['name', 'skill'],
+      'fetch_url' => const ['url'],
+      'generate_image' => const ['prompt'],
+      _ => const <String>[],
+    };
+    if (keys.isEmpty) return const {};
+    // 大参数（如 write_file 的 content）占据尾部，关键键都在头部，只扫描窗口
+    final window =
+        partialArgs.length > 4000 ? partialArgs.substring(0, 4000) : partialArgs;
+    final result = <String, dynamic>{};
+    for (final key in keys) {
+      final match =
+          RegExp('"$key"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"').firstMatch(window);
+      if (match != null) {
+        result[key] = _unescapeJsonString(match.group(1)!);
+      }
+    }
+    return result;
+  }
+
+  /// 反转义 JSON 字符串值中的常见转义序列；换行/制表压成空格保持单行展示。
+  static String _unescapeJsonString(String raw) {
+    final buffer = StringBuffer();
+    for (var i = 0; i < raw.length; i++) {
+      final ch = raw[i];
+      if (ch != '\\' || i + 1 >= raw.length) {
+        buffer.write(ch);
+        continue;
+      }
+      final next = raw[i + 1];
+      switch (next) {
+        case 'n':
+        case 't':
+          buffer.write(' ');
+          i++;
+        case 'r':
+          i++;
+        case '"':
+        case '/':
+        case '\\':
+          buffer.write(next);
+          i++;
+        case 'u':
+          final hex = i + 6 <= raw.length ? raw.substring(i + 2, i + 6) : '';
+          final code = hex.length == 4 ? int.tryParse(hex, radix: 16) : null;
+          if (code != null) {
+            buffer.write(String.fromCharCode(code));
+            i += 5;
+          } else {
+            buffer.write(ch);
+          }
+        default:
+          buffer.write(ch);
+      }
+    }
+    return buffer.toString();
+  }
+
   /// 从工具参数/结果里提取关键信息做副标题（文件路径、搜索词、域名等）。
   static String? _detailFor(String toolName, Map<String, dynamic>? data) {
     if (data == null || data.isEmpty) return null;

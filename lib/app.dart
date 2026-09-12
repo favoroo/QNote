@@ -21,6 +21,7 @@ import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/database_init.dart'
     if (dart.library.io) 'package:qnote_flutter/database_init_io.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
+import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/theme_provider.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
 import 'package:qnote_flutter/widgets/floating_q/floating_q_overlay.dart';
@@ -59,6 +60,7 @@ class QNoteApp extends ConsumerStatefulWidget {
 
 class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver {
   static const _channel = MethodChannel('com.appone.qnote_flutter/widgets');
+  static const _shareChannel = MethodChannel('com.appone.qnote_flutter/share');
 
   DateTime? _lastPausedTime;
 
@@ -67,6 +69,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _initNavigationListener();
+    _initExternalSharedTextListener();
     _runDeferredInitialization();
     _runStartupUpdateCheck();
   }
@@ -147,6 +150,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
     } else if (state == AppLifecycleState.resumed) {
       _refreshProvidersIfNeeded();
       _tryNavigatePendingRoute();
+      _tryConsumePendingSharedText();
     }
   }
 
@@ -224,6 +228,46 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
         });
       }
     }
+  }
+
+  /// 监听外部传入的文本（划选「给小Q」PROCESS_TEXT 或系统分享 SEND）
+  void _initExternalSharedTextListener() {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+
+    _shareChannel.setMethodCallHandler((call) async {
+      if (call.method == 'onSharedText') {
+        final text = call.arguments as String?;
+        if (text != null && text.trim().isNotEmpty) {
+          _handleExternalSharedText(text.trim());
+        }
+      }
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _tryConsumePendingSharedText(retryCount: 2);
+    });
+  }
+
+  Future<void> _tryConsumePendingSharedText({int retryCount = 0}) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+
+    try {
+      final pending = await _shareChannel.invokeMethod<String>('getPendingSharedText');
+      if (pending != null && pending.trim().isNotEmpty) {
+        _handleExternalSharedText(pending.trim());
+      }
+    } catch (e) {
+      if (retryCount > 0) {
+        await Future.delayed(const Duration(milliseconds: 200));
+        await _tryConsumePendingSharedText(retryCount: retryCount - 1);
+      } else {
+        debugPrint('获取挂起外部分享文本失败: $e');
+      }
+    }
+  }
+
+  void _handleExternalSharedText(String text) {
+    ref.read(floatingQProvider.notifier).openWithText(text);
   }
 
   @override

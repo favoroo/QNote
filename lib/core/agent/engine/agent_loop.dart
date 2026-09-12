@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:dio/dio.dart';
+import 'package:qnote_flutter/core/agent/agent_tool_labels.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_cancellation_token.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_events.dart';
 import 'package:qnote_flutter/core/agent/engine/tool_dispatcher.dart';
@@ -121,6 +122,9 @@ class AgentLoop {
         final accumulatedContent = StringBuffer();
         final List<ToolCall> streamedToolCalls = [];
         final thoughtFilter = _ThoughtTagFilter();
+        // 工具参数生成进度的去重锚点（每轮重建，避免跨轮抑制同参数工具的状态更新）
+        String? lastCallingTool;
+        String? lastCallingDetail;
 
         try {
           final stream = aiService.chatStreamWithTools(
@@ -132,13 +136,32 @@ class AgentLoop {
             cancelToken: httpCancelToken,
           );
 
-          await for (final delta in stream) {
+          await for (final chunk in stream) {
             if (cancellationToken?.isCancelled == true) {
               LoggerService.instance.logAI('流式生成中收到中止信号');
               yield AgentEvent.finished(_cancelledMessage(accumulatedContent.toString()));
               yield AgentEvent.agentEnd();
               return;
             }
+
+            // 模型正在流式生成工具调用参数：提取关键信息去重后通知 UI，
+            // 大参数（如写大文件）生成期间状态行不再停留在「思考中」
+            final progress = chunk.toolProgress;
+            if (progress != null) {
+              final detail = AgentToolLabels.detailFromPartialArguments(
+                progress.toolName,
+                progress.partialArguments,
+              );
+              final detailKey = detail.isEmpty ? '' : detail.toString();
+              if (progress.toolName != lastCallingTool || detailKey != lastCallingDetail) {
+                lastCallingTool = progress.toolName;
+                lastCallingDetail = detailKey;
+                yield AgentEvent.toolCalling(progress.toolName, partialArguments: detail);
+              }
+              continue;
+            }
+
+            final delta = chunk.text ?? '';
             accumulatedContent.write(delta);
             // 过滤 <thought> 标签，UI 只收到干净的正文增量
             final visible = thoughtFilter.feed(delta);

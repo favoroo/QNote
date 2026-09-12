@@ -6,6 +6,7 @@ enum AgentEventType {
   turnStart,
   thoughtUpdate,
   contentDelta, // 文本流打字机碎片
+  toolCalling, // 模型正在流式生成工具调用参数（大参数期间 UI 的进行中状态来源）
   toolExecuting,
   toolCompleted,
   turnEnd,
@@ -50,6 +51,23 @@ class AgentEvent {
 
   factory AgentEvent.contentDelta(String deltaText) =>
       AgentEvent(type: AgentEventType.contentDelta, text: deltaText);
+
+  /// 模型正在流式生成 [toolName] 的调用参数。
+  ///
+  /// [partialArguments] 为已流出关键信息的快照（如 path/query），
+  /// 仅用于 UI 展示层拼状态文案，不代表完整参数。
+  factory AgentEvent.toolCalling(
+    String toolName, {
+    Map<String, dynamic>? partialArguments,
+  }) =>
+      AgentEvent(
+        type: AgentEventType.toolCalling,
+        toolCall: ToolCall(
+          id: '',
+          name: toolName,
+          arguments: partialArguments ?? const {},
+        ),
+      );
 
   factory AgentEvent.toolExecuting(ToolCall toolCall, {String? progress}) =>
       AgentEvent(

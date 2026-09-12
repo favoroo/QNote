@@ -1595,13 +1595,13 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         isDense: true,
         contentPadding: EdgeInsets.symmetric(vertical: 4),
       ),
-      // 保留默认菜单项（剪切/复制/粘贴/全选等），末尾追加「给小Q」：
+      // 系统默认项（剪切/复制/粘贴/全选等，过滤第三方文本处理项）+ 末尾「给小Q」：
       // 把选中文本连同位置引用给悬浮小Q；用平铺工具栏避免「给小Q」被折叠进 ⋮
       contextMenuBuilder: (context, editableTextState) {
         return QTextSelectionToolbar(
           anchors: editableTextState.contextMenuAnchors,
           buttonItems: [
-            ...editableTextState.contextMenuButtonItems,
+            ...QTextSelectionToolbar.defaultButtonItems(editableTextState),
             ContextMenuButtonItem(
               label: '给小Q',
               onPressed: _sendSelectionToQ,

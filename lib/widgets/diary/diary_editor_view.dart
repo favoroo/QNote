@@ -2269,13 +2269,13 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             filled: false,
           ),
           style: theme.textTheme.bodyLarge,
-          // 保留默认菜单项，末尾追加「给小Q」：把选中文本连同位置引用给悬浮小Q；
-          // 用平铺工具栏避免「给小Q」被折叠进 ⋮
+          // 系统默认项（过滤第三方文本处理项）+ 末尾「给小Q」：把选中文本连同
+          // 位置引用给悬浮小Q；用平铺工具栏避免「给小Q」被折叠进 ⋮
           contextMenuBuilder: (context, editableTextState) {
             return QTextSelectionToolbar(
               anchors: editableTextState.contextMenuAnchors,
               buttonItems: [
-                ...editableTextState.contextMenuButtonItems,
+                ...QTextSelectionToolbar.defaultButtonItems(editableTextState),
                 ContextMenuButtonItem(
                   label: '给小Q',
                   onPressed: _sendSelectionToQ,

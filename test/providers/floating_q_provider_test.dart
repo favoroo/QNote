@@ -183,6 +183,26 @@ void main() {
       notifier.newConversation();
       expect(container.read(floatingQProvider).pendingQuote, isNull);
     });
+
+    test('openWithText 预填文本并展开面板，clearPendingInputText 消费清空', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(floatingQProvider.notifier);
+
+      expect(container.read(floatingQProvider).pendingInputText, isNull);
+      expect(container.read(floatingQProvider).panelOpen, isFalse);
+
+      notifier.openWithText('帮我总结这段来自第三方应用的内容');
+      expect(container.read(floatingQProvider).panelOpen, isTrue);
+      expect(
+        container.read(floatingQProvider).pendingInputText,
+        '帮我总结这段来自第三方应用的内容',
+      );
+
+      notifier.clearPendingInputText();
+      expect(container.read(floatingQProvider).pendingInputText, isNull);
+      expect(container.read(floatingQProvider).panelOpen, isTrue);
+    });
   });
 
   group('QTargetBridge 编辑页桥接', () {

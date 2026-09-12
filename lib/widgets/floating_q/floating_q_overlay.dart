@@ -15,6 +15,7 @@ import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
 import 'package:qnote_flutter/widgets/common/animated_ellipsis.dart';
+import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 
 /// 全局悬浮小Q入口：悬浮球 + 快捷对话面板。
@@ -685,7 +686,11 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
     }
 
     if (fq.statusText != null) {
-      children.add(_buildEntrance(_buildStatusLine(theme, fq.statusText!)));
+      children.add(
+        _buildEntrance(
+          _buildStatusLine(theme, fq.statusText!, fq.streamingStartedAt),
+        ),
+      );
     } else if (fq.streamingText != null && fq.streamingText!.isNotEmpty) {
       children.add(
         _buildEntrance(_buildAssistantBubble(theme, fq.streamingText!)),
@@ -813,8 +818,9 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
     );
   }
 
-  /// 等待态状态行：状态文案 + 动态省略号（遵循小Q等待态显示规范，不用闪烁光标）
-  Widget _buildStatusLine(ThemeData theme, String statusText) {
+  /// 等待态状态行：状态文案 + 动态省略号 + 已用时递增计数
+  /// （遵循小Q等待态显示规范，不用闪烁光标）
+  Widget _buildStatusLine(ThemeData theme, String statusText, DateTime? startedAt) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8, top: 2),
       child: Row(
@@ -834,6 +840,15 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
           const Padding(
             padding: EdgeInsets.only(bottom: 3),
             child: AnimatedEllipsis(),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 2, bottom: 3),
+            child: StreamingElapsedText(
+              startedAt: startedAt,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
         ],
       ),
@@ -1021,11 +1036,37 @@ class _PanelInputRow extends ConsumerStatefulWidget {
 
 class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
   final _inputController = TextEditingController();
+  final _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAndApplyPendingText();
+    });
+  }
 
   @override
   void dispose() {
     _inputController.dispose();
+    _focusNode.dispose();
     super.dispose();
+  }
+
+  void _checkAndApplyPendingText() {
+    final pending = ref.read(floatingQProvider).pendingInputText;
+    if (pending != null && pending.isNotEmpty) {
+      _applyText(pending);
+    }
+  }
+
+  void _applyText(String text) {
+    _inputController.text = text;
+    _inputController.selection = TextSelection.collapsed(offset: text.length);
+    ref.read(floatingQProvider.notifier).clearPendingInputText();
+    if (!_focusNode.hasFocus) {
+      _focusNode.requestFocus();
+    }
   }
 
   Future<void> _handleSend() async {
@@ -1048,6 +1089,15 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
     final isWorking = ref.watch(
         floatingQProvider.select((s) => s.phase == FloatingQPhase.working));
 
+    ref.listen<String?>(
+      floatingQProvider.select((s) => s.pendingInputText),
+      (prev, next) {
+        if (next != null && next.isNotEmpty) {
+          _applyText(next);
+        }
+      },
+    );
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
       child: Row(
@@ -1056,6 +1106,7 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
           Expanded(
             child: TextField(
               controller: _inputController,
+              focusNode: _focusNode,
               autofocus: true,
               minLines: 1,
               maxLines: 4,

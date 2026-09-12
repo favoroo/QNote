@@ -22,6 +22,31 @@ class NoUsefulInfoException implements Exception {
       message != null ? 'NoUsefulInfoException: $message' : 'NoUsefulInfoException';
 }
 
+/// 带工具流式对话的单个流片段。
+///
+/// - [text] 非 null：模型正文增量，供打字机渲染
+/// - [toolProgress] 非 null：模型正在流式生成某工具调用的参数，
+///   携带工具名与已拼接的部分参数快照，供 UI 在长参数生成期间
+///   （如 write_file 写大文件）展示「正在写入文件 · 路径」等进行中状态
+class AiToolStreamChunk {
+  final String? text;
+  final ToolCallProgress? toolProgress;
+
+  const AiToolStreamChunk.text(this.text) : toolProgress = null;
+
+  const AiToolStreamChunk.toolProgress(this.toolProgress) : text = null;
+}
+
+/// 工具调用参数的流式生成进度快照
+class ToolCallProgress {
+  final String toolName;
+
+  /// 截至当前的原始参数 JSON 片段（可能不完整，仅用于展示层提取关键信息）
+  final String partialArguments;
+
+  const ToolCallProgress({required this.toolName, required this.partialArguments});
+}
+
 class AiService {
   final Dio _dio = Dio(
     BaseOptions(
@@ -297,9 +322,11 @@ class AiService {
 
   /// 流式支持 Tool Calling 的高级流式调用
   ///
-  /// - 当模型生成文本时，yield 普通文本碎片（支持即时打字机效果）
-  /// - 当模型生成 tool_calls 时，在内部聚合其参数碎片并在 onToolCallsComplete 回调中交付完整对象
-  Stream<String> chatStreamWithTools({
+  /// - 当模型生成文本时，yield 文本增量片段（支持即时打字机效果）
+  /// - 当模型生成 tool_calls 时，在内部聚合其参数碎片并周期性 yield 参数生成进度，
+  ///   避免大参数（如 write_file 写大文件）生成期间 UI 无任何状态更新而形似卡死；
+  ///   聚合完成后在 onToolCallsReady 回调中一次性交付完整对象
+  Stream<AiToolStreamChunk> chatStreamWithTools({
     required List<ChatMessage> messages,
     List<Map<String, dynamic>>? tools,
     void Function(List<ToolCall> toolCalls)? onToolCallsReady,
@@ -338,6 +365,8 @@ class AiService {
         final accumulatedResponse = StringBuffer();
         // 存储流式拼接中的 tool_calls: index -> {id, name, argumentsBuffer}
         final Map<int, Map<String, dynamic>> toolCallBuilders = {};
+        // 参数生成进度上报的节流时间点（跨工具共享，首次上报不受节流限制）
+        DateTime? lastProgressAt;
 
         await for (final chunk in stream) {
           buffer += utf8.decode(chunk, allowMalformed: true);
@@ -374,7 +403,7 @@ class AiService {
               if (text != null && text.isNotEmpty) {
                 accumulatedResponse.write(text);
                 hasYielded = true;
-                yield text;
+                yield AiToolStreamChunk.text(text);
               }
 
               // 2. 工具调用碎片聚合
@@ -399,6 +428,26 @@ class AiService {
                     }
                     if (func['arguments'] != null) {
                       (builder['arguments'] as StringBuffer).write(func['arguments']);
+                    }
+                  }
+
+                  // 参数生成进度上报：参数已开始流出说明工具名必已完整，
+                  // 首次立即上报让 UI 尽快切到工具状态，此后 500ms 节流
+                  final name = builder['name'] as String;
+                  final argsBuffer = builder['arguments'] as StringBuffer;
+                  if (name.isNotEmpty && argsBuffer.isNotEmpty) {
+                    final now = DateTime.now();
+                    final isFirstProgress = builder['progressNotified'] != true;
+                    if (isFirstProgress ||
+                        now.difference(lastProgressAt!).inMilliseconds >= 500) {
+                      builder['progressNotified'] = true;
+                      lastProgressAt = now;
+                      yield AiToolStreamChunk.toolProgress(
+                        ToolCallProgress(
+                          toolName: name,
+                          partialArguments: argsBuffer.toString(),
+                        ),
+                      );
                     }
                   }
                 }

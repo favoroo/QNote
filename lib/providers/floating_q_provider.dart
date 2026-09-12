@@ -147,6 +147,9 @@ class FloatingQState {
   /// 流式正文缓冲
   final String? streamingText;
 
+  /// 本轮任务的开始时间（发送指令时记录，结束清理），供状态行显示已用时
+  final DateTime? streamingStartedAt;
+
   /// 待撤回的变更处数
   final int pendingUndoCount;
 
@@ -155,6 +158,9 @@ class FloatingQState {
 
   /// 「给小Q」挂起的待发送引用（面板展示为引用卡片，发送时一次性消费）
   final QTextQuote? pendingQuote;
+
+  /// 待填入输入框的文本（如从外部第三方应用划选「给小Q」唤起时传入）
+  final String? pendingInputText;
 
   const FloatingQState({
     this.baseContext,
@@ -166,9 +172,11 @@ class FloatingQState {
     this.messages = const [],
     this.statusText,
     this.streamingText,
+    this.streamingStartedAt,
     this.pendingUndoCount = 0,
     this.isUndoing = false,
     this.pendingQuote,
+    this.pendingInputText,
   });
 
   /// 生效上下文：编辑页覆盖栈顶优先，否则取基础上下文
@@ -185,13 +193,17 @@ class FloatingQState {
     List<ChatMessage>? messages,
     String? statusText,
     String? streamingText,
+    DateTime? streamingStartedAt,
     int? pendingUndoCount,
     bool? isUndoing,
     QTextQuote? pendingQuote,
+    String? pendingInputText,
     bool clearSignature = false,
     bool clearStatusText = false,
     bool clearStreamingText = false,
+    bool clearStreamingStartedAt = false,
     bool clearQuote = false,
+    bool clearInputText = false,
   }) {
     return FloatingQState(
       baseContext: baseContext ?? this.baseContext,
@@ -206,9 +218,14 @@ class FloatingQState {
           clearStatusText ? null : (statusText ?? this.statusText),
       streamingText:
           clearStreamingText ? null : (streamingText ?? this.streamingText),
+      streamingStartedAt: clearStreamingStartedAt
+          ? null
+          : (streamingStartedAt ?? this.streamingStartedAt),
       pendingUndoCount: pendingUndoCount ?? this.pendingUndoCount,
       isUndoing: isUndoing ?? this.isUndoing,
       pendingQuote: clearQuote ? null : (pendingQuote ?? this.pendingQuote),
+      pendingInputText:
+          clearInputText ? null : (pendingInputText ?? this.pendingInputText),
     );
   }
 }
@@ -306,6 +323,16 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
   /// 移除挂起的引用（引用卡片 × 按钮）
   void clearPendingQuote() => state = state.copyWith(clearQuote: true);
 
+  /// 带预填文本展开面板（如外部第三方应用划选「给小Q」唤起）
+  void openWithText(String text) =>
+      state = state.copyWith(pendingInputText: text, panelOpen: true);
+
+  /// 清空挂起的预填文本（输入框已读取填入）
+  void clearPendingInputText() {
+    if (state.pendingInputText == null) return;
+    state = state.copyWith(clearInputText: true);
+  }
+
   /// 手动开启新对话（清空历史；进行中的任务与待撤回变更不受影响）
   void newConversation() {
     if (state.phase == FloatingQPhase.working) return;
@@ -350,6 +377,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       contextLabel: ctx?.displayLabel,
       messages: isNewConversation ? [userMessage] : [...state.messages, userMessage],
       statusText: '小Q准备中',
+      streamingStartedAt: DateTime.now(),
       clearStreamingText: true,
       clearQuote: true,
     );
@@ -511,6 +539,16 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
               _setStatus('💭 ${event.text}');
             }
             break;
+          case AgentEventType.toolCalling:
+            // 模型正在流式生成工具调用参数（大参数期间可达数十秒），
+            // 提前展示目标文件等信息，避免状态行停留在「思考中」形似卡死
+            final callingTool = event.toolCall;
+            if (callingTool != null && callingTool.name.isNotEmpty) {
+              _setStatus(
+                AgentToolLabels.progressLabel(callingTool.name, callingTool.arguments),
+              );
+            }
+            break;
           case AgentEventType.toolExecuting:
             final toolName = event.toolCall?.name ?? '';
             final extraProgress = event.text != null ? '（${event.text}）' : '';
@@ -597,6 +635,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
           messages: List.of(_sessionMessages),
           clearStatusText: true,
           clearStreamingText: true,
+          clearStreamingStartedAt: true,
         );
       } else {
         state = state.copyWith(
@@ -604,6 +643,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
           messages: List.of(_sessionMessages),
           clearStatusText: true,
           clearStreamingText: true,
+          clearStreamingStartedAt: true,
         );
       }
     }
