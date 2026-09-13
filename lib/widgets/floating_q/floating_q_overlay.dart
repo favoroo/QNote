@@ -14,6 +14,8 @@ import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
+import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
+import 'package:qnote_flutter/widgets/animated_gradient_border.dart';
 import 'package:qnote_flutter/widgets/common/animated_ellipsis.dart';
 import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
 import 'package:qnote_flutter/widgets/common/thought_tail_scroll_view.dart';
@@ -635,15 +637,26 @@ class _PanelMessages extends ConsumerStatefulWidget {
 class _PanelMessagesState extends ConsumerState<_PanelMessages> {
   final _listController = ScrollController();
 
+  /// 是否自动贴底跟随；流式期间用户向上拖动查看历史后暂停，
+  /// 拖回底部附近自动恢复（与 ThoughtTailScrollView 同一套约定）
+  bool _follow = true;
+
+  bool get _isNearBottom =>
+      !_listController.hasClients ||
+      _listController.position.maxScrollExtent - _listController.offset < 24;
+
   @override
   void dispose() {
     _listController.dispose();
     super.dispose();
   }
 
-  void _scrollToBottom() {
+  /// 贴底仅在跟随态执行：jumpTo 会先终止当前滚动活动，流式期间每 60ms
+  /// 一次的无条件贴底会持续打断用户拖拽，表现为回复时列表滑不动
+  void _scrollToBottom({bool force = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_listController.hasClients) return;
+      if (!force && !_follow) return;
       _listController.jumpTo(_listController.position.maxScrollExtent);
     });
   }
@@ -653,13 +666,16 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
     final theme = Theme.of(context);
     final fq = ref.watch(floatingQProvider);
 
-    // 消息流或流式状态变化（正文、状态文案、实时思考内容）时滚到底部
+    // 消息流或流式状态变化（正文、状态文案、实时思考内容）时滚到底部：
+    // 新消息落地是离散事件，强制恢复跟随并贴底；流式增量仅在跟随态贴底
     ref.listen<FloatingQState>(floatingQProvider, (prev, next) {
-      if (prev?.messages.length != next.messages.length ||
+      final newMessage = prev?.messages.length != next.messages.length;
+      if (newMessage ||
           prev?.streamingText != next.streamingText ||
           prev?.statusText != next.statusText ||
           prev?.streamingThought != next.streamingThought) {
-        _scrollToBottom();
+        if (newMessage) _follow = true;
+        _scrollToBottom(force: newMessage);
       }
     });
 
@@ -724,11 +740,21 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
       );
     }
 
-    return ListView(
-      controller: _listController,
-      shrinkWrap: true,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      children: children,
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification is ScrollUpdateNotification &&
+            notification.dragDetails != null) {
+          _follow = false; // 用户主动拖动即暂停贴底跟随
+        }
+        if (_isNearBottom) _follow = true; // 拖回底部附近自动恢复
+        return false;
+      },
+      child: ListView(
+        controller: _listController,
+        shrinkWrap: true,
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        children: children,
+      ),
     );
   }
 
@@ -1204,6 +1230,15 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
     ref.read(floatingQProvider.notifier).stop();
   }
 
+  /// 长按发送按钮切换小Q模型：与 AI 主页面共用同一 assistant 角色绑定，
+  /// 切换为全局生效（主页面同步更新）
+  Future<void> _handleModelSelect() async {
+    HapticFeedback.mediumImpact();
+    final selected = await showAssistantModelSelector(context, ref);
+    if (selected == null || !mounted) return;
+    Toast.success(context, '小Q模型已切换为 ${selected.name}');
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1255,21 +1290,30 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
             ),
           ),
           const SizedBox(width: 8),
-          // 小Q工作中：发送按钮变为中断/停止按钮（与 AI 主页面交互一致）
-          IconButton.filled(
-            onPressed: isWorking ? _handleStop : _handleSend,
-            tooltip: isWorking ? '点击中止小Q当前操作' : '发送',
-            style: IconButton.styleFrom(
-              backgroundColor: isWorking
-                  ? theme.colorScheme.errorContainer
-                  : theme.colorScheme.primary,
-            ),
-            icon: Icon(
-              isWorking ? Icons.stop_rounded : Icons.arrow_upward_rounded,
-              size: 22,
-              color: isWorking
-                  ? theme.colorScheme.onErrorContainer
-                  : theme.colorScheme.onPrimary,
+          // 小Q工作中：发送按钮变为中断/停止按钮（与 AI 主页面交互一致）；
+          // 空闲态长按可切换模型（工作中为停止按钮，不响应长按）。
+          // 工作期间外圈套 primary 色流光描边（与悬浮球脉冲环同一「运行中」语义）
+          AnimatedGradientBorder(
+            isAnimating: isWorking,
+            borderRadius: 20,
+            strokeWidth: 2,
+            child: IconButton.filled(
+              onPressed: isWorking ? _handleStop : _handleSend,
+              onLongPress: isWorking ? null : _handleModelSelect,
+              tooltip:
+                  isWorking ? '点击中止小Q当前操作' : '发送（长按切换模型）',
+              style: IconButton.styleFrom(
+                backgroundColor: isWorking
+                    ? theme.colorScheme.errorContainer
+                    : theme.colorScheme.primary,
+              ),
+              icon: Icon(
+                isWorking ? Icons.stop_rounded : Icons.arrow_upward_rounded,
+                size: 22,
+                color: isWorking
+                    ? theme.colorScheme.onErrorContainer
+                    : theme.colorScheme.onPrimary,
+              ),
             ),
           ),
         ],

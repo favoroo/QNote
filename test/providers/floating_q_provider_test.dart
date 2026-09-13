@@ -276,6 +276,25 @@ void main() {
       notifier.openWithImages(const []);
       expect(container.read(floatingQProvider).panelOpen, isFalse);
     });
+
+    test('同一图片路径二次投递（推送+拉取双通道）去重不重复追加', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(floatingQProvider.notifier);
+
+      // 第一次投递（主动推送）：挂起并消费进附件区
+      notifier.openWithImages(['/cache/shared_images/a.jpg']);
+      notifier.consumePendingImages();
+      expect(container.read(floatingQProvider).attachedImages,
+          ['/cache/shared_images/a.jpg']);
+
+      // 第二次投递（回前台拉取到同一份遗留数据）：消费后仍只保留一张
+      notifier.openWithImages(['/cache/shared_images/a.jpg']);
+      notifier.consumePendingImages();
+      final state = container.read(floatingQProvider);
+      expect(state.attachedImages, ['/cache/shared_images/a.jpg']);
+      expect(state.pendingImages, isNull);
+    });
   });
 
   group('外部分享内容注入块', () {

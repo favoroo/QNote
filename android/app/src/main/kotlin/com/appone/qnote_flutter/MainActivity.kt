@@ -84,8 +84,18 @@ class MainActivity : FlutterActivity() {
 
     private fun handleIncomingText(text: String) {
         pendingSharedText = text
-        // Flutter 引擎就绪时，主动推送文本
-        shareChannel?.invokeMethod("onSharedText", text)
+        // Flutter 引擎就绪时主动推送文本；Dart 确认接收后才清空挂起，
+        // 避免回前台拉取（getPendingSharedText）把同一份再投递一次，
+        // 弹出旧的引用卡片。推送未达（冷启动 Dart 未就绪）则保留给拉取兜底
+        shareChannel?.invokeMethod("onSharedText", text, object : MethodChannel.Result {
+            override fun success(result: Any?) {
+                pendingSharedText = null
+            }
+
+            override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {}
+
+            override fun notImplemented() {}
+        })
     }
 
     private fun handleIncomingImages(uris: List<Uri>) {
@@ -105,8 +115,18 @@ class MainActivity : FlutterActivity() {
         if (saved.isEmpty()) return
 
         pendingSharedImages = saved
-        // Flutter 引擎就绪时，主动推送图片路径列表
-        shareChannel?.invokeMethod("onSharedImages", saved)
+        // Flutter 引擎就绪时主动推送图片路径列表；Dart 确认接收后才清空挂起，
+        // 否则回前台 resumed 拉取（getPendingSharedImages）会拿到同一份再投递一次，
+        // 附件条出现重复图片。推送未达（冷启动 Dart 未就绪）则保留给拉取兜底
+        shareChannel?.invokeMethod("onSharedImages", saved, object : MethodChannel.Result {
+            override fun success(result: Any?) {
+                pendingSharedImages = null
+            }
+
+            override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {}
+
+            override fun notImplemented() {}
+        })
     }
 
     /** 把 content:// Uri 复制到应用缓存目录，返回落盘文件（分享 Uri 的读权限仅在 Intent 存续期内有效） */

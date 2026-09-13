@@ -27,6 +27,8 @@ import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/widgets/empty_state.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
+import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
+import 'package:qnote_flutter/widgets/animated_gradient_border.dart';
 import 'package:qnote_flutter/widgets/common/animated_ellipsis.dart';
 import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
 import 'package:qnote_flutter/widgets/common/thought_tail_scroll_view.dart';
@@ -944,30 +946,10 @@ class _AiPageState extends ConsumerState<AiPage> {
   }
 
   Future<void> _openModelSelector() async {
-    final configs = await ref.read(aiConfigListProvider.future);
-    if (!mounted) return;
-    final selected = await showDialog<String>(
-      context: context,
-      builder: (ctx) =>
-          _ModelSelectorDialog(configs: configs, activeModelId: _activeModelId),
-    );
-    if (selected != null && selected != _activeModelId) {
-      setState(() => _activeModelId = selected);
-      final roles = await ref.read(aiRolesProvider.future);
-      final isFree = selected.startsWith('free:');
-      final freeModelId = isFree ? selected.substring(5) : null;
-      final oldRoles = roles ?? const AiRoles();
-      final newRoles = AiRoles(
-        assistant: isFree ? null : selected,
-        assistantUseFreeModel: isFree,
-        assistantFreeModelId: freeModelId,
-        timelineOptimization: oldRoles.timelineOptimization,
-        timelineOptimizationUseFreeModel: oldRoles.timelineOptimizationUseFreeModel,
-        timelineOptimizationFreeModelId: oldRoles.timelineOptimizationFreeModelId,
-      );
-      await saveAiRoles(newRoles);
-      ref.invalidate(aiRolesProvider);
-    }
+    // 弹窗与 AiRoles 写入逻辑在共享组件中（悬浮小Q面板长按发送按钮也走此入口）
+    final selected = await showAssistantModelSelector(context, ref);
+    if (selected == null) return;
+    setState(() => _activeModelId = selected.id);
   }
 
   @override
@@ -1309,30 +1291,39 @@ class _AiPageState extends ConsumerState<AiPage> {
                       final hasText = value.text.trim().isNotEmpty;
                       final canSend = (hasText || hasAttachments) && !_isTyping;
 
-                      // 小Q工作过程中：发送按钮变为中断/停止按钮
+                      // 小Q工作过程中：发送按钮变为中断/停止按钮，
+                      // 外圈套 primary 色流光描边表达「运行中」
                       if (_isTyping) {
                         return Tooltip(
                           message: '点击中止小Q当前操作',
-                          child: GestureDetector(
-                            onTap: _stopGenerating,
-                            child: Container(
-                              width: 44,
-                              height: 44,
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.errorContainer.withValues(alpha: 0.8),
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: theme.colorScheme.error.withValues(alpha: 0.6),
-                                  width: 1.5,
+                          child: AnimatedGradientBorder(
+                            isAnimating: true,
+                            borderRadius: 22,
+                            strokeWidth: 2,
+                            child: GestureDetector(
+                              onTap: _stopGenerating,
+                              child: Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.errorContainer
+                                      .withValues(alpha: 0.8),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: theme.colorScheme.error
+                                        .withValues(alpha: 0.6),
+                                    width: 1.5,
+                                  ),
                                 ),
-                              ),
-                              child: Center(
-                                child: Container(
-                                  width: 13,
-                                  height: 13,
-                                  decoration: BoxDecoration(
-                                    color: theme.colorScheme.error,
-                                    borderRadius: BorderRadius.circular(2.5),
+                                child: Center(
+                                  child: Container(
+                                    width: 13,
+                                    height: 13,
+                                    decoration: BoxDecoration(
+                                      color: theme.colorScheme.error,
+                                      borderRadius:
+                                          BorderRadius.circular(2.5),
+                                    ),
                                   ),
                                 ),
                               ),
@@ -1636,6 +1627,18 @@ class _AiPageState extends ConsumerState<AiPage> {
     );
   }
 
+  /// 物理键盘 Enter 拦截：无 Shift 即发送，Shift+Enter 放行默认换行。
+  /// 软键盘行为由 textInputAction:newline 交给 IME（移动端发送一律点按钮）；
+  /// 返回 handled 后 engine 不再把 Enter 送入文本输入通道，避免发送与换行叠加
+  KeyEventResult _handleEnterKey(FocusNode node, KeyEvent event) {
+    final isEnter = event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.numpadEnter;
+    if (!isEnter || event is KeyRepeatEvent) return KeyEventResult.ignored;
+    if (HardwareKeyboard.instance.isShiftPressed) return KeyEventResult.ignored;
+    if (event is KeyDownEvent) _sendMessage();
+    return KeyEventResult.handled;
+  }
+
   Widget _buildInputField(ThemeData theme) {
     return Container(
       constraints: const BoxConstraints(maxHeight: 120),
@@ -1650,28 +1653,32 @@ class _AiPageState extends ConsumerState<AiPage> {
       child: Stack(
         alignment: Alignment.bottomRight,
         children: [
-          TextField(
-            controller: _inputController,
-            focusNode: _inputFocusNode,
-            minLines: 1,
-            maxLines: 4,
-            decoration: const InputDecoration(
-              filled: false,
-              hintText: '输入问题；/ 调用技能，@ 引用内容',
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
-              errorBorder: InputBorder.none,
-              disabledBorder: InputBorder.none,
-              contentPadding: EdgeInsets.only(
-                left: 16,
-                top: 10,
-                bottom: 10,
-                right: 42,
+          Focus(
+            onKeyEvent: _handleEnterKey,
+            child: TextField(
+              controller: _inputController,
+              focusNode: _inputFocusNode,
+              minLines: 1,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                filled: false,
+                hintText: '输入问题',
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                errorBorder: InputBorder.none,
+                disabledBorder: InputBorder.none,
+                contentPadding: EdgeInsets.only(
+                  left: 16,
+                  top: 10,
+                  bottom: 10,
+                  right: 42,
+                ),
               ),
+              // 软键盘回车键为「换行」，发送一律点右侧按钮；
+              // 桌面/Web 物理回车在 _handleEnterKey 拦截发送，Shift+Enter 换行
+              textInputAction: TextInputAction.newline,
             ),
-            textInputAction: TextInputAction.send,
-            onSubmitted: (_) => _sendMessage(),
           ),
           Positioned(
             right: 6,
@@ -3332,106 +3339,6 @@ class _MultiNoteSelectorDialogState extends State<_MultiNoteSelectorDialog> {
           onPressed: () => Navigator.pop(context, _selected),
           child: Text('确定 (${_selected.length})'),
         ),
-      ],
-    );
-  }
-}
-
-class _ModelSelectorDialog extends StatelessWidget {
-  final List<AiConfig> configs;
-  final String? activeModelId;
-  const _ModelSelectorDialog({
-    required this.configs,
-    required this.activeModelId,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    final builtinModels = [
-      {'id': 'free:claude-sonnet-4-6', 'name': '内置 Claude Sonnet 4.6'},
-      {'id': 'free:gemini-3.5-flash-lite', 'name': '内置 Gemini 3.5 Flash Lite'},
-      {'id': 'free:gemini-3.8-flash-low', 'name': '内置 Gemini 3.8 Flash Low'},
-      {'id': 'free:sensenova-flash-lite', 'name': '内置 SenseNova 6.8'},
-      {'id': 'free:glm-5.2', 'name': '内置 GLM 5.2'},
-      {'id': 'free:deepseek-v4-flash', 'name': '内置 DeepSeek V4 Flash'},
-    ];
-
-    return SimpleDialog(
-      title: const Text('选择小Q模型'),
-      children: [
-        ...builtinModels.map((m) {
-          final isSelected = activeModelId == m['id'] ||
-              (activeModelId == '__free_model__' && m['id'] == 'free:gemini-3.5-flash-lite');
-          return SimpleDialogOption(
-            onPressed: () => Navigator.pop(context, m['id']),
-            child: Row(
-              children: [
-                Icon(
-                  isSelected
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_unchecked,
-                  color: isSelected
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurfaceVariant,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    m['name']!,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: isSelected ? theme.colorScheme.primary : null,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        }),
-        ...configs.map((config) {
-          final isActive = config.id == activeModelId;
-          return SimpleDialogOption(
-            onPressed: () => Navigator.pop(context, config.id),
-            child: Row(
-              children: [
-                Icon(
-                  isActive
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_unchecked,
-                  color: isActive
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurfaceVariant,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        config.name,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: isActive ? theme.colorScheme.primary : null,
-                        ),
-                      ),
-                      Text(
-                        '${config.provider} / ${config.modelName}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          );
-        }),
       ],
     );
   }

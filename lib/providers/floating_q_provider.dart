@@ -374,12 +374,15 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
     );
   }
 
-  /// 面板消费挂起的分享图片：转入附件区展示，随下一轮发送一次性携带
+  /// 面板消费挂起的分享图片：转入附件区展示，随下一轮发送一次性携带。
+  /// 按路径对已有附件去重，防御推送+拉取双投递导致同一张图显示两次
   void consumePendingImages() {
     final pending = state.pendingImages;
     if (pending == null || pending.isEmpty) return;
+    final existing = state.attachedImages.toSet();
+    final added = pending.where((p) => !existing.contains(p)).toList();
     state = state.copyWith(
-      attachedImages: [...state.attachedImages, ...pending],
+      attachedImages: [...state.attachedImages, ...added],
       clearPendingImages: true,
     );
   }
