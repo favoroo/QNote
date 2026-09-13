@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
 
 class ActionMenuItem {
   final IconData icon;
@@ -16,13 +18,14 @@ class ActionMenuItem {
 
 class ActionMenu {
   static OverlayEntry? _overlayEntry;
+  static GlobalKey<_ActionMenuOverlayState>? _currentOverlayKey;
 
   static void show({
     required BuildContext context,
     required GlobalKey key,
     required List<ActionMenuItem> items,
   }) {
-    dismiss();
+    dismiss(immediate: true);
 
     final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
@@ -32,11 +35,11 @@ class ActionMenu {
     final offset = renderBox.localToGlobal(Offset.zero);
     final screenSize = MediaQuery.of(context).size;
 
-    final menuWidth = 220.0;
-    final itemHeight = 52.0;
+    const menuWidth = 220.0;
+    const itemHeight = 52.0;
     final menuHeight = items.length * itemHeight + 16;
 
-    bool showAbove = offset.dy + size.height + menuHeight > screenSize.height - 16;
+    final showAbove = offset.dy + size.height + menuHeight > screenSize.height - 16;
     double top;
     if (showAbove) {
       top = offset.dy - menuHeight;
@@ -51,22 +54,48 @@ class ActionMenu {
     }
     if (left < 16) left = 16;
 
+    final overlayKey = GlobalKey<_ActionMenuOverlayState>();
+    _currentOverlayKey = overlayKey;
+
     _overlayEntry = OverlayEntry(
       builder: (context) => _ActionMenuOverlay(
+        key: overlayKey,
         top: top,
         left: left,
         menuWidth: menuWidth,
         items: items,
-        onDismiss: dismiss,
+        onDismiss: () => dismiss(immediate: false),
+        onRemoveEntry: () {
+          _overlayEntry?.remove();
+          _overlayEntry = null;
+          _currentOverlayKey = null;
+        },
       ),
     );
 
     overlay.insert(_overlayEntry!);
   }
 
-  static void dismiss() {
-    _overlayEntry?.remove();
-    _overlayEntry = null;
+  /// 关闭菜单。
+  ///
+  /// [immediate] 为 true 时立即从 Overlay 移除，用于重新弹出新菜单时的快速清理；
+  /// 为 false 时播放平滑的反向淡出缩放动画后再移除。
+  static void dismiss({bool immediate = false}) {
+    if (immediate) {
+      _overlayEntry?.remove();
+      _overlayEntry = null;
+      _currentOverlayKey = null;
+      return;
+    }
+
+    final state = _currentOverlayKey?.currentState;
+    if (state != null) {
+      state.dismissWithAnimation();
+    } else {
+      _overlayEntry?.remove();
+      _overlayEntry = null;
+      _currentOverlayKey = null;
+    }
   }
 }
 
@@ -76,13 +105,16 @@ class _ActionMenuOverlay extends StatefulWidget {
   final double menuWidth;
   final List<ActionMenuItem> items;
   final VoidCallback onDismiss;
+  final VoidCallback onRemoveEntry;
 
   const _ActionMenuOverlay({
+    super.key,
     required this.top,
     required this.left,
     required this.menuWidth,
     required this.items,
     required this.onDismiss,
+    required this.onRemoveEntry,
   });
 
   @override
@@ -94,17 +126,26 @@ class _ActionMenuOverlayState extends State<_ActionMenuOverlay>
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
+  bool _isDismissing = false;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 200),
+      duration: AppDurations.fast,
     );
-    _fadeAnimation = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
-    _scaleAnimation = Tween<double>(begin: 0.9, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+    _fadeAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: AppCurves.emphasized,
+      reverseCurve: AppCurves.exit,
+    );
+    _scaleAnimation = Tween<double>(begin: 0.92, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: AppCurves.emphasized,
+        reverseCurve: AppCurves.exit,
+      ),
     );
     _controller.forward();
   }
@@ -115,8 +156,19 @@ class _ActionMenuOverlayState extends State<_ActionMenuOverlay>
     super.dispose();
   }
 
+  /// 播放反向动画平滑退出后从 Overlay 移除
+  void dismissWithAnimation() {
+    if (_isDismissing || !mounted) return;
+    _isDismissing = true;
+    _controller.reverse().then((_) {
+      if (mounted) {
+        widget.onRemoveEntry();
+      }
+    });
+  }
+
   void _handleItemTap(ActionMenuItem item) {
-    widget.onDismiss();
+    dismissWithAnimation();
     item.onTap();
   }
 

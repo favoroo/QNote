@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/models/folder.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
@@ -201,99 +203,109 @@ class _NotesPageState extends ConsumerState<NotesPage> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('加载失败: $e')),
       ),
-      floatingActionButton: _isSelectionMode
-          ? null
-          : Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                FloatingActionButton.small(
-                  heroTag: 'add_folder_fab',
-                  shape: const CircleBorder(),
-                  onPressed: () => _showCreateFolderDialog(),
-                  backgroundColor:
-                      Theme.of(context).colorScheme.secondaryContainer,
-                  foregroundColor:
-                      Theme.of(context).colorScheme.onSecondaryContainer,
-                  child: const Icon(Icons.create_new_folder_outlined),
-                ),
-                const SizedBox(height: 12),
-                FloatingActionButton(
-                  heroTag: 'add_note_fab',
-                  shape: const CircleBorder(),
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                  elevation: 2,
-                  onPressed: () => _createNote(),
-                  child: const Icon(Icons.add, size: 28),
-                ),
-              ],
-            ),
-      bottomNavigationBar: _isSelectionMode
-          ? Container(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                border: Border(
-                  top: BorderSide(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .outlineVariant
-                        .withValues(alpha: 0.1),
+      floatingActionButton: AnimatedSwitcher(
+        duration: AppDurations.fast,
+        child: _isSelectionMode
+            ? const SizedBox.shrink()
+            : Column(
+                key: const ValueKey('notes_fabs'),
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FloatingActionButton.small(
+                    heroTag: 'add_folder_fab',
+                    shape: const CircleBorder(),
+                    onPressed: () => _showCreateFolderDialog(),
+                    backgroundColor:
+                        Theme.of(context).colorScheme.secondaryContainer,
+                    foregroundColor:
+                        Theme.of(context).colorScheme.onSecondaryContainer,
+                    child: const Icon(Icons.create_new_folder_outlined),
                   ),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.05),
-                    offset: const Offset(0, -4),
-                    blurRadius: 20,
+                  const SizedBox(height: 12),
+                  FloatingActionButton(
+                    heroTag: 'add_note_fab',
+                    shape: const CircleBorder(),
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                    elevation: 2,
+                    onPressed: () => _createNote(),
+                    child: const Icon(Icons.add, size: 28),
                   ),
                 ],
               ),
-              child: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        '已选 ${_selectedNoteIds.length + _selectedFolderIds.length} 项',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.copyWith(fontWeight: FontWeight.bold),
-                      ),
-                      FilledButton(
-                        onPressed: (_selectedNoteIds.isEmpty &&
-                                _selectedFolderIds.isEmpty)
-                            ? null
-                            : _handleBatchDelete,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: _isConfirming
-                              ? Theme.of(context).colorScheme.error
-                              : Theme.of(context).colorScheme.error,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(24),
+      ),
+      bottomNavigationBar: AnimatedSize(
+        duration: AppDurations.normal,
+        curve: AppCurves.standard,
+        alignment: Alignment.bottomCenter,
+        child: _isSelectionMode
+            ? Container(
+                key: const ValueKey('notes_batch_bar'),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  border: Border(
+                    top: BorderSide(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .outlineVariant
+                          .withValues(alpha: 0.1),
+                    ),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.05),
+                      offset: const Offset(0, -4),
+                      blurRadius: 20,
+                    ),
+                  ],
+                ),
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '已选 ${_selectedNoteIds.length + _selectedFolderIds.length} 项',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        FilledButton(
+                          onPressed: (_selectedNoteIds.isEmpty &&
+                                  _selectedFolderIds.isEmpty)
+                              ? null
+                              : _handleBatchDelete,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _isConfirming
+                                ? Theme.of(context).colorScheme.error
+                                : Theme.of(context).colorScheme.error,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(24),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.delete_outline, size: 16),
+                              const SizedBox(width: 6),
+                              Text(
+                                _isConfirming ? '再次点击确认' : '删除',
+                                style:
+                                    const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ],
                           ),
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.delete_outline, size: 16),
-                            const SizedBox(width: 6),
-                            Text(
-                              _isConfirming ? '再次点击确认' : '删除',
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            )
-          : null,
+              )
+            : const SizedBox(width: double.infinity, height: 0),
+      ),
     );
   }
 

@@ -24,12 +24,16 @@ class AgentSkill {
   /// 手册正文（Markdown，不含 frontmatter）
   final String content;
 
+  /// 是否已归档：归档后不再进入技能索引与斜杠命令候选，小Q也无法查阅
+  final bool archived;
+
   final DateTime updatedAt;
 
   AgentSkill({
     required this.name,
     this.description = '',
     this.content = '',
+    this.archived = false,
     DateTime? updatedAt,
   }) : updatedAt = updatedAt ?? DateTime.now();
 
@@ -55,6 +59,7 @@ class AgentSkill {
       'name': name,
       'description': description,
       'content': content,
+      'archived': archived,
       'updated_at': updatedAt.toIso8601String(),
     };
   }
@@ -64,6 +69,7 @@ class AgentSkill {
       name: map['name'] as String,
       description: map['description'] as String? ?? '',
       content: map['content'] as String? ?? '',
+      archived: map['archived'] as bool? ?? false,
       updatedAt: map['updated_at'] != null
           ? DateTime.tryParse(map['updated_at'] as String) ?? DateTime.now()
           : DateTime.now(),
@@ -79,12 +85,14 @@ class AgentSkill {
     String? name,
     String? description,
     String? content,
+    bool? archived,
     DateTime? updatedAt,
   }) {
     return AgentSkill(
       name: name ?? this.name,
       description: description ?? this.description,
       content: content ?? this.content,
+      archived: archived ?? this.archived,
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }

@@ -1,6 +1,7 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
+import 'package:flutter/foundation.dart'
+    show debugPrint, kDebugMode, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/core/agent/agent_tool_labels.dart';
@@ -10,7 +11,9 @@ import 'package:qnote_flutter/core/agent/engine/agent_events.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_loop.dart';
 import 'package:qnote_flutter/core/agent/prompts/q_system_prompt.dart';
 import 'package:qnote_flutter/core/agent/services/agent_interaction_service.dart';
+import 'package:qnote_flutter/core/agent/services/agent_tool_config.dart';
 import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
+import 'package:qnote_flutter/core/agent/services/q_personality_service.dart';
 import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
 import 'package:qnote_flutter/core/agent/services/q_text_quote.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
@@ -165,8 +168,15 @@ class FloatingQState {
   /// 「给小Q」挂起的待发送引用（面板展示为引用卡片，发送时一次性消费）
   final QTextQuote? pendingQuote;
 
-  /// 待填入输入框的文本（如从外部第三方应用划选「给小Q」唤起时传入）
-  final String? pendingInputText;
+  /// 面板是否处于外部分享模式（第三方分享文字/划词/分享图片唤起）：
+  /// true 时头部不显示页面位置徽章，发送时也不注入页面上下文
+  final bool externalShareMode;
+
+  /// 待挂载的分享图片（外部分享图片唤起时传入，面板读取后转入附件区）
+  final List<String>? pendingImages;
+
+  /// 面板附件图片（本地路径），随下一轮发送一次性携带给小Q
+  final List<String> attachedImages;
 
   const FloatingQState({
     this.baseContext,
@@ -183,7 +193,9 @@ class FloatingQState {
     this.pendingUndoCount = 0,
     this.isUndoing = false,
     this.pendingQuote,
-    this.pendingInputText,
+    this.externalShareMode = false,
+    this.pendingImages,
+    this.attachedImages = const [],
   });
 
   /// 生效上下文：编辑页覆盖栈顶优先，否则取基础上下文
@@ -205,14 +217,17 @@ class FloatingQState {
     int? pendingUndoCount,
     bool? isUndoing,
     QTextQuote? pendingQuote,
-    String? pendingInputText,
+    bool? externalShareMode,
+    List<String>? pendingImages,
+    List<String>? attachedImages,
     bool clearSignature = false,
     bool clearStatusText = false,
     bool clearStreamingThought = false,
     bool clearStreamingText = false,
     bool clearStreamingStartedAt = false,
     bool clearQuote = false,
-    bool clearInputText = false,
+    bool clearPendingImages = false,
+    bool clearAttachedImages = false,
   }) {
     return FloatingQState(
       baseContext: baseContext ?? this.baseContext,
@@ -236,8 +251,12 @@ class FloatingQState {
       pendingUndoCount: pendingUndoCount ?? this.pendingUndoCount,
       isUndoing: isUndoing ?? this.isUndoing,
       pendingQuote: clearQuote ? null : (pendingQuote ?? this.pendingQuote),
-      pendingInputText:
-          clearInputText ? null : (pendingInputText ?? this.pendingInputText),
+      externalShareMode: externalShareMode ?? this.externalShareMode,
+      pendingImages:
+          clearPendingImages ? null : (pendingImages ?? this.pendingImages),
+      attachedImages: clearAttachedImages
+          ? const []
+          : (attachedImages ?? this.attachedImages),
     );
   }
 }
@@ -314,8 +333,10 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       messages: const [],
       // 生效上下文为空（无基础上下文且无编辑页）时显式清空会话签名
       clearSignature: signature == null,
-      // 挂起引用与来源页面绑定，会话随签名切换即作废
+      // 挂起引用与来源页面绑定，会话随签名切换即作废；
+      // 页面切换也意味着离开外部分享场景，恢复页面上下文模式
       clearQuote: true,
+      externalShareMode: false,
     );
   }
 
@@ -323,28 +344,52 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
   // 面板与会话操作
   // ==========================================
 
-  void openPanel() => state = state.copyWith(panelOpen: true);
+  /// 手动点开面板：回到页面上下文模式（外部分享模式仅在分享唤起时生效）
+  void openPanel() =>
+      state = state.copyWith(panelOpen: true, externalShareMode: false);
 
   void closePanel() => state = state.copyWith(panelOpen: false);
 
   /// 「给小Q」引用入口：挂起引用并展开面板。
   ///
   /// 小Q工作中同样允许挂起（send 在 working 期是 no-op，引用保留待发），
-  /// 引用在发送时一次性消费，期间可在面板引用卡片上移除
-  void openWithQuote(QTextQuote quote) =>
-      state = state.copyWith(pendingQuote: quote, panelOpen: true);
+  /// 引用在发送时一次性消费，期间可在面板引用卡片上移除。
+  /// 外部内容（第三方分享/划词）唤起时进入外部模式：不展示也不注入页面位置
+  void openWithQuote(QTextQuote quote) => state = state.copyWith(
+        pendingQuote: quote,
+        panelOpen: true,
+        externalShareMode: quote.source == QQuoteSource.external,
+      );
 
   /// 移除挂起的引用（引用卡片 × 按钮）
   void clearPendingQuote() => state = state.copyWith(clearQuote: true);
 
-  /// 带预填文本展开面板（如外部第三方应用划选「给小Q」唤起）
-  void openWithText(String text) =>
-      state = state.copyWith(pendingInputText: text, panelOpen: true);
+  /// 外部分享图片入口：挂起待挂载图片并展开面板（同样进入外部模式）
+  void openWithImages(List<String> paths) {
+    if (paths.isEmpty) return;
+    state = state.copyWith(
+      pendingImages: List.of(paths),
+      panelOpen: true,
+      externalShareMode: true,
+    );
+  }
 
-  /// 清空挂起的预填文本（输入框已读取填入）
-  void clearPendingInputText() {
-    if (state.pendingInputText == null) return;
-    state = state.copyWith(clearInputText: true);
+  /// 面板消费挂起的分享图片：转入附件区展示，随下一轮发送一次性携带
+  void consumePendingImages() {
+    final pending = state.pendingImages;
+    if (pending == null || pending.isEmpty) return;
+    state = state.copyWith(
+      attachedImages: [...state.attachedImages, ...pending],
+      clearPendingImages: true,
+    );
+  }
+
+  /// 移除一张附件图片（缩略图 × 按钮）
+  void removeAttachedImage(String path) {
+    state = state.copyWith(
+      attachedImages:
+          state.attachedImages.where((p) => p != path).toList(),
+    );
   }
 
   /// 手动开启新对话（清空历史；进行中的任务与待撤回变更不受影响）
@@ -355,8 +400,9 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       clearSignature: true,
       clearStatusText: true,
       clearStreamingText: true,
-      // 挂起引用属于旧会话上下文，随会话重置一并清空
+      // 挂起引用与附件图片属于旧会话上下文，随会话重置一并清空
       clearQuote: true,
+      clearAttachedImages: true,
     );
     _sessionMessages = const [];
   }
@@ -365,20 +411,29 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
   // 发送 / 中断 / 撤回
   // ==========================================
 
-  /// 发送指令：上下文签名变化即自动开新会话；连续对话携带本会话历史
+  /// 发送指令：上下文签名变化即自动开新会话；连续对话携带本会话历史。
+  /// 支持仅附件图片、无文字的发送（自动补引导语）；发送时取走全部附件图片
   Future<void> send(String content) async {
     final text = content.trim();
-    if (text.isEmpty || state.phase == FloatingQPhase.working) return;
+    final images = List<String>.of(state.attachedImages);
+    if ((text.isEmpty && images.isEmpty) ||
+        state.phase == FloatingQPhase.working) {
+      return;
+    }
 
-    final ctx = state.effectiveContext;
-    final signature = ctx?.signature ?? 'page:none';
+    // 外部分享模式：独立会话签名（不与页面会话互串），不读取页面上下文
+    final isExternal = state.externalShareMode;
+    final ctx = isExternal ? null : state.effectiveContext;
+    final signature =
+        isExternal ? 'external:share' : (ctx?.signature ?? 'page:none');
 
     // 撤回就绪期发起新任务：保留并继续累加旧修改，撤回语义仍为
     // "撤销本会话小Q的全部修改"（逆序恢复天然按时间倒序覆盖多次任务）
     final isNewConversation = signature != state.contextSignature;
     final userMessage = ChatMessage(
       role: 'user',
-      content: text,
+      content: text.isEmpty && images.isNotEmpty ? '请结合图片进行分析' : text,
+      images: images.isEmpty ? null : images,
       timestamp: DateTime.now(),
     );
 
@@ -389,12 +444,14 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       phase: FloatingQPhase.working,
       contextSignature: signature,
       contextLabel: ctx?.displayLabel,
-      messages: isNewConversation ? [userMessage] : [...state.messages, userMessage],
+      messages:
+          isNewConversation ? [userMessage] : [...state.messages, userMessage],
       statusText: '小Q准备中',
       streamingStartedAt: DateTime.now(),
       clearStreamingText: true,
       clearStreamingThought: true,
       clearQuote: true,
+      clearAttachedImages: true,
     );
     _sessionMessages = List.of(state.messages);
     _contextSwitchedDuringRun = false;
@@ -495,8 +552,8 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       final quoteBlock = quote == null ? null : await _quotePromptBlock(quote);
       final dynamicContext = await buildBaseDynamicContext(
         extraSections: [
-          if (pageBlock != null) pageBlock,
-          if (quoteBlock != null) quoteBlock,
+          ?pageBlock,
+          ?quoteBlock,
         ],
       );
 
@@ -515,7 +572,14 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       // 预加载用户技能缓存，保证本次会话系统提示词中的技能索引完整
       await SkillRegistry.instance.ensureLoaded();
 
-      final dispatcher = AgentToolRegistry.createDefaultDispatcher();
+      // 读取当前激活个性（对话开始时取一次，本轮中途的修改下轮生效——对齐记忆的冻结快照语义）
+      final personality = await QPersonalityService.instance.getActivePersonality();
+
+      // 可选工具按用户配置裁剪：禁用的工具不注册，系统提示词对应准则段也不注入
+      final disabledTools = await AgentToolConfig.instance.getDisabledTools();
+      final dispatcher = AgentToolRegistry.createDefaultDispatcher(
+        disabledTools: disabledTools,
+      );
       final agentLoop = AgentLoop(
         aiService: aiService,
         dispatcher: dispatcher,
@@ -532,7 +596,11 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       ChatMessage? finalResponse;
       await for (final event in agentLoop.run(
         conversationHistory: List.of(_sessionMessages),
-        systemPrompt: QSystemPrompt.prompt,
+        systemPrompt: QSystemPrompt.buildSystemPrompt(
+          personalityPrompt: personality.prompt,
+          enabledOptionalTools:
+              AgentToolRegistry.optionalToolNames.difference(disabledTools),
+        ),
         dynamicContext: dynamicContext,
         cancellationToken: token,
       )) {
@@ -695,7 +763,14 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       QQuoteSource.diary => '时间线记录',
       QQuoteSource.journal => '每日日记',
       QQuoteSource.todo => '待办',
+      QQuoteSource.external => '外部内容',
     };
+
+    // 外部分享内容（第三方分享/划词）：没有应用内来源实体可定位，
+    // 直接把文本注入上下文即可，不做 VFS 路径解析、不给 read_file 指引
+    if (quote.source == QQuoteSource.external) {
+      return buildExternalQuoteBlock(quote);
+    }
 
     // 按来源类型解析 VFS 规范路径与 id 提示（与 undo 录制的归一化键一致）
     String? path;
@@ -717,6 +792,9 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       case QQuoteSource.todo:
         path = await workspace.resolveTodoPath(quote.sourceId);
         idHint = '待办 id: ${quote.sourceId}（文件头部为 YAML frontmatter，修改时保留其中的 id 字段）';
+      case QQuoteSource.external:
+        // 外部内容已在方法开头提前返回，此处不可达
+        return null;
     }
 
     // 引用过长时截断：引用文本主要用于定位，完整内容以 read_file 实际读取为准
@@ -734,6 +812,25 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       text,
       '"""',
       '请先 read_file 上述文件定位该内容（以文件实际内容为准），需要修改时用 edit_file 精确替换；若指令与引用内容无关则按通用指令处理',
+    ].join('\n');
+  }
+
+  /// 组装外部分享内容的注入块：无应用内来源实体，直接注入文本本身，
+  /// 并显式告知小Q不要尝试 read_file 定位。返回 null 表示无可注入内容
+  @visibleForTesting
+  static String? buildExternalQuoteBlock(QTextQuote quote) {
+    var externalText = quote.quotedText.trim();
+    if (externalText.isEmpty) return null;
+    if (externalText.length > 2000) {
+      externalText = '${externalText.substring(0, 2000)}…（内容过长已截断）';
+    }
+    return [
+      '用户分享的外部内容（来自第三方应用，接下来的指令通常针对这段内容提问或要求处理）',
+      '分享内容：',
+      '"""',
+      externalText,
+      '"""',
+      '上述内容无法在虚拟工作区中定位，不要尝试用 read_file 查找它，直接基于内容本身处理',
     ].join('\n');
   }
 

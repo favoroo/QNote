@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
+import 'package:qnote_flutter/core/agent/skills/skill_usage_tracker.dart';
 import 'package:qnote_flutter/core/agent/vfs/virtual_workspace_service.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/models/agent_skill.dart';
@@ -285,6 +286,88 @@ void main() {
         throwsException,
       );
       expect(registry.getSkillContent('todo-manager'), isNotNull);
+    });
+  });
+
+  group('技能治理：归档与使用统计（Curator）', () {
+    final vfs = VirtualWorkspaceService.instance;
+
+    tearDown(() async {
+      final skills = await ConfigRepository.instance.getUserSkills();
+      for (final s in skills) {
+        await ConfigRepository.instance.deleteUserSkill(s.name);
+      }
+      await registry.reload();
+      await SkillUsageTracker.instance.remove('todo-manager');
+      await SkillUsageTracker.instance.remove('archived-demo');
+    });
+
+    test('resolveSkillName 解析主名、别名与虚拟路径，未知返回 null', () {
+      expect(registry.resolveSkillName('todo'), 'todo-manager');
+      expect(registry.resolveSkillName('todos'), 'todo-manager');
+      expect(registry.resolveSkillName('frontend'), 'frontend-design');
+      expect(registry.resolveSkillName('/skills/stats-analyst.md'), 'stats-analyst');
+      expect(registry.resolveSkillName('不存在的技能'), isNull);
+      expect(registry.resolveSkillName(''), isNull);
+    });
+
+    test('归档后对索引、内容查询与目录列举不可见，恢复后回归', () async {
+      await registry.saveUserSkill(
+        AgentSkill(
+          name: 'archived-demo',
+          description: '用于归档验证的技能',
+          content: '# 归档演示',
+        ),
+      );
+      expect(registry.getSkillContent('archived-demo'), isNotNull);
+
+      await registry.archiveUserSkill('archived-demo', true);
+      expect(registry.getUserSkill('archived-demo')!.archived, isTrue);
+      // 默认清单与内容查询均不可见
+      expect(
+        registry.listSkills().any((s) => s['name'] == 'archived-demo'),
+        isFalse,
+      );
+      expect(registry.getSkillContent('archived-demo'), isNull);
+      expect(registry.resolveSkillName('archived-demo'), isNull);
+      // 管理页视角（includeArchived）可见且带标记
+      final fullList = registry.listSkills(includeArchived: true);
+      final archivedEntry = fullList.firstWhere(
+        (s) => s['name'] == 'archived-demo',
+      );
+      expect(archivedEntry['archived'], 'true');
+      // VFS 目录列举同步隐藏
+      expect(await vfs.listDir('/skills'), isNot(contains('archived-demo.md')));
+
+      // 恢复后回归默认可见
+      await registry.archiveUserSkill('archived-demo', false);
+      expect(registry.getSkillContent('archived-demo'), isNotNull);
+      expect(
+        registry.listSkills().any((s) => s['name'] == 'archived-demo'),
+        isTrue,
+      );
+    });
+
+    test('使用统计：累加次数、更新时间并持久化', () async {
+      await SkillUsageTracker.instance.record('todo-manager');
+      await SkillUsageTracker.instance.record('todo-manager');
+
+      final stats = await SkillUsageTracker.instance.getStats();
+      expect(stats['todo-manager']!.count, 2);
+      expect(stats['todo-manager']!.lastUsedAt, isNotNull);
+
+      // 用户技能同样可统计
+      await registry.saveUserSkill(
+        AgentSkill(name: 'archived-demo', description: 'x', content: '# x'),
+      );
+      await SkillUsageTracker.instance.record('archived-demo');
+      final stats2 = await SkillUsageTracker.instance.getStats();
+      expect(stats2['archived-demo']!.count, 1);
+
+      // 清理后记录消失
+      await SkillUsageTracker.instance.remove('archived-demo');
+      final stats3 = await SkillUsageTracker.instance.getStats();
+      expect(stats3.containsKey('archived-demo'), isFalse);
     });
   });
 }

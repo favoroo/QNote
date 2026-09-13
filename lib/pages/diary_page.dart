@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
@@ -965,20 +966,34 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     context.push('/diary/batch');
   }
 
+  /// 正在播放退场动画的记录集合
+  final Set<String> _deletingRecordIds = {};
+
   void _handleDelete(DiaryRecord record) {
     HapticFeedback.heavyImpact();
     _clearUndoForRecord(record.id);
-    ref.read(diaryListProvider.notifier).deleteDiary(record.id);
-    Toast.show(
-      context,
-      '已删除',
-      type: ToastType.info,
-      duration: const Duration(seconds: 4),
-      actionLabel: '撤销',
-      onAction: () {
-        ref.read(diaryListProvider.notifier).undoDelete();
-      },
-    );
+    setState(() {
+      _deletingRecordIds.add(record.id);
+    });
+
+    // 播放 200ms 折叠与淡出退场动画后，真正从数据库与列表移除
+    Future.delayed(AppDurations.normal, () {
+      if (!mounted) return;
+      ref.read(diaryListProvider.notifier).deleteDiary(record.id);
+      setState(() {
+        _deletingRecordIds.remove(record.id);
+      });
+      Toast.show(
+        context,
+        '已删除',
+        type: ToastType.info,
+        duration: const Duration(seconds: 4),
+        actionLabel: '撤销',
+        onAction: () {
+          ref.read(diaryListProvider.notifier).undoDelete();
+        },
+      );
+    });
   }
 
   void _handleEdit(DiaryRecord record) {
@@ -2184,24 +2199,27 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                                       ),
                                     ...recordsInInterval.map(
                                       (record) => RepaintBoundary(
-                                        child: DiaryItem(
-                                          record: record,
-                                          onTap: () => _handleEdit(record),
-                                          onEdit: _handleEdit,
-                                          onDelete: _handleDelete,
-                                          onQuoteToQ: _quoteRecordToQ,
-                                          onAiExtract: () =>
-                                              _handleAiExtract(record),
-                                          onAiExtractLongPress: () =>
-                                              _handleAiExtractModelSelect(record),
-                                          isExtracting:
-                                              _extractingRecordId == record.id,
-                                          onUndo: () => _undoExtract(record),
-                                          isUndoable: _undoRecords.containsKey(
-                                            record.id,
+                                        child: _CollapsingItemWrapper(
+                                          isCollapsing: _deletingRecordIds.contains(record.id),
+                                          child: DiaryItem(
+                                            record: record,
+                                            onTap: () => _handleEdit(record),
+                                            onEdit: _handleEdit,
+                                            onDelete: _handleDelete,
+                                            onQuoteToQ: _quoteRecordToQ,
+                                            onAiExtract: () =>
+                                                _handleAiExtract(record),
+                                            onAiExtractLongPress: () =>
+                                                _handleAiExtractModelSelect(record),
+                                            isExtracting:
+                                                _extractingRecordId == record.id,
+                                            onUndo: () => _undoExtract(record),
+                                            isUndoable: _undoRecords.containsKey(
+                                              record.id,
+                                            ),
+                                            undoAnimation:
+                                                _undoControllers[record.id],
                                           ),
-                                          undoAnimation:
-                                              _undoControllers[record.id],
                                         ),
                                       ),
                                     ),
@@ -2799,5 +2817,76 @@ class _TimelineItemWrapperState extends State<TimelineItemWrapper> {
     return widget.child;
   }
 }
+
+/// 日记列表项平滑退场包装组件。
+///
+/// 当 [isCollapsing] 变为 true 时，在 200ms 内同步收缩高度并淡出，
+/// 避免长按删除时列表项生硬蒸发的割裂感。
+class _CollapsingItemWrapper extends StatefulWidget {
+  final bool isCollapsing;
+  final Widget child;
+
+  const _CollapsingItemWrapper({
+    required this.isCollapsing,
+    required this.child,
+  });
+
+  @override
+  State<_CollapsingItemWrapper> createState() => _CollapsingItemWrapperState();
+}
+
+class _CollapsingItemWrapperState extends State<_CollapsingItemWrapper>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _sizeAnimation;
+  late final Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: AppDurations.normal,
+      value: 1.0,
+    );
+    _sizeAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: AppCurves.standard,
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: AppCurves.exit,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _CollapsingItemWrapper oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isCollapsing && !oldWidget.isCollapsing) {
+      _controller.reverse();
+    } else if (!widget.isCollapsing && oldWidget.isCollapsing) {
+      _controller.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizeTransition(
+      sizeFactor: _sizeAnimation,
+      alignment: Alignment.topCenter,
+      child: FadeTransition(
+        opacity: _fadeAnimation,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
 
 

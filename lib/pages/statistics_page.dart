@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
@@ -173,10 +174,10 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
           Expanded(
             child: AnimatedSwitcher(
               duration: AppDurations.medium,
-              switchInCurve: Curves.easeInOut,
-              switchOutCurve: Curves.easeInOut,
+              switchInCurve: AppCurves.emphasized,
+              switchOutCurve: AppCurves.exit,
               child: KeyedSubtree(
-                key: ValueKey(_activeTab),
+                key: ValueKey('${_activeTab.name}_${_timeRange.name}'),
                 child: _buildContent(startDate, endDate),
               ),
             ),

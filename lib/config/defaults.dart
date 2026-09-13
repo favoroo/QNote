@@ -6,7 +6,7 @@ import 'package:qnote_flutter/models/ai_roles.dart';
 
 final defaultSystemPrompts = <String, String>{
   'assistant_greeting': '你好！我是你的全能助手「小Q」。你可以直接向我提问，或者让我帮你添加待办、记录流水、修改笔记与设置等。',
-  'analysis_system': QSystemPrompt.prompt,
+  'analysis_system': QSystemPrompt.buildSystemPrompt(),
   'unified_extraction': '''
 你是智能标签识别助手，从用户输入中识别标签并提取结构化字段。
 

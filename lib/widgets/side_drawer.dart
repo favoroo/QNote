@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/pages/settings/user_profile_page.dart';
 import 'package:qnote_flutter/pages/settings/q_memory_page.dart';
+import 'package:qnote_flutter/pages/settings/q_personality_page.dart';
 import 'package:qnote_flutter/pages/settings/q_skills_page.dart';
 import 'package:qnote_flutter/pages/settings/personalization_page.dart';
 import 'package:qnote_flutter/pages/settings/ai_config_page.dart';
@@ -137,6 +138,13 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
                     iconColor: itemColor,
                     label: '小Q技能',
                     onTap: () => _navigateTo(context, const QSkillsPage()),
+                  ),
+                  _DrawerMenuItem(
+                    icon: Icons.mood_outlined,
+                    iconBgColor: itemBgColor,
+                    iconColor: itemColor,
+                    label: '小Q个性',
+                    onTap: () => _navigateTo(context, const QPersonalityPage()),
                   ),
                   _DrawerMenuItem(
                     icon: Icons.smart_toy_outlined,

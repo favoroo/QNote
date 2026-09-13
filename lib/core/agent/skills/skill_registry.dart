@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:qnote_flutter/core/agent/skills/skill_usage_tracker.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/models/agent_skill.dart';
 
@@ -290,7 +293,20 @@ description: 系统偏好与配置技能：个性化外观、AI模型分配与�
 - 用户：“把你的温度降低点，回答更严谨” → 写入 `{"temperatures": {"assistant": {"temperature": 0.2}}}`
 - 用户：“把小Q切换到 GLM 5.2 模型” → 写入 `{"roles": {"assistant": {"useFreeModel": true, "freeModelId": "glm-5.2"}}}`
 
-### 1.3 `/settings/shortcuts.json`（首页快捷记录按钮）
+### 1.3 `/settings/personality.json`（小Q个性）
+读取或切换小Q的人格设定（只改身份与语气，不影响能力）：
+```json
+{
+  "activeId": "default",     // 可选: "default"(经典管家) | "energetic"(活泼元气) | "concise"(简洁干练) | "gentle"(温柔陪伴) | "custom"(自定义)
+  "customPrompt": ""         // activeId 为 "custom" 时的人格描述（3~6 句）
+}
+```
+**场景示例**：
+- 用户：“你以后说话活泼一点” → 写入 `{"activeId": "energetic"}`
+- 用户：“我希望你简洁干练一些” → 写入 `{"activeId": "concise"}`
+- 修改后**下轮对话生效**；写入前先 `read_file` 查看 `availablePersonalities` 可选项。
+
+### 1.4 `/settings/shortcuts.json`（首页快捷记录按钮）
 定制首页的打卡快捷按键，支持新增、修改与排序：
 ```json
 [
@@ -305,7 +321,7 @@ description: 系统偏好与配置技能：个性化外观、AI模型分配与�
 ```
 - 写入仅支持 `id` / `name` / `hasPopup`（兼容 `has_popup`）/ `sortOrder` / `isVisible`；读取输出中的 `fields`（弹窗预设字段）与 `categories` **写入不会持久化**，需要修改弹窗字段时提醒用户在 App 设置页手动操作。
 
-### 1.4 `/settings/fixed_events.json`（每日固定作息与习惯模板）
+### 1.5 `/settings/fixed_events.json`（每日固定作息与习惯模板）
 管理每天的固定时间段模板（如睡眠、就餐、工作）：
 ```json
 [
@@ -323,7 +339,7 @@ description: 系统偏好与配置技能：个性化外观、AI模型分配与�
 ```
 - `isTimePoint`: `true` 为时间点事件（仅 `startTime` 生效），`false` 为时间段事件；`content` 为打卡时写入时间线的默认内容（选填）。
 
-### 1.5 `/settings/profile.json`（个人画像资料）
+### 1.6 `/settings/profile.json`（个人画像资料）
 管理个人昵称、生日、身高、体重、生活目标：
 ```json
 {
@@ -334,7 +350,7 @@ description: 系统偏好与配置技能：个性化外观、AI模型分配与�
 }
 ```
 
-### 1.6 `/settings/webdav.json`（WebDAV 云端同步）
+### 1.7 `/settings/webdav.json`（WebDAV 云端同步）
 配置 WebDAV 服务器地址、账号与自动同步（字段为下划线风格，`auto_sync` 用 1/0 整数）：
 ```json
 {
@@ -348,10 +364,10 @@ description: 系统偏好与配置技能：个性化外观、AI模型分配与�
 ```
 - `sync_interval` 为自动同步间隔（分钟）；未配置时读取返回 `{"enabled": false}`；写入支持增量合并，只传要改的字段即可。
 
-### 1.7 `/settings/weight.json`（体重与身体健康）
+### 1.8 `/settings/weight.json`（体重与身体健康）
 读取当前体重测量历史、BMI 与趋势，写入时可快捷追加一条打卡：`{"weight": 68.5}`。
 
-### 1.8 `/settings/color_marks.json`（日历日期高光打点）
+### 1.9 `/settings/color_marks.json`（日历日期高光打点）
 读取或设置特定日期的日历标记圆点。支持 `{"date": "2026-09-11", "color": "红色"}`（支持红色、绿色、蓝色、橙色、紫色或十六进制，传入 "none" 可清除标记）。
 
 ## 2. 核心操作
@@ -487,7 +503,10 @@ description: 网页设计技能：精美单文件 HTML 网页/落地页/H5/海�
 ''';
 
   /// 获取所有可用 Skill 清单（内置 + 用户技能，含 `origin` 来源标记）
-  List<Map<String, String>> listSkills() {
+  ///
+  /// 默认排除已归档的用户技能（技能索引、skill 工具与小Q视角均不可见）；
+  /// [includeArchived] 为 true 时全量返回并附带 `archived` 标记，供管理页展示。
+  List<Map<String, String>> listSkills({bool includeArchived = false}) {
     return [
       {
         'name': 'todo-manager',
@@ -537,20 +556,25 @@ description: 网页设计技能：精美单文件 HTML 网页/落地页/H5/海�
         'description': '网页设计：精美单文件 HTML 网页/海报/邀请函/简历/数据可视化页面，美学方向、移动端适配、动效与工艺规范',
         'origin': AgentSkillOrigin.builtin,
       },
-      // 用户技能追加在内置之后，由 Agent/UI 按需加载
+      // 用户技能追加在内置之后，由 Agent/UI 按需加载；归档技能默认不可见
       for (final skill in _userSkills)
-        {
-          'name': skill.name,
-          'path': AgentSkill.pathOf(skill.name),
-          'description': skill.description,
-          'origin': AgentSkillOrigin.user,
-        },
+        if (includeArchived || !skill.archived)
+          {
+            'name': skill.name,
+            'path': AgentSkill.pathOf(skill.name),
+            'description': skill.description,
+            'origin': AgentSkillOrigin.user,
+            if (includeArchived && skill.archived) 'archived': 'true',
+          },
     ];
   }
 
-  /// 获取指定技能的手册内容
-  String? getSkillContent(String nameOrPath) {
-    var key = nameOrPath.trim();
+  /// 将技能名或别名解析为技能主名（斜杠命令 / 使用统计共用）
+  ///
+  /// 返回 null 表示未命中任何内置技能（含别名）与用户技能
+  String? resolveSkillName(String nameOrAlias) {
+    var key = nameOrAlias.trim();
+    if (key.isEmpty) return null;
     if (key.startsWith('/skills/')) {
       key = key.substring('/skills/'.length);
     }
@@ -565,40 +589,70 @@ description: 网页设计技能：精美单文件 HTML 网页/落地页/H5/海�
       case 'todo-manager':
       case 'todo':
       case 'todos':
-        return todoManagerDoc;
+        return 'todo-manager';
       case 'note-manager':
       case 'note':
       case 'notes':
-        return noteManagerDoc;
+        return 'note-manager';
       case 'timeline-manager':
       case 'timeline':
-        return timelineManagerDoc;
+        return 'timeline-manager';
       case 'journal-manager':
       case 'journal':
-        return journalManagerDoc;
+        return 'journal-manager';
       case 'folder-manager':
       case 'folder':
       case 'folders':
-        return folderManagerDoc;
+        return 'folder-manager';
       case 'settings-manager':
       case 'settings':
       case 'config':
-        return settingsManagerDoc;
+        return 'settings-manager';
       case 'stats-analyst':
       case 'stats':
       case 'statistics':
-        return statsAnalystDoc;
+        return 'stats-analyst';
       case 'frontend-design':
       case 'frontend':
       case 'web-design':
       case 'web':
       case 'design':
       case 'ui':
+        return 'frontend-design';
+    }
+    if (builtinSkillNames.contains(key)) return key;
+    for (final skill in _userSkills) {
+      if (skill.name == key && !skill.archived) return skill.name;
+    }
+    return null;
+  }
+
+  /// 获取指定技能的手册内容（已归档的用户技能视为不存在）
+  String? getSkillContent(String nameOrPath) {
+    final key = resolveSkillName(nameOrPath);
+    if (key == null) return null;
+
+    switch (key) {
+      case 'todo-manager':
+        return todoManagerDoc;
+      case 'note-manager':
+        return noteManagerDoc;
+      case 'timeline-manager':
+        return timelineManagerDoc;
+      case 'journal-manager':
+        return journalManagerDoc;
+      case 'folder-manager':
+        return folderManagerDoc;
+      case 'settings-manager':
+        return settingsManagerDoc;
+      case 'stats-analyst':
+        return statsAnalystDoc;
+      case 'frontend-design':
         return frontendDesignDoc;
       default:
-        // 内置未命中时回退查用户技能（同步读内存缓存）
+        // 内置未命中时回退查用户技能（同步读内存缓存；归档技能已排除）
         for (final skill in _userSkills) {
-          if (skill.name == key) return skill.toMarkdown();
+          if (skill.name == key && !skill.archived) return skill.toMarkdown();
         }
         return null;
     }
@@ -693,5 +747,24 @@ description: 网页设计技能：精美单文件 HTML 网页/落地页/H5/海�
     await ensureLoaded();
     await ConfigRepository.instance.deleteUserSkill(name);
     _userSkills.removeWhere((s) => s.name == name);
+    // 同步清理使用统计，避免残留无效记录
+    unawaited(SkillUsageTracker.instance.remove(name));
+  }
+
+  /// 归档或恢复一个用户技能
+  ///
+  /// 归档不是删除：技能手册保留在 app_configs，但不再进入技能索引、
+  /// 斜杠命令候选与小Q可查阅范围；恢复后即恢复全部可见性。
+  Future<void> archiveUserSkill(String name, bool archived) async {
+    await ensureLoaded();
+    final skill = getUserSkill(name);
+    if (skill == null) {
+      throw Exception('未找到用户技能「$name」');
+    }
+    final updated = skill.copyWith(archived: archived, updatedAt: DateTime.now());
+    await ConfigRepository.instance.saveUserSkill(updated);
+    _userSkills.removeWhere((s) => s.name == name);
+    _userSkills.add(updated);
+    _userSkills.sort((a, b) => a.name.compareTo(b.name));
   }
 }

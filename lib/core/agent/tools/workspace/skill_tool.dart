@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:qnote_flutter/core/agent/models/agent_tool.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
+import 'package:qnote_flutter/core/agent/skills/skill_usage_tracker.dart';
 import 'package:qnote_flutter/models/agent_skill.dart';
 
 /// 技能查阅与加载工具
@@ -71,6 +74,10 @@ class SkillTool extends AgentTool {
         '未找到技能 "$name"。可用技能请调用 skill() 查看列表。',
       );
     }
+
+    // 手册真实载入即记一次使用（别名归一到主名；统计失败不影响工具结果）
+    final canonicalName = _registry.resolveSkillName(name) ?? name;
+    unawaited(SkillUsageTracker.instance.record(canonicalName));
 
     final section = arguments['section'] as String?;
     if (section == null || section.trim().isEmpty) {

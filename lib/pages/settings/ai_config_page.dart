@@ -14,6 +14,7 @@ import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/builtin_free_keys.dart';
 import 'package:qnote_flutter/core/ai/free_model_service.dart';
 import 'package:qnote_flutter/core/ai/model_fetch_service.dart';
+import 'package:qnote_flutter/core/agent/services/agent_tool_config.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -64,6 +65,10 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   String? _builtinLatency;
   bool? _builtinTestSuccess;
 
+  // 小Q可选工具启停状态（禁用名单从 AgentToolConfig 异步加载）
+  final Set<String> _disabledTools = {};
+  bool _toolsLoaded = false;
+
   Future<SharedPreferences> _getPrefs() async {
     _prefs ??= await SharedPreferences.getInstance();
     return _prefs!;
@@ -76,6 +81,18 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     _loadLatencies();
     _loadAllCachedModels();
     _loadFreeModels();
+    _loadDisabledTools();
+  }
+
+  Future<void> _loadDisabledTools() async {
+    final disabled = await AgentToolConfig.instance.getDisabledTools();
+    if (!mounted) return;
+    setState(() {
+      _disabledTools
+        ..clear()
+        ..addAll(disabled);
+      _toolsLoaded = true;
+    });
   }
 
   Future<void> _loadFreeModels() async {
@@ -906,11 +923,98 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                   configs,
                 ),
               ],
+              const SizedBox(height: 24),
+              if (_toolsLoaded) _buildToolSwitchCard(context),
             ],
           ),
         ),
       ),
     );
+  }
+
+  /// 「小Q工具能力」区块：可选工具启停，关闭后小Q不再调用该工具
+  Widget _buildToolSwitchCard(BuildContext context) {
+    final theme = Theme.of(context);
+    const toolMeta = {
+      'fetch_url': ('网页阅读', '读取链接真实正文并总结，关闭后小Q无法访问网页'),
+      'web_search': ('网页搜索', '查询新闻、天气等时效性信息，关闭后仅凭模型知识回答'),
+      'generate_image': ('图片生成', '生成插画、配图与表情包，关闭后不再产生生图开销'),
+    };
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '小Q工具能力',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '关闭的工具下次对话生效；核心能力（文件读写、检索、确认）不可关闭。',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+            ),
+          ),
+          child: Column(
+            children: [
+              for (final entry in toolMeta.entries) ...[
+                SwitchListTile(
+                  value: !_disabledTools.contains(entry.key),
+                  title: Text(entry.value.$1),
+                  subtitle: Text(entry.value.$2),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  onChanged: (enabled) => _toggleTool(entry.key, enabled),
+                ),
+                if (entry.key != toolMeta.keys.last)
+                  Divider(
+                    height: 1,
+                    indent: 16,
+                    endIndent: 16,
+                    color: theme.colorScheme.outlineVariant.withValues(
+                      alpha: 0.4,
+                    ),
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _toggleTool(String name, bool enabled) async {
+    setState(() {
+      if (enabled) {
+        _disabledTools.remove(name);
+      } else {
+        _disabledTools.add(name);
+      }
+    });
+    try {
+      await AgentToolConfig.instance.setToolDisabled(name, !enabled);
+    } catch (e) {
+      if (!mounted) return;
+      // 保存失败时回滚开关状态，保证界面与持久化一致
+      setState(() {
+        if (enabled) {
+          _disabledTools.add(name);
+        } else {
+          _disabledTools.remove(name);
+        }
+      });
+      Toast.error(context, '保存失败：$e');
+    }
   }
 
   Widget _buildFreeModelsCard(BuildContext context) {

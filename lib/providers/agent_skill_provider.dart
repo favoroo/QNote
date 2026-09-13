@@ -30,7 +30,8 @@ class AgentSkillNotifier
     );
     // 每次构建强制重载，拾取云同步导入等其他来源的数据变更
     await SkillRegistry.instance.reload();
-    return SkillRegistry.instance.listSkills();
+    // 管理页需要展示已归档技能（带 archived 标记），故全量返回
+    return SkillRegistry.instance.listSkills(includeArchived: true);
   }
 
   /// 新建或更新一个用户技能（名称冲突/非法由 SkillRegistry 校验并抛出）
@@ -42,6 +43,12 @@ class AgentSkillNotifier
   /// 删除一个用户技能（内置技能由 SkillRegistry 拒绝）
   Future<void> deleteUserSkill(String name) async {
     await SkillRegistry.instance.deleteUserSkill(name);
+    ref.invalidateSelf();
+  }
+
+  /// 归档或恢复一个用户技能（归档后对小Q与斜杠命令不可见，手册保留）
+  Future<void> archiveUserSkill(String name, bool archived) async {
+    await SkillRegistry.instance.archiveUserSkill(name, archived);
     ref.invalidateSelf();
   }
 }

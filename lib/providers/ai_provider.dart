@@ -14,7 +14,10 @@ import 'package:qnote_flutter/core/agent/engine/agent_cancellation_token.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_events.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_loop.dart';
 import 'package:qnote_flutter/core/agent/prompts/q_system_prompt.dart';
+import 'package:qnote_flutter/core/agent/services/agent_tool_config.dart';
+import 'package:qnote_flutter/core/agent/services/q_personality_service.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
+import 'package:qnote_flutter/core/agent/skills/skill_usage_tracker.dart';
 import 'package:qnote_flutter/core/agent/vfs/virtual_workspace_service.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
@@ -501,6 +504,7 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
     List<String>? noteIds,
     List<String>? todoIds,
     List<String>? journalIds,
+    String? skillName,
   }) async {
     if (state == null) return;
 
@@ -576,11 +580,26 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         return;
       }
 
+      // 预加载用户技能缓存：斜杠命令解析与系统提示词技能索引都依赖它
+      await SkillRegistry.instance.ensureLoaded();
+
+      // 斜杠命令显式激活的技能：手册直接注入上下文（省一次 read_file 往返），
+      // 并记一次使用统计；技能不存在时静默按普通消息处理
+      String? skillDoc;
+      if (skillName != null && skillName.isNotEmpty) {
+        skillDoc = SkillRegistry.instance.getSkillContent(skillName);
+        if (skillDoc != null) {
+          unawaited(SkillUsageTracker.instance.record(skillName));
+        }
+      }
+
       // 3. 构建动态环境上下文（时间/用户资料/关联数据），注入 system 尾部而非污染用户消息原文
       final dynamicContext = await buildBaseDynamicContext(
         extraSections: [
           if (dataContext != null && dataContext.isNotEmpty)
             '关联数据（用户引用的待办/笔记/日记等）:\n$dataContext',
+          if (skillDoc != null)
+            '激活技能手册（用户以 /$skillName 命令显式调用，请严格遵循该手册的规范执行本次任务）:\n$skillDoc',
         ],
       );
 
@@ -591,8 +610,12 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
 
       _setStreamingStatus('小Q思考中');
 
-      // 初始化工具分发器并构建 AgentLoop（声明式注入 afterToolCall 钩子）
-      final dispatcher = AgentToolRegistry.createDefaultDispatcher();
+      // 初始化工具分发器并构建 AgentLoop（声明式注入 afterToolCall 钩子）；
+      // 可选工具按用户配置裁剪：禁用的工具不注册，系统提示词对应准则段也不注入
+      final disabledTools = await AgentToolConfig.instance.getDisabledTools();
+      final dispatcher = AgentToolRegistry.createDefaultDispatcher(
+        disabledTools: disabledTools,
+      );
       
       // 预先配置好 AiService：统一使用角色绑定的生效模型配置
       final assistantConfig = await AiRoleService.instance
@@ -603,8 +626,8 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         maxTokens: roleSettings.maxTokens,
       );
 
-      // 预加载用户技能缓存，保证本次会话系统提示词中的技能索引完整
-      await SkillRegistry.instance.ensureLoaded();
+      // 读取当前激活个性（对话开始时取一次，本轮中途的修改下轮生效——对齐记忆的冻结快照语义）
+      final personality = await QPersonalityService.instance.getActivePersonality();
 
       final agentLoop = AgentLoop(
         aiService: aiService,
@@ -627,7 +650,11 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
 
       await for (final event in agentLoop.run(
         conversationHistory: conversationHistory,
-        systemPrompt: QSystemPrompt.prompt,
+        systemPrompt: QSystemPrompt.buildSystemPrompt(
+          personalityPrompt: personality.prompt,
+          enabledOptionalTools:
+              AgentToolRegistry.optionalToolNames.difference(disabledTools),
+        ),
         dynamicContext: dynamicContext,
         cancellationToken: token,
       )) {

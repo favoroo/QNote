@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/providers/theme_provider.dart';
 
 class PersonalizationPage extends ConsumerWidget {
@@ -83,7 +85,9 @@ class PersonalizationPage extends ConsumerWidget {
                       final isSelected = color.toARGB32() == accentColor.toARGB32();
                       return GestureDetector(
                         onTap: () => ref.read(accentColorProvider.notifier).setAccentColor(color),
-                        child: Container(
+                        child: AnimatedContainer(
+                          duration: AppDurations.fast,
+                          curve: AppCurves.standard,
                           width: 44,
                           height: 44,
                           decoration: BoxDecoration(
@@ -92,8 +96,10 @@ class PersonalizationPage extends ConsumerWidget {
                                 ? Border.all(color: theme.colorScheme.primary, width: 2)
                                 : Border.all(color: Colors.transparent, width: 2),
                           ),
-                          padding: const EdgeInsets.all(2),
-                          child: Container(
+                          padding: EdgeInsets.all(isSelected ? 3.5 : 2),
+                          child: AnimatedContainer(
+                            duration: AppDurations.fast,
+                            curve: AppCurves.standard,
                             decoration: BoxDecoration(
                               color: color,
                               shape: BoxShape.circle,

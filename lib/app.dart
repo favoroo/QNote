@@ -151,6 +151,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
       _refreshProvidersIfNeeded();
       _tryNavigatePendingRoute();
       _tryConsumePendingSharedText();
+      _tryConsumePendingSharedImages();
     }
   }
 
@@ -230,21 +231,30 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
     }
   }
 
-  /// 监听外部传入的文本（划选「给小Q」PROCESS_TEXT 或系统分享 SEND）
+  /// 监听外部传入的内容（划选「给小Q」PROCESS_TEXT 或系统分享 SEND：文字/图片）
   void _initExternalSharedTextListener() {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
 
     _shareChannel.setMethodCallHandler((call) async {
-      if (call.method == 'onSharedText') {
-        final text = call.arguments as String?;
-        if (text != null && text.trim().isNotEmpty) {
-          _handleExternalSharedText(text.trim());
-        }
+      switch (call.method) {
+        case 'onSharedText':
+          final text = call.arguments as String?;
+          if (text != null && text.trim().isNotEmpty) {
+            _handleExternalSharedText(text.trim());
+          }
+        case 'onSharedImages':
+          final paths =
+              (call.arguments as List?)?.map((e) => e.toString()).toList() ??
+                  const <String>[];
+          if (paths.isNotEmpty) {
+            _handleExternalSharedImages(paths);
+          }
       }
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _tryConsumePendingSharedText(retryCount: 2);
+      await _tryConsumePendingSharedImages(retryCount: 2);
     });
   }
 
@@ -266,8 +276,42 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
     }
   }
 
+  Future<void> _tryConsumePendingSharedImages({int retryCount = 0}) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+
+    try {
+      final pending =
+          await _shareChannel.invokeMethod<List<dynamic>>('getPendingSharedImages');
+      final paths = pending?.map((e) => e.toString()).toList() ?? const <String>[];
+      if (paths.isNotEmpty) {
+        _handleExternalSharedImages(paths);
+      }
+    } catch (e) {
+      if (retryCount > 0) {
+        await Future.delayed(const Duration(milliseconds: 200));
+        await _tryConsumePendingSharedImages(retryCount: retryCount - 1);
+      } else {
+        debugPrint('获取挂起外部分享图片失败: $e');
+      }
+    }
+  }
+
+  /// 外部分享文字（划词/系统分享）：统一转为引用卡片挂起，
+  /// 输入框保持空白由用户输入指令；发送时内容作为外部上下文注入，
+  /// 不显示也不注入页面位置
   void _handleExternalSharedText(String text) {
-    ref.read(floatingQProvider.notifier).openWithText(text);
+    ref.read(floatingQProvider.notifier).openWithQuote(
+          QTextQuote(
+            source: QQuoteSource.external,
+            sourceId: '',
+            sourceTitle: '系统分享',
+            quotedText: text,
+          ),
+        );
+  }
+
+  void _handleExternalSharedImages(List<String> paths) {
+    ref.read(floatingQProvider.notifier).openWithImages(paths);
   }
 
   @override

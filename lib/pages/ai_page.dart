@@ -31,6 +31,10 @@ import 'package:qnote_flutter/widgets/common/animated_ellipsis.dart';
 import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
 import 'package:qnote_flutter/widgets/common/thought_tail_scroll_view.dart';
 import 'package:qnote_flutter/core/agent/services/agent_interaction_service.dart';
+import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
+import 'package:qnote_flutter/core/agent/skills/skill_usage_tracker.dart';
+import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
+import 'package:qnote_flutter/widgets/ai/q_input_command_panels.dart';
 
 class AiPage extends ConsumerStatefulWidget {
   const AiPage({super.key});
@@ -60,15 +64,150 @@ class _AiPageState extends ConsumerState<AiPage> {
   final Map<String, String> _noteTitles = {};
   final Map<String, String> _todoTitles = {};
 
+  // 输入增强状态：斜杠命令 / @ 引用浮层（非 null 即展示对应面板）
+  String? _slashQuery;
+  String? _atQuery;
+  List<Map<String, String>> _slashSkills = [];
+  Map<String, SkillUsageStat> _usageStats = {};
+
   @override
   void initState() {
     super.initState();
     _inputFocusNode.addListener(_onInputFocusChanged);
+    _inputController.addListener(_onInputChanged);
+    WorkspaceEventBus.instance.addListener(_onSkillsChanged);
+    _loadSlashSkills();
     _initActiveModelId();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(currentChatProvider.notifier).initLastSession();
       _scrollToBottom();
     });
+  }
+
+  /// 小Q经 VFS 写入 /skills/ 时刷新斜杠命令候选（会话中新建的技能立即可用）
+  void _onSkillsChanged(WorkspaceChangeEvent event) {
+    if (event.path.startsWith('/skills/')) {
+      _loadSlashSkills();
+    }
+  }
+
+  Future<void> _loadSlashSkills() async {
+    await SkillRegistry.instance.ensureLoaded();
+    if (!mounted) return;
+    final stats = await SkillUsageTracker.instance.getStats();
+    if (!mounted) return;
+    setState(() {
+      _slashSkills = SkillRegistry.instance.listSkills();
+      _usageStats = stats;
+    });
+  }
+
+  /// 输入变化时检测光标处是否有激活的斜杠命令或 @ 引用命令词
+  void _onInputChanged() {
+    final text = _inputController.text;
+    final selection = _inputController.selection;
+    if (!selection.isValid || selection.baseOffset < 0) {
+      _updateOverlays(null, null);
+      return;
+    }
+    final caret = selection.baseOffset.clamp(0, text.length);
+    final before = text.substring(0, caret);
+
+    // 触发符必须位于行首或紧跟空白，且命令词内不含空白（长度上限防误触发）
+    String? slashQuery;
+    final slashIdx = before.lastIndexOf('/');
+    if (slashIdx >= 0) {
+      final token = before.substring(slashIdx + 1);
+      final atBoundary =
+          slashIdx == 0 || RegExp(r'\s').hasMatch(before[slashIdx - 1]);
+      if (atBoundary && !RegExp(r'\s').hasMatch(token) && token.length <= 40) {
+        slashQuery = token;
+      }
+    }
+
+    String? atQuery;
+    final atIdx = before.lastIndexOf('@');
+    if (atIdx >= 0) {
+      final token = before.substring(atIdx + 1);
+      final atBoundary =
+          atIdx == 0 || RegExp(r'\s').hasMatch(before[atIdx - 1]);
+      if (atBoundary && !RegExp(r'\s').hasMatch(token) && token.length <= 20) {
+        atQuery = token;
+      }
+    }
+
+    // 同时最多展示一个面板：光标更近的触发符优先
+    if (slashQuery != null && atQuery != null) {
+      if (atIdx > slashIdx) {
+        slashQuery = null;
+      } else {
+        atQuery = null;
+      }
+    }
+    _updateOverlays(slashQuery, atQuery);
+  }
+
+  void _updateOverlays(String? slash, String? at) {
+    if (_slashQuery == slash && _atQuery == at) return;
+    setState(() {
+      _slashQuery = slash;
+      _atQuery = at;
+    });
+  }
+
+  /// 斜杠命令面板当前候选：按命令词过滤技能清单并附使用次数
+  List<Map<String, String?>> get _slashCandidates {
+    final query = _slashQuery?.toLowerCase() ?? '';
+    return [
+      for (final skill in _slashSkills)
+        if (query.isEmpty ||
+            (skill['name'] ?? '').toLowerCase().contains(query) ||
+            (skill['description'] ?? '').toLowerCase().contains(query))
+          {
+            'name': skill['name'] ?? '',
+            'description': skill['description'] ?? '',
+            'usageCount': '${_usageStats[skill['name']]?.count ?? 0}',
+          },
+    ];
+  }
+
+  /// 选中斜杠命令候选：把命令词替换为完整技能名并追加空格
+  void _applySlashSelection(String skillName) {
+    HapticFeedback.lightImpact();
+    _replaceActiveToken('/', '/$skillName ');
+    _updateOverlays(null, null);
+    _inputFocusNode.requestFocus();
+  }
+
+  /// 选中 @ 引用类别：移除 @ 命令词并打开对应的多选弹窗
+  void _applyAtSelection(AtReferenceKind kind) {
+    HapticFeedback.lightImpact();
+    _replaceActiveToken('@', '');
+    _updateOverlays(null, null);
+    switch (kind) {
+      case AtReferenceKind.note:
+        _pickNotes();
+      case AtReferenceKind.todo:
+        _pickTodos();
+      case AtReferenceKind.journal:
+        _pickJournals();
+    }
+  }
+
+  /// 将光标前正在输入的触发符命令词替换为 [replacement]
+  void _replaceActiveToken(String trigger, String replacement) {
+    final text = _inputController.text;
+    final selection = _inputController.selection;
+    final caret = selection.isValid && selection.baseOffset >= 0
+        ? selection.baseOffset.clamp(0, text.length)
+        : text.length;
+    final before = text.substring(0, caret);
+    final idx = before.lastIndexOf(trigger);
+    if (idx < 0) return;
+    _inputController.value = TextEditingValue(
+      text: text.replaceRange(idx, caret, replacement),
+      selection: TextSelection.collapsed(offset: idx + replacement.length),
+    );
   }
 
   void _onInputFocusChanged() {
@@ -108,6 +247,8 @@ class _AiPageState extends ConsumerState<AiPage> {
   @override
   void dispose() {
     AgentInteractionService.instance.cancelPending('离开AI页面');
+    WorkspaceEventBus.instance.removeListener(_onSkillsChanged);
+    _inputController.removeListener(_onInputChanged);
     _inputFocusNode.removeListener(_onInputFocusChanged);
     _inputFocusNode.dispose();
     _inputController.dispose();
@@ -154,6 +295,9 @@ class _AiPageState extends ConsumerState<AiPage> {
       return;
     }
 
+    // 斜杠命令解析：消息以「/技能名」开头时显式激活该技能（手册由 Provider 注入上下文）
+    final skillName = _parseSlashCommand(text);
+
     final content = text.isNotEmpty
         ? text
         : (hasImages ? '请结合图片进行分析' : '请结合我分享的内容进行分析');
@@ -193,6 +337,7 @@ class _AiPageState extends ConsumerState<AiPage> {
             noteIds: notesToSend,
             todoIds: todosToSend,
             journalIds: journalsToSend,
+            skillName: skillName,
           );
     } catch (e) {
       debugPrint('发送消息失败: $e');
@@ -202,6 +347,13 @@ class _AiPageState extends ConsumerState<AiPage> {
         _scrollToBottom();
       }
     }
+  }
+
+  /// 解析消息开头的斜杠命令词，返回对应技能主名；未命中返回 null
+  String? _parseSlashCommand(String text) {
+    final match = RegExp(r'^/([^\s/]+)(?:\s+|$)').firstMatch(text);
+    if (match == null) return null;
+    return SkillRegistry.instance.resolveSkillName(match.group(1)!);
   }
 
   /// 中止小Q当前生成与工具执行
@@ -517,6 +669,7 @@ class _AiPageState extends ConsumerState<AiPage> {
             noteIds: readIds('notes'),
             todoIds: readIds('todos'),
             journalIds: readIds('journals'),
+            skillName: _parseSlashCommand(userMessage.content),
           );
     } finally {
       if (mounted) {
@@ -1103,6 +1256,20 @@ class _AiPageState extends ConsumerState<AiPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // 0. 输入增强浮层：斜杠命令 / @ 引用（位于附件挂载条之上）
+              if (_slashQuery != null) ...[
+                SlashCommandPanel(
+                  skills: _slashCandidates,
+                  query: _slashQuery!,
+                  onSelected: _applySlashSelection,
+                ),
+                const SizedBox(height: 6),
+              ],
+              if (_atQuery != null) ...[
+                AtReferencePanel(onSelected: _applyAtSelection),
+                const SizedBox(height: 6),
+              ],
+
               // 1. 豆包式附件挂载条（图片缩略图、分享的笔记、分享的待办）
               if (hasAttachments) ...[
                 _buildAttachmentBar(theme),
@@ -1490,7 +1657,7 @@ class _AiPageState extends ConsumerState<AiPage> {
             maxLines: 4,
             decoration: const InputDecoration(
               filled: false,
-              hintText: '输入问题或指令...',
+              hintText: '输入问题；/ 调用技能，@ 引用内容',
               border: InputBorder.none,
               enabledBorder: InputBorder.none,
               focusedBorder: InputBorder.none,

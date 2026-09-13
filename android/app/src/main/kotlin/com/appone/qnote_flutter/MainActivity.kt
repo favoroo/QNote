@@ -3,6 +3,7 @@ package com.appone.qnote_flutter
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
@@ -16,6 +17,7 @@ class MainActivity : FlutterActivity() {
     private val SHARE_CHANNEL = "com.appone.qnote_flutter/share"
     private var pendingRoute: String? = null
     private var pendingSharedText: String? = null
+    private var pendingSharedImages: ArrayList<String>? = null
     private var methodChannel: MethodChannel? = null
     private var shareChannel: MethodChannel? = null
 
@@ -58,12 +60,74 @@ class MainActivity : FlutterActivity() {
                 handleIncomingText(text)
             }
         }
+
+        // 4. 外部系统分享图片（ACTION_SEND 单张 / ACTION_SEND_MULTIPLE 多张）
+        if (intent.type?.startsWith("image/") == true) {
+            when (intent.action) {
+                Intent.ACTION_SEND -> {
+                    @Suppress("DEPRECATION")
+                    val uri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+                    if (uri != null) {
+                        handleIncomingImages(listOf(uri))
+                    }
+                }
+                Intent.ACTION_SEND_MULTIPLE -> {
+                    @Suppress("DEPRECATION")
+                    val uris = intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
+                    if (!uris.isNullOrEmpty()) {
+                        handleIncomingImages(uris)
+                    }
+                }
+            }
+        }
     }
 
     private fun handleIncomingText(text: String) {
         pendingSharedText = text
         // Flutter 引擎就绪时，主动推送文本
         shareChannel?.invokeMethod("onSharedText", text)
+    }
+
+    private fun handleIncomingImages(uris: List<Uri>) {
+        // 分享图片为一次性内容：先清掉上次遗留的缓存文件，避免持续占用空间
+        val dir = File(cacheDir, "shared_images")
+        dir.listFiles()?.forEach { it.delete() }
+
+        val saved = ArrayList<String>()
+        for (uri in uris) {
+            try {
+                val file = copyUriToCache(uri, dir, saved.size) ?: continue
+                saved.add(file.absolutePath)
+            } catch (_: Exception) {
+                // 单张图片读取失败不阻断其余图片
+            }
+        }
+        if (saved.isEmpty()) return
+
+        pendingSharedImages = saved
+        // Flutter 引擎就绪时，主动推送图片路径列表
+        shareChannel?.invokeMethod("onSharedImages", saved)
+    }
+
+    /** 把 content:// Uri 复制到应用缓存目录，返回落盘文件（分享 Uri 的读权限仅在 Intent 存续期内有效） */
+    private fun copyUriToCache(uri: Uri, dir: File, index: Int): File? {
+        val mime = contentResolver.getType(uri) ?: "image/jpeg"
+        val ext = when (mime) {
+            "image/png" -> "png"
+            "image/webp" -> "webp"
+            "image/gif" -> "gif"
+            "image/bmp" -> "bmp"
+            else -> "jpg"
+        }
+        dir.mkdirs()
+        val file = File(dir, "share_${System.currentTimeMillis()}_${index}_${(0..999).random()}.$ext")
+        val input = contentResolver.openInputStream(uri) ?: return null
+        input.use { stream ->
+            file.outputStream().use { output ->
+                stream.copyTo(output)
+            }
+        }
+        return if (file.length() > 0) file else null
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -95,6 +159,10 @@ class MainActivity : FlutterActivity() {
                 "getPendingSharedText" -> {
                     result.success(pendingSharedText)
                     pendingSharedText = null
+                }
+                "getPendingSharedImages" -> {
+                    result.success(pendingSharedImages)
+                    pendingSharedImages = null
                 }
                 else -> {
                     result.notImplemented()

@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:qnote_flutter/core/agent/prompts/q_personalities.dart';
+import 'package:qnote_flutter/core/agent/services/q_personality_service.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
@@ -70,6 +72,7 @@ class VirtualWorkspaceService {
   static const List<String> _settingsFileNames = [
     'appearance.json',
     'ai.json',
+    'personality.json',
     'shortcuts.json',
     'fixed_events.json',
     'profile.json',
@@ -815,6 +818,20 @@ class VirtualWorkspaceService {
           'provider': m.provider,
           'modelName': m.modelName,
         }).toList(),
+      };
+      return const JsonEncoder.withIndent('  ').convert(data);
+    } else if (name == 'personality.json') {
+      final service = QPersonalityService.instance;
+      final data = {
+        'activeId': await service.getActiveId(),
+        'customPrompt': await service.getCustomPrompt(),
+        'availablePersonalities': [
+          for (final p in QPersonalities.presets)
+            {'id': p.id, 'name': p.name, 'description': p.description},
+        ],
+        'description': 'activeId 可选 default(经典管家) | energetic(活泼元气) | concise(简洁干练) | '
+            'gentle(温柔陪伴) | custom(自定义)；选 custom 时在 customPrompt 提供人格描述（3~6 句），'
+            '修改后下轮对话生效',
       };
       return const JsonEncoder.withIndent('  ').convert(data);
     } else if (name == 'shortcuts.json') {
@@ -1816,6 +1833,19 @@ class VirtualWorkspaceService {
 
       WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, decoded);
       return {'status': 'updated', 'path': path};
+    }
+
+    if (name == 'personality.json') {
+      if (decoded is! Map<String, dynamic>) {
+        throw Exception('personality.json 必须是 JSON 对象');
+      }
+      await QPersonalityService.instance.applyPartialConfig(decoded);
+      final updatedData = {
+        'activeId': await QPersonalityService.instance.getActiveId(),
+        'note': '个性已更新，下轮对话生效',
+      };
+      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, updatedData);
+      return {'status': 'updated', 'path': path, 'data': updatedData};
     }
 
     if (name == 'shortcuts.json') {

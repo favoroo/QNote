@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/models/daily_score.dart';
 
 /// 评分热力图组件（GitHub 贡献图风格）
@@ -256,7 +258,9 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
         });
         _showOverlayTooltip(day, score, theme);
       },
-      child: Container(
+      child: AnimatedContainer(
+        duration: AppDurations.fast,
+        curve: AppCurves.standard,
         width: _cellSize,
         height: _cellSize,
         decoration: BoxDecoration(
@@ -317,34 +321,49 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
             left: tooltipLeft,
             top: tooltipTop,
             child: IgnorePointer(
-              child: Material(
-                elevation: 4,
-                borderRadius: BorderRadius.circular(6),
-                color: theme.colorScheme.surfaceContainerHigh,
-                child: Container(
-                  width: tooltipWidth,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Text(
-                        dateStr,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: theme.colorScheme.onSurface,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween<double>(begin: 0.0, end: 1.0),
+                duration: AppDurations.fast,
+                curve: AppCurves.emphasized,
+                builder: (context, value, child) {
+                  return Transform.scale(
+                    scale: 0.85 + 0.15 * value,
+                    alignment: Alignment.center,
+                    child: Opacity(
+                      opacity: value,
+                      child: child,
+                    ),
+                  );
+                },
+                child: Material(
+                  elevation: 4,
+                  borderRadius: BorderRadius.circular(6),
+                  color: theme.colorScheme.surfaceContainerHigh,
+                  child: Container(
+                    width: tooltipWidth,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          dateStr,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: theme.colorScheme.onSurface,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        scoreStr,
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: theme.colorScheme.onSurfaceVariant,
+                        const SizedBox(height: 2),
+                        Text(
+                          scoreStr,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),

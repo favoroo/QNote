@@ -136,7 +136,13 @@ class _QSkillEditPageState extends ConsumerState<QSkillEditPage> {
 
     try {
       await ref.read(agentSkillListProvider.notifier).saveUserSkill(
-            AgentSkill(name: name, description: description, content: content),
+            AgentSkill(
+              name: name,
+              description: description,
+              content: content,
+              // 编辑既有技能时保留归档状态，避免编辑动作悄悄改变可见性
+              archived: widget.skill?.archived ?? false,
+            ),
           );
       if (!mounted) return;
       Toast.success(context, '已保存技能「$name」');

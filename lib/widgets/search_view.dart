@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/core/utils/delta_markdown.dart';
@@ -119,41 +121,64 @@ class _SearchViewState extends State<SearchView> {
             ),
         ],
       ),
-      body: _isSearching
-          ? const Center(child: CircularProgressIndicator())
-          : showEmpty
-              ? _buildEmptyState(theme)
-              : ListView(
-                  children: [
-                    if (_diaryResults.isNotEmpty) ...[
-                      _buildSectionHeader(theme, '日记记录', Icons.book),
-                      ..._diaryResults.map(
-                        (d) => _DiaryResultTile(
-                          diary: d,
-                          query: _query,
-                          onTap: () {
-                            widget.onResultSelected?.call(d);
-                            Navigator.of(context).pop(d);
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                    ],
-                    if (_noteResults.isNotEmpty) ...[
-                      _buildSectionHeader(theme, '笔记', Icons.note),
-                      ..._noteResults.map(
-                        (n) => _NoteResultTile(
-                          note: n,
-                          query: _query,
-                          onTap: () {
-                            widget.onResultSelected?.call(n);
-                            Navigator.of(context).pop(n);
-                          },
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
+      body: AnimatedSwitcher(
+        duration: AppDurations.fast,
+        switchInCurve: AppCurves.emphasized,
+        switchOutCurve: AppCurves.exit,
+        layoutBuilder: (currentChild, previousChildren) {
+          return Stack(
+            alignment: Alignment.topCenter,
+            children: <Widget>[
+              ...previousChildren,
+              if (currentChild != null) currentChild,
+            ],
+          );
+        },
+        child: _isSearching
+            ? const Center(
+                key: ValueKey('search_loading'),
+                child: CircularProgressIndicator(),
+              )
+            : showEmpty
+                ? KeyedSubtree(
+                    key: const ValueKey('search_empty'),
+                    child: _buildEmptyState(theme),
+                  )
+                : KeyedSubtree(
+                    key: const ValueKey('search_results'),
+                    child: ListView(
+                      children: [
+                        if (_diaryResults.isNotEmpty) ...[
+                          _buildSectionHeader(theme, '日记记录', Icons.book),
+                          ..._diaryResults.map(
+                            (d) => _DiaryResultTile(
+                              diary: d,
+                              query: _query,
+                              onTap: () {
+                                widget.onResultSelected?.call(d);
+                                Navigator.of(context).pop(d);
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                        if (_noteResults.isNotEmpty) ...[
+                          _buildSectionHeader(theme, '笔记', Icons.note),
+                          ..._noteResults.map(
+                            (n) => _NoteResultTile(
+                              note: n,
+                              query: _query,
+                              onTap: () {
+                                widget.onResultSelected?.call(n);
+                                Navigator.of(context).pop(n);
+                              },
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+      ),
     );
   }
 

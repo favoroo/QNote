@@ -184,24 +184,145 @@ void main() {
       expect(container.read(floatingQProvider).pendingQuote, isNull);
     });
 
-    test('openWithText 预填文本并展开面板，clearPendingInputText 消费清空', () {
+    test('外部分享文字（划词/系统分享）挂起为引用卡片并进入外部模式', () {
       final container = ProviderContainer();
       addTearDown(container.dispose);
       final notifier = container.read(floatingQProvider.notifier);
 
-      expect(container.read(floatingQProvider).pendingInputText, isNull);
       expect(container.read(floatingQProvider).panelOpen, isFalse);
 
-      notifier.openWithText('帮我总结这段来自第三方应用的内容');
-      expect(container.read(floatingQProvider).panelOpen, isTrue);
-      expect(
-        container.read(floatingQProvider).pendingInputText,
-        '帮我总结这段来自第三方应用的内容',
+      const externalQuote = QTextQuote(
+        source: QQuoteSource.external,
+        sourceId: '',
+        sourceTitle: '系统分享',
+        quotedText: '帮我总结这段来自第三方应用的内容',
+      );
+      notifier.openWithQuote(externalQuote);
+
+      final state = container.read(floatingQProvider);
+      expect(state.pendingQuote, externalQuote);
+      expect(state.panelOpen, isTrue);
+      // 外部内容与当前页面无关：不显示/不注入页面位置上下文
+      expect(state.externalShareMode, isTrue);
+    });
+
+    test('应用内引用不触发外部模式', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(floatingQProvider.notifier);
+
+      notifier.openWithQuote(quote);
+      expect(container.read(floatingQProvider).externalShareMode, isFalse);
+    });
+
+    test('手动点开面板与切页都会退出外部模式', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(floatingQProvider.notifier);
+
+      notifier.openWithQuote(const QTextQuote(
+        source: QQuoteSource.external,
+        sourceId: '',
+        sourceTitle: '系统分享',
+        quotedText: '外部内容',
+      ));
+      expect(container.read(floatingQProvider).externalShareMode, isTrue);
+
+      // 手动点开面板 → 回到页面上下文模式
+      notifier.openPanel();
+      expect(container.read(floatingQProvider).externalShareMode, isFalse);
+
+      // 再次分享进入外部模式后，切页（签名变化）同样退出
+      notifier.openWithQuote(const QTextQuote(
+        source: QQuoteSource.external,
+        sourceId: '',
+        sourceTitle: '系统分享',
+        quotedText: '外部内容',
+      ));
+      expect(container.read(floatingQProvider).externalShareMode, isTrue);
+      notifier.setBaseContext(const QPageContext(
+        type: QContextType.diaryList,
+        signature: 'page:diary',
+        displayLabel: '时间线',
+      ));
+      expect(container.read(floatingQProvider).externalShareMode, isFalse);
+    });
+
+    test('分享图片挂起 → 面板消费转入附件 → 移除', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(floatingQProvider.notifier);
+
+      notifier.openWithImages(['/cache/shared_images/a.jpg']);
+      var state = container.read(floatingQProvider);
+      expect(state.pendingImages, ['/cache/shared_images/a.jpg']);
+      expect(state.panelOpen, isTrue);
+      expect(state.externalShareMode, isTrue);
+
+      notifier.consumePendingImages();
+      state = container.read(floatingQProvider);
+      expect(state.pendingImages, isNull);
+      expect(state.attachedImages, ['/cache/shared_images/a.jpg']);
+
+      notifier.removeAttachedImage('/cache/shared_images/a.jpg');
+      expect(container.read(floatingQProvider).attachedImages, isEmpty);
+    });
+
+    test('openWithImages 空列表不展开面板', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(floatingQProvider.notifier);
+
+      notifier.openWithImages(const []);
+      expect(container.read(floatingQProvider).panelOpen, isFalse);
+    });
+  });
+
+  group('外部分享内容注入块', () {
+    test('正常文本组装为注入块且不给 read_file 指引', () {
+      final block = FloatingQNotifier.buildExternalQuoteBlock(
+        const QTextQuote(
+          source: QQuoteSource.external,
+          sourceId: '',
+          sourceTitle: '系统分享',
+          quotedText: '  一段来自第三方应用的文字  ',
+        ),
       );
 
-      notifier.clearPendingInputText();
-      expect(container.read(floatingQProvider).pendingInputText, isNull);
-      expect(container.read(floatingQProvider).panelOpen, isTrue);
+      expect(block, isNotNull);
+      expect(block, contains('一段来自第三方应用的文字'));
+      // 外部内容无法在虚拟工作区定位，必须显式告知小Q不要尝试读取文件
+      expect(block, contains('不要尝试用 read_file 查找'));
+      expect(block, isNot(contains('请先 read_file 上述文件')));
+    });
+
+    test('纯空白文本返回 null（无可注入内容）', () {
+      final block = FloatingQNotifier.buildExternalQuoteBlock(
+        const QTextQuote(
+          source: QQuoteSource.external,
+          sourceId: '',
+          sourceTitle: '系统分享',
+          quotedText: '   ',
+        ),
+      );
+      expect(block, isNull);
+    });
+
+    test('超长文本截断到 2000 字并附截断提示', () {
+      final block = FloatingQNotifier.buildExternalQuoteBlock(
+        QTextQuote(
+          source: QQuoteSource.external,
+          sourceId: '',
+          sourceTitle: '系统分享',
+          quotedText: '长' * 2500,
+        ),
+      );
+
+      expect(block, isNotNull);
+      expect(block, contains('（内容过长已截断）'));
+      // 正文保留前 2000 字，2001 字起被截断
+      expect(block, contains('长' * 2000));
+      expect(block, isNot(contains('长' * 2001)));
     });
   });
 

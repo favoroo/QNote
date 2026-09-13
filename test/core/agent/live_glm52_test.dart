@@ -60,7 +60,7 @@ void main() {
 
     final stream1 = agentLoop.run(
       conversationHistory: history,
-      systemPrompt: QSystemPrompt.prompt,
+      systemPrompt: QSystemPrompt.buildSystemPrompt(),
     );
 
     ChatMessage? reply1;
@@ -107,7 +107,7 @@ void main() {
 
     final stream2 = agentLoop.run(
       conversationHistory: history,
-      systemPrompt: QSystemPrompt.prompt,
+      systemPrompt: QSystemPrompt.buildSystemPrompt(),
     );
 
     ChatMessage? reply2;
@@ -152,7 +152,7 @@ void main() {
 
     final stream3 = agentLoop.run(
       conversationHistory: history,
-      systemPrompt: QSystemPrompt.prompt,
+      systemPrompt: QSystemPrompt.buildSystemPrompt(),
     );
 
     ChatMessage? reply3;

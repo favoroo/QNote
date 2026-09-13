@@ -543,6 +543,9 @@ class _FloatingQPanelState extends ConsumerState<_FloatingQPanel> {
     // 输入行 TextField 因此保持稳定（Web 端中文 IME 组合态不被打断）
     final contextLabel = ref.watch(floatingQProvider.select(
         (s) => s.contextLabel ?? s.effectiveContext?.displayLabel ?? '当前页面'));
+    // 外部分享场景：内容来自第三方应用，与当前页面无关，不展示位置徽章
+    final externalShareMode =
+        ref.watch(floatingQProvider.select((s) => s.externalShareMode));
 
     return Material(
       color: theme.colorScheme.surface,
@@ -557,13 +560,15 @@ class _FloatingQPanelState extends ConsumerState<_FloatingQPanel> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _buildHeader(theme, contextLabel),
+            _buildHeader(theme, externalShareMode ? '小Q' : '小Q · $contextLabel'),
             Divider(height: 1, color: theme.colorScheme.outlineVariant),
             const Flexible(child: _PanelMessages()),
             // 撤回横幅自管显隐（内部按 phase 判定），常驻面板不自动消失
             _PanelUndoBanner(onUndo: widget.onUndo),
             // 「给小Q」引用卡片自管显隐（无挂起引用时不占位）
             const _PanelQuoteCard(),
+            // 分享图片附件条自管显隐（无附件时不占位）
+            const _PanelImageAttachments(),
             Divider(height: 1, color: theme.colorScheme.outlineVariant),
             const _PanelInputRow(),
           ],
@@ -572,7 +577,7 @@ class _FloatingQPanelState extends ConsumerState<_FloatingQPanel> {
     );
   }
 
-  Widget _buildHeader(ThemeData theme, String contextLabel) {
+  Widget _buildHeader(ThemeData theme, String title) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 4, 10),
       child: Row(
@@ -582,7 +587,7 @@ class _FloatingQPanelState extends ConsumerState<_FloatingQPanel> {
           const SizedBox(width: 6),
           Expanded(
             child: Text(
-              '小Q · $contextLabel',
+              title,
               style: theme.textTheme.titleSmall
                   ?.copyWith(fontWeight: FontWeight.bold),
               maxLines: 1,
@@ -964,6 +969,7 @@ class _PanelQuoteCard extends ConsumerWidget {
         QQuoteSource.diary => Icons.schedule_rounded,
         QQuoteSource.journal => Icons.menu_book_outlined,
         QQuoteSource.todo => Icons.task_alt_outlined,
+        QQuoteSource.external => Icons.share_outlined,
       };
 
   String _sourceLabel(QQuoteSource source) => switch (source) {
@@ -971,11 +977,14 @@ class _PanelQuoteCard extends ConsumerWidget {
         QQuoteSource.diary => '流水记录',
         QQuoteSource.journal => '每日日记',
         QQuoteSource.todo => '待办',
+        QQuoteSource.external => '外部分享',
       };
 
-  /// 标题行：日记来源为日期字符串不加书名号，其余《标题》+ 位置
+  /// 标题行：日记来源为日期字符串不加书名号，其余《标题》+ 位置；
+  /// 外部分享无实体标题，只展示来源标签
   String _titleLine(QTextQuote quote) {
     final label = _sourceLabel(quote.source);
+    if (quote.source == QQuoteSource.external) return label;
     final title = quote.source == QQuoteSource.journal
         ? '$label ${quote.sourceTitle}'
         : '$label《${quote.sourceTitle}》';
@@ -1050,6 +1059,99 @@ class _PanelQuoteCard extends ConsumerWidget {
   }
 }
 
+/// 分享图片附件条：外部分享图片唤起时展示待发送缩略图，× 可移除，
+/// 发送时随消息一次性携带。无附件时不占位；挂载与 pendingImages 变化
+/// 两个时机消费挂起图片（面板未开时收到分享走前者，面板开着再分享走后者）
+class _PanelImageAttachments extends ConsumerStatefulWidget {
+  const _PanelImageAttachments();
+
+  @override
+  ConsumerState<_PanelImageAttachments> createState() =>
+      _PanelImageAttachmentsState();
+}
+
+class _PanelImageAttachmentsState
+    extends ConsumerState<_PanelImageAttachments> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _consumePending();
+    });
+  }
+
+  void _consumePending() =>
+      ref.read(floatingQProvider.notifier).consumePendingImages();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final images = ref.watch(floatingQProvider.select((s) => s.attachedImages));
+
+    ref.listen<List<String>?>(
+      floatingQProvider.select((s) => s.pendingImages),
+      (prev, next) {
+        if (next != null && next.isNotEmpty) _consumePending();
+      },
+    );
+
+    if (images.isEmpty) {
+      return const SizedBox.shrink(key: ValueKey('image-attachments-hidden'));
+    }
+
+    return Container(
+      key: const ValueKey('image-attachments'),
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: SizedBox(
+        height: 64,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: images.length,
+          separatorBuilder: (_, _) => const SizedBox(width: 8),
+          itemBuilder: (context, index) {
+            final path = images[index];
+            return Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(AppRadius.medium),
+                  child: UnifiedImage(
+                    imagePath: path,
+                    width: 64,
+                    height: 64,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                // 移除按钮叠在缩略图右上角内侧（外溢负偏移会被 ListView 裁剪）
+                Positioned(
+                  top: 2,
+                  right: 2,
+                  child: GestureDetector(
+                    onTap: () => ref
+                        .read(floatingQProvider.notifier)
+                        .removeAttachedImage(path),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surface.withValues(alpha: 0.85),
+                        shape: BoxShape.circle,
+                      ),
+                      padding: const EdgeInsets.all(2),
+                      child: Icon(
+                        Icons.close_rounded,
+                        size: 14,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
 /// 输入行：输入框 + 发送/停止按钮。
 ///
 /// 输入控制器在本组件内持有，且只订阅"是否工作中"：
@@ -1067,39 +1169,30 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
   final _focusNode = FocusNode();
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkAndApplyPendingText();
-    });
-  }
-
-  @override
   void dispose() {
     _inputController.dispose();
     _focusNode.dispose();
     super.dispose();
   }
 
-  void _checkAndApplyPendingText() {
-    final pending = ref.read(floatingQProvider).pendingInputText;
-    if (pending != null && pending.isNotEmpty) {
-      _applyText(pending);
-    }
-  }
-
-  void _applyText(String text) {
-    _inputController.text = text;
-    _inputController.selection = TextSelection.collapsed(offset: text.length);
-    ref.read(floatingQProvider.notifier).clearPendingInputText();
-    if (!_focusNode.hasFocus) {
-      _focusNode.requestFocus();
-    }
+  /// 物理键盘 Enter 拦截：无 Shift 即发送，Shift+Enter 放行默认换行。
+  /// 软键盘行为由 textInputAction:newline 交给 IME（移动端发送一律点按钮）；
+  /// 返回 handled 后 engine 不再把 Enter 送入文本输入通道，避免发送与换行叠加
+  KeyEventResult _handleEnterKey(FocusNode node, KeyEvent event) {
+    final isEnter = event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.numpadEnter;
+    if (!isEnter || event is KeyRepeatEvent) return KeyEventResult.ignored;
+    if (HardwareKeyboard.instance.isShiftPressed) return KeyEventResult.ignored;
+    if (event is KeyDownEvent) _handleSend();
+    return KeyEventResult.handled;
   }
 
   Future<void> _handleSend() async {
+    final fq = ref.read(floatingQProvider);
     final text = _inputController.text.trim();
-    if (text.isEmpty) return;
+    // 工作中由发送按钮转为停止按钮，键盘发送路径直接忽略（不清空已输入内容）
+    if (fq.phase == FloatingQPhase.working) return;
+    if (text.isEmpty && fq.attachedImages.isEmpty) return;
     HapticFeedback.lightImpact();
     _inputController.clear();
     // 发送后无需手动滚动：消息区的 listen 监听到消息数变化会自动滚到底部
@@ -1117,51 +1210,46 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
     final isWorking = ref.watch(
         floatingQProvider.select((s) => s.phase == FloatingQPhase.working));
 
-    ref.listen<String?>(
-      floatingQProvider.select((s) => s.pendingInputText),
-      (prev, next) {
-        if (next != null && next.isNotEmpty) {
-          _applyText(next);
-        }
-      },
-    );
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Expanded(
-            child: TextField(
-              controller: _inputController,
-              focusNode: _focusNode,
-              autofocus: true,
-              minLines: 1,
-              maxLines: 4,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => _handleSend(),
-              style: theme.textTheme.bodyMedium,
-              decoration: InputDecoration(
-                hintText: '告诉小Q要做什么…',
-                hintStyle: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant
-                      .withValues(alpha: 0.5),
-                ),
-                isDense: true,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.medium),
-                  borderSide: BorderSide(color: theme.colorScheme.outlineVariant),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.medium),
-                  borderSide: BorderSide(color: theme.colorScheme.outlineVariant),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.medium),
-                  borderSide:
-                      BorderSide(color: theme.colorScheme.primary, width: 1.5),
+            child: Focus(
+              onKeyEvent: _handleEnterKey,
+              child: TextField(
+                controller: _inputController,
+                focusNode: _focusNode,
+                autofocus: true,
+                minLines: 1,
+                maxLines: 4,
+                // 软键盘回车键为「换行」，发送一律点右侧按钮；
+                // 桌面/Web 物理回车在 _handleEnterKey 拦截发送，Shift+Enter 换行
+                textInputAction: TextInputAction.newline,
+                style: theme.textTheme.bodyMedium,
+                decoration: InputDecoration(
+                  hintText: '告诉小Q要做什么…',
+                  hintStyle: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant
+                        .withValues(alpha: 0.5),
+                  ),
+                  isDense: true,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.medium),
+                    borderSide: BorderSide(color: theme.colorScheme.outlineVariant),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.medium),
+                    borderSide: BorderSide(color: theme.colorScheme.outlineVariant),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.medium),
+                    borderSide:
+                        BorderSide(color: theme.colorScheme.primary, width: 1.5),
+                  ),
                 ),
               ),
             ),

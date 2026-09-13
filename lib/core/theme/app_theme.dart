@@ -1,8 +1,22 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 class AppTheme {
   static const Color primaryDefault = Color(0xFF005BCB);
+
+  /// 遵循 Material 3 规范的全局页面转场：
+  /// - Android/桌面/Web 采用平滑的向前淡入 (FadeForwards)
+  /// - iOS 保持原生平滑滑动手势 (Cupertino)
+  static const PageTransitionsTheme _pageTransitionsTheme = PageTransitionsTheme(
+    builders: {
+      TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
+      TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+      TargetPlatform.macOS: FadeForwardsPageTransitionsBuilder(),
+      TargetPlatform.windows: FadeForwardsPageTransitionsBuilder(),
+      TargetPlatform.linux: FadeForwardsPageTransitionsBuilder(),
+    },
+  );
 
   static ThemeData lightTheme(Color accentColor) {
     final colorScheme = ColorScheme(
@@ -202,6 +216,7 @@ class AppTheme {
         weekdayStyle: TextStyle(height: 1.0, leadingDistribution: TextLeadingDistribution.even),
         yearStyle: TextStyle(height: 1.0, leadingDistribution: TextLeadingDistribution.even),
       ),
+      pageTransitionsTheme: _pageTransitionsTheme,
     );
   }
 
@@ -403,6 +418,7 @@ class AppTheme {
         weekdayStyle: TextStyle(height: 1.0, leadingDistribution: TextLeadingDistribution.even),
         yearStyle: TextStyle(height: 1.0, leadingDistribution: TextLeadingDistribution.even),
       ),
+      pageTransitionsTheme: _pageTransitionsTheme,
     );
   }
 }
