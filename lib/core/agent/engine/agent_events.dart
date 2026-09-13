@@ -5,6 +5,7 @@ enum AgentEventType {
   agentStart,
   turnStart,
   thoughtUpdate,
+  reasoningDelta, // 模型思考/推理增量（reasoning_content），「思考中」期间实时滚动展示
   contentDelta, // 文本流打字机碎片
   toolCalling, // 模型正在流式生成工具调用参数（大参数期间 UI 的进行中状态来源）
   toolExecuting,
@@ -48,6 +49,10 @@ class AgentEvent {
 
   factory AgentEvent.thoughtUpdate(String thought) =>
       AgentEvent(type: AgentEventType.thoughtUpdate, text: thought);
+
+  /// 模型思考/推理的流式增量，节流由 provider 层统一处理（与 contentDelta 同策略）
+  factory AgentEvent.reasoningDelta(String deltaText) =>
+      AgentEvent(type: AgentEventType.reasoningDelta, text: deltaText);
 
   factory AgentEvent.contentDelta(String deltaText) =>
       AgentEvent(type: AgentEventType.contentDelta, text: deltaText);

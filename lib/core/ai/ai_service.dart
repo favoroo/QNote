@@ -25,16 +25,27 @@ class NoUsefulInfoException implements Exception {
 /// 带工具流式对话的单个流片段。
 ///
 /// - [text] 非 null：模型正文增量，供打字机渲染
+/// - [reasoningText] 非 null：模型思考/推理增量（reasoning_content 等），
+///   供「思考中」状态卡实时滚动展示思考过程，减少等待体感
 /// - [toolProgress] 非 null：模型正在流式生成某工具调用的参数，
 ///   携带工具名与已拼接的部分参数快照，供 UI 在长参数生成期间
 ///   （如 write_file 写大文件）展示「正在写入文件 · 路径」等进行中状态
 class AiToolStreamChunk {
   final String? text;
+  final String? reasoningText;
   final ToolCallProgress? toolProgress;
 
-  const AiToolStreamChunk.text(this.text) : toolProgress = null;
+  const AiToolStreamChunk.text(this.text)
+      : reasoningText = null,
+        toolProgress = null;
 
-  const AiToolStreamChunk.toolProgress(this.toolProgress) : text = null;
+  const AiToolStreamChunk.reasoning(this.reasoningText)
+      : text = null,
+        toolProgress = null;
+
+  const AiToolStreamChunk.toolProgress(this.toolProgress)
+      : text = null,
+        reasoningText = null;
 }
 
 /// 工具调用参数的流式生成进度快照
@@ -397,6 +408,15 @@ class AiService {
 
               final choice = json['choices']?[0];
               final delta = choice?['delta'] as Map<String, dynamic>?;
+
+              // 0. 思考/推理增量：智谱 GLM、DeepSeek reasoner 等用 reasoning_content，
+              //    SenseNova 用 reasoning；供「思考中」状态卡实时滚动展示
+              final reasoning =
+                  (delta?['reasoning_content'] ?? delta?['reasoning']) as String?;
+              if (reasoning != null && reasoning.isNotEmpty) {
+                hasYielded = true;
+                yield AiToolStreamChunk.reasoning(reasoning);
+              }
 
               // 1. 文本内容增量
               final text = delta?['content'] as String?;

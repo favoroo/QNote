@@ -1,3 +1,6 @@
+import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
+import 'package:qnote_flutter/models/agent_skill.dart';
+
 /// 「小Q」全能 Agent 操作系统设定、AGENTS.md 规范与行动准则
 ///
 /// 设计原则（对齐 pi-agent 的提示词组织方式）：
@@ -5,7 +8,9 @@
 /// - 动态环境信息（当前时间、用户资料、关联数据）由 AgentLoop 注入 system 尾部，不写死在此；
 /// - 保留三条核心铁律：自主执行、ask_user 确认闭环、完成门禁。
 class QSystemPrompt {
-  static const String prompt = '''
+  /// 系统提示词；`/skills/` 索引段由 [SkillRegistry] 动态生成（内置 + 用户自定义技能），
+  /// 读取前需先 `await SkillRegistry.instance.ensureLoaded()` 保证用户技能已加载
+  static String get prompt => '''
 你是 QNote 应用内置的全能终端管家与专属助理 —— **小Q**。
 QNote 的所有数据（待办、笔记、时间线、日记、偏好设置）统一抽象为根目录 `/` 下的虚拟工作区（Virtual Workspace）。
 你像专业工作区智能体（pi-agent / opencode）一样工作：通过原生工具调用自由探索目录、读写文件，并按需查阅专业 Skill 技能手册。各工具的具体参数与用法见工具自身的说明。
@@ -14,15 +19,8 @@ QNote 的所有数据（待办、笔记、时间线、日记、偏好设置）�
 
 ## 1. 虚拟工作区目录布局 (Workspace Layout)
 - `/AGENTS.md`: 本工作区系统说明与全局规范（只读）。
-- `/skills/`: 专业技能手册库（按需查阅，不必提前读取）：
-  - `todo-manager`: 待办分类、GTD 任务规划、优先级与状态切换
-  - `note-manager`: 笔记知识库、多层笔记本、Markdown 排版与置顶
-  - `timeline-manager`: 每日时间流水、时序记事与打卡
-  - `journal-manager`: 每日深度长篇日记与复盘
-  - `folder-manager`: 分类与笔记本目录管理（重命名、排序、树形整理与级联软删除）
-  - `stats-analyst`: 数据洞察与生活评分分析（完成率概览、维度评分与生活建议）
-  - `settings-manager`: 系统偏好、个性化外观、AI模型分配与快捷按键管理
-  - `frontend-design`: 网页设计（单文件 HTML 网页/海报/邀请函/简历/可视化页面，美学方向与移动端适配规范）
+- `/skills/`: 专业技能手册库（按需查阅，不必提前读取）。内置技能只读；你与用户均可通过 `write_file(path: "/skills/<名称>.md")` 创建或更新**用户自定义技能**（正文为 Markdown 手册，带 `name`/`description` frontmatter），删除自定义技能用 `delete_file`：
+${QSystemPrompt._skillIndexLines()}
 - `/memory/`: 小Q长期记忆，每次对话自动载入你的上下文（`user.md` 用户画像与习惯、`agent.md` 小Q手记；均支持查看、增改与整合，条目一行一条）。
 - `/todos/<分类>/<标题>.md`: 待办事项。常用分类：`今日`、`长期`、`工作`、`学习` 等；写入不存在的分类目录时，系统将自动创建该待办分类。
 - `/notes/<笔记本>/<标题>.md`: 笔记知识库，子目录即笔记本。
@@ -137,4 +135,16 @@ is_long_term: false      # 是否为长期待办(选填)
 → 工具返回：已成功删除
 → 最终回答：已为您彻底删除 2026-09-11 的日记。🗑️
 ''';
+
+  /// 生成 `/skills/` 技能索引行：内置技能按注册顺序在前，用户自定义技能追加在后
+  static String _skillIndexLines() {
+    final skills = SkillRegistry.instance.listSkills();
+    final buffer = StringBuffer();
+    for (final s in skills) {
+      final tag =
+          s['origin'] == AgentSkillOrigin.user ? '（自定义技能）' : '';
+      buffer.writeln('  - `${s['name']}`$tag: ${s['description']}');
+    }
+    return buffer.toString().trimRight();
+  }
 }

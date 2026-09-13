@@ -4,6 +4,7 @@ import 'package:qnote_flutter/core/storage/sync_log_repository.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/agent_memory.dart';
+import 'package:qnote_flutter/models/agent_skill.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/user_profile.dart';
 import 'package:qnote_flutter/models/weight_record.dart';
@@ -52,6 +53,19 @@ class ConfigRepository {
       recordId: key,
       operation: 'delete',
     );
+  }
+
+  /// 按前缀批量读取 app_configs 键值（用于小Q用户技能等动态数量的配置）
+  Future<Map<String, String>> getAppConfigsByPrefix(String prefix) async {
+    final db = await _dbHelper.database;
+    final maps = await db.query(
+      'app_configs',
+      where: 'key LIKE ?',
+      whereArgs: ['$prefix%'],
+    );
+    return {
+      for (final m in maps) m['key'] as String: m['value'] as String,
+    };
   }
 
   Future<List<AiConfig>> getAllAiConfigs() async {
@@ -333,6 +347,39 @@ class ConfigRepository {
     }
     return result;
   }
+
+  /// 读取全部小Q用户技能（app_configs 键前缀 `agent_skill_`）；损坏数据跳过
+  Future<List<AgentSkill>> getUserSkills() async {
+    final entries = await getAppConfigsByPrefix(
+      ConfigRepository.userSkillKeyPrefix,
+    );
+    final skills = <AgentSkill>[];
+    for (final entry in entries.entries) {
+      try {
+        skills.add(AgentSkill.fromJson(entry.value));
+      } catch (_) {
+        // 单条数据损坏时跳过，不影响其余技能加载
+      }
+    }
+    skills.sort((a, b) => a.name.compareTo(b.name));
+    return skills;
+  }
+
+  /// 保存一个小Q用户技能（经 setAppConfig 自动写入同步日志，参与 WebDAV 云同步）
+  Future<void> saveUserSkill(AgentSkill skill) async {
+    await setAppConfig(
+      '${ConfigRepository.userSkillKeyPrefix}${skill.name}',
+      skill.toJson(),
+    );
+  }
+
+  /// 删除一个小Q用户技能
+  Future<void> deleteUserSkill(String name) async {
+    await deleteAppConfig('${ConfigRepository.userSkillKeyPrefix}$name');
+  }
+
+  /// 小Q用户技能在 app_configs 中的键前缀
+  static const String userSkillKeyPrefix = 'agent_skill_';
 
   Future<List<WeightRecord>> getWeightHistory() async {
     final profile = await getUserProfile();

@@ -120,6 +120,8 @@ class AgentLoop {
         );
 
         final accumulatedContent = StringBuffer();
+        // 模型原生思考增量（reasoning_content 等）累积，轮末回填 ChatMessage.thought
+        final accumulatedReasoning = StringBuffer();
         final List<ToolCall> streamedToolCalls = [];
         final thoughtFilter = _ThoughtTagFilter();
         // 工具参数生成进度的去重锚点（每轮重建，避免跨轮抑制同参数工具的状态更新）
@@ -158,6 +160,15 @@ class AgentLoop {
                 lastCallingDetail = detailKey;
                 yield AgentEvent.toolCalling(progress.toolName, partialArguments: detail);
               }
+              continue;
+            }
+
+            // 模型思考/推理增量：边收边推流，「思考中」状态卡实时滚动展示思考过程，
+            // 高频碎片不在本层节流，由 provider 层统一批量刷新（与 contentDelta 同策略）
+            final reasoning = chunk.reasoningText;
+            if (reasoning != null) {
+              accumulatedReasoning.write(reasoning);
+              yield AgentEvent.reasoningDelta(reasoning);
               continue;
             }
 
@@ -217,6 +228,11 @@ class AgentLoop {
             thought = content.substring(startIdx, endIdx).trim();
             content = (content.substring(0, startIdx - 9) + content.substring(endIdx + 10)).trim();
           }
+        }
+
+        // 无 <thought> 标签协议时，回退采用模型原生思考增量作为本轮思考内容
+        if ((thought == null || thought.isEmpty) && accumulatedReasoning.isNotEmpty) {
+          thought = accumulatedReasoning.toString().trim();
         }
 
         if (thought != null && thought.isNotEmpty) {

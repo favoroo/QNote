@@ -27,6 +27,17 @@ void main() {
     // 因此所有测试数据带时间戳后缀保证唯一
     final ts = DateTime.now().millisecondsSinceEpoch;
 
+    setUpAll(() async {
+      // 持久库会累积历史体重记录，profile.json 体积膨胀后 read_file
+      // 超 6000 字符截断，导致用例 6 的整段 JSON 解析失败，此处清空重置
+      final profile = await configRepo.getUserProfile();
+      if (profile != null && profile.weightHistory.isNotEmpty) {
+        await configRepo.saveUserProfile(
+          profile.copyWith(weightHistory: []),
+        );
+      }
+    });
+
     test('1. write_file: 创建笔记并在库中验证', () async {
       final call = ToolCall(
         id: 'call_note_create',

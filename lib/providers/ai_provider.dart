@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:qnote_flutter/config/defaults.dart';
+import 'package:qnote_flutter/core/ai/ai_error_explainer.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/free_model_service.dart';
@@ -13,6 +14,7 @@ import 'package:qnote_flutter/core/agent/engine/agent_cancellation_token.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_events.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_loop.dart';
 import 'package:qnote_flutter/core/agent/prompts/q_system_prompt.dart';
+import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
 import 'package:qnote_flutter/core/agent/vfs/virtual_workspace_service.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
@@ -253,12 +255,19 @@ final aiStreamingStatusProvider = StateProvider<String?>((ref) => null);
 /// 供状态行显示「已用时」计时，传达任务仍在进行
 final aiStreamingStartedAtProvider = StateProvider<DateTime?>((ref) => null);
 
+/// 「思考中」期间模型实时下发的思考过程文本（reasoning_content 流式增量），
+/// 展示在状态卡内的限高滚动区减少等待体感；模型不返回思考内容时保持 null，
+/// 界面与现状完全一致
+final aiStreamingThoughtProvider = StateProvider<String?>((ref) => null);
+
 class CurrentChatNotifier extends StateNotifier<ChatSession?> {
   final Ref _ref;
 
   CurrentChatNotifier(this._ref) : super(null);
 
   final StringBuffer _streamingContent = StringBuffer();
+  // 「思考中」期间的模型思考增量缓冲，与正文共用同一个节流 flush 定时器
+  final StringBuffer _streamingThought = StringBuffer();
   bool _isStreaming = false;
   bool _isRollingBack = false;
   AgentCancellationToken? _currentCancellationToken;
@@ -327,13 +336,20 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
     await _markTurnLimitHandled();
   }
 
-  /// 以约 60ms 的节奏批量刷新流式文本到 UI（人眼流畅且不逐 token 重建）
+  /// 以约 60ms 的节奏批量刷新流式文本到 UI（人眼流畅且不逐 token 重建），
+  /// 正文与思考缓冲共用本定时器；正文已开始时思考区随状态行一并退场
   void _scheduleStreamingFlush() {
     if (_streamingFlushTimer != null && _streamingFlushTimer!.isActive) return;
     _streamingFlushTimer = Timer(const Duration(milliseconds: 60), () {
-      _ref.read(aiStreamingMessageProvider.notifier).state =
-          _streamingContent.toString();
-      _ref.read(aiStreamingStatusProvider.notifier).state = null;
+      final content = _streamingContent.toString();
+      if (content.isNotEmpty) {
+        _ref.read(aiStreamingMessageProvider.notifier).state = content;
+        _ref.read(aiStreamingStatusProvider.notifier).state = null;
+        _ref.read(aiStreamingThoughtProvider.notifier).state = null;
+      } else if (_streamingThought.isNotEmpty) {
+        _ref.read(aiStreamingThoughtProvider.notifier).state =
+            _streamingThought.toString();
+      }
     });
   }
 
@@ -492,11 +508,25 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
     final repo = ConfigRepository.instance;
 
     // 1. Append user message with raw content and optional images to active display/save history immediately
+    final hasRefAttachments = (noteIds?.isNotEmpty ?? false) ||
+        (todoIds?.isNotEmpty ?? false) ||
+        (journalIds?.isNotEmpty ?? false);
     final userMessage = ChatMessage(
       role: 'user',
       content: content,
       timestamp: now,
       images: images,
+      // 笔记/待办/日记引用存入 uiDetails，失败重试时据此完整还原提问；
+      // 构建模型请求时不会序列化该字段，不会泄漏进上下文
+      uiDetails: hasRefAttachments
+          ? {
+              'attachments': {
+                if (noteIds?.isNotEmpty ?? false) 'notes': noteIds,
+                if (todoIds?.isNotEmpty ?? false) 'todos': todoIds,
+                if (journalIds?.isNotEmpty ?? false) 'journals': journalIds,
+              },
+            }
+          : null,
     );
     final updatedMessages = [...state!.messages, userMessage];
 
@@ -573,6 +603,9 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         maxTokens: roleSettings.maxTokens,
       );
 
+      // 预加载用户技能缓存，保证本次会话系统提示词中的技能索引完整
+      await SkillRegistry.instance.ensureLoaded();
+
       final agentLoop = AgentLoop(
         aiService: aiService,
         dispatcher: dispatcher,
@@ -600,11 +633,16 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       )) {
         switch (event.type) {
           case AgentEventType.agentStart:
+            _streamingThought.clear();
+            _ref.read(aiStreamingThoughtProvider.notifier).state = null;
             _ref.read(aiStreamingStartedAtProvider.notifier).state = DateTime.now();
             _setStreamingStatus('小Q准备中');
             break;
           case AgentEventType.turnStart:
             _streamingContent.clear();
+            // 新一轮思考从零开始，与状态行「第 N 步」语义对齐
+            _streamingThought.clear();
+            _ref.read(aiStreamingThoughtProvider.notifier).state = null;
             // 首轮不展示步数，避免“第 1 步”这类无信息量文案
             _setStreamingStatus((event.turn ?? 0) > 1
                 ? '小Q思考中 · 第 ${event.turn} 步'
@@ -612,13 +650,25 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
             break;
           case AgentEventType.contentDelta:
             if (event.text != null) {
-              _streamingContent.write(event.text!);
+              _streamingContent.write(event.text);
+              _scheduleStreamingFlush();
+            }
+            break;
+          case AgentEventType.reasoningDelta:
+            if (event.text != null) {
+              _streamingThought.write(event.text);
               _scheduleStreamingFlush();
             }
             break;
           case AgentEventType.thoughtUpdate:
-            if (event.text != null && event.text!.isNotEmpty) {
-              _setStreamingStatus('💭 思考过程:\n${event.text}');
+            // 轮末完整思考文本直接落入思考区展示（含 <thought> 标签协议路径），
+            // 不再作为瞬态状态行文案被下一事件覆盖
+            final thoughtText = event.text;
+            if (thoughtText != null && thoughtText.isNotEmpty) {
+              _streamingThought
+                ..clear()
+                ..write(thoughtText);
+              _ref.read(aiStreamingThoughtProvider.notifier).state = thoughtText;
             }
             break;
           case AgentEventType.toolCalling:
@@ -686,8 +736,11 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       );
       final errorMessage = ChatMessage(
         role: 'assistant',
-        content: '抱歉，发生了错误，请稍后重试。\n\n错误详情: $e',
+        content: '抱歉，本轮对话请求失败了。\n\n'
+            '${AiErrorExplainer.describe(e)}\n\n'
+            '长按本条消息可重试本轮对话。',
         timestamp: DateTime.now(),
+        isError: true,
       );
       state = state!.copyWith(messages: [...updatedMessages, errorMessage]);
     } finally {
@@ -697,6 +750,7 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       _streamingFlushTimer = null;
       _ref.read(aiStreamingMessageProvider.notifier).state = null;
       _ref.read(aiStreamingStatusProvider.notifier).state = null;
+      _ref.read(aiStreamingThoughtProvider.notifier).state = null;
       _ref.read(aiStreamingStartedAtProvider.notifier).state = null;
 
       // 结束录制，把本轮 VFS 变更快照挂到本轮用户消息上（随会话落库，撤回时按此恢复）

@@ -17,6 +17,7 @@ import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/core/utils/reminder_utils.dart';
 import 'package:qnote_flutter/models/agent_memory.dart';
+import 'package:qnote_flutter/models/agent_skill.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/date_color_mark.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
@@ -62,6 +63,7 @@ class VirtualWorkspaceService {
     '/settings/',
     '/folders/',
     '/memory/',
+    '/skills/',
   ];
 
   /// /settings/ 下全部可读写的配置文件（目录列举、grep 检索、追加模式禁用判定共用）
@@ -361,7 +363,7 @@ class VirtualWorkspaceService {
 
 ## 1. 虚拟文件系统结构
 - `/AGENTS.md`: 本工作区指南与系统说明（只读）。
-- `/skills/`: 专业技能手册库（查阅对应领域的规范与操作手册）。
+- `/skills/`: 专业技能手册库（查阅对应领域的规范与操作手册）。内置技能只读；可通过 `write_file(path: "/skills/<名称>.md")` 创建或更新用户自定义技能（Markdown 手册，带 `name`/`description` frontmatter），删除自定义技能用 `delete_file`。
 - `/memory/`: 小Q长期记忆（`user.md` 用户画像与习惯、`agent.md` 小Q手记；每次对话自动载入上下文，支持查看与增改）。
 - `/todos/`: 待办事项库（目录名对应分类，如 `/todos/今日/`、`/todos/长期/`、`/todos/工作/`）。
 - `/notes/`: 笔记与知识库（目录名对应笔记本，如 `/notes/技术架构/`。除 Markdown 外还支持写入 `.html` 网页、`.svg` 矢量图、`.json` 数据文件及常见代码文件，App 内会按后缀自动渲染预览；生成展示型内容（卡片、海报、可视化页面）时优先使用带内联样式的单文件 HTML，网页设计规范详见 `frontend-design` 技能）。
@@ -1017,6 +1019,8 @@ class VirtualWorkspaceService {
       return await _writeJournalFile(path, effectiveContent);
     } else if (path.startsWith('/memory/')) {
       return await _writeMemoryFile(path, effectiveContent);
+    } else if (path.startsWith('/skills/')) {
+      return await _writeSkillFile(path, effectiveContent);
     } else if (path.startsWith('/folders/')) {
       return await _writeFoldersFile(path, effectiveContent);
     } else if (path.startsWith('/chats/')) {
@@ -1667,6 +1671,59 @@ class VirtualWorkspaceService {
       'status': 'updated',
       'path': path,
       'usage': '${doc.usagePercent}%（${normalized.length}/$maxChars 字符）',
+    };
+  }
+
+  /// 写入用户自定义技能：`/skills/<名称>.md`（内置技能只读，直接拒绝）
+  ///
+  /// 正文为 Markdown 手册，frontmatter 的 `description` 作为技能索引描述；
+  /// 缺失时回退取正文首个非空非标题行截断，避免索引里出现空描述。
+  Future<Map<String, dynamic>> _writeSkillFile(String path, String content) async {
+    final name = path.substring('/skills/'.length).trim();
+    if (name.isEmpty || !name.endsWith('.md') || name.contains('/')) {
+      throw Exception('非法的技能路径: $path（应为 /skills/<名称>.md，不支持子目录）');
+    }
+    final skillName = name.replaceAll(RegExp(r'\.md$'), '').trim();
+    if (_skillRegistry.isBuiltinSkill(skillName)) {
+      throw Exception(
+        '「$skillName」是内置技能，不可修改。请用新的名称创建自定义技能，'
+        '或直接创建同名以外的技能文件。',
+      );
+    }
+
+    final parsed = _parseFrontmatter(content);
+    final body = parsed.body.trim();
+    if (body.isEmpty) {
+      throw Exception('技能手册正文不能为空');
+    }
+
+    // frontmatter 未提供 description 时，从正文首个非标题行提取摘要；
+    // 正文只有标题时退而取首个标题文本，避免索引里出现空描述
+    var description = (parsed.meta['description'] as String? ?? '').trim();
+    if (description.isEmpty) {
+      final lines = body.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
+      var fallback = lines.firstWhere(
+        (l) => !l.startsWith('#'),
+        orElse: () => lines.isEmpty ? '' : lines.first.replaceFirst(RegExp(r'^#+\s*'), ''),
+      );
+      if (fallback.length > 80) fallback = '${fallback.substring(0, 80)}…';
+      description = fallback;
+    }
+
+    final existed = _skillRegistry.getUserSkill(skillName) != null;
+    await _skillRegistry.saveUserSkill(
+      AgentSkill(name: skillName, description: description, content: body),
+    );
+    WorkspaceEventBus.instance.emit(
+      AgentSkill.pathOf(skillName),
+      WorkspaceChangeType.updated,
+      {'name': skillName},
+    );
+    return {
+      'status': existed ? 'updated' : 'created',
+      'path': AgentSkill.pathOf(skillName),
+      'name': skillName,
+      'description': description,
     };
   }
 
@@ -2372,6 +2429,26 @@ class VirtualWorkspaceService {
         'path': path,
         'title': '${AgentMemoryCategory.displayName(category)}已清空',
       };
+    }
+
+    if (path.startsWith('/skills/')) {
+      final name = path.substring('/skills/'.length).trim().replaceAll(RegExp(r'\.md$'), '').trim();
+      if (name.isEmpty || name.contains('/')) {
+        throw Exception('非法的技能路径: $path（应为 /skills/<名称>.md）');
+      }
+      if (_skillRegistry.isBuiltinSkill(name)) {
+        throw Exception('「$name」是内置技能，不可删除');
+      }
+      if (_skillRegistry.getUserSkill(name) == null) {
+        throw Exception('未找到技能: $name（内置技能与已有自定义技能请查看 /skills/）');
+      }
+      await _skillRegistry.deleteUserSkill(name);
+      WorkspaceEventBus.instance.emit(
+        AgentSkill.pathOf(name),
+        WorkspaceChangeType.deleted,
+        {'name': name},
+      );
+      return {'status': 'deleted', 'path': path, 'name': name};
     }
 
     if (path.startsWith('/chats/')) {

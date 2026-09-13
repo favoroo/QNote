@@ -1,8 +1,18 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
+import 'package:qnote_flutter/core/agent/vfs/virtual_workspace_service.dart';
+import 'package:qnote_flutter/core/storage/config_repository.dart';
+import 'package:qnote_flutter/models/agent_skill.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  SharedPreferences.setMockInitialValues({});
+  sqfliteFfiInit();
+  databaseFactory = databaseFactoryFfi;
+
   final registry = SkillRegistry.instance;
   const skillNames = [
     'todo-manager',
@@ -118,6 +128,163 @@ void main() {
           reason: '别名 "$key" 应解析到同一份手册',
         );
       }
+    });
+  });
+
+  group('SkillRegistry 用户技能（内置 + 用户双层）', () {
+    tearDown(() async {
+      // 清理测试产生的用户技能，避免污染其他用例
+      final skills = await ConfigRepository.instance.getUserSkills();
+      for (final s in skills) {
+        await ConfigRepository.instance.deleteUserSkill(s.name);
+      }
+      await registry.reload();
+    });
+
+    test('保存后进入清单与内容查询，来源标记为 user', () async {
+      await registry.saveUserSkill(
+        AgentSkill(
+          name: 'invest-review',
+          description: '投资复盘技能：持仓记录、盈亏归因与月度复盘',
+          content: '# 投资复盘技能\n\n## 1. 复盘流程',
+        ),
+      );
+
+      final inList = registry.listSkills().firstWhere(
+            (s) => s['name'] == 'invest-review',
+          );
+      expect(inList['origin'], AgentSkillOrigin.user);
+      expect(inList['path'], '/skills/invest-review.md');
+
+      // 读取输出合成 frontmatter，与内置技能格式一致
+      final content = registry.getSkillContent('invest-review');
+      expect(content, contains('name: invest-review'));
+      expect(content, contains('## 1. 复盘流程'));
+
+      await registry.deleteUserSkill('invest-review');
+      expect(registry.getUserSkill('invest-review'), isNull);
+      expect(registry.getSkillContent('invest-review'), isNull);
+    });
+
+    test('持久化到 app_configs 并可重载恢复', () async {
+      await registry.saveUserSkill(
+        AgentSkill(
+          name: 'reading-notes',
+          description: '读书笔记技能',
+          content: '# 读书笔记',
+        ),
+      );
+      final stored = await ConfigRepository.instance.getUserSkills();
+      expect(stored.any((s) => s.name == 'reading-notes'), isTrue);
+
+      // 强制重载后缓存仍包含（模拟下次会话/云同步导入后的加载）
+      await registry.reload();
+      expect(registry.getUserSkill('reading-notes'), isNotNull);
+      await registry.deleteUserSkill('reading-notes');
+    });
+
+    test('内置名与别名占用、非法名均被拒绝', () async {
+      // 内置主名
+      expect(
+        () => registry.saveUserSkill(
+          AgentSkill(name: 'todo-manager', content: 'x'),
+        ),
+        throwsException,
+      );
+      // 内置别名（模糊匹配名同样保留）
+      expect(
+        () => registry.saveUserSkill(
+          AgentSkill(name: 'stats', content: 'x'),
+        ),
+        throwsException,
+      );
+      // 非法名（含空白 / 路径分隔符）
+      expect(
+        () => registry.saveUserSkill(
+          AgentSkill(name: 'my skill', content: 'x'),
+        ),
+        throwsException,
+      );
+      expect(
+        () => registry.saveUserSkill(
+          AgentSkill(name: 'a/b', content: 'x'),
+        ),
+        throwsException,
+      );
+      // 删除内置技能直接拒绝
+      expect(
+        () => registry.deleteUserSkill('note-manager'),
+        throwsException,
+      );
+    });
+  });
+
+  group('VFS /skills/ 用户技能读写', () {
+    final vfs = VirtualWorkspaceService.instance;
+
+    tearDown(() async {
+      final skills = await ConfigRepository.instance.getUserSkills();
+      for (final s in skills) {
+        await ConfigRepository.instance.deleteUserSkill(s.name);
+      }
+      await registry.reload();
+    });
+
+    test('write_file 创建/更新自定义技能，清单与读取自动包含', () async {
+      final res = await vfs.writeFile(
+        '/skills/morning-routine.md',
+        '---\nname: morning-routine\ndescription: 晨间例行流程技能\n---\n\n# 晨间例行流程\n\n## 1. 步骤',
+      );
+      expect(res['status'], 'created');
+      expect(registry.getUserSkill('morning-routine'), isNotNull);
+
+      final readBack = await vfs.readFile('/skills/morning-routine.md');
+      expect(readBack, contains('晨间例行流程'));
+
+      // 二次写入为更新
+      final res2 = await vfs.writeFile(
+        '/skills/morning-routine.md',
+        '---\ndescription: 更新后的描述\n---\n\n# 晨间例行流程 v2',
+      );
+      expect(res2['status'], 'updated');
+      expect(
+        registry.getUserSkill('morning-routine')!.description,
+        '更新后的描述',
+      );
+
+      // 目录列举自动包含用户技能
+      expect(await vfs.listDir('/skills'), contains('morning-routine.md'));
+
+      await vfs.deleteFile('/skills/morning-routine.md');
+      expect(registry.getUserSkill('morning-routine'), isNull);
+    });
+
+    test('无 frontmatter 写入时从正文提取描述，纯标题正文取标题文本', () async {
+      await vfs.writeFile(
+        '/skills/no-meta-skill.md',
+        '# 无元数据技能\n\n这是第一个普通段落，作为描述回退来源。',
+      );
+      final skill = registry.getUserSkill('no-meta-skill')!;
+      expect(skill.description, contains('这是第一个普通段落'));
+      await vfs.deleteFile('/skills/no-meta-skill.md');
+
+      // 正文只有标题时，描述回退为标题文本
+      await vfs.writeFile('/skills/title-only-skill.md', '# 只有标题');
+      final titleOnly = registry.getUserSkill('title-only-skill')!;
+      expect(titleOnly.description, '只有标题');
+      await vfs.deleteFile('/skills/title-only-skill.md');
+    });
+
+    test('内置技能写入与删除均被拒绝，内容不受影响', () async {
+      expect(
+        () => vfs.writeFile('/skills/todo-manager.md', '# 覆盖内置技能'),
+        throwsException,
+      );
+      expect(
+        () => vfs.deleteFile('/skills/todo-manager.md'),
+        throwsException,
+      );
+      expect(registry.getSkillContent('todo-manager'), isNotNull);
     });
   });
 }

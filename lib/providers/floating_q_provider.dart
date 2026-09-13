@@ -13,8 +13,10 @@ import 'package:qnote_flutter/core/agent/services/agent_interaction_service.dart
 import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
 import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
 import 'package:qnote_flutter/core/agent/services/q_text_quote.dart';
+import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
 import 'package:qnote_flutter/core/agent/vfs/virtual_workspace_service.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
+import 'package:qnote_flutter/core/ai/ai_error_explainer.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
@@ -144,6 +146,10 @@ class FloatingQState {
   /// 流式阶段状态文案（小Q思考中/执行操作等），与 [streamingText] 互斥
   final String? statusText;
 
+  /// 「思考中」期间模型实时下发的思考过程文本，展示在状态行下方的
+  /// 限高滚动区；模型不返回思考内容时保持 null（面板与现状一致）
+  final String? streamingThought;
+
   /// 流式正文缓冲
   final String? streamingText;
 
@@ -171,6 +177,7 @@ class FloatingQState {
     this.contextLabel,
     this.messages = const [],
     this.statusText,
+    this.streamingThought,
     this.streamingText,
     this.streamingStartedAt,
     this.pendingUndoCount = 0,
@@ -192,6 +199,7 @@ class FloatingQState {
     String? contextLabel,
     List<ChatMessage>? messages,
     String? statusText,
+    String? streamingThought,
     String? streamingText,
     DateTime? streamingStartedAt,
     int? pendingUndoCount,
@@ -200,6 +208,7 @@ class FloatingQState {
     String? pendingInputText,
     bool clearSignature = false,
     bool clearStatusText = false,
+    bool clearStreamingThought = false,
     bool clearStreamingText = false,
     bool clearStreamingStartedAt = false,
     bool clearQuote = false,
@@ -216,6 +225,9 @@ class FloatingQState {
       messages: messages ?? this.messages,
       statusText:
           clearStatusText ? null : (statusText ?? this.statusText),
+      streamingThought: clearStreamingThought
+          ? null
+          : (streamingThought ?? this.streamingThought),
       streamingText:
           clearStreamingText ? null : (streamingText ?? this.streamingText),
       streamingStartedAt: clearStreamingStartedAt
@@ -248,6 +260,8 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
   bool _contextSwitchedDuringRun = false;
 
   final StringBuffer _streamBuffer = StringBuffer();
+  // 「思考中」期间的模型思考增量缓冲，与正文共用同一个节流 flush 定时器
+  final StringBuffer _thoughtBuffer = StringBuffer();
   Timer? _flushTimer;
 
   @override
@@ -379,6 +393,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       statusText: '小Q准备中',
       streamingStartedAt: DateTime.now(),
       clearStreamingText: true,
+      clearStreamingThought: true,
       clearQuote: true,
     );
     _sessionMessages = List.of(state.messages);
@@ -470,6 +485,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
     final token = AgentCancellationToken();
     _currentToken = token;
     _streamBuffer.clear();
+    _thoughtBuffer.clear();
     final recorderHandle = VirtualWorkspaceService.instance.startRecording();
 
     try {
@@ -495,6 +511,9 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
         temperature: roleSettings.temperature,
         maxTokens: roleSettings.maxTokens,
       );
+
+      // 预加载用户技能缓存，保证本次会话系统提示词中的技能索引完整
+      await SkillRegistry.instance.ensureLoaded();
 
       final dispatcher = AgentToolRegistry.createDefaultDispatcher();
       final agentLoop = AgentLoop(
@@ -523,6 +542,9 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
             break;
           case AgentEventType.turnStart:
             _streamBuffer.clear();
+            // 新一轮思考从零开始，与状态行「第 N 步」语义对齐
+            _thoughtBuffer.clear();
+            state = state.copyWith(clearStreamingThought: true);
             // 首轮不展示步数，避免"第 1 步"这类无信息量文案
             _setStatus((event.turn ?? 0) > 1
                 ? '小Q思考中 · 第 ${event.turn} 步'
@@ -530,13 +552,25 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
             break;
           case AgentEventType.contentDelta:
             if (event.text != null) {
-              _streamBuffer.write(event.text!);
+              _streamBuffer.write(event.text);
+              _scheduleFlush();
+            }
+            break;
+          case AgentEventType.reasoningDelta:
+            if (event.text != null) {
+              _thoughtBuffer.write(event.text);
               _scheduleFlush();
             }
             break;
           case AgentEventType.thoughtUpdate:
-            if (event.text != null && event.text!.isNotEmpty) {
-              _setStatus('💭 ${event.text}');
+            // 轮末完整思考文本直接落入思考区展示（含 <thought> 标签协议路径），
+            // 不再作为瞬态状态行文案被下一事件覆盖
+            final thoughtText = event.text;
+            if (thoughtText != null && thoughtText.isNotEmpty) {
+              _thoughtBuffer
+                ..clear()
+                ..write(thoughtText);
+              state = state.copyWith(streamingThought: thoughtText);
             }
             break;
           case AgentEventType.toolCalling:
@@ -603,8 +637,9 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       _appendSessionMessage(
         ChatMessage(
           role: 'assistant',
-          content: '抱歉，执行出错了：$e',
+          content: '抱歉，执行出错了。\n\n${AiErrorExplainer.describe(e)}',
           timestamp: DateTime.now(),
+          isError: true,
         ),
         signature,
       );
@@ -635,6 +670,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
           messages: List.of(_sessionMessages),
           clearStatusText: true,
           clearStreamingText: true,
+          clearStreamingThought: true,
           clearStreamingStartedAt: true,
         );
       } else {
@@ -643,6 +679,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
           messages: List.of(_sessionMessages),
           clearStatusText: true,
           clearStreamingText: true,
+          clearStreamingThought: true,
           clearStreamingStartedAt: true,
         );
       }
@@ -714,14 +751,21 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
     state = state.copyWith(statusText: text, clearStreamingText: true);
   }
 
-  /// 以约 60ms 的节奏批量刷新流式文本到面板（与 AI 主会话相同的节流策略）
+  /// 以约 60ms 的节奏批量刷新流式文本到面板（与 AI 主会话相同的节流策略），
+  /// 正文与思考缓冲共用本定时器；正文已开始时思考区随状态行一并退场
   void _scheduleFlush() {
     if (_flushTimer != null && _flushTimer!.isActive) return;
     _flushTimer = Timer(const Duration(milliseconds: 60), () {
-      state = state.copyWith(
-        streamingText: _streamBuffer.toString(),
-        clearStatusText: true,
-      );
+      final content = _streamBuffer.toString();
+      if (content.isNotEmpty) {
+        state = state.copyWith(
+          streamingText: content,
+          clearStatusText: true,
+          clearStreamingThought: true,
+        );
+      } else if (_thoughtBuffer.isNotEmpty) {
+        state = state.copyWith(streamingThought: _thoughtBuffer.toString());
+      }
     });
   }
 }

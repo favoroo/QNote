@@ -29,6 +29,7 @@ import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
 import 'package:qnote_flutter/widgets/common/animated_ellipsis.dart';
 import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
+import 'package:qnote_flutter/widgets/common/thought_tail_scroll_view.dart';
 import 'package:qnote_flutter/core/agent/services/agent_interaction_service.dart';
 
 class AiPage extends ConsumerStatefulWidget {
@@ -365,6 +366,159 @@ class _AiPageState extends ConsumerState<AiPage> {
       _scrollToBottom();
     } finally {
       if (mounted) setState(() => _isTyping = false);
+    }
+  }
+
+  // ==========================================
+  // 失败气泡长按操作：重试本轮对话 / 复制错误详情
+  // ==========================================
+
+  /// 长按失败气泡弹出的操作菜单；[stateIndex] 为该消息在会话态中的真实下标。
+  /// 仅当失败气泡是会话最后一条时提供重试，避免回退误删其后已发生的新对话。
+  void _showErrorAssistantActions(int stateIndex, ChatMessage message) {
+    if (_isTyping ||
+        ref.read(aiStreamingMessageProvider) != null ||
+        ref.read(aiStreamingStatusProvider) != null) {
+      Toast.warning(context, '小Q正在生成中，请等待完成后再操作');
+      return;
+    }
+
+    final messages =
+        ref.read(currentChatProvider)?.messages ?? const <ChatMessage>[];
+    final canRetry = stateIndex == messages.length - 1;
+
+    final theme = Theme.of(context);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: theme.colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                if (canRetry)
+                  ListTile(
+                    leading: const Icon(Icons.refresh_rounded, size: 22),
+                    title: const Text('重试本轮对话', style: TextStyle(fontSize: 14)),
+                    subtitle: const Text(
+                      '回退本轮并撤销期间产生的数据修改，然后重新发送上一条提问',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    onTap: () {
+                      Navigator.pop(sheetCtx);
+                      _retryFailedTurn(stateIndex);
+                    },
+                  ),
+                ListTile(
+                  leading: const Icon(Icons.copy_rounded, size: 20),
+                  title: const Text('复制错误详情', style: TextStyle(fontSize: 14)),
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    Clipboard.setData(ClipboardData(text: message.content));
+                    Toast.success(context, '已复制');
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// 重试失败本轮：先回退到本轮用户消息之前（恢复期间已产生的数据修改），
+  /// 再按原文本/图片/附件引用重新发送。附件引用来自发送时持久化的 uiDetails。
+  Future<void> _retryFailedTurn(int errorIndex) async {
+    final messages =
+        ref.read(currentChatProvider)?.messages ?? const <ChatMessage>[];
+    if (errorIndex <= 0 || errorIndex >= messages.length) return;
+
+    // 定位本轮用户消息（失败气泡之前最近的一条 user 消息）
+    int? userIndex;
+    for (var i = errorIndex - 1; i >= 0; i--) {
+      if (messages[i].role == 'user') {
+        userIndex = i;
+        break;
+      }
+    }
+    if (userIndex == null) return;
+    final userMessage = messages[userIndex];
+
+    // 该轮（含其后轮次）记录过数据修改时需二次确认：重试前的回退会撤销这些修改
+    int changeCount = 0;
+    for (final m in messages.skip(userIndex).where((m) => m.role == 'user')) {
+      changeCount += WorkspaceUndoEntry.decodeList(m.undoLog).length;
+    }
+    if (changeCount > 0) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogCtx) => AlertDialog(
+          title: const Text('重试本轮对话？'),
+          content: Text('本轮已产生 $changeCount 处数据修改，重试前会先撤销这些修改。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogCtx, true),
+              child: const Text('重试'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+
+    // 解析发送时持久化的附件引用（旧消息或纯文本/图片提问则视为无引用）
+    final attachments = userMessage.uiDetails?['attachments'];
+    final attachmentMap = attachments is Map ? attachments : null;
+    List<String>? readIds(String key) {
+      final raw = attachmentMap?[key];
+      if (raw is List && raw.isNotEmpty) {
+        return raw.map((e) => e.toString()).toList();
+      }
+      return null;
+    }
+
+    // 复用生成中状态禁用输入区，防止回退与重发期间插入新消息
+    setState(() => _isTyping = true);
+    _scrollToBottom();
+    try {
+      final result = await ref
+          .read(currentChatProvider.notifier)
+          .rollbackToMessage(userIndex);
+      if (!mounted) return;
+      if (result == null) {
+        Toast.error(context, '当前状态无法重试');
+        return;
+      }
+      await ref.read(currentChatProvider.notifier).sendMessage(
+            userMessage.content,
+            images: userMessage.images,
+            noteIds: readIds('notes'),
+            todoIds: readIds('todos'),
+            journalIds: readIds('journals'),
+          );
+    } finally {
+      if (mounted) {
+        setState(() => _isTyping = false);
+        _scrollToBottom();
+      }
     }
   }
 
@@ -872,7 +1026,8 @@ class _AiPageState extends ConsumerState<AiPage> {
             onPause: () =>
                 ref.read(currentChatProvider.notifier).pauseAfterTurnLimit(),
           );
-          // 用户消息长按弹出操作菜单（撤回本轮 / 再次编辑 / 复制）
+          // 用户消息长按弹出操作菜单（撤回本轮 / 再次编辑 / 复制）；
+          // 失败气泡长按弹出重试菜单（重试本轮 / 复制错误详情）
           return RepaintBoundary(
             child: currentIsUser && index < visibleIndexes.length
                 ? GestureDetector(
@@ -880,7 +1035,15 @@ class _AiPageState extends ConsumerState<AiPage> {
                         _showUserMessageActions(visibleIndexes[index], currentMsg),
                     child: bubble,
                   )
-                : bubble,
+                : !currentIsUser &&
+                        currentMsg.isError == true &&
+                        index < visibleIndexes.length
+                    ? GestureDetector(
+                        onLongPress: () => _showErrorAssistantActions(
+                            visibleIndexes[index], currentMsg),
+                        child: bubble,
+                      )
+                    : bubble,
           );
         }
 
@@ -1960,41 +2123,49 @@ class _ChatBubble extends StatelessWidget {
                     ],
                   )
                 : statusText != null
-                ? // 阶段性状态行：弱化色文案 + 逐点渐显的动态省略号，替代原先文本下方的闪烁光标
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 2),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Flexible(
-                          child: Text(
-                            statusText,
-                            style: TextStyle(
-                              color: theme.colorScheme.onSurfaceVariant,
-                              fontSize: 14,
-                              height: 1.5,
+                ? // 阶段性状态行：弱化色文案 + 逐点渐显的动态省略号，替代原先文本下方的闪烁光标；
+                  // 下方挂实时思考区（模型返回 reasoning_content 时滚动展示思考过程）
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                statusText,
+                                style: TextStyle(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                  fontSize: 14,
+                                  height: 1.5,
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                        // 底部留 5px 让圆点与文字基线视觉对齐
-                        const Padding(
-                          padding: EdgeInsets.only(left: 4, bottom: 5),
-                          child: AnimatedEllipsis(),
-                        ),
-                        // 已用时递增计数：长任务期间传达"仍在推进，没有卡住"
-                        Padding(
-                          padding: const EdgeInsets.only(left: 4, bottom: 5),
-                          child: StreamingElapsedText(
-                            startedAt: statusStartedAt,
-                            style: TextStyle(
-                              color: theme.colorScheme.onSurfaceVariant,
-                              fontSize: 12,
+                            // 底部留 5px 让圆点与文字基线视觉对齐
+                            const Padding(
+                              padding: EdgeInsets.only(left: 4, bottom: 5),
+                              child: AnimatedEllipsis(),
                             ),
-                          ),
+                            // 已用时递增计数：长任务期间传达"仍在推进，没有卡住"
+                            Padding(
+                              padding: const EdgeInsets.only(left: 4, bottom: 5),
+                              child: StreamingElapsedText(
+                                startedAt: statusStartedAt,
+                                style: TextStyle(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                      const _LiveThoughtView(),
+                    ],
                   )
                 : !hasRenderableBody
                 ? const _TypingDots()
@@ -2927,6 +3098,50 @@ class _ThoughtProcessViewState extends State<_ThoughtProcessView> {
                   ],
                 ],
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 「思考中」状态卡内的实时思考区：模型思考增量（reasoning_content）限高滚动展示，
+/// 视觉沿用 [_ThoughtProcessView] 的胶囊语言，滚动与贴底跟随由 [ThoughtTailScrollView] 承担
+class _LiveThoughtView extends ConsumerWidget {
+  const _LiveThoughtView();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final thought = ref.watch(aiStreamingThoughtProvider);
+    if (thought == null || thought.trim().isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final theme = Theme.of(context);
+    return AnimatedSize(
+      duration: AppDurations.fast,
+      curve: Curves.easeOut,
+      alignment: Alignment.topCenter,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Container(
+          width: double.infinity,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: theme.colorScheme.primary.withValues(alpha: 0.18),
+            ),
+          ),
+          child: ThoughtTailScrollView(
+            text: thought.trim(),
+            maxHeight: 96,
+            textStyle: TextStyle(
+              fontSize: 12,
+              height: 1.5,
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
+              fontStyle: FontStyle.italic,
             ),
           ),
         ),

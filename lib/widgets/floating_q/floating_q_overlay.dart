@@ -16,6 +16,7 @@ import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
 import 'package:qnote_flutter/widgets/common/animated_ellipsis.dart';
 import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
+import 'package:qnote_flutter/widgets/common/thought_tail_scroll_view.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 
 /// 全局悬浮小Q入口：悬浮球 + 快捷对话面板。
@@ -691,6 +692,13 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
           _buildStatusLine(theme, fq.statusText!, fq.streamingStartedAt),
         ),
       );
+      // 思考中状态行下方挂实时思考尾随区（模型返回思考增量时才出现）
+      final liveThought = fq.streamingThought;
+      if (liveThought != null && liveThought.trim().isNotEmpty) {
+        children.add(
+          _buildEntrance(_buildThoughtTail(theme, liveThought.trim())),
+        );
+      }
     } else if (fq.streamingText != null && fq.streamingText!.isNotEmpty) {
       children.add(
         _buildEntrance(_buildAssistantBubble(theme, fq.streamingText!)),
@@ -851,6 +859,24 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 实时思考尾随区：裸文本不加容器（面板空间小，保持轻量），
+  /// 限高 2 行自动贴底滚动，随思考增量流式更新
+  Widget _buildThoughtTail(ThemeData theme, String thought) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: ThoughtTailScrollView(
+        text: thought,
+        maxHeight: 40,
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+        textStyle: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
+          fontStyle: FontStyle.italic,
+          height: 1.4,
+        ),
       ),
     );
   }

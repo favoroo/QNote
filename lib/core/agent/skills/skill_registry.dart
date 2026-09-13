@@ -1,7 +1,20 @@
+import 'package:qnote_flutter/core/storage/config_repository.dart';
+import 'package:qnote_flutter/models/agent_skill.dart';
+
 /// QNote 内置 Agent 专业技能注册表与手册加载中心
+///
+/// 技能分两层：
+/// - **内置技能**：本文件内的 Dart 字符串常量，随 App 发行版本更新，对用户与小Q均只读；
+/// - **用户技能**：持久化于 app_configs（键前缀 `agent_skill_`），可由用户在
+///   「小Q技能」管理页或小Q经 VFS `/skills/<name>.md` 增删改，App 更新不会覆盖。
 class SkillRegistry {
   static final SkillRegistry instance = SkillRegistry._();
   SkillRegistry._();
+
+  /// 用户技能内存缓存（ensureLoaded 后可用；写操作即时同步）
+  final List<AgentSkill> _userSkills = [];
+  bool _loaded = false;
+  Future<void>? _loadingFuture;
 
   static const String todoManagerDoc = '''---
 name: todo-manager
@@ -473,49 +486,65 @@ description: 网页设计技能：精美单文件 HTML 网页/落地页/H5/海�
 - 大段数据（表格、榜单）用低饱和底 + 高对比文字，密度可以高，但层级必须清楚。
 ''';
 
-  /// 获取所有可用 Skill 清单
+  /// 获取所有可用 Skill 清单（内置 + 用户技能，含 `origin` 来源标记）
   List<Map<String, String>> listSkills() {
     return [
       {
         'name': 'todo-manager',
         'path': '/skills/todo-manager.md',
         'description': '待办事项管理：待办分类（今日/长期/工作/学习等）、GTD任务规划、优先级标记与状态切换',
+        'origin': AgentSkillOrigin.builtin,
       },
       {
         'name': 'note-manager',
         'path': '/skills/note-manager.md',
         'description': '笔记与知识库管理：多层笔记本分类、Markdown 深度排版、标签管理与置顶',
+        'origin': AgentSkillOrigin.builtin,
       },
       {
         'name': 'timeline-manager',
         'path': '/skills/timeline-manager.md',
         'description': '时间线流水记录：每日流水记事、时间戳打卡、情绪与身体状态追踪',
+        'origin': AgentSkillOrigin.builtin,
       },
       {
         'name': 'journal-manager',
         'path': '/skills/journal-manager.md',
         'description': '每日深度日记：长篇日记、反思复盘、情绪体察与九宫格总结',
+        'origin': AgentSkillOrigin.builtin,
       },
       {
         'name': 'folder-manager',
         'path': '/skills/folder-manager.md',
         'description': '分类与笔记本目录管理：查看待办/笔记分类树、重命名分类、调整排序与级联删除',
+        'origin': AgentSkillOrigin.builtin,
       },
       {
         'name': 'settings-manager',
         'path': '/skills/settings-manager.md',
         'description': '系统偏好与配置：外观主题模式与强调色、AI模型分配与参数、快捷打卡按键、固定作息、个人画像与云同步',
+        'origin': AgentSkillOrigin.builtin,
       },
       {
         'name': 'stats-analyst',
         'path': '/skills/stats-analyst.md',
         'description': '数据洞察与生活评分分析：待办完成率汇总、近7天分类统计、每日生活健康总分与维度改进建议',
+        'origin': AgentSkillOrigin.builtin,
       },
       {
         'name': 'frontend-design',
         'path': '/skills/frontend-design.md',
         'description': '网页设计：精美单文件 HTML 网页/海报/邀请函/简历/数据可视化页面，美学方向、移动端适配、动效与工艺规范',
+        'origin': AgentSkillOrigin.builtin,
       },
+      // 用户技能追加在内置之后，由 Agent/UI 按需加载
+      for (final skill in _userSkills)
+        {
+          'name': skill.name,
+          'path': AgentSkill.pathOf(skill.name),
+          'description': skill.description,
+          'origin': AgentSkillOrigin.user,
+        },
     ];
   }
 
@@ -567,7 +596,102 @@ description: 网页设计技能：精美单文件 HTML 网页/落地页/H5/海�
       case 'ui':
         return frontendDesignDoc;
       default:
+        // 内置未命中时回退查用户技能（同步读内存缓存）
+        for (final skill in _userSkills) {
+          if (skill.name == key) return skill.toMarkdown();
+        }
         return null;
     }
+  }
+
+  // ==========================================
+  // 用户技能层：加载 / 查询 / 增删改
+  // ==========================================
+
+  /// 确保用户技能缓存已从数据库加载（幂等；并发调用共享同一次加载）
+  Future<void> ensureLoaded() {
+    if (_loaded) return Future.value();
+    return _loadingFuture ??= _loadFromDb().whenComplete(() {
+      _loaded = true;
+      _loadingFuture = null;
+    });
+  }
+
+  /// 强制从数据库重载用户技能缓存（对话开始、云同步导入后刷新用）
+  Future<void> reload() async {
+    _loaded = false;
+    _loadingFuture = null;
+    await ensureLoaded();
+  }
+
+  Future<void> _loadFromDb() async {
+    final skills = await ConfigRepository.instance.getUserSkills();
+    _userSkills
+      ..clear()
+      ..addAll(skills);
+  }
+
+  /// 内置技能主名（用于 UI 来源标记与重名校验）
+  static const Set<String> builtinSkillNames = {
+    'todo-manager',
+    'note-manager',
+    'timeline-manager',
+    'journal-manager',
+    'folder-manager',
+    'settings-manager',
+    'stats-analyst',
+    'frontend-design',
+  };
+
+  /// 内置技能别名（getSkillContent 的模糊匹配名，同样禁止用户技能占用）
+  static const Set<String> _builtinAliasNames = {
+    'todo', 'todos', 'note', 'notes', 'timeline', 'journal',
+    'folder', 'folders', 'settings', 'config', 'stats', 'statistics',
+    'frontend', 'web-design', 'web', 'design', 'ui',
+  };
+
+  /// 名称是否被内置技能（含别名）保留
+  bool isReservedName(String name) =>
+      builtinSkillNames.contains(name) || _builtinAliasNames.contains(name);
+
+  /// 是否为内置技能主名
+  bool isBuiltinSkill(String name) => builtinSkillNames.contains(name);
+
+  /// 获取单个用户技能（未加载时返回 null；UI/Provider 层应先 ensureLoaded）
+  AgentSkill? getUserSkill(String name) {
+    for (final skill in _userSkills) {
+      if (skill.name == name) return skill;
+    }
+    return null;
+  }
+
+  /// 新建或更新一个用户技能（内置名/别名/非法名直接抛异常）
+  ///
+  /// 仅更新缓存与数据库，不广播事件——Agent 侧写入的广播由 VFS 层负责，
+  /// UI 侧写入由 Provider 自行刷新（与 /memory/ 的写入模式一致）。
+  Future<void> saveUserSkill(AgentSkill skill) async {
+    final name = skill.name.trim();
+    if (!AgentSkill.isValidName(name)) {
+      throw Exception('技能名称不合法：不能为空、含空白或路径分隔符，且不超过 40 字');
+    }
+    if (isReservedName(name)) {
+      throw Exception('「$name」是内置技能占用的名称，请换一个名字');
+    }
+    await ensureLoaded();
+    final updated = skill.copyWith(name: name, updatedAt: DateTime.now());
+    await ConfigRepository.instance.saveUserSkill(updated);
+    _userSkills.removeWhere((s) => s.name == name);
+    _userSkills.add(updated);
+    _userSkills.sort((a, b) => a.name.compareTo(b.name));
+  }
+
+  /// 删除一个用户技能（内置技能名直接抛异常）
+  Future<void> deleteUserSkill(String name) async {
+    if (isBuiltinSkill(name)) {
+      throw Exception('内置技能不可删除');
+    }
+    await ensureLoaded();
+    await ConfigRepository.instance.deleteUserSkill(name);
+    _userSkills.removeWhere((s) => s.name == name);
   }
 }

@@ -1,5 +1,6 @@
 import 'package:qnote_flutter/core/agent/models/agent_tool.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
+import 'package:qnote_flutter/models/agent_skill.dart';
 
 /// 技能查阅与加载工具
 ///
@@ -18,8 +19,9 @@ class SkillTool extends AgentTool {
   String get description =>
       '查看或激活指定的专业技能手册。遇到需要「按规范办事」的复杂任务时先看手册，'
       '例如 GTD 清单整理、长文/卡片排版、日记复盘、数据洞察解读、分类目录维护、系统与 AI 配置、'
-      '网页/海报/邀请函/可视化页面设计（frontend-design）。'
+      '网页/海报/邀请函/可视化页面设计（frontend-design），以及用户自定义技能。'
       '不填 name 列出全部技能；只关心手册里某一章时传 section（序号或标题关键词），可只取该章、省下上下文。'
+      '用户可通过 write_file("/skills/<名称>.md") 创建自定义技能，内置技能只读。'
       '简单任务（记一条待办、写一条流水）不必查阅手册，直接照 /AGENTS.md 规范执行。';
 
   @override
@@ -50,8 +52,13 @@ class SkillTool extends AgentTool {
       final buffer = StringBuffer();
       buffer.writeln('# 可用技能手册清单\n');
       for (final s in skills) {
-        buffer.writeln('- **${s['name']}** (`${s['path']}`): ${s['description']}');
+        // 自定义技能单独标注，提示模型其可被编辑与删除
+        final tag = s['origin'] == AgentSkillOrigin.user ? '（自定义技能）' : '';
+        buffer.writeln('- **${s['name']}**$tag (`${s['path']}`): ${s['description']}');
       }
+      buffer.writeln(
+        '\n自定义技能可通过 write_file("/skills/<名称>.md") 创建或更新，delete_file 删除；内置技能只读。',
+      );
       return ToolResult.success(
         buffer.toString().trimRight(),
         uiDetails: {'skills': skills},

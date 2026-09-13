@@ -8,6 +8,7 @@ import 'package:qnote_flutter/pages/ai_page.dart';
 import 'package:qnote_flutter/pages/statistics_page.dart';
 import 'package:qnote_flutter/pages/settings/user_profile_page.dart';
 import 'package:qnote_flutter/pages/settings/q_memory_page.dart';
+import 'package:qnote_flutter/pages/settings/q_skills_page.dart';
 import 'package:qnote_flutter/pages/settings/ai_config_page.dart';
 import 'package:qnote_flutter/pages/settings/shortcuts_page.dart';
 import 'package:qnote_flutter/pages/settings/fixed_events_page.dart';
@@ -134,6 +135,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/settings/q-memory',
         parentNavigatorKey: rootNavigatorKey,
         pageBuilder: (context, state) => _fadeTransitionPage(const QMemoryPage()),
+      ),
+      GoRoute(
+        path: '/settings/q-skills',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => _fadeTransitionPage(const QSkillsPage()),
       ),
       GoRoute(
         path: '/settings/ai-config',
