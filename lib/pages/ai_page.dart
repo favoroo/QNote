@@ -174,6 +174,10 @@ class _AiPageState extends ConsumerState<AiPage> {
     FocusScope.of(context).unfocus();
     setState(() => _isTyping = true);
     _scrollToBottom();
+    // 延迟一帧在软键盘开始收起时再次校准滚动，确保占位气泡第一时间露出
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _scrollToBottom(immediate: true);
+    });
 
     try {
       if (ref.read(currentChatProvider) == null) {
@@ -870,13 +874,19 @@ class _AiPageState extends ConsumerState<AiPage> {
         _scrollToBottomIfNeeded();
       }
     });
+    // 监听实时思考过程更新：思考卡长高时自动贴底，防止被底部输入栏遮挡
+    ref.listen(aiStreamingThoughtProvider, (prev, next) {
+      if (next != null && next.isNotEmpty) {
+        _scrollToBottomIfNeeded();
+      }
+    });
 
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    if (bottomInset > _lastBottomInset) {
-      // 软键盘弹起或高度增加，在下一帧平滑滚动到底部跟随避让
+    if (bottomInset != _lastBottomInset) {
+      // 软键盘高度变化（弹起避让或收拢恢复），在下一帧重新校准贴底
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          _scrollToBottom();
+          _scrollToBottomIfNeeded();
         }
       });
     }
@@ -1050,18 +1060,24 @@ class _AiPageState extends ConsumerState<AiPage> {
         if (showTyping && index == displayMessages.length) {
           // 如果上一条已经是小Q回复，打字指示器隐藏头像并紧凑排列
           final prevIsAssistant = displayMessages.isNotEmpty && !isUserMsg(displayMessages.last);
-          return _TypingBubble(
-            isFirstInGroup: !prevIsAssistant,
-            isLastInGroup: !showStreaming,
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _TypingBubble(
+              isFirstInGroup: !prevIsAssistant,
+              isLastInGroup: !showStreaming,
+            ),
           );
         }
 
-        // 流式气泡
+        // 流式气泡（含思考中状态卡）：底部增加留白，确保不紧贴输入栏
         final lastMsg = displayMessages.isNotEmpty ? displayMessages.last : null;
         final prevIsAssistant = lastMsg != null && !isUserMsg(lastMsg);
-        return _StreamingBubble(
-          isFirstInGroup: !prevIsAssistant && !showTyping,
-          isLastInGroup: true,
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _StreamingBubble(
+            isFirstInGroup: !prevIsAssistant && !showTyping,
+            isLastInGroup: true,
+          ),
         );
       },
     ),
@@ -1552,6 +1568,8 @@ class _AiPageState extends ConsumerState<AiPage> {
           return '内置 DeepSeek V4 Flash';
         case 'gemini-3.8-flash-low':
           return '内置 Gemini 3.8 Flash Low';
+        case 'claude-sonnet-4-6':
+          return '内置 Claude Sonnet 4.6';
         case 'gemini-3.5-flash-lite':
           return '内置 Gemini 3.5 Flash Lite';
         default:
@@ -2885,8 +2903,7 @@ class _TypingDotsState extends State<_TypingDots>
   }
 }
 
-/// 动态省略号：三个圆点依次渐显、周期尾整体淡出后循环，
-/// 用于流式占位状态行，弱化"卡住不动"的等待感
+/// 思考过程展示：折叠态呈现简洁的「思考过程」标签胶囊（不滚动文字），点击平滑展开查看完整思考富文本
 class _ThoughtProcessView extends StatefulWidget {
   final String thought;
 
@@ -2900,60 +2917,10 @@ class _ThoughtProcessView extends StatefulWidget {
 
 class _ThoughtProcessViewState extends State<_ThoughtProcessView> {
   bool _isExpanded = false;
-  late final ScrollController _marqueeScrollController;
-  Timer? _marqueeTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    _marqueeScrollController = ScrollController();
-    // 延迟启动轻量跑马灯滚动，让文字在单行内平滑流动
-    WidgetsBinding.instance.addPostFrameCallback((_) => _startMarquee());
-  }
-
-  void _startMarquee() {
-    if (!mounted) return;
-    _marqueeTimer?.cancel();
-    _marqueeTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
-      if (!mounted || _isExpanded || !_marqueeScrollController.hasClients) return;
-      final maxScroll = _marqueeScrollController.position.maxScrollExtent;
-      if (maxScroll <= 0) return;
-
-      final current = _marqueeScrollController.offset;
-      final next = current + 1.2;
-      if (next >= maxScroll) {
-        // 滚动到尽头后暂停片刻并平滑回滚到起点，形成流水循环
-        _marqueeTimer?.cancel();
-        Future.delayed(const Duration(milliseconds: 1200), () {
-          if (!mounted || _isExpanded || !_marqueeScrollController.hasClients) return;
-          _marqueeScrollController.animateTo(
-            0,
-            duration: const Duration(milliseconds: 800),
-            curve: Curves.easeInOut,
-          ).then((_) {
-            Future.delayed(const Duration(milliseconds: 1000), () {
-              if (mounted) _startMarquee();
-            });
-          });
-        });
-      } else {
-        _marqueeScrollController.jumpTo(next);
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _marqueeTimer?.cancel();
-    _marqueeScrollController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // 清洗思考过程开头的换行与多余空格，保证单行流水整洁
-    final cleanThought = widget.thought.replaceAll(RegExp(r'\s+'), ' ').trim();
 
     return AnimatedSize(
       duration: AppDurations.medium,
@@ -2971,17 +2938,7 @@ class _ThoughtProcessViewState extends State<_ThoughtProcessView> {
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: () {
-              setState(() {
-                _isExpanded = !_isExpanded;
-                if (!_isExpanded) {
-                  // 收起时重置并重启单行流水跑马灯
-                  WidgetsBinding.instance.addPostFrameCallback((_) => _startMarquee());
-                } else {
-                  _marqueeTimer?.cancel();
-                }
-              });
-            },
+            onTap: () => setState(() => _isExpanded = !_isExpanded),
             borderRadius: BorderRadius.circular(10),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
@@ -2989,7 +2946,7 @@ class _ThoughtProcessViewState extends State<_ThoughtProcessView> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // 顶部单行胶囊栏
+                  // 顶部单行胶囊栏：静态标签 + 展开箭头（不再滚动显示思考文字）
                   Row(
                     children: [
                       Icon(
@@ -3014,49 +2971,7 @@ class _ThoughtProcessViewState extends State<_ThoughtProcessView> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      // 折叠态：单行水平渐变淡出流水跑马灯
-                      if (!_isExpanded)
-                        Expanded(
-                          child: ShaderMask(
-                            shaderCallback: (rect) {
-                              return const LinearGradient(
-                                colors: [
-                                  Colors.white,
-                                  Colors.white,
-                                  Colors.transparent,
-                                ],
-                                stops: [0.0, 0.88, 1.0],
-                              ).createShader(rect);
-                            },
-                            blendMode: BlendMode.dstIn,
-                            child: SingleChildScrollView(
-                              controller: _marqueeScrollController,
-                              scrollDirection: Axis.horizontal,
-                              physics: const NeverScrollableScrollPhysics(),
-                              child: Text(
-                                cleanThought,
-                                maxLines: 1,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
-                                  fontStyle: FontStyle.italic,
-                                ),
-                              ),
-                            ),
-                          ),
-                        )
-                      else
-                        Expanded(
-                          child: Text(
-                            '点击折叠',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: theme.colorScheme.outline,
-                            ),
-                          ),
-                        ),
-                      const SizedBox(width: 4),
+                      const Spacer(),
                       AnimatedRotation(
                         turns: _isExpanded ? 0.5 : 0,
                         duration: AppDurations.normal,
@@ -3268,6 +3183,7 @@ class _ModelSelectorDialog extends StatelessWidget {
     final theme = Theme.of(context);
 
     final builtinModels = [
+      {'id': 'free:claude-sonnet-4-6', 'name': '内置 Claude Sonnet 4.6'},
       {'id': 'free:gemini-3.5-flash-lite', 'name': '内置 Gemini 3.5 Flash Lite'},
       {'id': 'free:gemini-3.8-flash-low', 'name': '内置 Gemini 3.8 Flash Low'},
       {'id': 'free:sensenova-flash-lite', 'name': '内置 SenseNova 6.8'},

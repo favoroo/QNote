@@ -16,7 +16,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 class FreeModelService {
   static final FreeModelService _instance = FreeModelService._();
   static FreeModelService get instance => _instance;
-  FreeModelService._();
+  FreeModelService._() {
+    _registerEndpointRefresher();
+  }
 
   // jsDelivr 加速（国内友好）+ GitHub raw 回退
   static const _jsdelivrUrl =
@@ -34,6 +36,8 @@ class FreeModelService {
   // SharedPreferences 缓存键
   static const _cacheKey = 'free_models_cache';
   static const _lastUpdateKey = 'free_models_last_update';
+  static const _dynamicBaseUrlCacheKey = 'cpa_dynamic_base_url';
+  static const _dynamicFallbackCacheKey = 'cpa_dynamic_fallback_base_url';
 
   final Dio _dio = Dio(
     BaseOptions(
@@ -79,6 +83,10 @@ class FreeModelService {
   }
 
   /// 从云端拉取最新的动态 CPA 公网端点（优先使用 Cloudflare 极速地址，失败时静默回退）
+  ///
+  /// 成功后同时应用 primary 与 fallback（若云端提供且不同于 primary）到内存
+  /// 静态变量，并持久化到 SharedPreferences；返回 primary 地址，三级源全部
+  /// 失败或载荷无效时返回 null（保留当前/缓存值兜底）。
   Future<String?> fetchDynamicCpaEndpoint() async {
     for (final url in _dynamicCpaEndpoints) {
       try {
@@ -89,25 +97,28 @@ class FreeModelService {
             receiveTimeout: const Duration(seconds: 4),
           ),
         );
-        Map<String, dynamic>? data;
-        if (response.data is Map) {
-          data = Map<String, dynamic>.from(response.data as Map);
-        } else if (response.data is String) {
-          data = jsonDecode(response.data as String) as Map<String, dynamic>;
+        final parsed = parseCpaEndpointPayload(response.data);
+        if (parsed != null) {
+          BuiltinFreeKeys.updateDynamicCpaBaseUrl(parsed.primary);
+          BuiltinFreeKeys.updateDynamicCpaFallbackBaseUrl(parsed.fallback);
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(_dynamicBaseUrlCacheKey, parsed.primary);
+          await prefs.setString(
+            _dynamicFallbackCacheKey,
+            parsed.fallback ?? '',
+          );
+          LoggerService.instance.logAI(
+            'CPA 动态端点拉取成功',
+            details: '有效URL=${parsed.primary}'
+                '${parsed.fallback != null ? ', 备用URL=${parsed.fallback}' : ''}'
+                ', 来源=$url',
+          );
+          return parsed.primary;
         }
-        if (data != null && data['primary_base_url'] != null) {
-          final primaryUrl = data['primary_base_url'].toString().trim();
-          if (primaryUrl.isNotEmpty) {
-            BuiltinFreeKeys.updateDynamicCpaBaseUrl(primaryUrl);
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setString('cpa_dynamic_base_url', primaryUrl);
-            LoggerService.instance.logAI(
-              'CPA 动态端点拉取成功',
-              details: '有效URL=$primaryUrl, 来源=$url',
-            );
-            return primaryUrl;
-          }
-        }
+        LoggerService.instance.logAI(
+          'CPA 动态端点载荷无有效地址: $url',
+          level: LogLevel.warning,
+        );
       } catch (e) {
         LoggerService.instance.logAI(
           '尝试拉取 CPA 动态端点失败: $url',
@@ -119,19 +130,93 @@ class FreeModelService {
     return null;
   }
 
-  /// 获取内置模型列表（包含 Gemini 3.5 Flash Lite、Gemini 3.8 Flash Low、SenseNova 6.8、GLM 5.2、DeepSeek V4 Flash）
+  /// 解析端点 JSON 载荷为 (primary, fallback) 地址对
+  ///
+  /// primary 缺失或无效时返回 null；fallback 缺失、与 primary 相同或无效时
+  /// 为 null。URL 仅接受 https 明文地址（与请求端 updateConfig 的校验口径
+  /// 一致）：云端 JSON 一旦被污染，明文 http 地址会带着内置 API Key 一起
+  /// 泄露给任意主机，必须在此拦截。
+  static CpaEndpointPair? parseCpaEndpointPayload(dynamic payload) {
+    Map<String, dynamic>? data;
+    if (payload is Map) {
+      data = Map<String, dynamic>.from(payload);
+    } else if (payload is String) {
+      try {
+        final decoded = jsonDecode(payload);
+        if (decoded is Map) data = Map<String, dynamic>.from(decoded);
+      } catch (_) {
+        return null;
+      }
+    }
+    if (data == null) return null;
+    final primary = _sanitizeEndpointUrl(data['primary_base_url']);
+    if (primary == null) return null;
+    final fallback = _sanitizeEndpointUrl(data['fallback_base_url']);
+    return CpaEndpointPair(
+      primary: primary,
+      fallback: fallback == primary ? null : fallback,
+    );
+  }
+
+  /// 校验并归一化单个端点 URL：合法 https 地址且 host 非空，去除尾部斜杠
+  static String? _sanitizeEndpointUrl(dynamic value) {
+    if (value == null) return null;
+    final raw = value.toString().trim();
+    if (raw.isEmpty || raw.length > 500) return null;
+    final uri = Uri.tryParse(raw);
+    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return null;
+    return raw.replaceAll(RegExp(r'/+$'), '');
+  }
+
+  /// 注册 AiService 的动态端点刷新钩子
+  ///
+  /// AiService 不反向依赖本类（避免循环 import），故以静态回调注入：
+  /// 连接类瞬时故障重试前由 AiService 调用，拉取云端最新端点并在
+  /// primary/fallback 与当前地址不同时返回新地址完成切换。
+  void _registerEndpointRefresher() {
+    AiService.dynamicEndpointRefresher = (currentBaseUrl) async {
+      // 仅当故障端点属于动态 CPA 家族（primary/fallback/兜底 Tailscale 地址）
+      // 时才参与刷新，用户自定义端点与 SenseNova 官方网关不受影响
+      final family = <String>{
+        BuiltinFreeKeys.defaultTailscaleBaseUrl,
+        if (BuiltinFreeKeys.dynamicCpaBaseUrl.isNotEmpty)
+          BuiltinFreeKeys.dynamicCpaBaseUrl,
+        if (BuiltinFreeKeys.dynamicCpaFallbackBaseUrl.isNotEmpty)
+          BuiltinFreeKeys.dynamicCpaFallbackBaseUrl,
+      };
+      if (!family.contains(currentBaseUrl)) return null;
+
+      await fetchDynamicCpaEndpoint();
+      final primary = BuiltinFreeKeys.dynamicCpaBaseUrl;
+      if (primary.isNotEmpty && primary != currentBaseUrl) {
+        return primary;
+      }
+      final fallback = BuiltinFreeKeys.dynamicCpaFallbackBaseUrl;
+      if (fallback.isNotEmpty && fallback != currentBaseUrl) {
+        return fallback;
+      }
+      return null;
+    };
+  }
+
+  /// 获取内置模型列表（包含 Claude Sonnet 4.6、Gemini 3.5 Flash Lite、Gemini 3.8 Flash Low、SenseNova 6.8、GLM 5.2、DeepSeek V4 Flash）
   Future<List<FreeModelConfig>> getCachedModels() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final cachedUrl = prefs.getString('cpa_dynamic_base_url');
+      final cachedUrl = prefs.getString(_dynamicBaseUrlCacheKey);
       if (cachedUrl != null && cachedUrl.isNotEmpty) {
         BuiltinFreeKeys.updateDynamicCpaBaseUrl(cachedUrl);
+      }
+      final cachedFallback = prefs.getString(_dynamicFallbackCacheKey);
+      if (cachedFallback != null) {
+        BuiltinFreeKeys.updateDynamicCpaFallbackBaseUrl(cachedFallback);
       }
       // 触发一次后台轻量异步探测更新（不阻塞当前返回）
       unawaited(fetchDynamicCpaEndpoint());
     } catch (_) {}
 
     return [
+      BuiltinFreeKeys.createClaudeSonnet46Config(),
       BuiltinFreeKeys.createGemini35Config(),
       BuiltinFreeKeys.createGemini38Config(),
       BuiltinFreeKeys.createDefaultConfig(),
@@ -234,8 +319,9 @@ class FreeModelService {
     final isSenseNovaBuiltinKey = model.id.contains('sensenova') ||
         model.id == 'glm-5.2' ||
         model.id == 'deepseek-v4-flash';
-    // Gemini 专用网关的内置模型（含生图模型 gemini-3.1-flash-image）
-    final isGeminiBuiltinKey = model.id == 'gemini-3.8-flash-low' ||
+    // Gemini 专用网关的内置模型（含 Claude Sonnet 4.6 与生图模型 gemini-3.1-flash-image）
+    final isGeminiBuiltinKey = model.id == 'claude-sonnet-4-6' ||
+        model.id == 'gemini-3.8-flash-low' ||
         model.id == 'gemini-3.5-flash-lite' ||
         model.id == 'gemini-3.1-flash-image';
 
@@ -280,4 +366,15 @@ class FreeModelService {
     final rest = sorted.where((m) => m.id != preferredId).toList();
     return [...preferred, ...rest];
   }
+}
+
+/// 动态端点 JSON 的解析结果
+///
+/// [primary] 必有（已通过 https/host 校验），[fallback] 为云端备用地址，
+/// 缺失、无效或与 primary 相同时为 null。
+class CpaEndpointPair {
+  final String primary;
+  final String? fallback;
+
+  const CpaEndpointPair({required this.primary, this.fallback});
 }

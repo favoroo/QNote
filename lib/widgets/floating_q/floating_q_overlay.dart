@@ -648,10 +648,12 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
     final theme = Theme.of(context);
     final fq = ref.watch(floatingQProvider);
 
-    // 消息流或流式状态变化时滚到底部
+    // 消息流或流式状态变化（正文、状态文案、实时思考内容）时滚到底部
     ref.listen<FloatingQState>(floatingQProvider, (prev, next) {
       if (prev?.messages.length != next.messages.length ||
-          prev?.streamingText != next.streamingText) {
+          prev?.streamingText != next.streamingText ||
+          prev?.statusText != next.statusText ||
+          prev?.streamingThought != next.streamingThought) {
         _scrollToBottom();
       }
     });

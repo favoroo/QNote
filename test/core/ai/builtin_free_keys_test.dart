@@ -19,9 +19,16 @@ void main() {
       }
     });
 
-    test('Gemini 专用内置密钥解密正确且配置完整', () {
+    test('Gemini / CPA 专用内置密钥解密正确且配置完整', () {
       final geminiKey = BuiltinFreeKeys.getGeminiApiKey();
       expect(geminiKey, equals('sk-hq13789130001'));
+
+      final mClaude = BuiltinFreeKeys.createClaudeSonnet46Config();
+      expect(mClaude.id, equals('claude-sonnet-4-6'));
+      expect(mClaude.displayName, equals('Claude Sonnet 4.6'));
+      expect(mClaude.modelName, equals('claude-sonnet-4-6'));
+      expect(mClaude.baseUrl, equals('https://1demacbook-pro.tail77f123.ts.net/v1'));
+      expect(mClaude.provider, equals('openai'));
 
       final m38 = BuiltinFreeKeys.createGemini38Config();
       expect(m38.id, equals('gemini-3.8-flash-low'));

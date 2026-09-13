@@ -155,22 +155,52 @@ class AiService {
   /// 只能靠时间退避穿越瞬时故障（TLS 握手中断、连接重置、网关 5xx 等），固定 3 次。
   static const int _genericMaxRetries = 3;
 
+  /// 连接层瞬时故障的重试次数上限（仅限非 SenseNova Key 池）
+  ///
+  /// TLS 握手中断/连接重置多来自网关隧道重连或证书冷启动，恢复常需数秒，
+  /// 配合 [FreeModelKeyManager.getConnectionBackoffDelay] 的 1s/2s/4s/8s 退避，
+  /// 总穿越窗口约 15 秒；HTTP 状态码类错误仍走 [_genericMaxRetries]。
+  static const int _connectionMaxRetries = 5;
+
+  /// 两次「重试前刷新动态端点」之间的最小间隔
+  ///
+  /// 刷新会真实发起网络请求（三级源各 3s/4s 超时），用时间节流代替
+  /// 逐请求标记，避免在多个请求方法里各自维护状态
+  static const Duration _endpointRefreshMinInterval = Duration(seconds: 15);
+
+  /// 瞬时故障重试前刷新动态端点的回调（由 FreeModelService 注册，AiService
+  /// 不反向依赖它以避免循环 import）
+  ///
+  /// 入参为当前请求的 baseUrl；返回新 baseUrl 表示切换（调用方会同步更新
+  /// Dio 与配置），返回 null 表示维持现状。
+  static Future<String?> Function(String currentBaseUrl)? dynamicEndpointRefresher;
+
+  /// 上次动态端点刷新时间（节流用）
+  DateTime? _lastEndpointRefreshAt;
+
   /// 单次请求的重试深度
   ///
   /// - SenseNova 免费网关：等于 Key 池容量，每个 Key 各试一次
   /// - 其它（含用户自定义模型）：[_genericMaxRetries] 次纯退避重试
   int get _maxRetries {
-    final isSenseNovaPool = _config?.vendorId == 'free_model' &&
-        _config?.baseUrl.contains('sensenova') == true;
-    return isSenseNovaPool
+    return _isSenseNovaPool
         ? FreeModelKeyManager.instance.totalKeysCount
         : _genericMaxRetries;
   }
+
+  /// 当前配置是否属于 SenseNova Key 池（其故障以限流/Key 失效为主，重试策略独立）
+  bool get _isSenseNovaPool =>
+      _config?.vendorId == 'free_model' &&
+      _config?.baseUrl.contains('sensenova') == true;
 
   /// 统一的重试决策：判断本次失败是否值得重试，值得则切换可用 Key（若有）并退避等待
   ///
   /// [hasYielded] 供流式场景使用 —— 首包已产出后不再重试，否则调用方会收到重复内容。
   /// 返回 `true` 时调用方应 `retryCount++` 后 `continue` 重发本轮请求。
+  ///
+  /// 连接层瞬时故障（TLS 握手中断等）走差异化策略：非 SenseNova 池放宽到
+  /// [_connectionMaxRetries] 次、1s/2s/4s/8s 退避，且从第 2 次重试起先刷新
+  /// 动态 CPA 端点（网关可能已在云端换址）再重发。
   Future<bool> _shouldRetryAndWait(
     Object error,
     int retryCount, {
@@ -178,21 +208,74 @@ class AiService {
     required String scene,
   }) async {
     if (hasYielded) return false;
-    if (retryCount >= _maxRetries) return false;
+    final isConnectionError =
+        FreeModelKeyManager.instance.isConnectionClassError(error);
+    final isConnectionScene = isConnectionError && !_isSenseNovaPool;
+    final maxRetries = isConnectionScene ? _connectionMaxRetries : _maxRetries;
+    if (retryCount >= maxRetries) return false;
     if (!FreeModelKeyManager.instance.isRecoverableError(error)) return false;
 
     final next = retryCount + 1;
     // 仅 SenseNova Key 池会真正轮到新 Key；自定义模型 / 独立端点此处为 no-op
     final switched = switchFreeModelKey();
-    final delay = FreeModelKeyManager.instance.getBackoffDelay(next);
+    // 连接类故障重试前尝试刷新动态端点：拉到不同地址则切换后重发
+    String? switchedEndpoint;
+    if (isConnectionScene && retryCount >= 1) {
+      switchedEndpoint = await _maybeRefreshDynamicEndpoint();
+    }
+    final delay = isConnectionScene
+        ? FreeModelKeyManager.instance.getConnectionBackoffDelay(next)
+        : FreeModelKeyManager.instance.getBackoffDelay(next);
+    final configDesc = switched
+        ? '已切换备用 API Key'
+        : switchedEndpoint != null
+            ? '已切换动态端点: $switchedEndpoint'
+            : '保持当前配置';
     LoggerService.instance.logAI(
       '$scene 遭遇瞬时故障（${_briefError(error)}），'
-      '${switched ? '已切换备用 API Key' : '保持当前配置'}，'
-      '退避 ${delay.inMilliseconds}ms 后发起第 $next/$_maxRetries 次重试',
+      '$configDesc，退避 ${delay.inMilliseconds}ms 后发起第 $next/$maxRetries 次重试',
       level: LogLevel.warning,
     );
     await Future.delayed(delay);
     return true;
+  }
+
+  /// 连接类瞬时故障重试前刷新动态 CPA 端点
+  ///
+  /// 返回新 baseUrl 并已同步应用到 Dio 与当前配置；null 表示无需切换、
+  /// 未注册刷新回调或刷新未获得新地址。带 15 秒节流，避免重试风暴期间
+  /// 反复拉取云端 JSON。
+  Future<String?> _maybeRefreshDynamicEndpoint() async {
+    final refresher = dynamicEndpointRefresher;
+    if (refresher == null) return null;
+    final now = DateTime.now();
+    if (_lastEndpointRefreshAt != null &&
+        now.difference(_lastEndpointRefreshAt!) < _endpointRefreshMinInterval) {
+      return null;
+    }
+    _lastEndpointRefreshAt = now;
+    try {
+      final newUrl = await refresher(_config?.baseUrl ?? '');
+      if (newUrl == null || newUrl.isEmpty || newUrl == _config?.baseUrl) {
+        LoggerService.instance.logAI('动态端点刷新完成：地址未变化');
+        return null;
+      }
+      // _chatEndpoint 依据 _config.baseUrl 计算，须与 Dio baseUrl 一并切换
+      _dio.options.baseUrl = newUrl.endsWith('/') ? newUrl : '$newUrl/';
+      _config = _config!.copyWith(baseUrl: newUrl);
+      LoggerService.instance.logAI(
+        '动态端点已切换',
+        details: '新端点=$newUrl',
+      );
+      return newUrl;
+    } catch (e) {
+      // 刷新失败不阻断既有重试节奏，按原端点继续退避重发
+      LoggerService.instance.logAI(
+        '动态端点刷新失败: $e',
+        level: LogLevel.warning,
+      );
+      return null;
+    }
   }
 
   /// 把异常压成单行摘要，避免重试日志被堆栈刷屏

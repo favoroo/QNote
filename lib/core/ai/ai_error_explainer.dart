@@ -45,7 +45,9 @@ class AiErrorExplainer {
         raw.contains('TlsException') ||
         raw.contains('CERTIFICATE_VERIFY_FAILED')) {
       problem = '安全连接（TLS/证书）校验失败';
-      advice = '自建/内网网关的证书可能不受信任或已过期，请检查服务端证书配置。';
+      advice = '自建/内网网关的证书可能不受信任或已过期，请检查服务端证书配置；'
+          '若使用动态网关（如 Tailscale），也可能是网关设备暂时离线或正在重连，'
+          '稍后可长按本条消息重试。';
     } else if (raw.contains('receive timeout') ||
         raw.contains('receive took longer') ||
         raw.contains('TimeoutException')) {

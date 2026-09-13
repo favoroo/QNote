@@ -46,6 +46,11 @@ class BuiltinFreeKeys {
   /// 当前生效的 CPA BaseURL (支持远程动态拉取 Cloudflare 极速地址)
   static String dynamicCpaBaseUrl = defaultTailscaleBaseUrl;
 
+  /// 当前生效的 CPA 备用 BaseURL（云端 fallback_base_url 字段）
+  ///
+  /// primary 端点持续握手失败时可切换的备用地址；为空表示云端未提供有效备用地址
+  static String dynamicCpaFallbackBaseUrl = '';
+
   /// 更新当前生效的 CPA BaseURL
   static void updateDynamicCpaBaseUrl(String newUrl) {
     if (newUrl.trim().isNotEmpty) {
@@ -54,6 +59,20 @@ class BuiltinFreeKeys {
         dynamicCpaBaseUrl = '$dynamicCpaBaseUrl/v1';
       }
     }
+  }
+
+  /// 更新 CPA 备用 BaseURL；传空串表示清除（如云端 fallback 与 primary 相同时不单列）
+  static void updateDynamicCpaFallbackBaseUrl(String? newUrl) {
+    final trimmed = (newUrl ?? '').trim();
+    if (trimmed.isEmpty) {
+      dynamicCpaFallbackBaseUrl = '';
+      return;
+    }
+    var normalized = trimmed.replaceAll(RegExp(r'/+$'), '');
+    if (!normalized.endsWith('/v1')) {
+      normalized = '$normalized/v1';
+    }
+    dynamicCpaFallbackBaseUrl = normalized;
   }
 
   /// 掩码向量
@@ -120,6 +139,21 @@ class BuiltinFreeKeys {
       obfuscatedApiKey: effectiveKey,
       authType: 'bearer',
       priority: 4,
+    );
+  }
+
+  /// 创建内置的 Claude Sonnet 4.6 模型配置
+  static FreeModelConfig createClaudeSonnet46Config([String? apiKey]) {
+    final effectiveKey = apiKey ?? getGeminiApiKey();
+    return FreeModelConfig(
+      id: 'claude-sonnet-4-6',
+      displayName: 'Claude Sonnet 4.6',
+      provider: 'openai',
+      baseUrl: dynamicCpaBaseUrl,
+      modelName: 'claude-sonnet-4-6',
+      obfuscatedApiKey: effectiveKey,
+      authType: 'bearer',
+      priority: 0,
     );
   }
 
@@ -288,6 +322,42 @@ class FreeModelKeyManager {
     // 附加 0~150ms 随机抖动
     final jitter = Random().nextInt(150);
     return Duration(milliseconds: baseMs + jitter);
+  }
+
+  /// 连接层瞬时故障的专用退避（含随机抖动 Jitter）
+  ///
+  /// TLS 握手中断 / 连接重置这类故障常来自网关隧道重连或证书冷启动（如 Tailscale
+  /// Funnel 握手耗时可达数秒），300ms 级的通用退避在恢复完成前就烧完全部次数，
+  /// 因此放宽为 1s/2s/4s/8s，给隧道重建留出穿越窗口。
+  Duration getConnectionBackoffDelay(int retryCount) {
+    // 基础延时：第 1 次 1s，第 2 次 2s，第 3 次 4s，第 4 次及以后 8s
+    final baseMs = 1000 * (1 << (retryCount - 1).clamp(0, 3));
+    final jitter = Random().nextInt(150);
+    return Duration(milliseconds: baseMs + jitter);
+  }
+
+  /// 判定是否属于连接层瞬时故障（TLS 握手中断、DNS 后的 TCP/TLS 建连失败）
+  ///
+  /// 与 [isRecoverableError] 的区别：仅覆盖「重新建连/等待网关恢复」才有意义的
+  /// 错误，用于启用更长的重试窗口与动态端点刷新；HTTP 状态码、限流配额等
+  /// 服务端语义错误不在此列（它们重试再久也不会好，走原有通用策略即可）。
+  bool isConnectionClassError(dynamic error) {
+    if (error is! DioException) return false;
+    if (error.type == DioExceptionType.connectionTimeout ||
+        error.type == DioExceptionType.connectionError) {
+      return true;
+    }
+    // Dio 未映射的底层异常被包成 unknown，用 runtimeType 名称判断
+    // （dart:io 异常类型无法在 Web 上编译期引用，与 isRecoverableError 同理）
+    if (error.type == DioExceptionType.unknown) {
+      final inner = error.error;
+      if (inner == null || inner is FormatException) return false;
+      final innerType = inner.runtimeType.toString();
+      return innerType.contains('HandshakeException') ||
+          innerType.contains('TlsException') ||
+          innerType.contains('SocketException');
+    }
+    return false;
   }
 
   /// 判定是否属于可故障转移并重试的错误
