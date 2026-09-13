@@ -40,6 +40,22 @@ class BuiltinFreeKeys {
 
   static const List<List<int>> _allEncoded = [_k0, _k1, _k2, _k3];
 
+  /// 默认兜底的 Tailscale 永久公网地址
+  static const String defaultTailscaleBaseUrl = 'https://1demacbook-pro.tail77f123.ts.net/v1';
+
+  /// 当前生效的 CPA BaseURL (支持远程动态拉取 Cloudflare 极速地址)
+  static String dynamicCpaBaseUrl = defaultTailscaleBaseUrl;
+
+  /// 更新当前生效的 CPA BaseURL
+  static void updateDynamicCpaBaseUrl(String newUrl) {
+    if (newUrl.trim().isNotEmpty) {
+      dynamicCpaBaseUrl = newUrl.trim().replaceAll(RegExp(r'/+$'), '');
+      if (!dynamicCpaBaseUrl.endsWith('/v1')) {
+        dynamicCpaBaseUrl = '$dynamicCpaBaseUrl/v1';
+      }
+    }
+  }
+
   /// 掩码向量
   static const List<int> _mask = [0x7A, 0xC5, 0x4B, 0x93, 0xE2, 0x1F, 0x88, 0xD4];
 
@@ -114,7 +130,7 @@ class BuiltinFreeKeys {
       id: 'gemini-3.8-flash-low',
       displayName: 'Gemini 3.8 Flash Low',
       provider: 'openai',
-      baseUrl: 'https://1demacbook-pro.tail77f123.ts.net/v1',
+      baseUrl: dynamicCpaBaseUrl,
       modelName: 'gemini-3.8-flash-low',
       obfuscatedApiKey: effectiveKey,
       authType: 'bearer',
@@ -129,7 +145,7 @@ class BuiltinFreeKeys {
       id: 'gemini-3.5-flash-lite',
       displayName: 'Gemini 3.5 Flash Lite',
       provider: 'openai',
-      baseUrl: 'https://1demacbook-pro.tail77f123.ts.net/v1',
+      baseUrl: dynamicCpaBaseUrl,
       modelName: 'gemini-3.5-flash-lite',
       obfuscatedApiKey: effectiveKey,
       authType: 'bearer',
@@ -144,7 +160,7 @@ class BuiltinFreeKeys {
       id: 'gemini-3.1-flash-image',
       displayName: 'Gemini 生图',
       provider: 'openai',
-      baseUrl: 'https://1demacbook-pro.tail77f123.ts.net/v1',
+      baseUrl: dynamicCpaBaseUrl,
       modelName: 'gemini-3.1-flash-image',
       obfuscatedApiKey: effectiveKey,
       authType: 'bearer',

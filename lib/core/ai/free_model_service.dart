@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -22,6 +23,13 @@ class FreeModelService {
       'https://cdn.jsdelivr.net/gh/favoroo/QNote@main/free_models.json';
   static const _githubRawUrl =
       'https://raw.githubusercontent.com/favoroo/QNote/main/free_models.json';
+
+  // 动态 CPA 端点同步地址（个人主页静态资源 + jsDelivr 加速）
+  static const List<String> _dynamicCpaEndpoints = [
+    'https://favoroo.github.io/Q-profile/api-endpoint.json',
+    'https://cdn.jsdelivr.net/gh/favoroo/Q-profile@main/public/api-endpoint.json',
+    'https://raw.githubusercontent.com/favoroo/Q-profile/main/public/api-endpoint.json',
+  ];
 
   // SharedPreferences 缓存键
   static const _cacheKey = 'free_models_cache';
@@ -70,8 +78,59 @@ class FreeModelService {
     throw Exception('拉取免费模型清单失败: $lastError');
   }
 
+  /// 从云端拉取最新的动态 CPA 公网端点（优先使用 Cloudflare 极速地址，失败时静默回退）
+  Future<String?> fetchDynamicCpaEndpoint() async {
+    for (final url in _dynamicCpaEndpoints) {
+      try {
+        final response = await _dio.get<dynamic>(
+          url,
+          options: Options(
+            sendTimeout: const Duration(seconds: 3),
+            receiveTimeout: const Duration(seconds: 4),
+          ),
+        );
+        Map<String, dynamic>? data;
+        if (response.data is Map) {
+          data = Map<String, dynamic>.from(response.data as Map);
+        } else if (response.data is String) {
+          data = jsonDecode(response.data as String) as Map<String, dynamic>;
+        }
+        if (data != null && data['primary_base_url'] != null) {
+          final primaryUrl = data['primary_base_url'].toString().trim();
+          if (primaryUrl.isNotEmpty) {
+            BuiltinFreeKeys.updateDynamicCpaBaseUrl(primaryUrl);
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('cpa_dynamic_base_url', primaryUrl);
+            LoggerService.instance.logAI(
+              'CPA 动态端点拉取成功',
+              details: '有效URL=$primaryUrl, 来源=$url',
+            );
+            return primaryUrl;
+          }
+        }
+      } catch (e) {
+        LoggerService.instance.logAI(
+          '尝试拉取 CPA 动态端点失败: $url',
+          details: e.toString(),
+          level: LogLevel.warning,
+        );
+      }
+    }
+    return null;
+  }
+
   /// 获取内置模型列表（包含 Gemini 3.5 Flash Lite、Gemini 3.8 Flash Low、SenseNova 6.8、GLM 5.2、DeepSeek V4 Flash）
   Future<List<FreeModelConfig>> getCachedModels() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedUrl = prefs.getString('cpa_dynamic_base_url');
+      if (cachedUrl != null && cachedUrl.isNotEmpty) {
+        BuiltinFreeKeys.updateDynamicCpaBaseUrl(cachedUrl);
+      }
+      // 触发一次后台轻量异步探测更新（不阻塞当前返回）
+      unawaited(fetchDynamicCpaEndpoint());
+    } catch (_) {}
+
     return [
       BuiltinFreeKeys.createGemini35Config(),
       BuiltinFreeKeys.createGemini38Config(),
