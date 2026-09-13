@@ -956,7 +956,8 @@ class _DiaryItemState extends State<DiaryItem> {
 
     final rawLines = cleanText.split('\n');
     final displayLines = <String>[];
-    String remarkText = '';
+    final remarkLines = <String>[];
+    bool inRemarkSection = false;
 
     final isSpecialTag = !isMultiTag && (tag == '睡眠' || tag == '记账');
 
@@ -1013,11 +1014,20 @@ class _DiaryItemState extends State<DiaryItem> {
       final trimmedLine = line.trim();
       if (trimmedLine.isEmpty) continue;
 
+      if (inRemarkSection) {
+        remarkLines.add(trimmedLine);
+        continue;
+      }
+
       if (trimmedLine.startsWith('备注：')) {
-        remarkText = trimmedLine.substring(3).trim();
+        inRemarkSection = true;
+        final rem = trimmedLine.substring(3).trim();
+        if (rem.isNotEmpty) remarkLines.add(rem);
         continue;
       } else if (trimmedLine.startsWith('备注:')) {
-        remarkText = trimmedLine.substring(3).trim();
+        inRemarkSection = true;
+        final rem = trimmedLine.substring(3).trim();
+        if (rem.isNotEmpty) remarkLines.add(rem);
         continue;
       }
 
@@ -1124,12 +1134,12 @@ class _DiaryItemState extends State<DiaryItem> {
       );
     }
 
-    if (remarkText.isNotEmpty) {
+    for (final line in remarkLines) {
       elements.add(
         Padding(
-          padding: const EdgeInsets.only(top: 2),
+          padding: const EdgeInsets.only(top: 2, bottom: 2),
           child: Text(
-            remarkText,
+            line,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
               fontSize: 13,

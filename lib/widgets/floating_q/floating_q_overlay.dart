@@ -1292,7 +1292,7 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
           const SizedBox(width: 8),
           // 小Q工作中：发送按钮变为中断/停止按钮（与 AI 主页面交互一致）；
           // 空闲态长按可切换模型（工作中为停止按钮，不响应长按）。
-          // 工作期间外圈套 AI 极光多光谱流光描边（与悬浮球脉冲环同一「运行中」语义）
+          // 工作期间外圈套主题色灵动流光描边（与悬浮球脉冲环同一「运行中」语义）
           AnimatedGradientBorder(
             isAnimating: isWorking,
             borderRadius: 20,
@@ -1308,20 +1308,21 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
               tooltip:
                   isWorking ? '点击中止小Q当前操作' : '发送（长按切换模型）',
               style: IconButton.styleFrom(
-                // 告别突兀的大红底，工作态采用深邃沉稳的高质感黑灰底色衬托多光谱 AI 极光流光
+                // 告别突兀的深黑底色，工作态采用通透轻盈的主题色浅底，衬托主题色灵动流光
                 backgroundColor: isWorking
-                    ? (theme.brightness == Brightness.dark
-                        ? const Color(0xFF242730)
-                        : const Color(0xFF1B1D24))
+                    ? theme.colorScheme.primary.withValues(
+                        alpha: theme.brightness == Brightness.dark ? 0.20 : 0.12,
+                      )
                     : theme.colorScheme.primary,
-                foregroundColor: isWorking ? Colors.white : theme.colorScheme.onPrimary,
+                foregroundColor:
+                    isWorking ? theme.colorScheme.primary : theme.colorScheme.onPrimary,
               ),
               icon: isWorking
                   ? Container(
                       width: 12,
                       height: 12,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: theme.colorScheme.primary,
                         borderRadius: BorderRadius.circular(2.5),
                       ),
                     )

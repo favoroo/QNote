@@ -1317,38 +1317,43 @@ class _AiPageState extends ConsumerState<AiPage> {
                       final canSend = (hasText || hasAttachments) && !busy;
 
                       // 小Q工作过程中：发送按钮变为中断/停止按钮，
-                      // 外圈套 AI 极光多光谱流光描边表达「智能体运行中」
+                      // 外圈套主题色灵动流光描边表达「智能体运行中」
                       if (busy) {
                         final isDark = theme.brightness == Brightness.dark;
+                        final primary = theme.colorScheme.primary;
                         return Tooltip(
                           message: '点击中止小Q当前操作',
                           child: AnimatedGradientBorder(
                             isAnimating: true,
                             borderRadius: 22,
                             strokeWidth: 2,
-                            child: GestureDetector(
-                              onTap: () {
-                                HapticFeedback.lightImpact();
-                                _stopGenerating();
-                              },
-                              child: Container(
-                                width: 44,
-                                height: 44,
-                                decoration: BoxDecoration(
-                                  // 告别突兀的大红底，采用深邃沉稳的高质感黑灰科技底色，
-                                  // 衬托多光谱 AI 极光流光，呈现高级纯粹的运转质感
-                                  color: isDark
-                                      ? const Color(0xFF242730)
-                                      : const Color(0xFF1B1D24),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Center(
-                                  child: Container(
-                                    width: 12,
-                                    height: 12,
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(3),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: () {
+                                  HapticFeedback.lightImpact();
+                                  _stopGenerating();
+                                },
+                                borderRadius: BorderRadius.circular(22),
+                                child: Ink(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    // 告别突兀的深黑底色，采用通透轻盈的主题色浅底，
+                                    // 衬托主题色灵动流光，呈现高级纯粹的智能体运转质感
+                                    color: primary.withValues(
+                                      alpha: isDark ? 0.20 : 0.12,
+                                    ),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Center(
+                                    child: Container(
+                                      width: 12,
+                                      height: 12,
+                                      decoration: BoxDecoration(
+                                        color: primary,
+                                        borderRadius: BorderRadius.circular(2.5),
+                                      ),
                                     ),
                                   ),
                                 ),

@@ -205,12 +205,155 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     });
   }
 
-  String _parseUserRemarks(String content, List<TagEntry> tagEntries) {
-    if (content.contains('\n备注：')) {
-      final parts = content.split('\n备注：');
-      if (parts.length > 1) {
-        return parts.sublist(1).join('\n备注：');
+  /// 构建弹窗标签结构化字段详情汇总（如「种类：自制，评价：健康」）
+  String _buildPopupDetails(
+    List<TagEntry> tagEntries,
+    List<ShortcutConfig> shortcuts,
+  ) {
+    final popupEntries = <TagEntry>[];
+    final popupConfigs = <ShortcutConfig>[];
+
+    for (final entry in tagEntries) {
+      try {
+        final config = shortcuts.firstWhere(
+          (s) => s.id == entry.id || s.name == entry.name,
+        );
+        if (config.hasPopup) {
+          popupEntries.add(entry);
+          popupConfigs.add(config);
+        }
+      } catch (_) {}
+    }
+
+    if (popupEntries.isEmpty) return '';
+
+    final detailParts = <String>[];
+
+    for (int pi = 0; pi < popupEntries.length; pi++) {
+      final entry = popupEntries[pi];
+      final config = popupConfigs[pi];
+
+      List<ShortcutField> fieldsToProcess = config.fields;
+      Map<String, dynamic> entryFields = Map<String, dynamic>.from(
+        entry.fields,
+      );
+      String categoryPrefix = '';
+
+      if (config.categories != null && config.categories!.isNotEmpty) {
+        final currentCategory = config.categories!.firstWhere(
+          (c) => c.id == entryFields['_category'],
+          orElse: () => config.categories!.first,
+        );
+        fieldsToProcess = currentCategory.fields;
+        categoryPrefix = '${currentCategory.name} - ';
       }
+
+      final details = fieldsToProcess
+          .map((f) {
+            final val = entryFields[f.id];
+            if (val == null) return null;
+            if (val is List) return '${f.label}：${val.join('、')}';
+            return '${f.label}：$val';
+          })
+          .where((s) => s != null && s.isNotEmpty)
+          .join('，');
+
+      final fullDetails = categoryPrefix.isNotEmpty
+          ? '$categoryPrefix$details'
+          : details;
+      if (fullDetails.isNotEmpty) detailParts.add(fullDetails);
+    }
+
+    return detailParts.join('；');
+  }
+
+  /// 严谨判定文本是否纯粹由结构化标签字段构成（无用户正文/AI正文）
+  bool _isPurelyFieldSummary(
+    String content,
+    List<TagEntry> tagEntries,
+    List<ShortcutConfig> shortcuts,
+  ) {
+    final trimmed = content.trim();
+    if (trimmed.isEmpty) return true;
+
+    final knownLabels = <String>{};
+    final knownValues = <String>{};
+
+    for (final entry in tagEntries) {
+      final sc = shortcuts
+          .where((s) => s.id == entry.id || s.name == entry.name)
+          .firstOrNull;
+      if (sc != null) {
+        for (final f in sc.fields) {
+          knownLabels.add(f.label);
+          knownLabels.add(f.id);
+        }
+        if (sc.categories != null) {
+          for (final cat in sc.categories!) {
+            knownLabels.add(cat.name);
+            for (final f in cat.fields) {
+              knownLabels.add(f.label);
+              knownLabels.add(f.id);
+            }
+          }
+        }
+      }
+      for (final f in entry.fields.entries) {
+        knownLabels.add(f.key);
+        if (f.value != null) {
+          if (f.value is List) {
+            knownValues.addAll((f.value as List).map((e) => e.toString()));
+          } else {
+            knownValues.add(f.value.toString());
+          }
+        }
+      }
+    }
+
+    if (knownLabels.isEmpty) return false;
+
+    final lines = trimmed.split(RegExp(r'[\r\n]+'));
+    for (final line in lines) {
+      final l = line.trim();
+      if (l.isEmpty) continue;
+
+      final segments = l.split(RegExp(r'[；;，,]'));
+      for (final seg in segments) {
+        final s = seg.trim();
+        if (s.isEmpty) continue;
+
+        if (s.contains('：') || s.contains(':')) {
+          final parts = s.split(RegExp(r'[:：]'));
+          final key = parts[0].trim().replaceAll(RegExp(r'^.*-\s*'), '');
+          if (!knownLabels.contains(key)) {
+            return false;
+          }
+        } else {
+          if (!knownLabels.contains(s) && !knownValues.contains(s)) {
+            return false;
+          }
+        }
+      }
+    }
+
+    return true;
+  }
+
+  String _parseUserRemarks(String content, List<TagEntry> tagEntries) {
+    final trimmed = content.trim();
+    if (trimmed.isEmpty) return '';
+
+    // 1. 如果包含「\n备注：」或「\n备注:」，截取后面的用户正文
+    if (content.contains('\n备注：')) {
+      final idx = content.indexOf('\n备注：');
+      return content.substring(idx + '\n备注：'.length).trim();
+    }
+    if (content.contains('\n备注:')) {
+      final idx = content.indexOf('\n备注:');
+      return content.substring(idx + '\n备注:'.length).trim();
+    }
+    if (content.startsWith('备注：') || content.startsWith('备注:')) {
+      return content.replaceFirst(RegExp(r'^备注[:：]\s*'), '').trim();
     }
 
     final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
@@ -225,9 +368,27 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       return content;
     }
 
-    if (content.contains('：') || content.contains(':')) {
+    // 2. 比对生成的标签字段详情
+    final allDetails = _buildPopupDetails(tagEntries, shortcuts);
+    if (allDetails.isNotEmpty) {
+      if (trimmed == allDetails.trim()) {
+        return '';
+      }
+      if (content.startsWith(allDetails)) {
+        final remainder = content.substring(allDetails.length).trim();
+        if (remainder.startsWith('备注：') || remainder.startsWith('备注:')) {
+          return remainder.replaceFirst(RegExp(r'^备注[:：]\s*'), '').trim();
+        }
+        return remainder.replaceFirst(RegExp(r'^[\n\r；;,，\s]+'), '');
+      }
+    }
+
+    // 3. 严谨检查是否纯由结构化字段构成（无用户正文）
+    if (_isPurelyFieldSummary(content, tagEntries, shortcuts)) {
       return '';
     }
+
+    // 4. 用户/AI正文（严禁因包含冒号、图：、时间等误清空）
     return content;
   }
 
@@ -892,65 +1053,28 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     }
 
     String content = '';
-    final popupEntries = <TagEntry>[];
-    final popupConfigs = <ShortcutConfig>[];
+    final allDetails = _buildPopupDetails(_tagEntries, shortcuts);
+    final remarksText = _contentController.text.trim();
 
-    for (final entry in _tagEntries) {
-      try {
-        final config = shortcuts.firstWhere(
-          (s) => s.id == entry.id || s.name == entry.name,
-        );
-        if (config.hasPopup) {
-          popupEntries.add(entry);
-          popupConfigs.add(config);
-        }
-      } catch (_) {}
-    }
-
-    if (popupEntries.isNotEmpty) {
-      final detailParts = <String>[];
-
-      for (int pi = 0; pi < popupEntries.length; pi++) {
-        final entry = popupEntries[pi];
-        final config = popupConfigs[pi];
-
-        List<ShortcutField> fieldsToProcess = config.fields;
-        Map<String, dynamic> entryFields = Map<String, dynamic>.from(
-          entry.fields,
-        );
-        String categoryPrefix = '';
-
-        if (config.categories != null && config.categories!.isNotEmpty) {
-          final currentCategory = config.categories!.firstWhere(
-            (c) => c.id == entryFields['_category'],
-            orElse: () => config.categories!.first,
-          );
-          fieldsToProcess = currentCategory.fields;
-          categoryPrefix = '${currentCategory.name} - ';
-        }
-
-        final details = fieldsToProcess
-            .map((f) {
-              final val = entryFields[f.id];
-              if (val == null) return null;
-              if (val is List) return '${f.label}：${val.join('、')}';
-              return '${f.label}：$val';
-            })
-            .where((s) => s != null)
-            .join('，');
-
-        final fullDetails = categoryPrefix.isNotEmpty
-            ? '$categoryPrefix$details'
-            : details;
-        if (fullDetails.isNotEmpty) detailParts.add(fullDetails);
-      }
-
-      final allDetails = detailParts.join('；');
-      final remarksText = _contentController.text.trim();
-      content =
-          '$allDetails${remarksText.isNotEmpty ? '\n备注：$remarksText' : ''}';
-    } else {
+    if (allDetails.isEmpty) {
       content = _contentController.text;
+    } else {
+      // 检查原记录是否以「allDetails\n备注：」或纯摘要形式组织
+      final originalHadPopupDetails = widget.record.content.contains('\n备注：') ||
+          widget.record.content.contains('\n备注:') ||
+          widget.record.content.startsWith('备注：') ||
+          widget.record.content.startsWith('备注:') ||
+          widget.record.content.trim() == allDetails.trim() ||
+          _isPurelyFieldSummary(widget.record.content, widget.record.tagEntries, shortcuts);
+
+      if (originalHadPopupDetails) {
+        content = remarksText.isNotEmpty ? '$allDetails\n备注：$remarksText' : allDetails;
+      } else {
+        // 原记录本就是自由正文（如来自 AI 智能提取、小Q编辑或用户自由录入）：
+        // 直接以用户编辑的正文为准，不强行注入「allDetails\n备注：」前缀；
+        // 若用户完全清空了正文，则兜底保留 allDetails 摘要
+        content = remarksText.isNotEmpty ? _contentController.text : allDetails;
+      }
     }
 
     final updated = widget.record.copyWith(
@@ -1007,15 +1131,15 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   }
 
   String _mergeNotesWithContent(String notes, String originalContent) {
-    if (notes.isEmpty) return originalContent;
-    if (originalContent.isEmpty) return notes;
-    if (notes.startsWith('图：') || notes.startsWith('图:')) {
-      return '$originalContent\n$notes';
+    final trimmedNotes = notes.trim();
+    final trimmedOriginal = originalContent.trim();
+    if (trimmedNotes.isEmpty) return originalContent;
+    if (trimmedOriginal.isEmpty) return trimmedNotes;
+    // 包含已有解析（如以图：开头或普通说明）则去重，防止二次提取重复追加
+    if (trimmedOriginal.contains(trimmedNotes)) {
+      return originalContent;
     }
-    if (!originalContent.contains(notes)) {
-      return '$originalContent\n$notes';
-    }
-    return originalContent;
+    return '$originalContent\n$trimmedNotes';
   }
 
   Future<void> _handleAiExtract() async {

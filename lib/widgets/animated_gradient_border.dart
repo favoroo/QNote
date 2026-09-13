@@ -47,17 +47,17 @@ class GradientBorderPainter extends CustomPainter {
       transform: RotatingGradientTransform(animationValue),
     ).createShader(rect);
 
-    // 1. 底层扩散光晕（Glow Layer）：大半径高斯模糊营造发光环境等离子光感
+    // 1. 底层微光晕（Glow Layer）：精致轻度微光营造呼吸感，剔除脏乱大范围光晕
     final glowPaint = Paint()
-      ..strokeWidth = strokeWidth * 2.5
+      ..strokeWidth = strokeWidth * 1.6
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4.5)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.0)
       ..shader = shader;
 
     canvas.drawRRect(rrect, glowPaint);
 
-    // 2. 顶层核心流光（Sharp Core Streamer）：锐利抗锯齿描边，呈现清晰粒子轨迹
+    // 2. 顶层核心流光（Sharp Core Streamer）：锐利抗锯齿描边，呈现清晰灵动的流光轨迹
     final sharpPaint = Paint()
       ..strokeWidth = strokeWidth
       ..style = PaintingStyle.stroke
@@ -108,7 +108,7 @@ class _AnimatedGradientBorderState extends State<AnimatedGradientBorder>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2400),
+      duration: const Duration(milliseconds: 2000),
     );
     if (widget.isAnimating) {
       _controller.repeat();
@@ -143,33 +143,33 @@ class _AnimatedGradientBorderState extends State<AnimatedGradientBorder>
     final primary = theme.colorScheme.primary;
     final isDark = theme.brightness == Brightness.dark;
 
-    // 基底过渡透明色
-    final baseColor = isDark
-        ? theme.colorScheme.outlineVariant.withValues(alpha: 0.15)
-        : theme.colorScheme.outlineVariant.withValues(alpha: 0.25);
+    // 轨道基底透明色：超轻量主题基色，保持圆环轨道的精致完整性
+    final baseColor = primary.withValues(alpha: isDark ? 0.12 : 0.08);
 
-    // AI 极光多光谱流光色谱：电光青 -> 主题蓝 -> 智感紫罗兰 -> 核心纯白高光 -> 极光品红
-    final cyan = const Color(0xFF00E5FF).withValues(alpha: isDark ? 0.85 : 0.75);
-    final violet = const Color(0xFF8A2BE2).withValues(alpha: isDark ? 0.9 : 0.8);
-    final whiteHighlight = Colors.white.withValues(alpha: isDark ? 0.95 : 0.9);
-    final magenta = const Color(0xFFFF4081).withValues(alpha: isDark ? 0.75 : 0.65);
+    // 纯粹主题色动态流光色谱：
+    // 以 App 强调色为核心，告别杂乱的霓虹杂色，呈现纯净、极简、富有科技动感的流光质感
+    final sparkWhite = Color.lerp(primary, Colors.white, isDark ? 0.88 : 0.92)!;
+    final sparkHighlight = Color.lerp(primary, Colors.white, 0.45)!;
+    final corePrimary = primary;
+    final tailMid = primary.withValues(alpha: isDark ? 0.65 : 0.55);
+    final tailFade = primary.withValues(alpha: isDark ? 0.20 : 0.14);
 
-    // 采用“对称双流星追逐”极光效果，两道多光谱流星环绕旋转
+    // 双流星对称追逐流光：两道主题色灵动流星环绕旋转，兼顾动感、平衡与简约美感
     final colors = widget.customColors ??
         [
           baseColor,
-          cyan,
-          primary,
-          violet,
-          whiteHighlight,
-          magenta,
+          sparkWhite,
+          sparkHighlight,
+          corePrimary,
+          tailMid,
+          tailFade,
           baseColor,
           baseColor,
-          cyan,
-          primary,
-          violet,
-          whiteHighlight,
-          magenta,
+          sparkWhite,
+          sparkHighlight,
+          corePrimary,
+          tailMid,
+          tailFade,
           baseColor,
           baseColor,
         ];
@@ -177,19 +177,19 @@ class _AnimatedGradientBorderState extends State<AnimatedGradientBorder>
     final stops = widget.customStops ??
         const [
           0.00,
+          0.04,
           0.08,
-          0.14,
-          0.19,
-          0.23,
-          0.27,
-          0.36,
+          0.16,
+          0.28,
+          0.38,
+          0.46,
           0.50,
+          0.54,
           0.58,
-          0.64,
-          0.69,
-          0.73,
-          0.77,
-          0.86,
+          0.66,
+          0.78,
+          0.88,
+          0.96,
           1.00,
         ];
 

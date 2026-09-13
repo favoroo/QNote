@@ -1060,12 +1060,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       DateTime newTime = record.time;
       String newContent = record.content;
       if (result.notes.isNotEmpty && record.photos.isNotEmpty) {
+        final trimmedNotes = result.notes.trim();
         if (newContent.isEmpty) {
-          newContent = result.notes;
-        } else if (result.notes.startsWith('图：') || result.notes.startsWith('图:')) {
-          newContent = '$newContent\n${result.notes}';
-        } else if (!newContent.contains(result.notes)) {
-          newContent = '$newContent\n${result.notes}';
+          newContent = trimmedNotes;
+        } else if (!newContent.contains(trimmedNotes)) {
+          newContent = '$newContent\n$trimmedNotes';
         }
       }
       Map<String, dynamic>? newBodyState = record.bodyState != null
