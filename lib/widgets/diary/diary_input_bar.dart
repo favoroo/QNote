@@ -1881,6 +1881,30 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         );
         tagEntries[sleepIndex] = updatedSleep.copyWith(time: updatedSleep.formattedTime);
       }
+    } else if (tagEntries.length == 1) {
+      // 单标签场景：若标签自带时间（如AI提取或用户设置过时分），同步草稿中的起止时分，保持模型与记录一致
+      final singleEntry = tagEntries.first;
+      if (singleEntry.hasTime || draft.endTime != null || ref.read(diaryInputTimeProvider) != null) {
+        int? endHour;
+        int? endMinute;
+        int? endOffset;
+        if (draft.endTime != null) {
+          endHour = draft.endTime!.hour;
+          endMinute = draft.endTime!.minute;
+          endOffset = draft.endOffset ?? 0;
+        }
+        
+        final updatedSingle = singleEntry.copyWith(
+          startHour: draft.startTime.hour,
+          startMinute: draft.startTime.minute,
+          startOffset: draft.startOffset ?? 0,
+          endHour: endHour,
+          endMinute: endMinute,
+          endOffset: endOffset,
+          clearEndTime: draft.endTime == null,
+        );
+        tagEntries[0] = updatedSingle.copyWith(time: updatedSingle.formattedTime);
+      }
     }
 
     final popupEntries = <TagEntry>[];

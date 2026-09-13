@@ -234,6 +234,8 @@ class ChatSessionListNotifier extends AsyncNotifier<List<ChatSession>> {
   }
 
   Future<void> deleteSession(String id) async {
+    // 该会话若有进行中的小Q任务，先取消：避免任务结束时又把消息落回已删除会话
+    ref.read(currentChatProvider.notifier).cancelSessionAgent(id);
     final repo = ConfigRepository.instance;
     await repo.softDeleteChatSession(id);
     // 内存移除
@@ -263,29 +265,84 @@ final aiStreamingStartedAtProvider = StateProvider<DateTime?>((ref) => null);
 /// 界面与现状完全一致
 final aiStreamingThoughtProvider = StateProvider<String?>((ref) => null);
 
+/// 正在运行小Q任务的会话 ID 集合：历史抽屉据此为对应会话显示「生成中」动画，
+/// 输入区据此判断当前会话能否发送/是否显示停止按钮
+final agentRunningSessionsProvider = StateProvider<Set<String>>((ref) => {});
+
+/// 一个进行中小Q任务的全部运行态。
+///
+/// 流式缓冲与消息累积都挂在任务自身、以发起会话为归属，与「当前打开的会话」解耦：
+/// 任务执行期间用户新建/切换对话后，事件继续累积到本对象并在结束时落回发起会话，
+/// 新会话不被串写（对齐悬浮小Q的签名隔离思路）
+class _ActiveAgentRun {
+  _ActiveAgentRun(this.sessionId, this.token, this.title);
+
+  /// 发起任务时捕获的会话 ID，任务生命周期内不变
+  final String sessionId;
+  final AgentCancellationToken token;
+
+  /// 发起时确定的会话标题（首条消息时取消息摘要），落库回写用
+  String title;
+
+  /// 流式正文缓冲（与思考缓冲共用同一个节流 flush 定时器）
+  final StringBuffer contentBuffer = StringBuffer();
+
+  /// 「思考中」期间的模型思考增量缓冲
+  final StringBuffer thoughtBuffer = StringBuffer();
+
+  /// 流式文本刷新节流定时器
+  Timer? flushTimer;
+
+  /// 最近一次阶段性状态文案（切回会话时恢复显示用）
+  String? statusText;
+
+  /// 任务开始时间（agentStart 时记录）
+  DateTime? startedAt;
+
+  /// 本轮消息累积：以发起时的会话消息与用户消息开头，随事件追加，
+  /// 会话未被切走时同步到界面，任务结束后整体落回发起会话
+  final List<ChatMessage> messages = [];
+}
+
 class CurrentChatNotifier extends StateNotifier<ChatSession?> {
   final Ref _ref;
 
   CurrentChatNotifier(this._ref) : super(null);
 
-  final StringBuffer _streamingContent = StringBuffer();
-  // 「思考中」期间的模型思考增量缓冲，与正文共用同一个节流 flush 定时器
-  final StringBuffer _streamingThought = StringBuffer();
-  bool _isStreaming = false;
+  /// 进行中的小Q任务（key = 发起会话 ID）；不同会话可各自运行一个任务
+  final Map<String, _ActiveAgentRun> _activeRuns = {};
+
   bool _isRollingBack = false;
-  AgentCancellationToken? _currentCancellationToken;
 
-  /// 流式文本刷新节流定时器：批量合并 delta，避免每 token 触发 UI 重建
-  Timer? _streamingFlushTimer;
-
-  bool get isStreaming => _isStreaming;
+  /// 当前打开的会话是否有进行中的小Q任务
+  /// （据此禁用撤回/继续/暂停等重入操作，会话级语义）
+  bool get isStreaming {
+    final id = state?.id;
+    return id != null && _activeRuns.containsKey(id);
+  }
 
   /// 是否正在执行撤回（防重入，UI 据此禁用输入与重复触发）
   bool get isRollingBack => _isRollingBack;
 
-  /// 主动取消/中止当前 Agent 执行（对齐 Pi Agent 的 abort 控制）
+  /// 主动取消/中止当前会话的 Agent 执行（对齐 Pi Agent 的 abort 控制）
   void cancelCurrentAgent([String? reason]) {
-    _currentCancellationToken?.cancel(reason);
+    final id = state?.id;
+    if (id != null) {
+      cancelSessionAgent(id, reason);
+    }
+  }
+
+  /// 取消指定会话正在运行的小Q任务（删除会话时调用，避免任务结束后落回已删会话）
+  void cancelSessionAgent(String sessionId, [String? reason]) {
+    _activeRuns[sessionId]?.token.cancel(reason);
+  }
+
+  /// 把进行中任务的会话 ID 集合同步到全局 Provider
+  /// （历史抽屉「生成中」动画与输入区停止按钮的判断依据）
+  void _publishRunningSessions() {
+    _ref
+        .read(agentRunningSessionsProvider.notifier)
+        .state = _activeRuns.keys.toSet();
   }
 
   /// 将最近一条步数上限消息标记为已处理（隐藏「继续/暂停」按钮）并持久化
@@ -328,45 +385,95 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
 
   /// 点击「继续」：标记按钮已处理后以「继续」指令重启 Agent 循环接着执行
   Future<void> continueAfterTurnLimit() async {
-    if (_isStreaming) return;
+    if (isStreaming) return;
     await _markTurnLimitHandled();
     await sendMessage('继续');
   }
 
   /// 点击「暂停」：仅隐藏按钮，已完成的工作保留，任务就此结束
   Future<void> pauseAfterTurnLimit() async {
-    if (_isStreaming) return;
+    if (isStreaming) return;
     await _markTurnLimitHandled();
   }
 
+  /// 任务会话是否仍是当前打开的会话（全局流式 UI 写入的总守卫）
+  bool _bindsCurrentSession(_ActiveAgentRun run) {
+    return state?.id == run.sessionId;
+  }
+
   /// 以约 60ms 的节奏批量刷新流式文本到 UI（人眼流畅且不逐 token 重建），
-  /// 正文与思考缓冲共用本定时器；正文已开始时思考区随状态行一并退场
-  void _scheduleStreamingFlush() {
-    if (_streamingFlushTimer != null && _streamingFlushTimer!.isActive) return;
-    _streamingFlushTimer = Timer(const Duration(milliseconds: 60), () {
-      final content = _streamingContent.toString();
+  /// 正文与思考缓冲共用本定时器；正文已开始时思考区随状态行一并退场。
+  /// 仅当任务会话仍是当前打开的会话时才写全局流式 Provider——
+  /// 用户切走后任务继续在后台累积缓冲，气泡不串显到别的会话
+  void _scheduleRunFlush(_ActiveAgentRun run) {
+    if (run.flushTimer != null && run.flushTimer!.isActive) return;
+    run.flushTimer = Timer(const Duration(milliseconds: 60), () {
+      if (!_bindsCurrentSession(run)) return;
+      final content = run.contentBuffer.toString();
       if (content.isNotEmpty) {
         _ref.read(aiStreamingMessageProvider.notifier).state = content;
         _ref.read(aiStreamingStatusProvider.notifier).state = null;
         _ref.read(aiStreamingThoughtProvider.notifier).state = null;
-      } else if (_streamingThought.isNotEmpty) {
+      } else if (run.thoughtBuffer.isNotEmpty) {
         _ref.read(aiStreamingThoughtProvider.notifier).state =
-            _streamingThought.toString();
+            run.thoughtBuffer.toString();
       }
     });
   }
 
   /// 写入阶段性状态文案并清空流式正文（占位气泡切到状态行展示），
-  /// 同时取消待触发的正文 flush，避免旧缓冲在状态展示后被迟到刷出
-  void _setStreamingStatus(String text) {
-    _streamingFlushTimer?.cancel();
-    _streamingFlushTimer = null;
+  /// 同时取消待触发的正文 flush，避免旧缓冲在状态展示后被迟到刷出；
+  /// 仅当任务会话仍是当前打开的会话时才写全局流式 Provider
+  void _setRunStatus(_ActiveAgentRun run, String text) {
+    run.flushTimer?.cancel();
+    run.flushTimer = null;
+    run.statusText = text;
+    if (!_bindsCurrentSession(run)) return;
     _ref.read(aiStreamingMessageProvider.notifier).state = null;
     _ref.read(aiStreamingStatusProvider.notifier).state = text;
   }
 
+  /// 清空全局流式 UI 四件套（正文/状态/思考/开始时间）
+  void _clearStreamingProviders() {
+    _ref.read(aiStreamingMessageProvider.notifier).state = null;
+    _ref.read(aiStreamingStatusProvider.notifier).state = null;
+    _ref.read(aiStreamingThoughtProvider.notifier).state = null;
+    _ref.read(aiStreamingStartedAtProvider.notifier).state = null;
+  }
+
+  /// 切回正在工作的会话时，从任务运行态恢复流式 UI 快照
+  /// （正文/状态行/思考区/开始计时，与 flush 写入的展示语义一致）
+  void _restoreRunUi(_ActiveAgentRun run) {
+    final content = run.contentBuffer.toString();
+    if (content.isNotEmpty) {
+      _ref.read(aiStreamingMessageProvider.notifier).state = content;
+      _ref.read(aiStreamingStatusProvider.notifier).state = null;
+      _ref.read(aiStreamingThoughtProvider.notifier).state = null;
+    } else {
+      _ref.read(aiStreamingStatusProvider.notifier).state =
+          run.statusText ?? '小Q思考中';
+      _ref.read(aiStreamingThoughtProvider.notifier).state =
+          run.thoughtBuffer.isNotEmpty ? run.thoughtBuffer.toString() : null;
+    }
+    _ref.read(aiStreamingStartedAtProvider.notifier).state = run.startedAt;
+  }
+
   void setSession(ChatSession? session) {
+    // 流式气泡/状态行/思考区随会话走：先卸下，避免上一会话的流式内容串显到目标会话
+    _clearStreamingProviders();
+
+    // 目标会话若有进行中的小Q任务：以任务内的消息累积为准恢复
+    // （列表/库里的会话对象是过期快照，缺少任务中途产生的中间消息）
+    final run = session == null ? null : _activeRuns[session.id];
+    if (run != null && run.messages.isNotEmpty) {
+      session = session!.copyWith(messages: List.of(run.messages));
+    }
+
     state = session;
+    if (run != null) {
+      _restoreRunUi(run);
+    }
+
     // 持久化最后活跃会话 ID，供下次启动恢复
     SharedPreferences.getInstance().then((prefs) {
       if (session != null) {
@@ -546,16 +653,22 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       );
     }
 
+    // 任务绑定发起会话：流式过程中用户可能新建/切换对话，
+    // 消息累积与最终落库始终以发起会话为准，不写当前打开的其他会话。
+    // 取消令牌随任务注册一并创建：保证「准备中」阶段（附件上下文构建）也能响应停止
+    final startSessionId = state!.id;
+    final run = _ActiveAgentRun(
+      startSessionId,
+      AgentCancellationToken(),
+      newTitle,
+    )..messages.addAll(updatedMessages);
+    _activeRuns[startSessionId] = run;
+    _publishRunningSessions();
+
     state = state!.copyWith(title: newTitle, messages: updatedMessages);
 
-    _isStreaming = true;
-    _streamingContent.clear();
     // 开始录制本轮 VFS 变更（撤回/再次编辑功能的数据来源）；句柄制支持与悬浮小Q任务并发录制
     final recorderHandle = VirtualWorkspaceService.instance.startRecording();
-
-    // 取消令牌必须在最前创建：否则"准备中"阶段（附件上下文构建）点停止时为 null，取消静默失效
-    final token = AgentCancellationToken();
-    _currentCancellationToken = token;
 
     try {
       // 2. 仅注入用户手动分享的附件上下文，其余数据由小Q通过VFS工具自主探索
@@ -568,15 +681,15 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
           attachmentContext.isEmpty ? null : attachmentContext;
 
       // 准备阶段（资料/关联数据导出）可能较久：若用户已点停止，补一条中止提示后直接收尾
-      if (token.isCancelled) {
-        state = state!.copyWith(messages: [
-          ...updatedMessages,
-          ChatMessage(
-            role: 'assistant',
-            content: '(操作已被用户主动中止)',
-            timestamp: DateTime.now(),
-          ),
-        ]);
+      if (run.token.isCancelled) {
+        run.messages.add(ChatMessage(
+          role: 'assistant',
+          content: '(操作已被用户主动中止)',
+          timestamp: DateTime.now(),
+        ));
+        if (_bindsCurrentSession(run)) {
+          state = state!.copyWith(messages: List.of(run.messages));
+        }
         return;
       }
 
@@ -608,7 +721,7 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         'assistant',
       );
 
-      _setStreamingStatus('小Q思考中');
+      _setRunStatus(run, '小Q思考中');
 
       // 初始化工具分发器并构建 AgentLoop（声明式注入 afterToolCall 钩子）；
       // 可选工具按用户配置裁剪：禁用的工具不注册，系统提示词对应准则段也不注入
@@ -646,7 +759,6 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       final List<ChatMessage> conversationHistory = List.from(updatedMessages);
 
       ChatMessage? finalResponse;
-      final sessionMessages = [...updatedMessages];
 
       await for (final event in agentLoop.run(
         conversationHistory: conversationHistory,
@@ -656,35 +768,41 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
               AgentToolRegistry.optionalToolNames.difference(disabledTools),
         ),
         dynamicContext: dynamicContext,
-        cancellationToken: token,
+        cancellationToken: run.token,
       )) {
         switch (event.type) {
           case AgentEventType.agentStart:
-            _streamingThought.clear();
-            _ref.read(aiStreamingThoughtProvider.notifier).state = null;
-            _ref.read(aiStreamingStartedAtProvider.notifier).state = DateTime.now();
-            _setStreamingStatus('小Q准备中');
+            run.thoughtBuffer.clear();
+            run.startedAt = DateTime.now();
+            if (_bindsCurrentSession(run)) {
+              _ref.read(aiStreamingThoughtProvider.notifier).state = null;
+              _ref.read(aiStreamingStartedAtProvider.notifier).state =
+                  run.startedAt;
+            }
+            _setRunStatus(run, '小Q准备中');
             break;
           case AgentEventType.turnStart:
-            _streamingContent.clear();
+            run.contentBuffer.clear();
             // 新一轮思考从零开始，与状态行「第 N 步」语义对齐
-            _streamingThought.clear();
-            _ref.read(aiStreamingThoughtProvider.notifier).state = null;
+            run.thoughtBuffer.clear();
+            if (_bindsCurrentSession(run)) {
+              _ref.read(aiStreamingThoughtProvider.notifier).state = null;
+            }
             // 首轮不展示步数，避免“第 1 步”这类无信息量文案
-            _setStreamingStatus((event.turn ?? 0) > 1
+            _setRunStatus(run, (event.turn ?? 0) > 1
                 ? '小Q思考中 · 第 ${event.turn} 步'
                 : '小Q思考中');
             break;
           case AgentEventType.contentDelta:
             if (event.text != null) {
-              _streamingContent.write(event.text);
-              _scheduleStreamingFlush();
+              run.contentBuffer.write(event.text);
+              _scheduleRunFlush(run);
             }
             break;
           case AgentEventType.reasoningDelta:
             if (event.text != null) {
-              _streamingThought.write(event.text);
-              _scheduleStreamingFlush();
+              run.thoughtBuffer.write(event.text);
+              _scheduleRunFlush(run);
             }
             break;
           case AgentEventType.thoughtUpdate:
@@ -692,10 +810,13 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
             // 不再作为瞬态状态行文案被下一事件覆盖
             final thoughtText = event.text;
             if (thoughtText != null && thoughtText.isNotEmpty) {
-              _streamingThought
+              run.thoughtBuffer
                 ..clear()
                 ..write(thoughtText);
-              _ref.read(aiStreamingThoughtProvider.notifier).state = thoughtText;
+              if (_bindsCurrentSession(run)) {
+                _ref.read(aiStreamingThoughtProvider.notifier).state =
+                    thoughtText;
+              }
             }
             break;
           case AgentEventType.toolCalling:
@@ -703,7 +824,8 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
             // 提前展示目标文件等信息，避免状态行停留在「思考中」形似卡死
             final callingTool = event.toolCall;
             if (callingTool != null && callingTool.name.isNotEmpty) {
-              _setStreamingStatus(
+              _setRunStatus(
+                run,
                 '⚡ ${AgentToolLabels.progressLabel(callingTool.name, callingTool.arguments)}',
               );
             }
@@ -712,15 +834,19 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
             final toolName = event.toolCall?.name ?? '';
             final extraProgress = event.text != null ? '（${event.text}）' : '';
             // 尾部不再拼字面省略号，由 UI 的动态省略号动画表达进行中
-            _setStreamingStatus(
+            _setRunStatus(
+              run,
               '⚡ ${AgentToolLabels.progressLabel(toolName, event.toolCall?.arguments)}$extraProgress',
             );
             break;
           case AgentEventType.toolCompleted:
-            // 每当工具执行完成后，推入中间消息
+            // 每当工具执行完成后推入中间消息：始终累积到任务自身，
+            // 仅当会话未被切走时才同步到界面，避免覆写用户新打开的会话
             if (event.message != null) {
-              sessionMessages.add(event.message!);
-              state = state!.copyWith(messages: List.from(sessionMessages));
+              run.messages.add(event.message!);
+              if (_bindsCurrentSession(run)) {
+                state = state!.copyWith(messages: List.of(run.messages));
+              }
             }
             break;
           case AgentEventType.turnEnd:
@@ -728,8 +854,10 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
             break;
           case AgentEventType.assistantMessage:
             if (event.message != null) {
-              sessionMessages.add(event.message!);
-              state = state!.copyWith(messages: List.from(sessionMessages));
+              run.messages.add(event.message!);
+              if (_bindsCurrentSession(run)) {
+                state = state!.copyWith(messages: List.of(run.messages));
+              }
             }
             break;
           case AgentEventType.finished:
@@ -745,15 +873,17 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
 
       if (finalResponse != null) {
         // 避免重复追加相同内容的最终答复
-        final bool isAlreadyAdded = sessionMessages.isNotEmpty &&
-            (sessionMessages.last == finalResponse ||
-                (sessionMessages.last.role == 'assistant' &&
-                    sessionMessages.last.content.trim() == finalResponse.content.trim()));
+        final bool isAlreadyAdded = run.messages.isNotEmpty &&
+            (run.messages.last == finalResponse ||
+                (run.messages.last.role == 'assistant' &&
+                    run.messages.last.content.trim() == finalResponse.content.trim()));
 
         if (!isAlreadyAdded) {
-          sessionMessages.add(finalResponse);
+          run.messages.add(finalResponse);
         }
-        state = state!.copyWith(messages: sessionMessages);
+        if (_bindsCurrentSession(run)) {
+          state = state!.copyWith(messages: List.of(run.messages));
+        }
       }
     } catch (e, stackTrace) {
       LoggerService.instance.logAI(
@@ -769,35 +899,63 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         timestamp: DateTime.now(),
         isError: true,
       );
-      state = state!.copyWith(messages: [...updatedMessages, errorMessage]);
+      // 错误消息替换中间消息的语义两条路径保持一致：会话未切走时同步到界面，
+      // 已切走时只改任务累积，最终随落库写回发起会话
+      run.messages
+        ..clear()
+        ..addAll([...updatedMessages, errorMessage]);
+      if (_bindsCurrentSession(run)) {
+        state = state!.copyWith(messages: [...updatedMessages, errorMessage]);
+      }
     } finally {
-      _isStreaming = false;
-      _currentCancellationToken = null;
-      _streamingFlushTimer?.cancel();
-      _streamingFlushTimer = null;
-      _ref.read(aiStreamingMessageProvider.notifier).state = null;
-      _ref.read(aiStreamingStatusProvider.notifier).state = null;
-      _ref.read(aiStreamingThoughtProvider.notifier).state = null;
-      _ref.read(aiStreamingStartedAtProvider.notifier).state = null;
+      _activeRuns.remove(startSessionId);
+      _publishRunningSessions();
+      run.flushTimer?.cancel();
+      run.flushTimer = null;
+
+      // 流式 UI 只在用户仍停留在本任务会话时才清——
+      // 已切走时界面属于目标会话（setSession 已卸载或被其他任务接管），不可误清
+      if (_bindsCurrentSession(run)) {
+        _clearStreamingProviders();
+      }
 
       // 结束录制，把本轮 VFS 变更快照挂到本轮用户消息上（随会话落库，撤回时按此恢复）
       final undoEntries = VirtualWorkspaceService.instance.stopRecording(recorderHandle);
-      if (undoEntries.isNotEmpty && state != null) {
+      if (undoEntries.isNotEmpty && run.messages.isNotEmpty) {
         final userIndex = updatedMessages.length - 1;
-        final messages = List<ChatMessage>.from(state!.messages);
+        final messages = List<ChatMessage>.from(run.messages);
         if (userIndex >= 0 &&
             userIndex < messages.length &&
             messages[userIndex].role == 'user') {
           messages[userIndex] = messages[userIndex].copyWith(
             undoLog: WorkspaceUndoEntry.encodeList(undoEntries),
           );
-          state = state!.copyWith(messages: messages);
+          run.messages
+            ..clear()
+            ..addAll(messages);
+          if (_bindsCurrentSession(run)) {
+            state = state!.copyWith(messages: messages);
+          }
         }
       }
 
-      if (state != null) {
-        await repo.updateChatSession(state!);
-        _syncSessionToList();
+      // 最终落库：会话未切走直接用 state（含标题等最新界面态）；已切走则把任务
+      // 累积写回发起会话（发起会话已被删除时跳过，避免把消息复活进已删数据）
+      ChatSession? finalSession;
+      if (_bindsCurrentSession(run)) {
+        finalSession = state;
+      } else {
+        final base = await repo.getChatSession(startSessionId);
+        if (base != null && !base.isDeleted) {
+          finalSession = base.copyWith(
+            title: run.title,
+            messages: List.of(run.messages),
+          );
+        }
+      }
+      if (finalSession != null) {
+        await repo.updateChatSession(finalSession);
+        _ref.read(chatSessionListProvider.notifier).upsertLocal(finalSession);
       }
     }
   }
@@ -812,7 +970,7 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
   /// （生成中/正在撤回/越界/非用户消息）。
   Future<(int restored, int failed)?> rollbackToMessage(int userMessageIndex) async {
     if (state == null) return null;
-    if (_isStreaming) return null;
+    if (isStreaming) return null;
     if (_isRollingBack) return null;
     final messages = state!.messages;
     if (userMessageIndex < 0 || userMessageIndex >= messages.length) return null;

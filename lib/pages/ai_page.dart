@@ -293,7 +293,17 @@ class _AiPageState extends ConsumerState<AiPage> {
     final hasTodos = _attachedTodoIds.isNotEmpty;
     final hasJournals = _attachedJournalIds.isNotEmpty;
 
-    if ((text.isEmpty && !hasImages && !hasNotes && !hasTodos && !hasJournals) || _isTyping) {
+    if (text.isEmpty && !hasImages && !hasNotes && !hasTodos && !hasJournals) {
+      return;
+    }
+    if (_isTyping) {
+      return;
+    }
+    // 当前会话已有任务在后台生成（如切走后再切回）：拦截发送，避免同会话并发两轮任务
+    final activeId = ref.read(currentChatProvider)?.id;
+    if (activeId != null &&
+        ref.read(agentRunningSessionsProvider).contains(activeId)) {
+      Toast.warning(context, '小Q正在处理当前对话，请等待完成或先中止');
       return;
     }
 
@@ -998,7 +1008,15 @@ class _AiPageState extends ConsumerState<AiPage> {
       }
     });
 
-    ref.listen(currentChatProvider, (_, _) => _scrollToBottom());
+    ref.listen(currentChatProvider, (prev, next) {
+      _scrollToBottom();
+      // 会话切换时重置打字点/停止按钮状态：流式气泡已随会话卸载，
+      // 旧会话的等待指示不能残留到新会话。
+      // prev == null 是发送时自动创建会话的场景，属于本次发送自己的会话，不重置
+      if (prev != null && next?.id != prev.id && _isTyping && mounted) {
+        setState(() => _isTyping = false);
+      }
+    });
     ref.listen(aiStreamingMessageProvider, (prev, next) {
       if (next != null) {
         _scrollToBottomIfNeeded();
@@ -1223,12 +1241,19 @@ class _AiPageState extends ConsumerState<AiPage> {
     AsyncValue<List<AiConfig>> aiConfigsAsync,
     ThemeData theme,
   ) {
-    final configs = aiConfigsAsync.valueOrNull ?? [];
-    final activeName = _getActiveConfigName(configs);
     final hasAttachments = _attachedImages.isNotEmpty ||
         _attachedJournalIds.isNotEmpty ||
         _attachedNoteIds.isNotEmpty ||
         _attachedTodoIds.isNotEmpty;
+
+    // 当前会话是否有进行中的小Q任务：切换会话后据此恢复停止按钮归属、
+    // 防止往正在生成的会话并发发送第二条消息
+    final activeId = ref.watch(currentChatProvider.select((c) => c?.id));
+    final isSessionBusy = ref.watch(
+      agentRunningSessionsProvider
+          .select((s) => activeId != null && s.contains(activeId)),
+    );
+    final busy = _isTyping || isSessionBusy;
 
     return Material(
       color: theme.colorScheme.surface,
@@ -1289,11 +1314,12 @@ class _AiPageState extends ConsumerState<AiPage> {
                     valueListenable: _inputController,
                     builder: (context, value, _) {
                       final hasText = value.text.trim().isNotEmpty;
-                      final canSend = (hasText || hasAttachments) && !_isTyping;
+                      final canSend = (hasText || hasAttachments) && !busy;
 
                       // 小Q工作过程中：发送按钮变为中断/停止按钮，
-                      // 外圈套 primary 色流光描边表达「运行中」
-                      if (_isTyping) {
+                      // 外圈套 AI 极光多光谱流光描边表达「智能体运行中」
+                      if (busy) {
+                        final isDark = theme.brightness == Brightness.dark;
                         return Tooltip(
                           message: '点击中止小Q当前操作',
                           child: AnimatedGradientBorder(
@@ -1301,28 +1327,28 @@ class _AiPageState extends ConsumerState<AiPage> {
                             borderRadius: 22,
                             strokeWidth: 2,
                             child: GestureDetector(
-                              onTap: _stopGenerating,
+                              onTap: () {
+                                HapticFeedback.lightImpact();
+                                _stopGenerating();
+                              },
                               child: Container(
                                 width: 44,
                                 height: 44,
                                 decoration: BoxDecoration(
-                                  color: theme.colorScheme.errorContainer
-                                      .withValues(alpha: 0.8),
+                                  // 告别突兀的大红底，采用深邃沉稳的高质感黑灰科技底色，
+                                  // 衬托多光谱 AI 极光流光，呈现高级纯粹的运转质感
+                                  color: isDark
+                                      ? const Color(0xFF242730)
+                                      : const Color(0xFF1B1D24),
                                   shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: theme.colorScheme.error
-                                        .withValues(alpha: 0.6),
-                                    width: 1.5,
-                                  ),
                                 ),
                                 child: Center(
                                   child: Container(
-                                    width: 13,
-                                    height: 13,
+                                    width: 12,
+                                    height: 12,
                                     decoration: BoxDecoration(
-                                      color: theme.colorScheme.error,
-                                      borderRadius:
-                                          BorderRadius.circular(2.5),
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(3),
                                     ),
                                   ),
                                 ),
@@ -1333,31 +1359,28 @@ class _AiPageState extends ConsumerState<AiPage> {
                       }
 
                       // 小Q空闲时：标准发送按钮（长按切换模型）
-                      return Tooltip(
-                        message: '当前模型: $activeName\n点击发送，长按切换模型',
-                        child: GestureDetector(
-                          onTap: canSend ? _sendMessage : null,
-                          onLongPress: () {
-                            HapticFeedback.mediumImpact();
-                            _openModelSelector();
-                          },
-                          child: Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
+                      return GestureDetector(
+                        onTap: canSend ? _sendMessage : null,
+                        onLongPress: () {
+                          HapticFeedback.mediumImpact();
+                          _openModelSelector();
+                        },
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: canSend
+                                ? theme.colorScheme.primary
+                                : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child: Icon(
+                              Icons.send_rounded,
+                              size: 22,
                               color: canSend
-                                  ? theme.colorScheme.primary
-                                  : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Center(
-                              child: Icon(
-                                Icons.send_rounded,
-                                size: 22,
-                                color: canSend
-                                    ? theme.colorScheme.onPrimary
-                                    : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
-                              ),
+                                  ? theme.colorScheme.onPrimary
+                                  : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
                             ),
                           ),
                         ),
@@ -1729,32 +1752,6 @@ class _AiPageState extends ConsumerState<AiPage> {
     );
   }
 
-  String _getActiveConfigName(List<AiConfig> configs) {
-    if (_activeModelId == null) return '默认';
-    if (_activeModelId!.startsWith('free:')) {
-      final freeId = _activeModelId!.substring(5);
-      switch (freeId) {
-        case 'sensenova-flash-lite':
-          return '内置 SenseNova 6.8';
-        case 'glm-5.2':
-          return '内置 GLM 5.2';
-        case 'deepseek-v4-flash':
-          return '内置 DeepSeek V4 Flash';
-        case 'gemini-3.8-flash-low':
-          return '内置 Gemini 3.8 Flash Low';
-        case 'claude-sonnet-4-6':
-          return '内置 Claude Sonnet 4.6';
-        case 'gemini-3.5-flash-lite':
-          return '内置 Gemini 3.5 Flash Lite';
-        default:
-          return '内置免费模型';
-      }
-    }
-    if (_activeModelId == '__free_model__') return '内置 Gemini 3.5 Flash Lite';
-    final config = configs.where((c) => c.id == _activeModelId).firstOrNull;
-    return config?.name ?? '默认';
-  }
-
   Widget _buildHistoryDrawer(
     AsyncValue<List<ChatSession>> sessionsAsync,
     String? activeId,
@@ -1977,6 +1974,10 @@ class _AiPageState extends ConsumerState<AiPage> {
     ThemeData theme,
   ) {
     final isSelected = _selectedSessionIds.contains(session.id);
+    // 该会话的小Q任务是否正在生成：列表项转圈 + 「生成中」副标题提示
+    final isRunning = ref.watch(
+      agentRunningSessionsProvider.select((s) => s.contains(session.id)),
+    );
     return Dismissible(
       key: ValueKey(session.id),
       direction: DismissDirection.endToStart,
@@ -2031,13 +2032,24 @@ class _AiPageState extends ConsumerState<AiPage> {
                   });
                 },
               )
-            : Icon(
-                Icons.chat_bubble_outline,
-                size: 16,
-                color: isActive
-                    ? theme.colorScheme.primary
-                    : theme.disabledColor,
-              ),
+            : isRunning
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: isActive
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                  )
+                : Icon(
+                    Icons.chat_bubble_outline,
+                    size: 16,
+                    color: isActive
+                        ? theme.colorScheme.primary
+                        : theme.disabledColor,
+                  ),
         title: Text(
           session.title,
           maxLines: 1,
@@ -2048,7 +2060,9 @@ class _AiPageState extends ConsumerState<AiPage> {
           ),
         ),
         subtitle: Text(
-          DateFormat('MM/dd HH:mm').format(session.updatedAt),
+          isRunning && !_isBatchMode
+              ? '小Q生成中…'
+              : DateFormat('MM/dd HH:mm').format(session.updatedAt),
           style: TextStyle(
             fontSize: 10,
             color: theme.colorScheme.onSurfaceVariant,

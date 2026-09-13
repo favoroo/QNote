@@ -445,7 +445,13 @@ class _DiaryItemState extends State<DiaryItem> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _buildHeader(theme, tagColor),
+                              _buildHeader(
+                                theme,
+                                tagColor,
+                                categoryTag: !hasMultipleTags && record.displayTag.isNotEmpty
+                                    ? record.displayTag
+                                    : null,
+                              ),
                               if (hasMultipleTags)
                                 _buildMultiTagSections(theme)
                               else ...[
@@ -625,37 +631,68 @@ class _DiaryItemState extends State<DiaryItem> {
     );
   }
 
-  Widget _buildHeader(ThemeData theme, Color primaryTagColor) {
+  Widget _buildHeader(ThemeData theme, Color primaryTagColor, {String? categoryTag}) {
     return Padding(
-      padding: const EdgeInsets.only(right: 20),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: primaryTagColor.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.access_time_filled,
-                  size: 14,
-                  color: primaryTagColor,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  _formatTimeRangeWithDate(),
-                  style: theme.textTheme.labelSmall?.copyWith(
+      padding: const EdgeInsets.only(right: 22),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 时间胶囊
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+              decoration: BoxDecoration(
+                color: primaryTagColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.access_time_filled,
+                    size: 13,
                     color: primaryTagColor,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _formatTimeRangeWithDate(),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: primaryTagColor,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // 种类标签（并列在时间右侧，单行不换行）
+            if (categoryTag != null && categoryTag.isNotEmpty) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                decoration: BoxDecoration(
+                  color: primaryTagColor,
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: [
+                    BoxShadow(
+                      color: primaryTagColor.withValues(alpha: 0.22),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1.5),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  categoryTag,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: Colors.white,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-              ],
-            ),
-          ),
-        ],
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -667,37 +704,12 @@ class _DiaryItemState extends State<DiaryItem> {
       for (final entry in record.tagEntries) {
         final color = _tagColor(entry.name);
 
-        // Add the primary tag pill (filled)
-        rowItems.add(
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(8),
-              boxShadow: [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.25),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Text(
-              entry.name,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        );
-
-        // Add the additional fields (outlined)
+        // 仅添加属性字段胶囊（种类标签已在卡片头部第一行并列展示，单标签模式下无需在此重复显示）
         final additionalTags = _buildAdditionalTags(entry);
         for (final tagText in additionalTags) {
           rowItems.add(
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
               decoration: BoxDecoration(
                 color: color.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
@@ -733,37 +745,13 @@ class _DiaryItemState extends State<DiaryItem> {
           );
         }
       }
-    } else if (record.displayTag.isNotEmpty) {
-      // Just display tag if no tagEntries
-      rowItems.add(
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: primaryTagColor,
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [
-              BoxShadow(
-                color: primaryTagColor.withValues(alpha: 0.25),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Text(
-            record.displayTag,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-      );
     }
 
+    // 若没有额外的属性标签与独立时间，整行直接收起，避免占用纵向空间
     if (rowItems.isEmpty) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.only(top: 6),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
@@ -771,7 +759,7 @@ class _DiaryItemState extends State<DiaryItem> {
           children: rowItems.map((item) {
             final isLast = rowItems.last == item;
             return Padding(
-              padding: EdgeInsets.only(right: isLast ? 0 : 8),
+              padding: EdgeInsets.only(right: isLast ? 0 : 6),
               child: item,
             );
           }).toList(),
@@ -942,7 +930,7 @@ class _DiaryItemState extends State<DiaryItem> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         richContent,
       ],
     );
@@ -1187,23 +1175,41 @@ class _DiaryItemState extends State<DiaryItem> {
   }
 
   bool _isTagTimeDuplicate(TagEntry entry) {
-    if (entry.startHour == null || entry.startMinute == null) {
-      return false;
+    // 1. 如果该记录只有一个标签（单标签模式），顶部的 Header 已经完整展示了整条记录的时间范围，
+    // 此时标签旁的局部时间纯属多余，直接判定为重复以隐藏
+    if (record.tagEntries.length <= 1) {
+      return true;
     }
 
     final recordStart = record.startTime ?? record.time;
     final recordStartHour = recordStart.hour;
     final recordStartMinute = recordStart.minute;
 
+    if (entry.startHour == null || entry.startMinute == null) {
+      // 容错：如果 startHour 没解析出来但 entry.time 与起始时间字符串相同，也判定为重复
+      final startHm = DateFormat.Hm().format(recordStart);
+      if (entry.time != null &&
+          (entry.time == startHm || entry.time!.startsWith(startHm))) {
+        return true;
+      }
+      return false;
+    }
+
     final isStartSame =
         entry.startHour == recordStartHour &&
         entry.startMinute == recordStartMinute;
     if (!isStartSame) return false;
 
+    // 当起始时分与记录起始时分一致时：
     if (record.endTime == null) {
       return entry.endHour == null;
     } else {
-      if (entry.endHour == null) return false;
+      // 记录具有结束时间（时段如 08:30 → 08:44）：
+      // 若标签本身未设置结束时间（entry.endHour == null），说明它仅代表记录起始时刻，
+      // 在卡片顶部已显示完整起止时间的情况下属于起点冗余，直接返回 true 进行隐藏
+      if (entry.endHour == null) {
+        return true;
+      }
 
       final recordEndHour = record.endTime!.hour;
       final recordEndMinute = record.endTime!.minute;

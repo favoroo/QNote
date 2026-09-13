@@ -47,17 +47,17 @@ class GradientBorderPainter extends CustomPainter {
       transform: RotatingGradientTransform(animationValue),
     ).createShader(rect);
 
-    // 1. Draw the blurred glow border underneath for the "glowing" effect
+    // 1. 底层扩散光晕（Glow Layer）：大半径高斯模糊营造发光环境等离子光感
     final glowPaint = Paint()
-      ..strokeWidth = strokeWidth * 2.0
+      ..strokeWidth = strokeWidth * 2.5
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.0)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4.5)
       ..shader = shader;
 
     canvas.drawRRect(rrect, glowPaint);
 
-    // 2. Draw the main sharp flowing border on top
+    // 2. 顶层核心流光（Sharp Core Streamer）：锐利抗锯齿描边，呈现清晰粒子轨迹
     final sharpPaint = Paint()
       ..strokeWidth = strokeWidth
       ..style = PaintingStyle.stroke
@@ -82,6 +82,8 @@ class AnimatedGradientBorder extends StatefulWidget {
   final bool isAnimating;
   final double borderRadius;
   final double strokeWidth;
+  final List<Color>? customColors;
+  final List<double>? customStops;
 
   const AnimatedGradientBorder({
     super.key,
@@ -89,6 +91,8 @@ class AnimatedGradientBorder extends StatefulWidget {
     required this.isAnimating,
     this.borderRadius = 16,
     this.strokeWidth = 2,
+    this.customColors,
+    this.customStops,
   });
 
   @override
@@ -104,7 +108,7 @@ class _AnimatedGradientBorderState extends State<AnimatedGradientBorder>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 3000),
+      duration: const Duration(milliseconds: 2400),
     );
     if (widget.isAnimating) {
       _controller.repeat();
@@ -137,33 +141,57 @@ class _AnimatedGradientBorderState extends State<AnimatedGradientBorder>
 
     final theme = Theme.of(context);
     final primary = theme.colorScheme.primary;
-    final baseColor = theme.colorScheme.outlineVariant.withValues(alpha: 0.3);
+    final isDark = theme.brightness == Brightness.dark;
 
-    // 采用与整体主题完美融合的“双流星追逐”流光效果
-    // 使用低透明度的边框色作为基底，叠加主色调作为流光点，高级且不突兀
-    final colors = [
-      baseColor,
-      primary.withValues(alpha: 0.5),
-      primary,
-      baseColor,
-      baseColor,
-      primary.withValues(alpha: 0.5),
-      primary,
-      baseColor,
-      baseColor,
-    ];
-    
-    const stops = [
-      0.0,
-      0.1,
-      0.15,
-      0.25,
-      0.5,
-      0.6,
-      0.65,
-      0.75,
-      1.0,
-    ];
+    // 基底过渡透明色
+    final baseColor = isDark
+        ? theme.colorScheme.outlineVariant.withValues(alpha: 0.15)
+        : theme.colorScheme.outlineVariant.withValues(alpha: 0.25);
+
+    // AI 极光多光谱流光色谱：电光青 -> 主题蓝 -> 智感紫罗兰 -> 核心纯白高光 -> 极光品红
+    final cyan = const Color(0xFF00E5FF).withValues(alpha: isDark ? 0.85 : 0.75);
+    final violet = const Color(0xFF8A2BE2).withValues(alpha: isDark ? 0.9 : 0.8);
+    final whiteHighlight = Colors.white.withValues(alpha: isDark ? 0.95 : 0.9);
+    final magenta = const Color(0xFFFF4081).withValues(alpha: isDark ? 0.75 : 0.65);
+
+    // 采用“对称双流星追逐”极光效果，两道多光谱流星环绕旋转
+    final colors = widget.customColors ??
+        [
+          baseColor,
+          cyan,
+          primary,
+          violet,
+          whiteHighlight,
+          magenta,
+          baseColor,
+          baseColor,
+          cyan,
+          primary,
+          violet,
+          whiteHighlight,
+          magenta,
+          baseColor,
+          baseColor,
+        ];
+
+    final stops = widget.customStops ??
+        const [
+          0.00,
+          0.08,
+          0.14,
+          0.19,
+          0.23,
+          0.27,
+          0.36,
+          0.50,
+          0.58,
+          0.64,
+          0.69,
+          0.73,
+          0.77,
+          0.86,
+          1.00,
+        ];
 
     // 隔离流光动画的重绘层，避免每帧触发父级重绘
     return RepaintBoundary(

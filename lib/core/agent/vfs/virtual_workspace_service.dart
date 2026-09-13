@@ -956,8 +956,8 @@ class VirtualWorkspaceService {
       for (final r in recentRecords) {
         final cat = r.displayTag.isNotEmpty ? r.displayTag : '日常';
         categoryCounts[cat] = (categoryCounts[cat] ?? 0) + 1;
-        if (r.mood != null && r.mood! > 0) {
-          totalMood += r.mood!;
+        if (r.mood > 0) {
+          totalMood += r.mood;
           moodRecordCount++;
         }
       }
@@ -1433,11 +1433,20 @@ class VirtualWorkspaceService {
       String weather = '';
       final photos = <String>[];
       final customFields = <String, dynamic>{};
+      final explicitTags = <String>[];
 
       for (final line in body.split('\n')) {
         final l = line.trim().replaceAll('：', ':');
         if (l.startsWith('- 分类:') || l.startsWith('- category:')) {
           category = _fieldValue(l);
+        } else if (l.startsWith('- 标签:') || l.startsWith('- tags:') || l.startsWith('- tag:')) {
+          final tStr = _fieldValue(l);
+          for (final part in tStr.split(RegExp('[,，、 ]+'))) {
+            final t = part.trim();
+            if (t.isNotEmpty && !explicitTags.contains(t)) {
+              explicitTags.add(t);
+            }
+          }
         } else if (l.startsWith('- 心情:') || l.startsWith('- mood:')) {
           mood = int.tryParse(_fieldValue(l));
         } else if (l.startsWith('- 天气:') || l.startsWith('- weather:')) {
@@ -1497,6 +1506,37 @@ class VirtualWorkspaceService {
         }
       }
 
+      // 分类与标签规整化：如果分类仍为默认日常，但已提供标准语义分类或 explicitTags
+      if (category == '日常' && explicitTags.isNotEmpty) {
+        final stdCats = ['饮食', '活动', '睡眠', '健康', '记账'];
+        for (final sc in stdCats) {
+          if (explicitTags.contains(sc)) {
+            category = sc;
+            break;
+          }
+        }
+      }
+
+      // 饮食/活动/记账常见二级字段标准化兼容：
+      // 例如小Q若将餐别或菜式直接写为自由字段，尝试将其归为标准种类/类型
+      if (category == '饮食') {
+        if (!customFields.containsKey('type') && !customFields.containsKey('种类')) {
+          if (customFields.containsKey('餐别')) {
+            customFields['种类'] = customFields.remove('餐别');
+          } else if (customFields.containsKey('餐饮类型')) {
+            customFields['种类'] = customFields.remove('餐饮类型');
+          }
+        }
+      } else if (category == '活动') {
+        if (!customFields.containsKey('type') && !customFields.containsKey('类型')) {
+          if (customFields.containsKey('活动类型')) {
+            customFields['类型'] = customFields.remove('活动类型');
+          } else if (customFields.containsKey('项目')) {
+            customFields['类型'] = customFields.remove('项目');
+          }
+        }
+      }
+
       final tagEntries = <TagEntry>[];
       if (customFields.isNotEmpty) {
         tagEntries.add(
@@ -1507,6 +1547,13 @@ class VirtualWorkspaceService {
             time: '${recordTime.hour.toString().padLeft(2, '0')}:${recordTime.minute.toString().padLeft(2, '0')}',
           ),
         );
+      }
+
+      final recordTags = <String>[category];
+      for (final t in explicitTags) {
+        if (!recordTags.contains(t)) {
+          recordTags.add(t);
+        }
       }
 
       final now = DateTime.now();
@@ -1521,7 +1568,7 @@ class VirtualWorkspaceService {
           title: title.isNotEmpty ? title : existing.title,
           content: detail,
           displayTag: category,
-          tags: [category],
+          tags: recordTags,
           time: recordTime,
           startTime: recordTime,
           endTime: endDateTime ?? existing.endTime,
@@ -1545,7 +1592,7 @@ class VirtualWorkspaceService {
         title: title,
         content: detail,
         displayTag: category,
-        tags: [category],
+        tags: recordTags,
         time: recordTime,
         startTime: recordTime,
         endTime: endDateTime,
@@ -2194,7 +2241,7 @@ class VirtualWorkspaceService {
     for (final item in list) {
       if (item is! Map<String, dynamic>) continue;
       final id = item['id']?.toString();
-      final newTitle = item['title']?.toString()?.trim();
+      final newTitle = item['title']?.toString().trim();
       if (id == null || id.isEmpty || newTitle == null || newTitle.isEmpty) continue;
 
       final existing = await _configRepo.getChatSession(id);
