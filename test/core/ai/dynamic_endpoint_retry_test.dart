@@ -98,11 +98,85 @@ void main() {
       expect(pair!.primary, 'https://gw.example.com');
     });
 
+    test('updated_at 提取到载荷，缺失或为空时为 null', () {
+      final pair = FreeModelService.parseCpaEndpointPayload({
+        'primary_base_url': 'https://gw.example.com/v1',
+        'updated_at': '2026-09-13T00:43:13Z',
+      });
+      expect(pair!.updatedAt, '2026-09-13T00:43:13Z');
+
+      final noTime = FreeModelService.parseCpaEndpointPayload({
+        'primary_base_url': 'https://gw.example.com/v1',
+      });
+      expect(noTime!.updatedAt, isNull);
+
+      final emptyTime = FreeModelService.parseCpaEndpointPayload({
+        'primary_base_url': 'https://gw.example.com/v1',
+        'updated_at': '   ',
+      });
+      expect(emptyTime!.updatedAt, isNull);
+    });
+
     test('非法 JSON 字符串返回 null', () {
       expect(
         FreeModelService.parseCpaEndpointPayload('{broken json'),
         isNull,
       );
+    });
+  });
+
+  group('FreeModelService.selectLatestCpaEndpoint', () {
+    CpaEndpointPair pair(String primary, [String? updatedAt]) =>
+        CpaEndpointPair(primary: primary, updatedAt: updatedAt);
+
+    test('空列表或全无效候选返回 null', () {
+      expect(FreeModelService.selectLatestCpaEndpoint([]), isNull);
+      expect(
+        FreeModelService.selectLatestCpaEndpoint([null, null]),
+        isNull,
+      );
+    });
+
+    test('多个候选取 updated_at 最新者', () {
+      final latest = FreeModelService.selectLatestCpaEndpoint([
+        pair('https://old.example.com/v1', '2026-09-13T00:43:13Z'),
+        pair('https://new.example.com/v1', '2026-09-13T08:44:58Z'),
+        pair('https://mid.example.com/v1', '2026-09-13T04:00:00Z'),
+      ]);
+      expect(latest!.primary, 'https://new.example.com/v1');
+    });
+
+    test('带时间戳的候选优先于无时间戳候选', () {
+      final latest = FreeModelService.selectLatestCpaEndpoint([
+        pair('https://no-time.example.com/v1'),
+        pair('https://timed.example.com/v1', '2020-01-01T00:00:00Z'),
+      ]);
+      expect(latest!.primary, 'https://timed.example.com/v1');
+    });
+
+    test('全部无时间戳时首个有效候选兜底胜出', () {
+      final latest = FreeModelService.selectLatestCpaEndpoint([
+        null,
+        pair('https://first.example.com/v1'),
+        pair('https://second.example.com/v1'),
+      ]);
+      expect(latest!.primary, 'https://first.example.com/v1');
+    });
+
+    test('非法时间串视为无时间戳', () {
+      final latest = FreeModelService.selectLatestCpaEndpoint([
+        pair('https://bad-time.example.com/v1', 'not-a-time'),
+        pair('https://good-time.example.com/v1', '2026-09-13T08:44:58Z'),
+      ]);
+      expect(latest!.primary, 'https://good-time.example.com/v1');
+    });
+
+    test('单候选直接返回（含 null 混杂）', () {
+      final latest = FreeModelService.selectLatestCpaEndpoint([
+        null,
+        pair('https://only.example.com/v1', '2026-09-13T08:44:58Z'),
+      ]);
+      expect(latest!.primary, 'https://only.example.com/v1');
     });
   });
 

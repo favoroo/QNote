@@ -10,8 +10,9 @@ import 'package:qnote_flutter/providers/agent_skill_provider.dart';
 
 /// 小Q技能管理页
 ///
-/// 内置技能只读可查阅；用户技能支持新增、编辑与删除，与小Q经 VFS
-/// `/skills/*.md` 的写入为同一份数据（app_configs 持久化），双向实时同步
+/// 仅展示用户技能，支持新增、编辑与删除，与小Q经 VFS `/skills/*.md`
+/// 的写入为同一份数据（app_configs 持久化），双向实时同步；
+/// 内置技能随 App 内置，不在管理页露出
 class QSkillsPage extends ConsumerStatefulWidget {
   const QSkillsPage({super.key});
 
@@ -53,8 +54,6 @@ class _QSkillsPageState extends ConsumerState<QSkillsPage> {
           ),
         ),
         data: (skills) {
-          final builtinSkills =
-              skills.where((s) => s['origin'] == AgentSkillOrigin.builtin).toList();
           final userSkills =
               skills.where((s) => s['origin'] == AgentSkillOrigin.user).toList();
           return ListView(
@@ -62,20 +61,7 @@ class _QSkillsPageState extends ConsumerState<QSkillsPage> {
             children: [
               _buildSectionCard(
                 context,
-                title: '内置技能',
-                subtitle: '随 App 版本更新，不可修改',
-                icon: Icons.verified_outlined,
-                children: [
-                  for (final skill in builtinSkills)
-                    _buildSkillRow(context, skill, isBuiltin: true),
-                ],
-              ),
-              const SizedBox(height: 20),
-              _buildSectionCard(
-                context,
-                title: '用户技能',
-                subtitle: '你的自定义手册，可与小Q共同维护，App 更新不会覆盖',
-                icon: Icons.auto_fix_high_outlined,
+                count: userSkills.length,
                 children: [
                   if (userSkills.isEmpty)
                     Padding(
@@ -90,7 +76,7 @@ class _QSkillsPageState extends ConsumerState<QSkillsPage> {
                     )
                   else
                     for (final skill in userSkills)
-                      _buildSkillRow(context, skill, isBuiltin: false),
+                      _buildSkillRow(context, skill),
                 ],
               ),
               const SizedBox(height: 20),
@@ -101,12 +87,10 @@ class _QSkillsPageState extends ConsumerState<QSkillsPage> {
     );
   }
 
-  /// 分区卡片：卡头（图标 + 标题 + 副标题）+ 技能行列表，视觉对齐「小Q记忆」页
+  /// 用户技能卡片：卡头（图标 + 标题 + 数量徽标）+ 技能行列表，视觉对齐「小Q记忆」页
   Widget _buildSectionCard(
     BuildContext context, {
-    required String title,
-    required String subtitle,
-    required IconData icon,
+    required int count,
     required List<Widget> children,
   }) {
     final theme = Theme.of(context);
@@ -129,17 +113,26 @@ class _QSkillsPageState extends ConsumerState<QSkillsPage> {
         children: [
           Row(
             children: [
-              Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
-              const SizedBox(width: 8),
-              Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+              Icon(Icons.auto_fix_high_outlined, size: 20, color: theme.colorScheme.onSurfaceVariant),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  subtitle,
+                  '用户技能',
+                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                ),
+              ),
+              // 数量徽标：样式对齐「小Q记忆」页的容量徽标
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '共 $count 个',
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
-                  textAlign: TextAlign.right,
                 ),
               ),
             ],
@@ -151,12 +144,13 @@ class _QSkillsPageState extends ConsumerState<QSkillsPage> {
     );
   }
 
-  /// 单个技能行：名称 + 描述，点击进入详情/编辑；用户技能附删除入口
-  Widget _buildSkillRow(BuildContext context, Map<String, String> skill, {required bool isBuiltin}) {
+  /// 单个技能行：名称 + 描述 + 更新时间，点击进入编辑，附删除入口
+  Widget _buildSkillRow(BuildContext context, Map<String, String> skill) {
     final theme = Theme.of(context);
     final name = skill['name']!;
     final description = skill['description'] ?? '';
-    final userSkill = isBuiltin ? null : SkillRegistry.instance.getUserSkill(name);
+    final userSkill = SkillRegistry.instance.getUserSkill(name);
+    final updatedAt = userSkill?.updatedAt;
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 4),
@@ -169,9 +163,9 @@ class _QSkillsPageState extends ConsumerState<QSkillsPage> {
               style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
-          if (userSkill != null)
+          if (updatedAt != null)
             Text(
-              '更新于 ${DateFormat('MM-dd HH:mm').format(userSkill.updatedAt)}',
+              '更新于 ${DateFormat('MM-dd HH:mm').format(updatedAt)}',
               style: theme.textTheme.labelSmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -186,23 +180,21 @@ class _QSkillsPageState extends ConsumerState<QSkillsPage> {
           color: theme.colorScheme.onSurfaceVariant,
         ),
       ),
-      trailing: isBuiltin
-          ? Icon(Icons.chevron_right, size: 20, color: theme.colorScheme.onSurfaceVariant)
-          : IconButton(
-              visualDensity: VisualDensity.compact,
-              icon: const Icon(Icons.delete_outline_rounded, size: 20),
-              color: theme.colorScheme.error,
-              tooltip: '删除',
-              onPressed: () => _confirmDeleteSkill(name),
-            ),
-      onTap: () => _openEditor(context, isBuiltin ? null : userSkill, builtinName: isBuiltin ? name : null),
+      trailing: IconButton(
+        visualDensity: VisualDensity.compact,
+        icon: const Icon(Icons.delete_outline_rounded, size: 20),
+        color: theme.colorScheme.error,
+        tooltip: '删除',
+        onPressed: () => _confirmDeleteSkill(name),
+      ),
+      onTap: () => _openEditor(context, userSkill),
     );
   }
 
-  Future<void> _openEditor(BuildContext context, AgentSkill? skill, {String? builtinName}) async {
+  Future<void> _openEditor(BuildContext context, AgentSkill? skill) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => QSkillEditPage(skill: skill, builtinName: builtinName),
+        builder: (_) => QSkillEditPage(skill: skill),
       ),
     );
     // 返回后刷新一次，拾取编辑页可能的变更（事件总线通常已触发，这里兜底）

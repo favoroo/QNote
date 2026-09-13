@@ -26,7 +26,9 @@ class FreeModelService {
   static const _githubRawUrl =
       'https://raw.githubusercontent.com/favoroo/QNote/main/free_models.json';
 
-  // 动态 CPA 端点同步地址（个人主页静态资源 + jsDelivr 加速）
+  // 动态 CPA 端点同步地址（个人主页静态资源 + jsDelivr 加速 + GitHub raw 兜底）
+  // 三源更新节奏不一致（Pages 依赖 CI 部署、jsDelivr 有 CDN 缓存、raw 部分网络
+  // 不可达），故并行拉取全部源后按 updated_at 择新，互为备份
   static const List<String> _dynamicCpaEndpoints = [
     'https://favoroo.github.io/Q-profile/api-endpoint.json',
     'https://cdn.jsdelivr.net/gh/favoroo/Q-profile@main/public/api-endpoint.json',
@@ -82,52 +84,59 @@ class FreeModelService {
     throw Exception('拉取免费模型清单失败: $lastError');
   }
 
-  /// 从云端拉取最新的动态 CPA 公网端点（优先使用 Cloudflare 极速地址，失败时静默回退）
+  /// 从云端拉取最新的动态 CPA 公网端点（三源并行请求，按 updated_at 择新）
   ///
-  /// 成功后同时应用 primary 与 fallback（若云端提供且不同于 primary）到内存
-  /// 静态变量，并持久化到 SharedPreferences；返回 primary 地址，三级源全部
-  /// 失败或载荷无效时返回 null（保留当前/缓存值兜底）。
+  /// 三个分发源的更新节奏不一致，串行「首个成功即返回」会让陈旧源卡住整体，
+  /// 故并行请求全部源后取 updated_at 最新的有效载荷。成功后同时应用 primary
+  /// 与 fallback（若云端提供且不同于 primary）到内存静态变量，并持久化到
+  /// SharedPreferences；返回 primary 地址，所有源均失败或载荷无效时返回
+  /// null（保留当前/缓存值兜底）。
   Future<String?> fetchDynamicCpaEndpoint() async {
-    for (final url in _dynamicCpaEndpoints) {
-      try {
-        final response = await _dio.get<dynamic>(
-          url,
-          options: Options(
-            sendTimeout: const Duration(seconds: 3),
-            receiveTimeout: const Duration(seconds: 4),
-          ),
-        );
-        final parsed = parseCpaEndpointPayload(response.data);
-        if (parsed != null) {
-          BuiltinFreeKeys.updateDynamicCpaBaseUrl(parsed.primary);
-          BuiltinFreeKeys.updateDynamicCpaFallbackBaseUrl(parsed.fallback);
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString(_dynamicBaseUrlCacheKey, parsed.primary);
-          await prefs.setString(
-            _dynamicFallbackCacheKey,
-            parsed.fallback ?? '',
-          );
-          LoggerService.instance.logAI(
-            'CPA 动态端点拉取成功',
-            details: '有效URL=${parsed.primary}'
-                '${parsed.fallback != null ? ', 备用URL=${parsed.fallback}' : ''}'
-                ', 来源=$url',
-          );
-          return parsed.primary;
-        }
+    final candidates = await Future.wait(
+      _dynamicCpaEndpoints.map(_fetchEndpointPayload),
+    );
+    final parsed = selectLatestCpaEndpoint(candidates);
+    if (parsed == null) return null;
+    BuiltinFreeKeys.updateDynamicCpaBaseUrl(parsed.primary);
+    BuiltinFreeKeys.updateDynamicCpaFallbackBaseUrl(parsed.fallback);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_dynamicBaseUrlCacheKey, parsed.primary);
+    await prefs.setString(_dynamicFallbackCacheKey, parsed.fallback ?? '');
+    LoggerService.instance.logAI(
+      'CPA 动态端点拉取成功',
+      details: '有效URL=${parsed.primary}'
+          '${parsed.fallback != null ? ', 备用URL=${parsed.fallback}' : ''}'
+          '${parsed.updatedAt != null ? ', 云端更新时间=${parsed.updatedAt}' : ''}',
+    );
+    return parsed.primary;
+  }
+
+  /// 请求单个分发源并解析载荷，失败或载荷无效时返回 null（错误仅记日志）
+  Future<CpaEndpointPair?> _fetchEndpointPayload(String url) async {
+    try {
+      final response = await _dio.get<dynamic>(
+        url,
+        options: Options(
+          sendTimeout: const Duration(seconds: 3),
+          receiveTimeout: const Duration(seconds: 4),
+        ),
+      );
+      final parsed = parseCpaEndpointPayload(response.data);
+      if (parsed == null) {
         LoggerService.instance.logAI(
           'CPA 动态端点载荷无有效地址: $url',
           level: LogLevel.warning,
         );
-      } catch (e) {
-        LoggerService.instance.logAI(
-          '尝试拉取 CPA 动态端点失败: $url',
-          details: e.toString(),
-          level: LogLevel.warning,
-        );
       }
+      return parsed;
+    } catch (e) {
+      LoggerService.instance.logAI(
+        '尝试拉取 CPA 动态端点失败: $url',
+        details: e.toString(),
+        level: LogLevel.warning,
+      );
+      return null;
     }
-    return null;
   }
 
   /// 解析端点 JSON 载荷为 (primary, fallback) 地址对
@@ -152,10 +161,38 @@ class FreeModelService {
     final primary = _sanitizeEndpointUrl(data['primary_base_url']);
     if (primary == null) return null;
     final fallback = _sanitizeEndpointUrl(data['fallback_base_url']);
+    final updatedAt = data['updated_at']?.toString().trim();
     return CpaEndpointPair(
       primary: primary,
       fallback: fallback == primary ? null : fallback,
+      updatedAt: (updatedAt == null || updatedAt.isEmpty) ? null : updatedAt,
     );
+  }
+
+  /// 从多个源的成功载荷中选出 updated_at 最新的一个
+  ///
+  /// updated_at 为 ISO 8601 UTC 时间串，解析后按时间比较；缺失、非法或为空
+  /// 视为无时间戳，仅在还没有任何带时间戳的候选时兜底胜出，保证多源更新
+  /// 节奏不一致（Pages 部署滞后、CDN 缓存）时始终取到最新配置。
+  static CpaEndpointPair? selectLatestCpaEndpoint(
+    List<CpaEndpointPair?> candidates,
+  ) {
+    CpaEndpointPair? latest;
+    DateTime? latestTime;
+    for (final candidate in candidates) {
+      if (candidate == null) continue;
+      final time = DateTime.tryParse(candidate.updatedAt ?? '');
+      if (latest == null) {
+        latest = candidate;
+        latestTime = time;
+        continue;
+      }
+      if (time != null && (latestTime == null || time.isAfter(latestTime))) {
+        latest = candidate;
+        latestTime = time;
+      }
+    }
+    return latest;
   }
 
   /// 校验并归一化单个端点 URL：合法 https 地址且 host 非空，去除尾部斜杠
@@ -371,10 +408,16 @@ class FreeModelService {
 /// 动态端点 JSON 的解析结果
 ///
 /// [primary] 必有（已通过 https/host 校验），[fallback] 为云端备用地址，
-/// 缺失、无效或与 primary 相同时为 null。
+/// 缺失、无效或与 primary 相同时为 null；[updatedAt] 为云端标记的配置更新
+/// 时间（ISO 8601 串），用于多源并行拉取时择新，缺失时为 null。
 class CpaEndpointPair {
   final String primary;
   final String? fallback;
+  final String? updatedAt;
 
-  const CpaEndpointPair({required this.primary, this.fallback});
+  const CpaEndpointPair({
+    required this.primary,
+    this.fallback,
+    this.updatedAt,
+  });
 }
