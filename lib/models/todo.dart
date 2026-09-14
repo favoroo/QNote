@@ -1,0 +1,144 @@
+class Todo {
+  final String id;
+  final String title;
+  final String description;
+  final bool isCompleted;
+  final String priority;
+  final DateTime? dueDate;
+  final String tags;
+  final String? folderId;
+  final bool isLongTerm;
+  final String? reminderTime;
+  final DateTime? deadline;
+  final String repeatRule;
+  final int sortOrder;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final bool isDeleted;
+
+  Todo({
+    required this.id,
+    required this.title,
+    this.description = '',
+    this.isCompleted = false,
+    this.priority = 'normal',
+    this.dueDate,
+    this.tags = '',
+    this.folderId,
+    this.isLongTerm = false,
+    this.reminderTime,
+    this.deadline,
+    this.repeatRule = 'none',
+    this.sortOrder = 0,
+    required this.createdAt,
+    required this.updatedAt,
+    this.isDeleted = false,
+  });
+
+  /// 是否为重复任务
+  bool get isRecurring => repeatRule != 'none' && repeatRule.isNotEmpty;
+
+  /// 重复周期的中文展示标签
+  String get repeatRuleLabel {
+    switch (repeatRule) {
+      case 'daily':
+        return '每天';
+      case 'workday':
+        return '工作日';
+      case 'weekly':
+        return '每周';
+      case 'monthly':
+        return '每月';
+      case 'yearly':
+        return '每年';
+      default:
+        return '';
+    }
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'title': title,
+      'description': description,
+      'is_completed': isCompleted ? 1 : 0,
+      'priority': priority,
+      'due_date': dueDate?.toIso8601String(),
+      'tags': tags,
+      'folder_id': folderId,
+      'is_long_term': isLongTerm ? 1 : 0,
+      'reminder_time': reminderTime,
+      'deadline': deadline?.toIso8601String(),
+      'repeat_rule': repeatRule,
+      'sort_order': sortOrder,
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt.toIso8601String(),
+      'is_deleted': isDeleted ? 1 : 0,
+    };
+  }
+
+  factory Todo.fromMap(Map<String, dynamic> map) {
+    return Todo(
+      id: map['id'] as String,
+      title: map['title'] as String,
+      description: map['description'] as String? ?? '',
+      isCompleted: (map['is_completed'] as int? ?? 0) == 1,
+      priority: map['priority'] as String? ?? 'normal',
+      dueDate: map['due_date'] != null
+          ? DateTime.parse(map['due_date'] as String)
+          : null,
+      tags: map['tags'] as String? ?? '',
+      folderId: map['folder_id'] as String?,
+      isLongTerm: (map['is_long_term'] as int? ?? 0) == 1,
+      reminderTime: map['reminder_time'] as String?,
+      deadline: map['deadline'] != null
+          ? DateTime.parse(map['deadline'] as String)
+          : null,
+      repeatRule: map['repeat_rule'] as String? ?? 'none',
+      sortOrder: map['sort_order'] as int? ?? 0,
+      createdAt: DateTime.parse(map['created_at'] as String),
+      updatedAt: DateTime.parse(map['updated_at'] as String),
+      isDeleted: (map['is_deleted'] as int? ?? 0) == 1,
+    );
+  }
+
+  Todo copyWith({
+    String? id,
+    String? title,
+    String? description,
+    bool? isCompleted,
+    String? priority,
+    DateTime? dueDate,
+    String? tags,
+    String? folderId,
+    bool? isLongTerm,
+    String? reminderTime,
+    DateTime? deadline,
+    String? repeatRule,
+    int? sortOrder,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    bool? isDeleted,
+    bool clearFolderId = false,
+    bool clearReminderTime = false,
+  }) {
+    return Todo(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      isCompleted: isCompleted ?? this.isCompleted,
+      priority: priority ?? this.priority,
+      dueDate: dueDate ?? this.dueDate,
+      tags: tags ?? this.tags,
+      folderId: clearFolderId ? null : (folderId ?? this.folderId),
+      isLongTerm: isLongTerm ?? this.isLongTerm,
+      reminderTime: clearReminderTime ? null : (reminderTime ?? this.reminderTime),
+      deadline: deadline ?? this.deadline,
+      repeatRule: repeatRule ?? this.repeatRule,
+      sortOrder: sortOrder ?? this.sortOrder,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      isDeleted: isDeleted ?? this.isDeleted,
+    );
+  }
+}

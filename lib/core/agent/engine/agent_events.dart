@@ -1,0 +1,99 @@
+import 'package:qnote_flutter/models/chat_session.dart';
+
+/// Agent 事件类型（对齐 Pi Agent 生命周期）
+enum AgentEventType {
+  agentStart,
+  turnStart,
+  thoughtUpdate,
+  reasoningDelta, // 模型思考/推理增量（reasoning_content），「思考中」期间实时滚动展示
+  contentDelta, // 文本流打字机碎片
+  toolCalling, // 模型正在流式生成工具调用参数（大参数期间 UI 的进行中状态来源）
+  toolExecuting,
+  toolCompleted,
+  turnEnd,
+  assistantMessage,
+  finished,
+  agentEnd,
+  error,
+}
+
+/// Agent 事件，用于向 UI 实时推流
+class AgentEvent {
+  final AgentEventType type;
+  final int? turn;
+  final String? text;
+  final ToolCall? toolCall;
+  final ChatMessage? message;
+  final String? error;
+
+  const AgentEvent({
+    required this.type,
+    this.turn,
+    this.text,
+    this.toolCall,
+    this.message,
+    this.error,
+  });
+
+  factory AgentEvent.agentStart() =>
+      const AgentEvent(type: AgentEventType.agentStart);
+
+  factory AgentEvent.agentEnd() =>
+      const AgentEvent(type: AgentEventType.agentEnd);
+
+  factory AgentEvent.turnStart(int turn) =>
+      AgentEvent(type: AgentEventType.turnStart, turn: turn);
+
+  factory AgentEvent.turnEnd(int turn) =>
+      AgentEvent(type: AgentEventType.turnEnd, turn: turn);
+
+  factory AgentEvent.thoughtUpdate(String thought) =>
+      AgentEvent(type: AgentEventType.thoughtUpdate, text: thought);
+
+  /// 模型思考/推理的流式增量，节流由 provider 层统一处理（与 contentDelta 同策略）
+  factory AgentEvent.reasoningDelta(String deltaText) =>
+      AgentEvent(type: AgentEventType.reasoningDelta, text: deltaText);
+
+  factory AgentEvent.contentDelta(String deltaText) =>
+      AgentEvent(type: AgentEventType.contentDelta, text: deltaText);
+
+  /// 模型正在流式生成 [toolName] 的调用参数。
+  ///
+  /// [partialArguments] 为已流出关键信息的快照（如 path/query），
+  /// 仅用于 UI 展示层拼状态文案，不代表完整参数。
+  factory AgentEvent.toolCalling(
+    String toolName, {
+    Map<String, dynamic>? partialArguments,
+  }) =>
+      AgentEvent(
+        type: AgentEventType.toolCalling,
+        toolCall: ToolCall(
+          id: '',
+          name: toolName,
+          arguments: partialArguments ?? const {},
+        ),
+      );
+
+  factory AgentEvent.toolExecuting(ToolCall toolCall, {String? progress}) =>
+      AgentEvent(
+        type: AgentEventType.toolExecuting,
+        toolCall: toolCall,
+        text: progress,
+      );
+
+  factory AgentEvent.toolCompleted(ToolCall toolCall, ChatMessage result) =>
+      AgentEvent(
+        type: AgentEventType.toolCompleted,
+        toolCall: toolCall,
+        message: result,
+      );
+
+  factory AgentEvent.assistantMessage(ChatMessage message) =>
+      AgentEvent(type: AgentEventType.assistantMessage, message: message);
+
+  factory AgentEvent.finished(ChatMessage finalMessage) =>
+      AgentEvent(type: AgentEventType.finished, message: finalMessage);
+
+  factory AgentEvent.error(String error) =>
+      AgentEvent(type: AgentEventType.error, error: error);
+}

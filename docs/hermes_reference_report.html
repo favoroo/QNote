@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>小Q Agent 架构优化 · Hermes 参考分析报告</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg-soft: #161b22;
+    --card: #1a212b;
+    --card-hover: #1f2836;
+    --border: #2d3646;
+    --text: #e6edf3;
+    --text-dim: #8b949e;
+    --accent: #4f8cff;
+    --accent-soft: rgba(79, 140, 255, 0.12);
+    --green: #3fb950;
+    --green-soft: rgba(63, 185, 80, 0.12);
+    --amber: #d29922;
+    --amber-soft: rgba(210, 153, 34, 0.12);
+    --red: #f85149;
+    --red-soft: rgba(248, 81, 73, 0.12);
+    --purple: #bc8cff;
+    --purple-soft: rgba(188, 140, 255, 0.12);
+    --cyan: #39c5cf;
+    --radius-lg: 24px;
+    --radius-md: 16px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+    line-height: 1.7;
+    padding: 48px 20px 80px;
+    max-width: 1080px;
+    margin: 0 auto;
+  }
+  header { text-align: center; margin-bottom: 56px; }
+  .badge {
+    display: inline-block;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 1px solid rgba(79, 140, 255, 0.3);
+    border-radius: 999px;
+    padding: 4px 16px;
+    font-size: 13px;
+    margin-bottom: 20px;
+  }
+  h1 { font-size: 34px; font-weight: 700; letter-spacing: 1px; }
+  .subtitle { color: var(--text-dim); margin-top: 12px; font-size: 15px; }
+  h2 {
+    font-size: 24px;
+    margin: 64px 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  h2 .num {
+    background: var(--accent);
+    color: #fff;
+    width: 34px;
+    height: 34px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .section-desc { color: var(--text-dim); font-size: 14px; margin-bottom: 24px; padding-left: 46px; }
+  h3 { font-size: 17px; margin: 28px 0 12px; color: var(--accent); }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 28px 32px;
+    margin-bottom: 20px;
+  }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+  th {
+    text-align: left;
+    padding: 12px 14px;
+    background: var(--bg-soft);
+    border-bottom: 2px solid var(--border);
+    color: var(--text);
+    white-space: nowrap;
+  }
+  td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+    vertical-align: top;
+  }
+  td:first-child { color: var(--text); font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
+  .tag {
+    display: inline-block;
+    border-radius: 8px;
+    padding: 2px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .tag-done { background: var(--green-soft); color: var(--green); }
+  .tag-now { background: var(--accent-soft); color: var(--accent); }
+  .tag-later { background: var(--amber-soft); color: var(--amber); }
+  .tag-skip { background: var(--red-soft); color: var(--red); }
+  .tag-keep { background: var(--purple-soft); color: var(--purple); }
+  code {
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1px 7px;
+    font-family: 'SF Mono', 'JetBrains Mono', Consolas, monospace;
+    font-size: 12.5px;
+    color: var(--cyan);
+  }
+  ul { padding-left: 22px; margin: 10px 0; }
+  li { margin: 6px 0; color: var(--text-dim); }
+  li strong { color: var(--text); }
+  .flow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin: 18px 0;
+  }
+  .flow-node {
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 10px 18px;
+    font-size: 13px;
+    text-align: center;
+  }
+  .flow-node b { display: block; color: var(--accent); font-size: 14px; margin-bottom: 2px; }
+  .flow-arrow { color: var(--text-dim); font-size: 18px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 720px) { .grid-2 { grid-template-columns: 1fr; } }
+  .block-card {
+    border-radius: var(--radius-md);
+    padding: 18px 22px;
+    border: 1px solid var(--border);
+  }
+  .block-card h4 { font-size: 15px; margin-bottom: 8px; }
+  .block-card p { font-size: 13.5px; color: var(--text-dim); }
+  .bc-blue { background: var(--accent-soft); border-color: rgba(79,140,255,.35); }
+  .bc-blue h4 { color: var(--accent); }
+  .bc-purple { background: var(--purple-soft); border-color: rgba(188,140,255,.35); }
+  .bc-purple h4 { color: var(--purple); }
+  .bc-green { background: var(--green-soft); border-color: rgba(63,185,80,.35); }
+  .bc-green h4 { color: var(--green); }
+  .bc-amber { background: var(--amber-soft); border-color: rgba(210,153,34,.35); }
+  .bc-amber h4 { color: var(--amber); }
+  .bc-cyan { background: rgba(57,197,207,.1); border-color: rgba(57,197,207,.35); }
+  .bc-cyan h4 { color: var(--cyan); }
+  .meta { color: var(--text-dim); font-size: 13px; }
+  .highlight { color: var(--text); font-weight: 600; }
+  .divider { height: 1px; background: var(--border); margin: 40px 0; }
+  .stat-row { display: flex; flex-wrap: wrap; gap: 16px; margin: 20px 0; }
+  .stat {
+    flex: 1;
+    min-width: 150px;
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 18px;
+    text-align: center;
+  }
+  .stat .v { font-size: 28px; font-weight: 700; color: var(--accent); }
+  .stat .k { font-size: 12.5px; color: var(--text-dim); margin-top: 4px; }
+  footer { text-align: center; margin-top: 70px; color: var(--text-dim); font-size: 13px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="badge">QNote × Hermes Agent 架构对标</div>
+  <h1>小Q Agent 优化分析报告</h1>
+  <div class="subtitle">参考 Hermes Agent 13 项功能设计 · 审视 QNote 智能体框架 · 含本次实施与远期路线图</div>
+  <div class="meta" style="margin-top:16px">2026-09-13 · 基于代码探索（lib/core/agent/ 全量 + providers + pages）与 Hermes 官方文档研究</div>
+</header>
+
+<!-- ==================== 1. QNote 现状全景 ==================== -->
+<h2><span class="num">1</span>QNote 小Q 架构现状全景</h2>
+<div class="section-desc">探索范围：lib/core/agent/（7,710 行）、lib/core/ai/、lib/providers/、lib/pages/ 相关入口</div>
+
+<div class="stat-row">
+  <div class="stat"><div class="v">7,710</div><div class="k">Agent 模块总行数</div></div>
+  <div class="stat"><div class="v">14</div><div class="k">注册工具</div></div>
+  <div class="stat"><div class="v">8+∞</div><div class="k">内置 + 用户自定义技能</div></div>
+  <div class="stat"><div class="v">2,858</div><div class="k">VFS 虚拟工作区行数</div></div>
+</div>
+
+<div class="card">
+  <h3>执行管线（一条消息的旅程）</h3>
+  <div class="flow">
+    <div class="flow-node"><b>用户输入</b>ai_page / 悬浮小Q</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-node"><b>CurrentChatNotifier</b>sendMessage</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-node"><b>动态上下文</b>时间+画像+记忆+附件</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-node"><b>AgentLoop</b>ReAct ≤20 轮</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-node"><b>ToolDispatcher</b>并行/串行调度</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-node"><b>VFS</b>虚拟工作区读写</div>
+  </div>
+  <ul>
+    <li><strong>ReAct 引擎</strong>（agent_loop.dart，668 行）：20 轮循环上限、超 30 条消息触发 LLM 摘要压缩、只读工具并行/写工具串行、用户取消令牌桥接 HTTP 断连、图片降级重试、<code>&lt;thought&gt;</code> 流式过滤。</li>
+    <li><strong>工具层</strong>（agent_tool_registry.dart）：VFS 原语 8 个（list_dir / read_file / write_file / write_files / edit_file / move_file / delete_file / view_image）+ 通用 6 个（grep / fetch_url / web_search / generate_image / skill / ask_user），全部硬编码全量注册。</li>
+    <li><strong>技能层</strong>（skill_registry.dart，697 行）：8 个内置技能为 Dart 常量（todo/note/timeline/journal/folder/settings/stats/frontend-design），用户技能持久化于 app_configs 并映射到 VFS <code>/skills/</code>；<code>skill</code> 工具支持 section 章节级按需加载。</li>
+    <li><strong>记忆层</strong>：<code>/memory/user.md</code>（用户画像与习惯）+ <code>agent.md</code>（小Q手记），条目一行一条，对话开始冻结快照注入、中途写入下轮生效 —— <span class="highlight">已对齐 Hermes 记忆语义</span>。</li>
+    <li><strong>上下文层</strong>（agent_support.dart）：系统提示词（硬编码 150 行）+ 动态环境上下文（当前时间、用户资料、长期记忆、附件导出）。</li>
+    <li><strong>VFS</strong>（virtual_workspace_service.dart，2,858 行）：将待办/笔记/时间线/日记/配置统一抽象为根目录 <code>/</code> 下的虚拟文件系统，<code>/settings/*.json</code> 写入即时刷新 UI。</li>
+  </ul>
+</div>
+
+<div class="card">
+  <h3>AI 服务底座（lib/core/ai/）</h3>
+  <ul>
+    <li><strong>AiService</strong>：OpenAI 兼容 /chat/completions + Gemini 双协议，流式 SSE 解析（正文 / reasoning / 工具参数三类 chunk），原生 tool_calls 解析，超时与 429/5xx 指数退避重试。</li>
+    <li><strong>AiRoleService</strong>：assistant（小Q主对话）与 timelineOptimization（时间线提纯）双角色模型绑定、独立温度与 MaxTokens。</li>
+    <li><strong>免费模型体系</strong>：内置 6 文本 + 2 生图模型，SenseNova Key 池轮询、动态 CPA 端点刷新、失败自动切换（free_model_executor）。</li>
+  </ul>
+  <p class="meta" style="margin-top:12px">结论：QNote 已具备完整 Agent 形态，与 pi-agent / opencode 的「VFS + 原语工具 + ReAct」路线一致，具备承接 Hermes 高阶能力设计的地基。</p>
+</div>
+
+<!-- ==================== 2. Hermes 设计要点 ==================== -->
+<h2><span class="num">2</span>Hermes Agent 设计要点提炼</h2>
+<div class="section-desc">来源：hermes-agent.nousresearch.com 官方文档 13 个功能页 + 首页/插件页补充发现</div>
+
+<div class="card">
+  <div class="grid-2">
+    <div class="block-card bc-blue">
+      <h4>Personality 个性</h4>
+      <p><code>SOUL.md</code> 持久身份文件占据系统提示词第一槽位，与 AGENTS.md（项目规范）职责分离；内置 helpful / concise / kawaii / pirate 等预设，<code>/personality</code> 可临时切换，配置文件支持自定义个性。</p>
+    </div>
+    <div class="block-card bc-purple">
+      <h4>Skills 技能</h4>
+      <p>遵循 agentskills.io 开放标准存放于 <code>~/.hermes/skills/</code>；每个技能<strong>自动注册为斜杠命令</strong>（如 /gif-search）；Level 0~3 渐进式披露加载；Agent 自己可创建与修改技能。</p>
+    </div>
+    <div class="block-card bc-cyan">
+      <h4>Context References 上下文引用</h4>
+      <p><code>@file:path</code>、<code>@folder:</code>、<code>@diff</code>、<code>@url:</code> 内联注入内容；引用超上下文 25% 警告、超 50% 拒绝展开；敏感路径（~/.ssh 等）黑名单拦截。</p>
+    </div>
+    <div class="block-card bc-green">
+      <h4>Curator 技能维护</h4>
+      <p>跟踪技能被查看/使用/修补频率；长期未用走 active → stale → archived 流转；空闲时派生短暂 AIAgent fork 后台整理；<strong>归档而非删除</strong>（最坏结果进 .archive/ 目录）。</p>
+    </div>
+    <div class="block-card bc-amber">
+      <h4>Toolsets 工具集</h4>
+      <p>工具按命名集合管理：Core（file/web/terminal）、Composite（debugging = file+terminal+web）、Platform（hermes-cli）；支持 CLI、配置文件、会话内 <code>/tools enable|disable</code> 三种配置方式。</p>
+    </div>
+    <div class="block-card bc-blue">
+      <h4>Memory 记忆</h4>
+      <p>双文件 MEMORY.md（2,200 字符）+ USER.md（1,375 字符）；会话开始冻结快照注入保 prefix cache；memory 工具增删改条目；满时整合替换。Honcho 插件提供语义检索增强。</p>
+    </div>
+    <div class="block-card bc-purple">
+      <h4>Tool Search 工具搜索</h4>
+      <p>渐进式披露：MCP/非核心工具 schema 占上下文 ≥10% 时激活；桥接三件套 tool_search → tool_describe → tool_call；BM25 检索 + 字面子串回退；内置核心工具始终直接暴露。</p>
+    </div>
+    <div class="block-card bc-cyan">
+      <h4>Document Extraction 文档提取</h4>
+      <p>read_file 自动转换 .ipynb/.docx/.xlsx（内置）与 PDF/EPUB/ODF（懒安装转换器）为 Markdown，offset/limit 分页；扫描件检测覆盖率并告警，按需升级 OCR 或视觉分析。</p>
+    </div>
+    <div class="block-card bc-green">
+      <h4>Cron 定时任务</h4>
+      <p>单一 cronjob 工具统一管理（创建/暂停/编辑/触发）；自然语言转 cron 表达式；任务可附加 skill；支持无 Agent 脚本模式（零 LLM 参与）；cron 运行内禁用 cron 工具防递归。</p>
+    </div>
+    <div class="block-card bc-amber">
+      <h4>Context Files 上下文文件</h4>
+      <p>项目级 .hermes.md → AGENTS.md → CLAUDE.md 优先级发现 + 子目录渐进式加载；统一安全扫描（提示注入/凭据窃取模式）与分层截断（70% 头 + 20% 尾）。</p>
+    </div>
+  </div>
+  <p class="meta" style="margin-top:16px">LSP（写后语义诊断）与 Mixture of Agents（多模型聚合）为编码/成本特化设计，QNote 暂不适用。</p>
+</div>
+
+<!-- ==================== 3. 差距对比矩阵 ==================== -->
+<h2><span class="num">3</span>逐项差距对比与决策</h2>
+<div class="section-desc">标记说明：<span class="tag tag-keep">已对齐</span> <span class="tag tag-now">本次实施</span> <span class="tag tag-later">远期</span> <span class="tag tag-skip">跳过</span></div>
+
+<div class="card">
+  <table>
+    <tr><th>Hermes 能力</th><th>QNote 现状</th><th>差距</th><th>决策</th></tr>
+    <tr>
+      <td>Personality 个性系统</td>
+      <td>人格描述硬编码在系统提示词第一段</td>
+      <td>人格与能力规范耦合，用户无法定制小Q性格</td>
+      <td><span class="tag tag-now">本次实施</span></td>
+    </tr>
+    <tr>
+      <td>Skills 斜杠命令</td>
+      <td>仅靠模型自主判断调 skill 工具</td>
+      <td>用户无法显式、零歧义地触发技能</td>
+      <td><span class="tag tag-now">本次实施</span></td>
+    </tr>
+    <tr>
+      <td>Context References @引用</td>
+      <td>附件仅支持图片/笔记/待办/日记四类</td>
+      <td>无法引用任意 VFS 路径（stats、memory、时间线等）</td>
+      <td><span class="tag tag-now">本次实施</span></td>
+    </tr>
+    <tr>
+      <td>Curator 技能治理</td>
+      <td>用户技能无限堆积，无使用数据</td>
+      <td>技能库随时间劣化，无用技能挤占索引</td>
+      <td><span class="tag tag-now">本次实施</span></td>
+    </tr>
+    <tr>
+      <td>Toolsets 工具启停</td>
+      <td>14 工具硬编码全量注册</td>
+      <td>无法按需关闭生图/联网等高成本或敏感工具</td>
+      <td><span class="tag tag-now">本次实施</span></td>
+    </tr>
+    <tr>
+      <td>Memory 记忆</td>
+      <td>双文件 + 冻结快照 + 80% 容量提示</td>
+      <td>—</td>
+      <td><span class="tag tag-keep">已对齐</span></td>
+    </tr>
+    <tr>
+      <td>Skills Catalog 更新保留编辑</td>
+      <td>内置 Dart 常量 + 用户技能分离存储</td>
+      <td>—</td>
+      <td><span class="tag tag-keep">已对齐</span></td>
+    </tr>
+    <tr>
+      <td>Document Extraction 文档提取</td>
+      <td>fetch_url 仅支持 HTML → Markdown</td>
+      <td>PDF/Word 附件无法被小Q阅读</td>
+      <td><span class="tag tag-later">远期</span></td>
+    </tr>
+    <tr>
+      <td>Cron 定时任务</td>
+      <td>仅 reminder_time 到点通知</td>
+      <td>无「定时执行 Agent 任务」（如每晚自动写日记）</td>
+      <td><span class="tag tag-later">远期</span></td>
+    </tr>
+    <tr>
+      <td>Tool Search 渐进披露</td>
+      <td>14 工具 schema 全量注入</td>
+      <td>当前开销可控；工具超 20+ 或接 MCP 后才需要</td>
+      <td><span class="tag tag-later">远期</span></td>
+    </tr>
+    <tr>
+      <td>LSP 语义诊断</td>
+      <td>非编码 Agent</td>
+      <td>场景不适用</td>
+      <td><span class="tag tag-skip">跳过</span></td>
+    </tr>
+  </table>
+</div>
+
+<!-- ==================== 4. 本次实施设计 ==================== -->
+<h2><span class="num">4</span>本次四项实施设计</h2>
+<div class="section-desc">实施顺序：个性系统（含提示词拆分）→ 工具开关 → 技能治理 → 输入增强</div>
+
+<div class="card">
+  <h3>① 个性系统（SOUL.md 模式）</h3>
+  <ul>
+    <li><strong>职责分离</strong>：<code>QSystemPrompt</code> 拆为「人格段（可配置）+ 能力规范段（内置）」，对齐 Hermes 的 SOUL.md / AGENTS.md 分层。</li>
+    <li><strong>五个预设</strong>：经典管家（默认，保持现有行为）/ 活泼元气 / 简洁干练 / 温柔陪伴 / 自定义文本；每个 prompt 仅 3~6 句描述身份语气。</li>
+    <li><strong>VFS 集成</strong>：新增 <code>/settings/personality.json</code> 端点 —— 小Q自己也能改性格（「你以后活泼一点」→ 写配置，下轮对话生效）。</li>
+    <li><strong>入口</strong>：侧边抽屉新增「小Q个性」页，预设卡片单选 + 自定义编辑。</li>
+  </ul>
+</div>
+
+<div class="card">
+  <h3>② 输入增强（斜杠命令 + @ 引用）</h3>
+  <ul>
+    <li><strong>斜杠命令</strong>：输入 <code>/</code> 弹出技能浮层，选择后补全为 <code>/todo-manager 整理待办</code>；发送时技能手册经 extraSection 通道注入（不污染消息原文）。</li>
+    <li><strong>@ 引用</strong>：输入 <code>@</code> 弹出 VFS 目录树逐级选择，插入 <code>@/todos/工作/xx.md</code>；发送时读取文件内容注入上下文，单文件超 4,000 字符截断（对齐 Hermes 软限制）。</li>
+    <li><strong>范围</strong>：仅全屏对话页；悬浮小Q浮层空间小，列为后续。</li>
+  </ul>
+</div>
+
+<div class="card">
+  <h3>③ 技能治理（Curator 轻量版）</h3>
+  <ul>
+    <li><strong>使用统计</strong>：skill 工具每次成功加载手册即记录次数与最近时间（fire-and-forget 落盘，不影响主流程）；技能页展示「使用 N 次 · 最近 MM-dd」。</li>
+    <li><strong>沉睡标记</strong>：超 90 天未用的用户技能标记「沉睡」。</li>
+    <li><strong>归档而非删除</strong>：归档技能从系统提示词索引与 skill 清单中隐藏，技能页「已归档」区可随时恢复。</li>
+  </ul>
+</div>
+
+<div class="card">
+  <h3>④ 工具开关（Toolsets 轻量版）</h3>
+  <ul>
+    <li><strong>分层</strong>：核心工具（VFS 8 件 + skill + grep + ask_user）不可禁用；可选工具 fetch_url / web_search / generate_image 用户可启停。</li>
+    <li><strong>提示词联动</strong>：禁用工具时，系统提示词中对应行动准则段（网页阅读/网页搜索/图片生成）同步不注入，避免模型按不存在的工具行事。</li>
+    <li><strong>入口</strong>：AI 设置页新增「小Q工具能力」区块，切换即时保存、下次对话生效。</li>
+  </ul>
+</div>
+
+<!-- ==================== 5. 远期路线图 ==================== -->
+<h2><span class="num">5</span>远期路线图（本次不实施）</h2>
+<div class="section-desc">按「价值 × 成本」排序，建议在四项实施稳定后逐项评估</div>
+
+<div class="card">
+  <table>
+    <tr><th>方向</th><th>Hermes 参考</th><th>QNote 落地思路</th><th>成本</th></tr>
+    <tr>
+      <td>文档提取</td>
+      <td>Document Extraction</td>
+      <td>PDF 附件 → 文本供小Q阅读（引入 Flutter PDF 解析库），Word 后置；读取失败时如实告知</td>
+      <td>中高</td>
+    </tr>
+    <tr>
+      <td>定时 Agent 任务</td>
+      <td>Cron</td>
+      <td>「每晚 22 点总结今天时间线写成日记」；workmanager 后台执行 + 应用启动补跑错过的任务；任务定义存 VFS 可由小Q创建</td>
+      <td>高</td>
+    </tr>
+    <tr>
+      <td>工具搜索</td>
+      <td>Tool Search</td>
+      <td>工具数超 20+ 或接入 MCP 后，引入 tool_search 桥接工具 + BM25 检索，核心工具始终直曝</td>
+      <td>中</td>
+    </tr>
+    <tr>
+      <td>记忆语义检索</td>
+      <td>Honcho Memory</td>
+      <td>记忆条目 embedding 向量检索（当前记忆量小，暂无必要）</td>
+      <td>中</td>
+    </tr>
+    <tr>
+      <td>多模型聚合</td>
+      <td>Mixture of Agents</td>
+      <td>多免费模型并行分析 + 聚合模型成文（对免费 Key 池是天然搭配，但延迟与失败面翻倍）</td>
+      <td>高</td>
+    </tr>
+    <tr>
+      <td>MCP 插件</td>
+      <td>Plugins</td>
+      <td>第三方工具接入（依赖工具搜索先行）；Flutter 侧需实现 MCP 客户端协议</td>
+      <td>高</td>
+    </tr>
+  </table>
+</div>
+
+<div class="card" style="border-color: rgba(79,140,255,.4); background: linear-gradient(135deg, var(--accent-soft), transparent);">
+  <h3 style="margin-top:0">核心洞察</h3>
+  <p style="color: var(--text-dim)">Hermes 架构的本质是<strong style="color:var(--text)">「按需加载 + 安全边界 + 渐进式披露」</strong>：工具按集管控、知识按需查阅、记忆有界治理、上下文分层注入。QNote 的 VFS + 原语工具路线已与之同构，本次四项实施补齐的是<strong style="color:var(--text)">「可配置的人格」「显式的触发入口」「有生命周期的技能库」「可裁剪的工具面」</strong>—— 让小Q从"固定出厂的助手"进化为"用户可塑造的伙伴"。</p>
+</div>
+
+<footer>QNote Agent 优化分析 · 参考 Hermes Agent 官方文档 · 2026-09-13</footer>
+</body>
+</html>

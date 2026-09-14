@@ -1,0 +1,46 @@
+{
+  "version": "1.0",
+  "updatedAt": "2026-06-22T14:57:04.935574Z",
+  "models": [
+    {
+      "id": "sensenova-flash-lite",
+      "displayName": "SenseNova Flash Lite",
+      "provider": "openai",
+      "baseUrl": "https://token.sensenova.cn/v1",
+      "modelName": "sensenova-6.7-flash-lite",
+      "authType": "bearer",
+      "priority": 0,
+      "obfuscatedApiKey": "=UjFaciDDARAMFwNDYAFKsSCkkQLWQzBUgicClUQnESQCVgA"
+    },
+    {
+      "id": "agnes-flash",
+      "displayName": "Agnes Flash",
+      "provider": "openai",
+      "baseUrl": "https://apihub.agnes-ai.com/v1",
+      "modelName": "agnes-2.0-flash",
+      "authType": "bearer",
+      "priority": 1,
+      "obfuscatedApiKey": "1wCP31HBHlDV+wjW9oiAzszJqwlLrsgRFoyMZZxI2AFH981ZuITFfgjU8VXerIRDCVgA"
+    },
+    {
+      "id": "gemini-flash-lite",
+      "displayName": "Gemini Flash Lite",
+      "provider": "gemini",
+      "baseUrl": "",
+      "modelName": "gemini-3.1-flash-lite",
+      "authType": "query",
+      "priority": 2,
+      "obfuscatedApiKey": "WwxLD8WKfIQPOolS3UTVHoTJmAwLAUwbHQyH0c2BzVVcmYTFVcCM"
+    },
+    {
+      "id": "gemma",
+      "displayName": "Gemma",
+      "provider": "gemini",
+      "baseUrl": "",
+      "modelName": "gemma-4-31b-it",
+      "authType": "query",
+      "priority": 3,
+      "obfuscatedApiKey": "WwxLD8WKfIQPOolS3UTVHoTJmAwLAUwbHQyH0c2BzVVcmYTFVcCM"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="widget_background">#121214</color>
+    <color name="widget_border">#2C2C2E</color>
+    <color name="widget_text_primary">#F2F2F7</color>
+    <color name="widget_text_secondary">#8E8E93</color>
+    <color name="widget_accent">#0A84FF</color>
+    <color name="widget_card_bg">#1C1C1E</color>
+    <color name="dialog_bg">#1C1C1E</color>
+    <color name="dialog_text">#F2F2F7</color>
+    <color name="dialog_input_bg">#2C2C2E</color>
+</resources>
