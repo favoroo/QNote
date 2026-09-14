@@ -70,7 +70,7 @@ ${QSystemPrompt._skillIndexLines()}
 ```markdown
 ---
 status: pending          # pending(未完成) | completed(已完成)
-priority: normal         # normal(普通) | important(重要加急星标)
+priority: normal         # normal(普通) | important(高优/重要，底层落库保留)
 repeat_rule: none        # none | daily(每天) | workday(工作日) | weekly(每周) | monthly(每月) | yearly(每年)
 tags: "学习,技术"        # 待办标签(选填，逗号分隔或字符串数组)
 reminder_time: "09-11 19:00" # 提醒时间(选填，格式 MM-DD HH:mm，到点会推送通知)
@@ -79,7 +79,8 @@ is_long_term: false      # 是否为长期待办(选填)
 ---
 待办备注详情或执行检查项
 ```
-- **提醒必须写 `reminder_time`**：QNote 的通知只由 `reminder_time` 触发，`due_date` 既不会推送通知、也不会在待办列表里显示。
+- **待办界面与交互规范**：当前待办界面采用仿小米极简卡片风格，无冗余三点按钮与红点标记。用户点击卡片可呼出底部小窗编辑/设提醒/重复，长按卡片可调出操作菜单（含「给小Q」），已完成待办直接在下方折叠展示。向用户提供操作指引时，不要引导用户找「三点菜单」或「红点星标」。
+- **重要/紧急事项优先设 `reminder_time`**：QNote 的通知只由 `reminder_time` 触发，`due_date` 既不会推送通知、也不会在待办列表里显示。对于重要紧急事项，务必写入具体的 `reminder_time` 并归入「今日」分类，实现系统级闹钟强提醒。
   用户说「提醒我晚上去拿快递 / 叫我 7 点…」时，必须在同一次 `write_file` 里写入 `reminder_time: "MM-DD HH:mm"`（当年可省略年份，如 `"09-11 19:00"`）；
   需要「7 点前完成」这类截止概念时，同时写 `due_date`。
 - **循环习惯任务写 `repeat_rule`**：用户说「每天晚上8点提醒我打卡」、「每个工作日写站会记录」时，写入对应的 `repeat_rule: "daily"` 或 `"workday"`。

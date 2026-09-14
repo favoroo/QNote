@@ -53,6 +53,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
   double _progress = 0.0;
   int _receivedBytes = 0;
   int _totalBytes = 0;
+  double _speedBytesPerSec = 0.0;
   String? _errorMessage;
   String? _apkFilePath;
   CancelToken? _cancelToken;
@@ -74,6 +75,27 @@ class _UpdateDialogState extends State<_UpdateDialog> {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
+  }
+
+  String _formatSpeed(double bytesPerSec) {
+    if (bytesPerSec <= 0) return '';
+    if (bytesPerSec < 1024 * 1024) {
+      return '${(bytesPerSec / 1024).toStringAsFixed(1)} KB/s';
+    }
+    return '${(bytesPerSec / 1024 / 1024).toStringAsFixed(1)} MB/s';
+  }
+
+  String _formatRemainingTime() {
+    if (_speedBytesPerSec <= 1024 || _totalBytes <= 0 || _receivedBytes >= _totalBytes) {
+      return '';
+    }
+    final remainingBytes = _totalBytes - _receivedBytes;
+    final seconds = (remainingBytes / _speedBytesPerSec).round();
+    if (seconds < 1) return '即将完成';
+    if (seconds < 60) return '剩余约 $seconds 秒';
+    final minutes = seconds ~/ 60;
+    final remSec = seconds % 60;
+    return '剩余约 $minutes 分 $remSec 秒';
   }
 
   /// 使用系统浏览器直接下载或打开链接
@@ -106,6 +128,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       _progress = 0.0;
       _receivedBytes = 0;
       _totalBytes = widget.updateInfo.fileSize ?? 0;
+      _speedBytesPerSec = 0.0;
       _errorMessage = null;
     });
 
@@ -123,6 +146,17 @@ class _UpdateDialogState extends State<_UpdateDialog> {
             }
           });
         },
+        onProgressWithSpeed: (received, total, speed) {
+          if (!mounted) return;
+          setState(() {
+            _receivedBytes = received;
+            _speedBytesPerSec = speed;
+            if (total > 0) {
+              _totalBytes = total;
+              _progress = received / total;
+            }
+          });
+        },
       );
 
       if (!mounted) return;
@@ -130,6 +164,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
         _state = _DownloadState.completed;
         _apkFilePath = filePath;
         _progress = 1.0;
+        _speedBytesPerSec = 0.0;
       });
 
       // 下载成功后，自动尝试拉起安装程序
@@ -302,6 +337,44 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                     ),
                   ],
                 ),
+                if (_formatSpeed(_speedBytesPerSec).isNotEmpty || _formatRemainingTime().isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      if (_formatSpeed(_speedBytesPerSec).isNotEmpty)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.speed_rounded,
+                              size: 14,
+                              color: colorScheme.primary.withValues(alpha: 0.8),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _formatSpeed(_speedBytesPerSec),
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: colorScheme.primary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        )
+                      else
+                        const SizedBox.shrink(),
+                      if (_formatRemainingTime().isNotEmpty)
+                        Text(
+                          _formatRemainingTime(),
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                          ),
+                        )
+                      else
+                        const SizedBox.shrink(),
+                    ],
+                  ),
+                ],
               ],
 
               // 下载完成提示

@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:qnote_flutter/config/app_version.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/network/chunked_downloader.dart';
 import 'package:qnote_flutter/core/utils/version_utils.dart';
 
 /// 更新检查的结果状态。
@@ -300,24 +301,22 @@ class UpdateService {
   ///
   /// [candidateUrls] 候选下载地址列表（按优先级尝试：国内加速镜像 → 原始地址）。
   /// [onProgress] 回调已接收字节与总字节数。
+  /// [onProgressWithSpeed] 扩展回调已接收字节、总字节数及实时下载速率（字节/秒）。
+  /// [concurrency] 分片并发线程数（默认 3 线程，兼顾带宽跑满与平台防刷）。
   /// [cancelToken] 取消令牌。
   /// 返回下载成功的本地文件完整路径；若全部失败或被取消则抛出异常。
   Future<String> downloadApk({
     required List<String> candidateUrls,
     required void Function(int received, int total) onProgress,
+    void Function(int received, int total, double speedBytesPerSec)? onProgressWithSpeed,
+    int concurrency = 3,
     CancelToken? cancelToken,
   }) async {
     final tempDir = await getTemporaryDirectory();
     final savePath = '${tempDir.path}/qnote_update.apk';
     final targetFile = File(savePath);
 
-    // 下载专用 Dio 实例：连接超时 15 秒，接收超时 10 分钟
-    final downloadDio = Dio(BaseOptions(
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(minutes: 10),
-      followRedirects: true,
-      maxRedirects: 5,
-    ));
+    final downloader = ChunkedDownloader(concurrency: concurrency);
 
     Object? lastError;
     for (final url in candidateUrls) {
@@ -330,20 +329,23 @@ class UpdateService {
       }
 
       try {
-        if (await targetFile.exists()) {
-          await targetFile.delete();
-        }
+        LoggerService.instance.info(
+          '尝试通过节点下载 APK: $url',
+          category: LogCategory.network,
+        );
 
-        await downloadDio.download(
-          url,
-          savePath,
+        final resultPath = await downloader.download(
+          url: url,
+          savePath: savePath,
           cancelToken: cancelToken,
-          onReceiveProgress: onProgress,
-          deleteOnError: true,
+          onProgress: (received, total, speed) {
+            onProgress(received, total);
+            onProgressWithSpeed?.call(received, total, speed);
+          },
         );
 
         if (await targetFile.exists() && (await targetFile.length()) > 0) {
-          return savePath;
+          return resultPath;
         }
       } on DioException catch (e) {
         lastError = e;

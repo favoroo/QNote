@@ -1669,6 +1669,11 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                           isDense: true,
                           contentPadding: const EdgeInsets.symmetric(vertical: 2),
                           border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          errorBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
+                          filled: false,
                           hintText: widget.todo == null ? '回车即可连续添加待办' : '输入待办内容...',
                           hintStyle: TextStyle(
                             fontSize: 17.5,
@@ -1695,30 +1700,30 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                           // 设置提醒胶囊
                           InkWell(
                             onTap: _pickReminderTime,
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(8),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5.5),
                               decoration: BoxDecoration(
                                 color: _reminderTime != null
                                     ? colorScheme.primary.withValues(alpha: 0.15)
                                     : (isDark ? Colors.white.withValues(alpha: 0.08) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6)),
-                                borderRadius: BorderRadius.circular(10),
+                                borderRadius: BorderRadius.circular(8),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(
                                     Icons.alarm,
-                                    size: 16,
+                                    size: 15,
                                     color: _reminderTime != null
                                         ? colorScheme.primary
                                         : (isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
                                   ),
-                                  const SizedBox(width: 5),
+                                  const SizedBox(width: 4),
                                   Text(
-                                    _reminderTime ?? '设置提醒',
+                                    _reminderTime ?? '提醒',
                                     style: TextStyle(
-                                      fontSize: 13.5,
+                                      fontSize: 13,
                                       fontWeight: _reminderTime != null ? FontWeight.w600 : FontWeight.normal,
                                       color: _reminderTime != null
                                           ? colorScheme.primary
@@ -1726,46 +1731,46 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                                     ),
                                   ),
                                   if (_reminderTime != null) ...[
-                                    const SizedBox(width: 5),
+                                    const SizedBox(width: 4),
                                     GestureDetector(
                                       onTap: () {
                                         setState(() => _reminderTime = null);
                                       },
-                                      child: Icon(Icons.close, size: 14, color: colorScheme.primary),
+                                      child: Icon(Icons.close, size: 13, color: colorScheme.primary),
                                     ),
                                   ],
                                 ],
                               ),
                             ),
                           ),
-                          const SizedBox(width: 10),
+                          const SizedBox(width: 8),
                           // 设置重复胶囊
                           InkWell(
                             onTap: _pickRepeatRule,
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(8),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5.5),
                               decoration: BoxDecoration(
                                 color: _repeatRule != 'none'
                                     ? colorScheme.primary.withValues(alpha: 0.15)
                                     : (isDark ? Colors.white.withValues(alpha: 0.08) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6)),
-                                borderRadius: BorderRadius.circular(10),
+                                borderRadius: BorderRadius.circular(8),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(
                                     Icons.repeat,
-                                    size: 16,
+                                    size: 15,
                                     color: _repeatRule != 'none'
                                         ? colorScheme.primary
                                         : (isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
                                   ),
-                                  const SizedBox(width: 5),
+                                  const SizedBox(width: 4),
                                   Text(
                                     _repeatRuleLabel(_repeatRule),
                                     style: TextStyle(
-                                      fontSize: 13.5,
+                                      fontSize: 13,
                                       fontWeight: _repeatRule != 'none' ? FontWeight.w600 : FontWeight.normal,
                                       color: _repeatRule != 'none'
                                           ? colorScheme.primary
@@ -1778,24 +1783,24 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                           ),
                           // 切换分类胶囊（若分类数大于1）
                           if (widget.folders.length > 1 && selectedFolderName.isNotEmpty) ...[
-                            const SizedBox(width: 10),
+                            const SizedBox(width: 8),
                             InkWell(
                               onTap: _pickFolder,
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(8),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5.5),
                                 decoration: BoxDecoration(
                                   color: isDark ? Colors.white.withValues(alpha: 0.08) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
-                                  borderRadius: BorderRadius.circular(10),
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.folder_outlined, size: 16, color: isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
-                                    const SizedBox(width: 5),
+                                    Icon(Icons.folder_outlined, size: 15, color: isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
+                                    const SizedBox(width: 4),
                                     Text(
                                       selectedFolderName,
-                                      style: TextStyle(fontSize: 13.5, color: isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
+                                      style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
                                     ),
                                   ],
                                 ),
@@ -1804,33 +1809,33 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                           ],
                           // 编辑模式：给小Q 与 删除操作
                           if (widget.todo != null) ...[
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 6),
                             IconButton(
-                              icon: const Icon(Icons.smart_toy_rounded, size: 21),
+                              icon: const Icon(Icons.smart_toy_rounded, size: 20),
                               tooltip: '给小Q',
                               onPressed: () {
                                 Navigator.pop(context);
                                 widget.onQuoteToQ?.call(widget.todo!);
                               },
                               padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                             ),
                             IconButton(
-                              icon: Icon(Icons.delete_outline, size: 21, color: colorScheme.error),
+                              icon: Icon(Icons.delete_outline, size: 20, color: colorScheme.error),
                               tooltip: '删除',
                               onPressed: () {
                                 Navigator.pop(context);
                                 widget.onDelete?.call(widget.todo!);
                               },
                               padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                             ),
                           ],
                         ],
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
                   // 圆形上箭头完成/提交按钮（统一遵循应用全局主题色）
                   Semantics(
                     button: true,

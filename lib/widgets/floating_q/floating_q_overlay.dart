@@ -759,8 +759,8 @@ class _WorkingBallState extends State<_WorkingBall>
             ),
             child: Center(
               child: MorphingInfinity(
-                size: 18,
-                strokeWidth: 1.4,
+                size: 22,
+                strokeWidth: 1.5,
                 color: primary,
               ),
             ),
@@ -1126,10 +1126,10 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 5),
+            padding: const EdgeInsets.symmetric(horizontal: 7),
             child: MorphingInfinity(
-              size: 15,
-              strokeWidth: 1.3,
+              size: 20,
+              strokeWidth: 1.5,
               color: theme.colorScheme.primary,
             ),
           ),

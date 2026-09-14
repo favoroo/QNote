@@ -141,7 +141,7 @@ void main() {
     // 验证小米风格大弹窗已弹出，文案对齐
     expect(find.text('回车即可连续添加待办'), findsOneWidget);
     expect(find.text('重复'), findsOneWidget);
-    expect(find.text('设置提醒'), findsOneWidget);
+    expect(find.text('提醒'), findsOneWidget);
     expect(find.byIcon(Icons.arrow_upward_rounded), findsOneWidget);
 
     // 1. 输入第一条，按回车提交
@@ -166,7 +166,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 验证弹窗关闭，两条待办都在列表中展示
-    expect(find.text('设置提醒'), findsNothing);
+    expect(find.text('提醒'), findsNothing);
     expect(find.text('第一项任务'), findsOneWidget);
     expect(find.text('第二项任务'), findsOneWidget);
   });

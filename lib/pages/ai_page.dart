@@ -2363,10 +2363,10 @@ class _ChatBubble extends StatelessWidget {
                             ),
                             // 思考中采用形变无限符号动画，流动生命力替代三个跳动圆点
                             Padding(
-                              padding: const EdgeInsets.only(left: 6, right: 4),
+                              padding: const EdgeInsets.only(left: 8, right: 6),
                               child: MorphingInfinity(
-                                size: 16,
-                                strokeWidth: 1.3,
+                                size: 21,
+                                strokeWidth: 1.5,
                                 color: theme.colorScheme.primary,
                               ),
                             ),
@@ -3045,7 +3045,7 @@ class _TypingBubble extends StatelessWidget {
               ],
             ),
             child: MorphingInfinity(
-              size: 22,
+              size: 26,
               strokeWidth: 1.6,
               color: theme.colorScheme.primary,
             ),

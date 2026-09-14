@@ -43,7 +43,7 @@ description: 待办事项管理技能：待办分类（今日/长期/工作/学�
 ```markdown
 ---
 status: pending          # pending(未完成) | completed(已完成)
-priority: normal         # normal(普通) | important(重要加急星标)
+priority: normal         # normal(普通) | important(高优/重要，底层落库保留)
 repeat_rule: none        # none | daily(每天) | workday(工作日) | weekly(每周) | monthly(每月) | yearly(每年)
 tags: "学习,技术"        # 待办标签(选填，逗号分隔或字符串数组)
 reminder_time: "09-11 19:00" # 提醒时间(选填，格式 MM-DD HH:mm，到点推送通知)
@@ -54,6 +54,7 @@ is_long_term: false      # 是否为长期待办(选填)
 ```
 
 ## 3. 核心操作规范
+- **界面交互认知**：当前待办界面已全新升级为仿小米极简悬浮卡片风格（无冗余三点按钮与红点）。点击卡片弹出底部大窗编辑与设提醒，长按卡片可调出操作菜单（含「给小Q」），已完成待办在列表下方折叠展示。不要指导用户找「三点菜单」或「红点星标」。
 - **新建待办**：使用 `write_file(path: "/todos/分类/标题.md", content: "...")`。
   - 用户说“帮我加个中午拿快递的待办”，未指定分类时，默认写入 `/todos/今日/拿快递.md`。
   - 用户说“在工作待办里添加准备周报”，写入 `/todos/工作/准备周报.md`。
@@ -70,7 +71,7 @@ is_long_term: false      # 是否为长期待办(选填)
 - **查看待办**：使用 `list_dir(path: "/todos")` 查看分类；使用 `list_dir(path: "/todos/今日")` 查看分类下的所有待办；不知道待办在哪个分类时，用 `grep(query: "关键词", scope: "todos")` 直接定位（返回的路径可直接用于改写）。
 
 ## 4. GTD 四象限速查
-- 重要且紧急 → `/todos/今日/` 并标记 `priority: important`
+- 重要且紧急 → `/todos/今日/` 并必须设置 `reminder_time` 触发系统级闹钟提醒，标记 `priority: important`
 - 重要不紧急 → `/todos/长期/`
 - 紧急不重要 → `/todos/今日/`（普通优先级）
 - 不重要不紧急 → 建议不记录，或归入 `/todos/学习/` 等低优先级分类
