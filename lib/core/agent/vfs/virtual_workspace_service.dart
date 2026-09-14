@@ -537,27 +537,32 @@ class VirtualWorkspaceService {
 
   /// 递归展开目录树，返回以 `/` 开头的完整虚拟路径（目录条目保留结尾 `/`）
   ///
-  /// 采用广度优先：先把顶层各目录及其下一层铺开，再逐层深入。这样即便条目数
-  /// 达到 [maxEntries] 被截断，模型也已经看到工作区整体形状（不会整段子树消失）。
-  Future<List<String>> _listDirRecursive(String root, {int maxEntries = 200}) async {
+  /// 采用广度优先：先把顶层各目录及其下一层铺开，再逐层深入。即便条目数达到
+  /// [maxEntries] 被截断，当前目录的 children 也会完整展开完毕再停止——不会出现
+  /// "看到了目录条目但看不到其下文件"的半截展开。
+  Future<List<String>> _listDirRecursive(String root, {int maxEntries = 500}) async {
     final result = <String>[];
     final queue = <String>[root];
-    while (queue.isNotEmpty && result.length < maxEntries) {
+    var truncated = false;
+    while (queue.isNotEmpty && !truncated) {
       final dir = queue.removeAt(0);
       // 目录路径统一补足结尾斜杠，避免拼出 /todos//今日 这类双斜杠路径
       final base = dir.endsWith('/') ? dir : '$dir/';
       final children = await listDir(dir);
       for (final child in children) {
-        if (result.length >= maxEntries) break;
         final full = '$base$child';
         result.add(full);
         if (child.endsWith('/')) {
           queue.add(full);
         }
       }
+      // 当前目录 children 全部展开完毕后再判断是否截断，避免半截子目录
+      if (result.length >= maxEntries) {
+        truncated = true;
+      }
     }
-    if (result.length >= maxEntries) {
-      result.add('... (目录条目过多，已截断前 $maxEntries 项)');
+    if (truncated) {
+      result.add('... (目录条目过多，已截断前 ${result.length} 项)');
     }
     return result;
   }
