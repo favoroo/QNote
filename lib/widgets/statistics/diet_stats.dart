@@ -4,7 +4,21 @@ import 'package:qnote_flutter/core/utils/stats_utils.dart';
 import 'package:qnote_flutter/widgets/stats_card.dart';
 
 const _chartColors = [Color(0xFF6366F1), Color(0xFF10B981), Color(0xFFF59E0B), Color(0xFFEF4444), Color(0xFF8B5CF6)];
-const _ratingColors = [Color(0xFF10B981), Color(0xFFF59E0B), Color(0xFFEF4444)];
+
+Color _getRatingColor(String key) {
+  switch (key) {
+    case '健康':
+      return const Color(0xFF10B981);
+    case '一般':
+      return const Color(0xFFF59E0B);
+    case '不健康':
+      return const Color(0xFFEF4444);
+    case '过于放纵':
+      return const Color(0xFF991B1B);
+    default:
+      return const Color(0xFF6B7280);
+  }
+}
 
 class DietStatsWidget extends StatelessWidget {
   final DietStatistics stats;
@@ -34,10 +48,10 @@ class DietStatsWidget extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: StatsCard(
-                title: '记录总数',
-                value: '${stats.typeDistribution.values.fold(0, (a, b) => a + b)}条',
-                icon: Icons.fastfood,
-                iconColor: Colors.blue,
+                title: '健康餐次',
+                value: '${stats.healthDistribution['健康'] ?? 0}次',
+                icon: Icons.favorite,
+                iconColor: const Color(0xFF10B981),
               ),
             ),
           ],
@@ -113,9 +127,7 @@ class DietStatsWidget extends StatelessWidget {
                   child: PieChart(
                     PieChartData(
                       sections: healthData.asMap().entries.map((e) {
-                        final healthKey = e.value.key;
-                        final colorIndex = healthKey == '健康' ? 0 : (healthKey == '一般' ? 1 : 2);
-                        final color = _ratingColors[colorIndex];
+                        final color = _getRatingColor(e.value.key);
                         return PieChartSectionData(
                           value: e.value.value.toDouble(),
                           color: color,
@@ -135,9 +147,7 @@ class DietStatsWidget extends StatelessWidget {
                   runSpacing: 8,
                   alignment: WrapAlignment.center,
                   children: healthData.asMap().entries.map((e) {
-                    final healthKey = e.value.key;
-                    final colorIndex = healthKey == '健康' ? 0 : (healthKey == '一般' ? 1 : 2);
-                    final color = _ratingColors[colorIndex];
+                    final color = _getRatingColor(e.value.key);
                     return Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [

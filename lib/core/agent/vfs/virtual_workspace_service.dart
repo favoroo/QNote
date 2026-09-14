@@ -21,6 +21,7 @@ import 'package:qnote_flutter/core/utils/reminder_utils.dart';
 import 'package:qnote_flutter/models/agent_memory.dart';
 import 'package:qnote_flutter/models/agent_skill.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
+import 'package:qnote_flutter/models/daily_score.dart';
 import 'package:qnote_flutter/models/date_color_mark.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/fixed_event_template.dart';
@@ -66,6 +67,7 @@ class VirtualWorkspaceService {
     '/folders/',
     '/memory/',
     '/skills/',
+    '/stats/',
   ];
 
   /// /settings/ 下全部可读写的配置文件（目录列举、grep 检索、追加模式禁用判定共用）
@@ -103,6 +105,7 @@ class VirtualWorkspaceService {
     '暂无流水事件打卡',
     '尚未开始编写这天的深度反思日记',
     '暂无记忆条目',
+    '当天暂无生活评分记录',
   ];
 
   /// 判断读取结果是否为空态占位文案（无真实内容的端点）
@@ -250,13 +253,13 @@ class VirtualWorkspaceService {
           .split('\n')
           .map((l) => l.replaceFirst(RegExp(r'^\d+\t'), ''))
           .join('\n');
-      // 时间线空天文件的占位文案写回会被差量逻辑拒绝，按"本轮前不存在"处理
-      final isEmptyTimeline =
-          path.startsWith('/timeline/') && before.contains('暂无流水事件打卡');
+      // 时间线或评分空天文件的占位文案写回会被差量逻辑拒绝，按"本轮前不存在"处理
+      final isEmptyPlaceholder = (path.startsWith('/timeline/') && before.contains('暂无流水事件打卡')) ||
+          (path.startsWith('/stats/scores/') && before.contains('当天暂无生活评分记录'));
       return WorkspaceUndoEntry(
         path: path,
-        existedBefore: !isEmptyTimeline,
-        beforeContent: isEmptyTimeline ? null : before,
+        existedBefore: !isEmptyPlaceholder,
+        beforeContent: isEmptyPlaceholder ? null : before,
       );
     } catch (_) {
       return WorkspaceUndoEntry(path: path, existedBefore: false);
@@ -430,7 +433,14 @@ class VirtualWorkspaceService {
     }
 
     if (path == '/stats' || path == '/stats/') {
-      return ['summary.json', 'daily_scores.json'];
+      return ['summary.json', 'daily_scores.json', 'scores/'];
+    }
+
+    if (path == '/stats/scores' || path == '/stats/scores/') {
+      final now = DateTime.now();
+      final startDate = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 30));
+      final scores = await _dailyScoreRepo.getByDateRange(startDate, now);
+      return scores.map((s) => '${s.date.toIso8601String().substring(0, 10)}.json').toList();
     }
 
     if (path == '/chats' || path == '/chats/') {
@@ -997,6 +1007,30 @@ class VirtualWorkspaceService {
         'recordCount': s.recordCount,
       }).toList();
       return const JsonEncoder.withIndent('  ').convert(list);
+    } else if (path.startsWith('/stats/scores/')) {
+      final dateStr = path.substring('/stats/scores/'.length).replaceAll('.json', '').trim();
+      DateTime date;
+      try {
+        date = DateTime.parse(dateStr);
+      } catch (_) {
+        throw Exception('无效的评分日期格式: $dateStr（正确格式应为 YYYY-MM-DD.json）');
+      }
+      final score = await _dailyScoreRepo.getByDate(date);
+      if (score == null) {
+        return '{\n  "date": "$dateStr",\n  "status": "not_scored",\n  "message": "当天暂无生活评分记录。可以通过 write_file(path: \\"/stats/scores/$dateStr.json\\") 进行评分。"\n}';
+      }
+      final data = {
+        'id': score.id,
+        'date': score.date.toIso8601String().substring(0, 10),
+        'totalScore': score.totalScore,
+        'dimensionScores': score.dimensionScores,
+        'summary': score.summary,
+        'suggestions': score.suggestions,
+        'recordCount': score.recordCount,
+        'createdAt': score.createdAt.toIso8601String(),
+        'updatedAt': score.updatedAt.toIso8601String(),
+      };
+      return const JsonEncoder.withIndent('  ').convert(data);
     }
     throw Exception('未知的统计数据路径: $path');
   }
@@ -1049,6 +1083,8 @@ class VirtualWorkspaceService {
       return await _writeChatsFile(path, effectiveContent);
     } else if (path.startsWith('/settings/')) {
       return await _writeSettingsFile(path, effectiveContent);
+    } else if (path.startsWith('/stats/')) {
+      return await _writeStatsFile(path, effectiveContent);
     }
     throw Exception('不支持写入只读或未知的路径: $path');
   }
@@ -1522,14 +1558,13 @@ class VirtualWorkspaceService {
         }
       }
 
-      // 饮食/活动/记账常见二级字段标准化兼容：
-      // 例如小Q若将餐别或菜式直接写为自由字段，尝试将其归为标准种类/类型
+      // 饮食/活动常见二级字段标准化兼容：
       if (category == '饮食') {
-        if (!customFields.containsKey('type') && !customFields.containsKey('种类')) {
-          if (customFields.containsKey('餐别')) {
-            customFields['种类'] = customFields.remove('餐别');
-          } else if (customFields.containsKey('餐饮类型')) {
-            customFields['种类'] = customFields.remove('餐饮类型');
+        if (!customFields.containsKey('rating') && !customFields.containsKey('评价')) {
+          if (customFields.containsKey('健康度')) {
+            customFields['评价'] = customFields.remove('健康度');
+          } else if (customFields.containsKey('健康评价')) {
+            customFields['评价'] = customFields.remove('健康评价');
           }
         }
       } else if (category == '活动') {
@@ -2264,6 +2299,125 @@ class VirtualWorkspaceService {
     return {'status': 'updated', 'path': path, 'updated_count': updatedCount};
   }
 
+  /// 写入 /stats/ 下的评分数据
+  Future<Map<String, dynamic>> _writeStatsFile(String path, String content) async {
+    if (!path.startsWith('/stats/scores/')) {
+      throw Exception('当前统计路径不支持直接覆写: $path（宏观汇总 summary.json / daily_scores.json 仅供读取，若要给某天评分或修改分数，请写入单日路径: /stats/scores/YYYY-MM-DD.json）');
+    }
+
+    final dateStr = path.substring('/stats/scores/'.length).replaceAll('.json', '').trim();
+    DateTime date;
+    try {
+      date = DateTime.parse(dateStr);
+    } catch (_) {
+      throw Exception('无效的评分日期格式: $dateStr（正确格式应为 YYYY-MM-DD.json）');
+    }
+
+    dynamic decoded;
+    try {
+      decoded = jsonDecode(content);
+    } catch (e) {
+      throw Exception('评分数据必须是合法的 JSON 格式: $e');
+    }
+
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception('评分数据必须是 JSON 对象');
+    }
+
+    // 解析总分 totalScore（0-100）
+    final rawTotal = decoded['totalScore'] ?? decoded['total_score'] ?? decoded['score'];
+    int totalScore = 60;
+    if (rawTotal is num) {
+      totalScore = rawTotal.toInt().clamp(0, 100);
+    }
+
+    // 解析维度分 dimensionScores
+    final rawDims = decoded['dimensionScores'] ?? decoded['dimension_scores'] ?? decoded['dimensions'];
+    final Map<String, int> dimensionScores = {};
+    if (rawDims is Map) {
+      for (final entry in rawDims.entries) {
+        final key = entry.key.toString().trim();
+        final val = entry.value;
+        if (val is num) {
+          dimensionScores[key] = val.toInt().clamp(0, 100);
+        }
+      }
+    }
+    // 默认兜底常用维度
+    dimensionScores.putIfAbsent('sleep', () => totalScore);
+    dimensionScores.putIfAbsent('diet', () => totalScore);
+    dimensionScores.putIfAbsent('activity', () => totalScore);
+    dimensionScores.putIfAbsent('health', () => totalScore);
+
+    // 总结与建议
+    final summary = (decoded['summary'] ?? '').toString().trim();
+    final suggestions = (decoded['suggestions'] ?? decoded['suggestion'] ?? '').toString().trim();
+
+    // 记录数量
+    int recordCount = 0;
+    final rawCount = decoded['recordCount'] ?? decoded['record_count'];
+    if (rawCount is num) {
+      recordCount = rawCount.toInt();
+    } else {
+      // 若未指定，自动根据当天流水记录数计算
+      final records = await _diaryRepo.getByDate(date);
+      recordCount = records.length;
+    }
+
+    final existing = await _dailyScoreRepo.getByDate(date);
+    DailyScore savedScore;
+    String op = 'created';
+    if (existing != null) {
+      savedScore = existing.copyWith(
+        totalScore: totalScore,
+        dimensionScores: dimensionScores,
+        summary: summary.isNotEmpty ? summary : existing.summary,
+        suggestions: suggestions.isNotEmpty ? suggestions : existing.suggestions,
+        recordCount: recordCount > 0 ? recordCount : existing.recordCount,
+        updatedAt: DateTime.now(),
+      );
+      await _dailyScoreRepo.update(savedScore);
+      op = 'updated';
+    } else {
+      final now = DateTime.now();
+      savedScore = DailyScore(
+        id: const Uuid().v4(),
+        date: date,
+        totalScore: totalScore,
+        dimensionScores: dimensionScores,
+        summary: summary,
+        suggestions: suggestions,
+        recordCount: recordCount,
+        createdAt: now,
+        updatedAt: now,
+      );
+      await _dailyScoreRepo.insert(savedScore);
+      op = 'created';
+    }
+
+    // 触发工作区总线广播（通知 UI 刷新每日评分图表）
+    WorkspaceEventBus.instance.emit(
+      path,
+      op == 'created' ? WorkspaceChangeType.created : WorkspaceChangeType.updated,
+      savedScore,
+    );
+    WorkspaceEventBus.instance.emit(
+      '/stats/daily_scores.json',
+      WorkspaceChangeType.updated,
+      savedScore,
+    );
+
+    return {
+      'status': op,
+      'path': path,
+      'id': savedScore.id,
+      'date': dateStr,
+      'totalScore': savedScore.totalScore,
+      'dimensionScores': savedScore.dimensionScores,
+      'summary': savedScore.summary,
+    };
+  }
+
   /// 颜色解析辅助方法（支持 hex #RRGGBB、#AARRGGBB 与常见颜色别名）
   Color? _parseColor(dynamic raw) {
     if (raw == null) return null;
@@ -2544,6 +2698,24 @@ class VirtualWorkspaceService {
       throw Exception('未指定要删除的会话 ID: $path (例如: /chats/<session_id>.json)');
     }
 
+    if (path.startsWith('/stats/scores/')) {
+      final dateStr = path.substring('/stats/scores/'.length).replaceAll('.json', '').trim();
+      DateTime date;
+      try {
+        date = DateTime.parse(dateStr);
+      } catch (_) {
+        throw Exception('无效的评分日期格式: $dateStr（正确格式应为 YYYY-MM-DD.json）');
+      }
+      final existing = await _dailyScoreRepo.getByDate(date);
+      if (existing != null) {
+        await _dailyScoreRepo.delete(existing.id);
+        WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.deleted, {'id': existing.id, 'date': dateStr});
+        WorkspaceEventBus.instance.emit('/stats/daily_scores.json', WorkspaceChangeType.updated, {'id': existing.id, 'date': dateStr});
+        return {'status': 'deleted', 'path': path, 'id': existing.id, 'date': dateStr};
+      }
+      return {'status': 'noop', 'path': path, 'message': '未找到该日期的评分记录，无需删除'};
+    }
+
     throw Exception('当前路径不支持直接删除: $path');
   }
 
@@ -2684,6 +2856,7 @@ class VirtualWorkspaceService {
     'memory',
     'settings',
     'chats',
+    'stats',
   ];
 
   /// 单条命中文本（match）的最大长度，控制回传给模型的体积
@@ -2837,6 +3010,28 @@ class VirtualWorkspaceService {
         out: results,
         limit: limit,
       );
+    }
+
+    // 7. 统计评分（/stats/scores/YYYY-MM-DD.json 及 /stats/daily_scores.json）
+    if (inScope('stats')) {
+      final now = DateTime.now();
+      final startDate = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 30));
+      final scores = await _dailyScoreRepo.getByDateRange(startDate, now);
+      for (final s in scores) {
+        if (results.length >= limit) break;
+        final dateStr = s.date.toIso8601String().substring(0, 10);
+        final fullText = '${s.summary} ${s.suggestions} 总分:${s.totalScore} 维度:${s.dimensionScores}';
+        if (!reg.hasMatch(fullText) && !reg.hasMatch(dateStr)) continue;
+        results.add({
+          'type': 'stats',
+          'path': '/stats/scores/$dateStr.json',
+          'id': s.id,
+          'date': dateStr,
+          'totalScore': s.totalScore,
+          'match': '[$dateStr] 生活评分 ${s.totalScore}分: ${s.summary}',
+          'snippet': _grepSnippet(s.summary.isNotEmpty ? s.summary : s.suggestions, reg),
+        });
+      }
     }
 
     return results;

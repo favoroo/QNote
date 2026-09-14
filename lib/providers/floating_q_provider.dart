@@ -767,12 +767,19 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       QQuoteSource.journal => '每日日记',
       QQuoteSource.todo => '待办',
       QQuoteSource.external => '外部内容',
+      QQuoteSource.chat => '对话内容',
     };
 
     // 外部分享内容（第三方分享/划词）：没有应用内来源实体可定位，
     // 直接把文本注入上下文即可，不做 VFS 路径解析、不给 read_file 指引
     if (quote.source == QQuoteSource.external) {
       return buildExternalQuoteBlock(quote);
+    }
+
+    // 对话内容（从面板消息中引用）：同样无 VFS 来源实体，
+    // 直接注入文本，但措辞与外部内容区分
+    if (quote.source == QQuoteSource.chat) {
+      return buildChatQuoteBlock(quote);
     }
 
     // 按来源类型解析 VFS 规范路径与 id 提示（与 undo 录制的归一化键一致）
@@ -797,6 +804,9 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
         idHint = '待办 id: ${quote.sourceId}（文件头部为 YAML frontmatter，修改时保留其中的 id 字段）';
       case QQuoteSource.external:
         // 外部内容已在方法开头提前返回，此处不可达
+        return null;
+      case QQuoteSource.chat:
+        // 对话内容已在方法开头提前返回，此处不可达
         return null;
     }
 
@@ -834,6 +844,25 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       externalText,
       '"""',
       '上述内容无法在虚拟工作区中定位，不要尝试用 read_file 查找它，直接基于内容本身处理',
+    ].join('\n');
+  }
+
+  /// 组装对话内容的注入块：引用来自面板内某条消息的片段，
+  /// 无 VFS 来源实体，直接注入文本。返回 null 表示无可注入内容
+  @visibleForTesting
+  static String? buildChatQuoteBlock(QTextQuote quote) {
+    var chatText = quote.quotedText.trim();
+    if (chatText.isEmpty) return null;
+    if (chatText.length > 2000) {
+      chatText = '${chatText.substring(0, 2000)}…（内容过长已截断）';
+    }
+    return [
+      '用户引用的对话内容（来自当前对话中某条消息的片段，接下来的指令通常针对这段内容提问或要求处理）',
+      '引用内容：',
+      '"""',
+      chatText,
+      '"""',
+      '上述内容来自对话本身，不要尝试用 read_file 查找它，直接基于内容本身处理',
     ].join('\n');
   }
 

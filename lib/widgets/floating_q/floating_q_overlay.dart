@@ -21,6 +21,7 @@ import 'package:qnote_flutter/widgets/common/loading_ring.dart';
 import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
 import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
 import 'package:qnote_flutter/widgets/common/thought_tail_scroll_view.dart';
+import 'package:qnote_flutter/widgets/q_text_selection_toolbar.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 
 /// 全局悬浮小Q入口：悬浮球 + 快捷对话面板。
@@ -72,6 +73,9 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay>
   _DockSide _dockSide = _DockSide.left;
   bool _isDragging = false;
   Timer? _idleTimer;
+
+  /// 面板内 SelectionArea 当前选中文本（供球点击引用面板消息选区）
+  final _panelSelection = ValueNotifier<String?>(null);
 
   @override
   void initState() {
@@ -126,6 +130,7 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay>
   void dispose() {
     _idleTimer?.cancel();
     _snapController.dispose();
+    _panelSelection.dispose();
     _router?.routerDelegate.removeListener(_routeListener);
     super.dispose();
   }
@@ -327,8 +332,8 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay>
                     ),
                   ),
                 ),
-                // 对话面板：弹出时自底边向上生长淡入，收起时缩回淡出，
-                // 动画结束才卸载（autofocus 输入框每次打开重新挂载，行为不变）
+                // 对话面板 + 面板上方悬浮球：弹出时自底边向上生长淡入，
+                // 收起时缩回淡出，动画结束才卸载（autofocus 输入框每次打开重新挂载）
                 Positioned(
                   left: _edgeMargin,
                   right: _edgeMargin,
@@ -352,14 +357,42 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay>
                         ? SizedBox(
                             // AnimatedSwitcher 内部 Stack 是松约束，
                             // 需显式撑满宽度，面板才能保持左右贴边
-                            key: const ValueKey('panel'),
+                            key: const ValueKey('panel-with-ball'),
                             width: double.infinity,
-                            child: _FloatingQPanel(onUndo: _handleUndo),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // 面板打开时球浮在面板正上方，靠停靠侧对齐；
+                                // 不支持拖拽（仅点击引用），面板关闭后球回自由位
+                                Align(
+                                  alignment: _dockSide == _DockSide.right
+                                      ? Alignment.centerRight
+                                      : Alignment.centerLeft,
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child: _FloatingBall(
+                                      key: const ValueKey('ball-panel'),
+                                      size: _ballSize,
+                                      position: Offset.zero,
+                                      isWorking: isWorking,
+                                      isDocked: false,
+                                      dockSide: _dockSide,
+                                      onPointerDown: _wakeUpFromDock,
+                                      onTap: _handleBallTap,
+                                    ),
+                                  ),
+                                ),
+                                _FloatingQPanel(
+                                  onUndo: _handleUndo,
+                                  panelSelection: _panelSelection,
+                                ),
+                              ],
+                            ),
                           )
                         : const SizedBox.shrink(key: ValueKey('panel-hidden')),
                   ),
                 ),
-                // 悬浮球：面板打开时原地缩小淡出，面板收起后带轻微回弹归位
+                // 自由球：面板关闭时在用户拖拽位置（可拖拽），面板打开时隐藏
                 Positioned(
                   left: _displayBallPosition(size, keyboardInset).dx,
                   top: _displayBallPosition(size, keyboardInset).dy,
@@ -375,21 +408,21 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay>
                         child: child,
                       ),
                     ),
-                    child: panelOpen
-                        ? const SizedBox.shrink(key: ValueKey('ball-hidden'))
-                        : _FloatingBall(
-                            key: const ValueKey('ball'),
+                    child: !panelOpen
+                        ? _FloatingBall(
+                            key: const ValueKey('ball-free'),
                             size: _ballSize,
                             position: _displayBallPosition(size, keyboardInset),
                             isWorking: isWorking,
-                            isDocked: _isDocked && !isWorking && !panelOpen,
+                            isDocked: _isDocked && !isWorking,
                             dockSide: _dockSide,
                             onPointerDown: _wakeUpFromDock,
                             onDragStart: _onDragStart,
                             onTap: _handleBallTap,
                             onDragUpdate: _onDragBall,
                             onDragEnd: _onDragEnd,
-                          ),
+                          )
+                        : const SizedBox.shrink(key: ValueKey('ball-hidden')),
                   ),
                 ),
               ],
@@ -400,13 +433,40 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay>
     );
   }
 
-  /// 悬浮球点按：当前编辑页正文处于框选状态时，把选中文本作为引用打开面板
-  /// （等同选择菜单「给小Q」）；否则普通打开面板。
-  /// 球体用原生 Listener 处理指针，点按不会打断编辑器焦点与选区，
-  /// 捕获在点按回调内同步完成，不存在丢失窗口
+  /// 悬浮球点按：面板打开时优先引用面板内选中文本，再查编辑器选区；
+  /// 面板关闭时查编辑器选区作为引用打开面板（等同选择菜单「给小Q」），
+  /// 无选区则普通打开面板。球体用原生 Listener 处理指针，点按不会打断
+  /// 编辑器焦点与选区，捕获在点按回调内同步完成，不存在丢失窗口
   void _handleBallTap() {
     final notifier = ref.read(floatingQProvider.notifier);
-    final signature = ref.read(floatingQProvider).effectiveContext?.signature;
+    final fqState = ref.read(floatingQProvider);
+
+    // 面板打开时：优先检查面板内选中文本
+    if (fqState.panelOpen) {
+      final panelText = _panelSelection.value;
+      if (panelText != null && panelText.isNotEmpty) {
+        notifier.openWithQuote(QTextQuote(
+          source: QQuoteSource.chat,
+          sourceId: '',
+          sourceTitle: '对话内容',
+          quotedText: panelText,
+        ));
+        _panelSelection.value = null;
+        return;
+      }
+      // 面板无选区时再查编辑器选区（面板打开前可能已选中）
+      final signature = fqState.effectiveContext?.signature;
+      final editorQuote = QTargetBridge.instance.captureQuote(signature);
+      if (editorQuote != null) {
+        notifier.openWithQuote(editorQuote);
+        return;
+      }
+      // 都无选区：面板已展开，不额外操作
+      return;
+    }
+
+    // 面板关闭时：检查编辑器选区
+    final signature = fqState.effectiveContext?.signature;
     final quote = QTargetBridge.instance.captureQuote(signature);
     if (quote == null) {
       notifier.openPanel();
@@ -453,16 +513,16 @@ class _FloatingBall extends StatefulWidget {
   /// 指针按下时触发唤醒展开
   final VoidCallback onPointerDown;
 
-  /// 开始拖动回调
-  final VoidCallback onDragStart;
+  /// 开始拖动回调（为 null 时球仅支持点击，不支持拖拽）
+  final VoidCallback? onDragStart;
 
   final VoidCallback onTap;
 
   /// 拖动回调：新的球左上角位置（屏幕坐标，未钳制，由宿主钳制后存储）
-  final ValueChanged<Offset> onDragUpdate;
+  final ValueChanged<Offset>? onDragUpdate;
 
   /// 拖动结束回调：松手或拖动中被打断时触发，宿主借此持久化位置并触发吸附动画
-  final VoidCallback onDragEnd;
+  final VoidCallback? onDragEnd;
 
   const _FloatingBall({
     super.key,
@@ -472,10 +532,10 @@ class _FloatingBall extends StatefulWidget {
     required this.isDocked,
     required this.dockSide,
     required this.onPointerDown,
-    required this.onDragStart,
+    this.onDragStart,
     required this.onTap,
-    required this.onDragUpdate,
-    required this.onDragEnd,
+    this.onDragUpdate,
+    this.onDragEnd,
   });
 
   @override
@@ -516,14 +576,16 @@ class _FloatingBallState extends State<_FloatingBall> {
     final origin = _origin;
     if (start == null || origin == null) return;
     if (!_dragging && (event.position - start).distance > _dragSlop) {
+      // 无拖拽回调时仅支持点击，不进入拖动模式
+      if (widget.onDragStart == null) return;
       _dragging = true;
-      widget.onDragStart();
+      widget.onDragStart!();
       HapticFeedback.selectionClick();
     }
     if (_dragging) {
       // 拖动即脱离按压语义，球体恢复正常大小随指针移动
       if (_pressed) setState(() => _pressed = false);
-      widget.onDragUpdate(origin + (event.position - start));
+      widget.onDragUpdate!(origin + (event.position - start));
     }
   }
 
@@ -534,7 +596,7 @@ class _FloatingBallState extends State<_FloatingBall> {
     _dragging = false;
     if (_pressed) setState(() => _pressed = false);
     if (wasDragging) {
-      widget.onDragEnd();
+      widget.onDragEnd?.call();
     } else {
       HapticFeedback.lightImpact();
       widget.onTap();
@@ -548,7 +610,7 @@ class _FloatingBallState extends State<_FloatingBall> {
     _dragging = false;
     if (_pressed) setState(() => _pressed = false);
     // 拖动中被打断时位置已随 move 更新，同样触发结束吸附与持久化
-    if (wasDragging) widget.onDragEnd();
+    if (wasDragging) widget.onDragEnd?.call();
   }
 
   @override
@@ -776,8 +838,12 @@ class _WorkingBallState extends State<_WorkingBall>
 // ---------------------------------------------------------------------------
 class _FloatingQPanel extends ConsumerStatefulWidget {
   final Future<void> Function() onUndo;
+  final ValueNotifier<String?> panelSelection;
 
-  const _FloatingQPanel({required this.onUndo});
+  const _FloatingQPanel({
+    required this.onUndo,
+    required this.panelSelection,
+  });
 
   @override
   ConsumerState<_FloatingQPanel> createState() => _FloatingQPanelState();
@@ -812,7 +878,7 @@ class _FloatingQPanelState extends ConsumerState<_FloatingQPanel> {
           children: [
             _buildHeader(theme, externalShareMode ? '小Q' : '小Q · $contextLabel'),
             Divider(height: 1, color: theme.colorScheme.outlineVariant),
-            const Flexible(child: _PanelMessages()),
+            Flexible(child: _PanelMessages(panelSelection: widget.panelSelection)),
             // 撤回横幅自管显隐（内部按 phase 判定），常驻面板不自动消失
             _PanelUndoBanner(onUndo: widget.onUndo),
             // 「给小Q」引用卡片自管显隐（无挂起引用时不占位）
@@ -876,7 +942,9 @@ class _FloatingQPanelState extends ConsumerState<_FloatingQPanel> {
 /// 独立订阅 provider：流式期间（约 60ms 一次）只有本组件重建，
 /// 面板外壳与输入行保持稳定，输入框 IME 组合态不被打断
 class _PanelMessages extends ConsumerStatefulWidget {
-  const _PanelMessages();
+  final ValueNotifier<String?> panelSelection;
+
+  const _PanelMessages({required this.panelSelection});
 
   @override
   ConsumerState<_PanelMessages> createState() => _PanelMessagesState();
@@ -988,20 +1056,52 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
       );
     }
 
-    return NotificationListener<ScrollNotification>(
-      onNotification: (notification) {
-        if (notification is ScrollUpdateNotification &&
-            notification.dragDetails != null) {
-          _follow = false; // 用户主动拖动即暂停贴底跟随
-        }
-        if (_isNearBottom) _follow = true; // 拖回底部附近自动恢复
-        return false;
+    return SelectionArea(
+      // 跟踪面板内选中文本，供悬浮球点击引用
+      onSelectionChanged: (selection) {
+        widget.panelSelection.value = selection?.plainText;
       },
-      child: ListView(
-        controller: _listController,
-        shrinkWrap: true,
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-        children: children,
+      contextMenuBuilder: (context, selectableRegionState) {
+        final selectedText = widget.panelSelection.value;
+        final hasSelection = selectedText != null && selectedText.isNotEmpty;
+        return QTextSelectionToolbar(
+          anchors: selectableRegionState.contextMenuAnchors,
+          buttonItems: [
+            ...selectableRegionState.contextMenuButtonItems
+                .where((item) => item.type != ContextMenuButtonType.custom),
+            if (hasSelection)
+              ContextMenuButtonItem(
+                label: '给小Q',
+                onPressed: () {
+                  selectableRegionState.hideToolbar();
+                  ref.read(floatingQProvider.notifier).openWithQuote(
+                        QTextQuote(
+                          source: QQuoteSource.chat,
+                          sourceId: '',
+                          sourceTitle: '对话内容',
+                          quotedText: selectedText,
+                        ),
+                      );
+                },
+              ),
+          ],
+        );
+      },
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          if (notification is ScrollUpdateNotification &&
+              notification.dragDetails != null) {
+            _follow = false; // 用户主动拖动即暂停贴底跟随
+          }
+          if (_isNearBottom) _follow = true; // 拖回底部附近自动恢复
+          return false;
+        },
+        child: ListView(
+          controller: _listController,
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          children: children,
+        ),
       ),
     );
   }
@@ -1099,7 +1199,7 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
           color: theme.colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(AppRadius.medium),
         ),
-        child: SelectableText(
+        child: Text(
           content,
           style: theme.textTheme.bodyMedium,
         ),
@@ -1244,6 +1344,7 @@ class _PanelQuoteCard extends ConsumerWidget {
         QQuoteSource.journal => Icons.menu_book_outlined,
         QQuoteSource.todo => Icons.task_alt_outlined,
         QQuoteSource.external => Icons.share_outlined,
+        QQuoteSource.chat => Icons.chat_bubble_outline_rounded,
       };
 
   String _sourceLabel(QQuoteSource source) => switch (source) {
@@ -1252,13 +1353,18 @@ class _PanelQuoteCard extends ConsumerWidget {
         QQuoteSource.journal => '每日日记',
         QQuoteSource.todo => '待办',
         QQuoteSource.external => '外部分享',
+        QQuoteSource.chat => '对话内容',
       };
 
   /// 标题行：日记来源为日期字符串不加书名号，其余《标题》+ 位置；
   /// 外部分享无实体标题，只展示来源标签
   String _titleLine(QTextQuote quote) {
     final label = _sourceLabel(quote.source);
-    if (quote.source == QQuoteSource.external) return label;
+    // 外部分享与对话内容无实体标题，只展示来源标签
+    if (quote.source == QQuoteSource.external ||
+        quote.source == QQuoteSource.chat) {
+      return label;
+    }
     final title = quote.source == QQuoteSource.journal
         ? '$label ${quote.sourceTitle}'
         : '$label《${quote.sourceTitle}》';

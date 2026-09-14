@@ -144,16 +144,7 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
           config.name,
           style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
         ),
-        subtitle: Row(
-          children: [
-            Text('$fieldCount 个字段', style: theme.textTheme.bodySmall),
-            if (config.hasPopup) ...[
-              const SizedBox(width: 8),
-              Icon(Icons.open_in_new, size: 12, color: theme.colorScheme.primary),
-              Text('弹窗', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary)),
-            ],
-          ],
-        ),
+        subtitle: Text('$fieldCount 个字段', style: theme.textTheme.bodySmall),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [

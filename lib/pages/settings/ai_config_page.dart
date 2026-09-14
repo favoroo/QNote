@@ -1452,171 +1452,156 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           const SizedBox(height: 12),
           // 内嵌模型选择面板
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
             decoration: BoxDecoration(
               color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Row(
-              children: [
-                Text(
-                  '调用模型',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String?>(
+                isExpanded: true,
+                value: currentDropdownValue,
+                hint: const Text(
+                  '暂无可用模型',
+                  style: TextStyle(fontSize: 11.5),
+                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String?>(
-                      isExpanded: true,
-                      value: currentDropdownValue,
-                      hint: const Text(
-                        '暂无可用模型',
-                        style: TextStyle(fontSize: 12),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      style: theme.textTheme.bodyMedium?.copyWith(fontSize: 12),
-                      items: [
-                        ...builtinModels.map(
-                          (m) => DropdownMenuItem<String?>(
-                            value: m['id'],
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.auto_awesome_rounded,
-                                  size: 13,
-                                  color: colorScheme.primary,
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    m['name']!,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
+                style: theme.textTheme.bodyMedium?.copyWith(fontSize: 11.5),
+                items: [
+                  ...builtinModels.map(
+                    (m) => DropdownMenuItem<String?>(
+                      value: m['id'],
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.auto_awesome_rounded,
+                            size: 13,
+                            color: colorScheme.primary,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              m['name']!,
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                        ),
-                        ...configs.map(
-                          (c) => DropdownMenuItem<String?>(
-                            value: c.id,
+                        ],
+                      ),
+                    ),
+                  ),
+                  ...configs.map(
+                    (c) => DropdownMenuItem<String?>(
+                      value: c.id,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.tune_rounded,
+                            size: 13,
+                            color: colorScheme.secondary,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
                             child: Text(
                               c.name,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 12),
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                      onChanged: (value) async {
-                        if (value == null) return;
-                        AiRoles newRoles;
-                        final isFree = value.startsWith('free:');
-                        final freeModelId = isFree ? value.substring(5) : null;
-                        switch (roleKey) {
-                          case 'assistant':
-                            newRoles = _roles.copyWith(
-                              assistant: isFree ? null : value,
-                              assistantUseFreeModel: isFree,
-                              assistantFreeModelId: freeModelId,
-                            );
-                          case 'timelineOptimization':
-                            newRoles = _roles.copyWith(
-                              timelineOptimization: isFree ? null : value,
-                              timelineOptimizationUseFreeModel: isFree,
-                              timelineOptimizationFreeModelId: freeModelId,
-                            );
-                          default:
-                            newRoles = _roles;
-                        }
-                        await AiRoleService.instance.saveRoles(newRoles);
-                        ref.invalidate(aiRolesProvider);
-                        if (mounted) setState(() => _roles = newRoles);
-                      },
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+                onChanged: (value) async {
+                  if (value == null) return;
+                  AiRoles newRoles;
+                  final isFree = value.startsWith('free:');
+                  final freeModelId = isFree ? value.substring(5) : null;
+                  switch (roleKey) {
+                    case 'assistant':
+                      newRoles = _roles.copyWith(
+                        assistant: isFree ? null : value,
+                        assistantUseFreeModel: isFree,
+                        assistantFreeModelId: freeModelId,
+                      );
+                    case 'timelineOptimization':
+                      newRoles = _roles.copyWith(
+                        timelineOptimization: isFree ? null : value,
+                        timelineOptimizationUseFreeModel: isFree,
+                        timelineOptimizationFreeModelId: freeModelId,
+                      );
+                    default:
+                      newRoles = _roles;
+                  }
+                  await AiRoleService.instance.saveRoles(newRoles);
+                  ref.invalidate(aiRolesProvider);
+                  if (mounted) setState(() => _roles = newRoles);
+                },
+              ),
             ),
           ),
           // 小Q特化：生图模型选择次级功能岛（generate_image 工具使用的内置生图后端）
           if (roleKey == 'assistant') ...[
             const SizedBox(height: 10),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
               decoration: BoxDecoration(
                 color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Row(
-                children: [
-                  Text(
-                    '生图模型',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String?>(
+                  isExpanded: true,
+                  value: _imageModelDropdownValue,
+                  hint: const Text(
+                    '默认 Gemini 生图',
+                    style: TextStyle(fontSize: 11.5),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String?>(
-                        isExpanded: true,
-                        value: _imageModelDropdownValue,
-                        hint: const Text(
-                          '默认 Gemini 生图',
-                          style: TextStyle(fontSize: 12),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        style: theme.textTheme.bodyMedium?.copyWith(fontSize: 12),
-                        items: _imageGenerationModels
-                            .map(
-                              (m) => DropdownMenuItem<String?>(
-                                value: m['id'],
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.image_outlined,
-                                      size: 13,
-                                      color: colorScheme.primary,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Expanded(
-                                      child: Text(
-                                        m['name']!,
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
+                  style: theme.textTheme.bodyMedium?.copyWith(fontSize: 11.5),
+                  items: _imageGenerationModels
+                      .map(
+                        (m) => DropdownMenuItem<String?>(
+                          value: m['id'],
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.image_outlined,
+                                size: 13,
+                                color: colorScheme.primary,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  m['name']!,
+                                  style: const TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                            )
-                            .toList(),
-                        onChanged: (value) async {
-                          if (value == null) return;
-                          final newRoles =
-                              _roles.copyWith(imageGenerationFreeModelId: value);
-                          await AiRoleService.instance.saveRoles(newRoles);
-                          ref.invalidate(aiRolesProvider);
-                          if (mounted) setState(() => _roles = newRoles);
-                        },
-                      ),
-                    ),
-                  ),
-                ],
+                            ],
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) async {
+                    if (value == null) return;
+                    final newRoles =
+                        _roles.copyWith(imageGenerationFreeModelId: value);
+                    await AiRoleService.instance.saveRoles(newRoles);
+                    ref.invalidate(aiRolesProvider);
+                    if (mounted) setState(() => _roles = newRoles);
+                  },
+                ),
               ),
             ),
           ],

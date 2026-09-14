@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/storage/daily_score_repository.dart';
 import 'package:qnote_flutter/core/storage/diary_repository.dart';
@@ -8,7 +9,6 @@ import 'package:qnote_flutter/models/daily_score.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
-import 'package:qnote_flutter/providers/selected_date_provider.dart';
 export 'package:qnote_flutter/providers/selected_date_provider.dart';
 
 final dailyScoreRepositoryProvider = Provider<DailyScoreRepository>((ref) {
@@ -26,6 +26,19 @@ class DailyScoreNotifier extends AsyncNotifier<DailyScore?> {
 
   @override
   Future<DailyScore?> build() async {
+    void onWorkspaceChange(WorkspaceChangeEvent event) {
+      if (event.path.startsWith('/stats/')) {
+        refresh();
+        ref.invalidate(dailyScoreHistoryProvider);
+        ref.invalidate(dailyScoreHeatmapProvider);
+      }
+    }
+
+    WorkspaceEventBus.instance.addListener(onWorkspaceChange);
+    ref.onDispose(() {
+      WorkspaceEventBus.instance.removeListener(onWorkspaceChange);
+    });
+
     final date = ref.watch(selectedDateProvider);
     return _repository.getByDate(date);
   }

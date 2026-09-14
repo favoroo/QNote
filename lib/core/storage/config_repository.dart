@@ -399,9 +399,29 @@ class ConfigRepository {
 
   Future<void> ensureDefaultShortcuts() async {
     final existing = await getAllShortcutConfigs();
-    if (existing.isNotEmpty) return;
-    for (final config in defaultShortcutConfigs) {
-      await insertShortcutConfig(config);
+    if (existing.isEmpty) {
+      for (final config in defaultShortcutConfigs) {
+        await insertShortcutConfig(config);
+      }
+      return;
+    }
+
+    // 老用户数据平滑升级：饮食移除种类(type)字段，评价(rating)升级为四档
+    for (final config in existing) {
+      if (config.id == 'diet') {
+        final hasOldType = config.fields.any((f) => f.id == 'type');
+        final ratingField = config.fields.where((f) => f.id == 'rating').firstOrNull;
+        final needsRatingUpgrade = ratingField == null || !ratingField.options.contains('过于放纵');
+        if (hasOldType || needsRatingUpgrade) {
+          final defaultDiet = defaultShortcutConfigs.firstWhere((c) => c.id == 'diet');
+          final updated = config.copyWith(
+            fields: defaultDiet.fields,
+            updatedAt: DateTime.now(),
+          );
+          await updateShortcutConfig(updated);
+        }
+        break;
+      }
     }
   }
 

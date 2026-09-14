@@ -66,8 +66,8 @@ void main() {
     await tester.pumpWidget(_host());
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('ball')), findsOneWidget);
-    expect(find.byKey(const ValueKey('panel')), findsNothing);
+    expect(find.byKey(const ValueKey('ball-free')), findsOneWidget);
+    expect(find.byKey(const ValueKey('panel-with-ball')), findsNothing);
   });
 
   testWidgets('打开面板：转场中球与面板共存，结束后球移除面板驻留', (tester) async {
@@ -77,12 +77,12 @@ void main() {
     _setPanelOpen(tester, true);
     // 转场进行中：出场的球与入场的面板同时存在（交叉过渡）
     await tester.pump();
-    expect(find.byKey(const ValueKey('ball')), findsOneWidget);
-    expect(find.byKey(const ValueKey('panel')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ball-free')), findsOneWidget);
+    expect(find.byKey(const ValueKey('panel-with-ball')), findsOneWidget);
 
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('ball')), findsNothing);
-    expect(find.byKey(const ValueKey('panel')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ball-free')), findsNothing);
+    expect(find.byKey(const ValueKey('panel-with-ball')), findsOneWidget);
   });
 
   testWidgets('关闭面板：转场中面板与球共存，结束后面板移除球弹回', (tester) async {
@@ -94,12 +94,12 @@ void main() {
 
     _setPanelOpen(tester, false);
     await tester.pump();
-    expect(find.byKey(const ValueKey('panel')), findsOneWidget);
-    expect(find.byKey(const ValueKey('ball')), findsOneWidget);
+    expect(find.byKey(const ValueKey('panel-with-ball')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ball-free')), findsOneWidget);
 
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('panel')), findsNothing);
-    expect(find.byKey(const ValueKey('ball')), findsOneWidget);
+    expect(find.byKey(const ValueKey('panel-with-ball')), findsNothing);
+    expect(find.byKey(const ValueKey('ball-free')), findsOneWidget);
   });
 
   testWidgets('模态打开时悬浮层淡出禁点但保持挂载，关闭后输入框文本保留', (tester) async {
@@ -113,7 +113,7 @@ void main() {
     floatingQModalCount.value = 1;
     await tester.pumpAndSettle();
     // 整层未卸载（面板仍在树中，仅淡出并禁点）
-    expect(find.byKey(const ValueKey('panel')), findsOneWidget);
+    expect(find.byKey(const ValueKey('panel-with-ball')), findsOneWidget);
     expect(_outerIgnorePointer(tester).ignoring, isTrue);
 
     floatingQModalCount.value = 0;
@@ -150,7 +150,7 @@ void main() {
       _openWithQuote(tester);
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('panel')), findsOneWidget);
+      expect(find.byKey(const ValueKey('panel-with-ball')), findsOneWidget);
       expect(find.byKey(const ValueKey('quote-card')), findsOneWidget);
       expect(find.text('笔记《小Q的自我介绍》 · 第 3 行附近'), findsOneWidget);
       expect(find.text('我是 QNote 内置的全能终端管家与专属助理。'), findsOneWidget);
@@ -166,7 +166,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('quote-card')), findsNothing);
-      expect(find.byKey(const ValueKey('panel')), findsOneWidget);
+      expect(find.byKey(const ValueKey('panel-with-ball')), findsOneWidget);
     });
 
     testWidgets('会话签名切换清空挂起引用，卡片不再渲染', (tester) async {
@@ -224,10 +224,10 @@ void main() {
       );
       addTearDown(() => QTargetBridge.instance.unregister('note:sel'));
 
-      await tester.tap(find.byKey(const ValueKey('ball')));
+      await tester.tap(find.byKey(const ValueKey('ball-free')));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('panel')), findsOneWidget);
+      expect(find.byKey(const ValueKey('panel-with-ball')), findsOneWidget);
       expect(find.byKey(const ValueKey('quote-card')), findsOneWidget);
       expect(find.text('笔记《小Q的自我介绍》 · 第 5 行附近'), findsOneWidget);
     });
@@ -236,10 +236,10 @@ void main() {
       await tester.pumpWidget(_host());
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const ValueKey('ball')));
+      await tester.tap(find.byKey(const ValueKey('ball-free')));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('panel')), findsOneWidget);
+      expect(find.byKey(const ValueKey('panel-with-ball')), findsOneWidget);
       expect(find.byKey(const ValueKey('quote-card')), findsNothing);
     });
   });

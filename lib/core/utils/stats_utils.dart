@@ -404,8 +404,13 @@ DietStatistics calculateDietStats(
   final dietRecords = records.where((r) => r.displayTag == '饮食').toList();
 
   final typeDistribution = <String, int>{};
-  final healthDistribution = <String, int>{'健康': 0, '一般': 0, '不健康': 0};
-  int totalMeals = 0;
+  final healthDistribution = <String, int>{
+    '健康': 0,
+    '一般': 0,
+    '不健康': 0,
+    '过于放纵': 0,
+  };
+  final totalMeals = dietRecords.length;
 
   for (final r in dietRecords) {
     String? item;
@@ -435,13 +440,13 @@ DietStatistics calculateDietStats(
 
     if (item == null) {
       final typeMatch = RegExp(r'种类[：:]\s*([^ \n，,]+)').firstMatch(r.content);
-      if (typeMatch != null)
+      if (typeMatch != null) {
         item = _resolveDietItem(typeMatch.group(1)!.trim());
+      }
     }
-    item ??= '其他';
-
-    typeDistribution[item] = (typeDistribution[item] ?? 0) + 1;
-    if (item == '正餐') totalMeals++;
+    if (item != null) {
+      typeDistribution[item] = (typeDistribution[item] ?? 0) + 1;
+    }
 
     if (health != null) {
       healthDistribution[health] = healthDistribution[health]! + 1;

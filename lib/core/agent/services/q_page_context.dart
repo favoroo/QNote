@@ -149,7 +149,7 @@ class QPageContext {
       case QContextType.notesList:
         return _pageBlock('笔记库页', '用户在浏览笔记本与笔记列表，无特定打开的目标文件');
       case QContextType.statistics:
-        return _pageBlock('统计页', '用户在查看数据统计与生活评分');
+        return _pageBlock('统计页', '用户在查看数据统计与生活评分。关联数据位于 `/stats/`，单日评分位于 `/stats/scores/YYYY-MM-DD.json`，可直接读取、评估打分或修改');
       case QContextType.search:
         return _pageBlock('搜索页', '用户在跨库搜索日记、笔记与待办');
       case QContextType.aiPage:
