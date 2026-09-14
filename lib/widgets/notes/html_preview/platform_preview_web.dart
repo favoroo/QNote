@@ -5,12 +5,20 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:web/web.dart' as web;
 
+import 'html_persistence_helper.dart';
+
 /// Web 端实现：iframe srcdoc 内嵌渲染。
-/// webview_flutter 不支持 Web 平台，使用平台视图注册原生 iframe 替代
+/// webview_flutter 不支持 Web 平台，使用平台视图注册原生 iframe 替代，
+/// 注入 HtmlPersistenceHelper 脚本以支持交互状态自动恢复与 LocalStorage 留存
 class PlatformPreview extends StatefulWidget {
   final String htmlContent;
+  final String? noteId;
 
-  const PlatformPreview({super.key, required this.htmlContent});
+  const PlatformPreview({
+    super.key,
+    required this.htmlContent,
+    this.noteId,
+  });
 
   @override
   State<PlatformPreview> createState() => _PlatformPreviewState();
@@ -24,7 +32,7 @@ class _PlatformPreviewState extends State<PlatformPreview> {
   @override
   void initState() {
     super.initState();
-    _currentContent = widget.htmlContent;
+    _currentContent = HtmlPersistenceHelper.prepareHtml(widget.htmlContent);
     // 每个实例注册唯一的平台视图类型，避免同页多实例互相覆盖
     _viewType = 'qnote-html-preview-${const Uuid().v4()}';
     ui_web.platformViewRegistry.registerViewFactory(_viewType, (int viewId) {
@@ -43,8 +51,8 @@ class _PlatformPreviewState extends State<PlatformPreview> {
   void didUpdateWidget(covariant PlatformPreview oldWidget) {
     super.didUpdateWidget(oldWidget);
     // 内容变化时直接更新 srcdoc（如悬浮小Q修改笔记后的预览刷新）
-    if (widget.htmlContent != oldWidget.htmlContent) {
-      _currentContent = widget.htmlContent;
+    if (widget.htmlContent != oldWidget.htmlContent || widget.noteId != oldWidget.noteId) {
+      _currentContent = HtmlPersistenceHelper.prepareHtml(widget.htmlContent);
       _iframe?.srcdoc = _currentContent.toJS;
     }
   }

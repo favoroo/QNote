@@ -10,6 +10,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.database.sqlite.SQLiteDatabase
 import android.graphics.Color
+import android.graphics.Outline
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -17,6 +19,7 @@ import android.provider.MediaStore
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
@@ -86,6 +89,13 @@ class QuickRecordActivity : Activity() {
         btnPhoto.setOnClickListener { checkGalleryPermissionAndOpen() }
 
         findViewById<FrameLayout>(R.id.layout_root).setOnClickListener { finish() }
+
+        // 点击输入容器空白处时自动唤起输入框焦点与软键盘
+        findViewById<LinearLayout>(R.id.layout_input_container).setOnClickListener {
+            editContent.requestFocus()
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.showSoftInput(editContent, InputMethodManager.SHOW_IMPLICIT)
+        }
 
         // 自动聚焦并弹出软键盘
         editContent.requestFocus()
@@ -233,11 +243,12 @@ class QuickRecordActivity : Activity() {
         }
         scrollPhotos.visibility = View.VISIBLE
 
-        val size = (64 * resources.displayMetrics.density).toInt()
+        val size = (52 * resources.displayMetrics.density).toInt()
         val margin = (8 * resources.displayMetrics.density).toInt()
+        val cornerRadius = 8 * resources.displayMetrics.density
 
         for (path in selectedPhotos) {
-            // 创建每一个图片的 Preview FrameLayout (带删除按钮)
+            // 创建每一个图片的 Preview FrameLayout (带圆角和删除按钮)
             val frame = FrameLayout(this).apply {
                 val params = LinearLayout.LayoutParams(size, size).apply {
                     setMargins(0, 0, margin, 0)
@@ -245,24 +256,35 @@ class QuickRecordActivity : Activity() {
                 layoutParams = params
             }
 
+            // 图片预览本体（裁剪 8dp 圆角）
             val iv = ImageView(this).apply {
                 layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
                 scaleType = ImageView.ScaleType.CENTER_CROP
                 setImageURI(Uri.fromFile(File(path)))
+                outlineProvider = object : ViewOutlineProvider() {
+                    override fun getOutline(view: View, outline: Outline) {
+                        outline.setRoundRect(0, 0, view.width, view.height, cornerRadius)
+                    }
+                }
+                clipToOutline = true
             }
             frame.addView(iv)
 
-            // 删除按钮
+            // 右上角微型删除按钮（半透明深色圆形背景）
             val btnDel = ImageButton(this).apply {
                 val btnSize = (18 * resources.displayMetrics.density).toInt()
                 layoutParams = FrameLayout.LayoutParams(btnSize, btnSize).apply {
-                    gravity = Gravity.TOP or Gravity.RIGHT
+                    gravity = Gravity.TOP or Gravity.END
                 }
-                setBackgroundColor(Color.parseColor("#99000000"))
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor("#B3000000"))
+                }
                 setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
                 scaleType = ImageView.ScaleType.FIT_CENTER
                 setColorFilter(Color.WHITE)
-                setPadding(2, 2, 2, 2)
+                val p = (2 * resources.displayMetrics.density).toInt()
+                setPadding(p, p, p, p)
                 setOnClickListener { removePhoto(path) }
             }
             frame.addView(btnDel)

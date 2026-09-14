@@ -9,11 +9,19 @@ import 'platform_preview.dart' //
 /// Web 端通过 iframe srcdoc 内嵌渲染，均可真实呈现网页效果而非源码。
 class HtmlPreviewView extends StatelessWidget {
   final String htmlContent;
+  final String? noteId;
 
-  const HtmlPreviewView({super.key, required this.htmlContent});
+  const HtmlPreviewView({
+    super.key,
+    required this.htmlContent,
+    this.noteId,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return PlatformPreview(htmlContent: htmlContent);
+    return PlatformPreview(
+      htmlContent: htmlContent,
+      noteId: noteId,
+    );
   }
 }

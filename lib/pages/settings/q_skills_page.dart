@@ -17,13 +17,16 @@ import 'package:qnote_flutter/providers/agent_skill_provider.dart';
 /// 辅助判断哪些技能值得保留、哪些可以归档（Curator 治理视角）；
 /// 内置技能随 App 内置，不在管理页露出
 class QSkillsPage extends ConsumerStatefulWidget {
-  const QSkillsPage({super.key});
+  const QSkillsPage({super.key, this.embedded = false});
+
+  /// 嵌入模式：由综合设置页承载时为 true，不重复生成外层 Scaffold 与 AppBar
+  final bool embedded;
 
   @override
-  ConsumerState<QSkillsPage> createState() => _QSkillsPageState();
+  ConsumerState<QSkillsPage> createState() => QSkillsPageState();
 }
 
-class _QSkillsPageState extends ConsumerState<QSkillsPage> {
+class QSkillsPageState extends ConsumerState<QSkillsPage> {
   Map<String, SkillUsageStat> _usageStats = {};
 
   @override
@@ -37,10 +40,77 @@ class _QSkillsPageState extends ConsumerState<QSkillsPage> {
     if (mounted) setState(() => _usageStats = stats);
   }
 
+  /// 公共入口：由外层综合页 AppBar 调用新建技能
+  void openNewSkillEditor() {
+    _openEditor(context, null);
+  }
+
   @override
   Widget build(BuildContext context) {
     final skillsAsync = ref.watch(agentSkillListProvider);
     final theme = Theme.of(context);
+
+    final body = skillsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('加载失败: $e', style: theme.textTheme.bodyMedium),
+            const SizedBox(height: 12),
+            FilledButton.tonal(
+              onPressed: () => ref.invalidate(agentSkillListProvider),
+              child: const Text('重试'),
+            ),
+          ],
+        ),
+      ),
+      data: (skills) {
+        final userSkills = skills
+            .where((s) => s['origin'] == AgentSkillOrigin.user)
+            .toList();
+        final activeSkills = userSkills
+            .where((s) => s['archived'] != 'true')
+            .toList();
+        final archivedSkills = userSkills
+            .where((s) => s['archived'] == 'true')
+            .toList();
+
+        return ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            _buildSectionCard(
+              context,
+              icon: Icons.auto_fix_high_outlined,
+              title: '用户技能',
+              count: activeSkills.length,
+              emptyText: '暂无自定义技能，可点击右上角「+」新建',
+              children: [
+                for (final skill in activeSkills) _buildSkillRow(context, skill),
+              ],
+            ),
+            if (archivedSkills.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _buildSectionCard(
+                context,
+                icon: Icons.inventory_2_outlined,
+                title: '已归档',
+                count: archivedSkills.length,
+                children: [
+                  for (final skill in archivedSkills)
+                    _buildArchivedSkillRow(context, skill),
+                ],
+              ),
+            ],
+            const SizedBox(height: 20),
+          ],
+        );
+      },
+    );
+
+    if (widget.embedded) {
+      return body;
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -50,67 +120,11 @@ class _QSkillsPageState extends ConsumerState<QSkillsPage> {
           IconButton(
             icon: const Icon(Icons.add),
             tooltip: '新建技能',
-            onPressed: () => _openEditor(context, null),
+            onPressed: openNewSkillEditor,
           ),
         ],
       ),
-      body: skillsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('加载失败: $e', style: theme.textTheme.bodyMedium),
-              const SizedBox(height: 12),
-              FilledButton.tonal(
-                onPressed: () => ref.invalidate(agentSkillListProvider),
-                child: const Text('重试'),
-              ),
-            ],
-          ),
-        ),
-        data: (skills) {
-          final userSkills = skills
-              .where((s) => s['origin'] == AgentSkillOrigin.user)
-              .toList();
-          final activeSkills = userSkills
-              .where((s) => s['archived'] != 'true')
-              .toList();
-          final archivedSkills = userSkills
-              .where((s) => s['archived'] == 'true')
-              .toList();
-
-          return ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              _buildSectionCard(
-                context,
-                icon: Icons.auto_fix_high_outlined,
-                title: '用户技能',
-                count: activeSkills.length,
-                emptyText: '暂无自定义技能，可点击右上角「+」新建',
-                children: [
-                  for (final skill in activeSkills) _buildSkillRow(context, skill),
-                ],
-              ),
-              if (archivedSkills.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                _buildSectionCard(
-                  context,
-                  icon: Icons.inventory_2_outlined,
-                  title: '已归档',
-                  count: archivedSkills.length,
-                  children: [
-                    for (final skill in archivedSkills)
-                      _buildArchivedSkillRow(context, skill),
-                  ],
-                ),
-              ],
-              const SizedBox(height: 20),
-            ],
-          );
-        },
-      ),
+      body: body,
     );
   }
 

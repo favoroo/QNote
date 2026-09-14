@@ -86,6 +86,7 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     String? folderId,
     bool isLongTerm = false,
     String repeatRule = 'none',
+    String? reminderTime,
   }) async {
     final repo = ref.read(todoRepositoryProvider);
     final now = DateTime.now();
@@ -98,12 +99,16 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
       tags: tags,
       folderId: folderId,
       isLongTerm: isLongTerm,
+      reminderTime: reminderTime,
       repeatRule: repeatRule,
       sortOrder: now.millisecondsSinceEpoch,
       createdAt: now,
       updatedAt: now,
     );
     await repo.insert(todo);
+    if (reminderTime != null) {
+      await NotificationService.instance.scheduleTodoReminder(todo);
+    }
     // 内存增量更新，避免全表重查
     state = AsyncData([...(state.valueOrNull ?? []), todo]);
     ref.invalidate(completedTodoListProvider);

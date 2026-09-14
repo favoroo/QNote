@@ -1498,7 +1498,10 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         ),
       );
     }
-    return HtmlPreviewView(htmlContent: source);
+    return HtmlPreviewView(
+      htmlContent: source,
+      noteId: widget.note.id.toString(),
+    );
   }
 
   List<Widget> _buildSegmentWidgets(ThemeData theme) {

@@ -10,7 +10,10 @@ import 'package:qnote_flutter/core/utils/toast_utils.dart';
 /// 切换后下轮对话生效（对齐记忆的冻结快照注入时机）。
 /// 与小Q经 VFS `/settings/personality.json` 的自我调整为同一份数据，双向同步。
 class QPersonalityPage extends StatefulWidget {
-  const QPersonalityPage({super.key});
+  const QPersonalityPage({super.key, this.embedded = false});
+
+  /// 嵌入模式：由综合设置页承载时为 true，不重复生成外层 Scaffold 与 AppBar
+  final bool embedded;
 
   @override
   State<QPersonalityPage> createState() => _QPersonalityPageState();
@@ -34,14 +37,19 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
   }
 
   Future<void> _loadConfig() async {
-    final service = QPersonalityService.instance;
-    final activeId = await service.getActiveId();
-    _customController.text = await service.getCustomPrompt();
-    if (!mounted) return;
-    setState(() {
-      _activeId = activeId;
-      _loading = false;
-    });
+    try {
+      final service = QPersonalityService.instance;
+      final activeId = await service.getActiveId();
+      _customController.text = await service.getCustomPrompt();
+      if (!mounted) return;
+      setState(() {
+        _activeId = activeId;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
   }
 
   Future<void> _select(String id) async {
@@ -75,34 +83,40 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    final body = _loading
+        ? const Center(child: CircularProgressIndicator())
+        : ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              Text(
+                '个性决定小Q的身份与说话风格，不影响它的任何能力；'
+                '切换后下轮对话生效。也可以直接对小Q说「你以后活泼一点」。',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ...QPersonalities.presets.map(
+                (p) => _buildPresetCard(context, p),
+              ),
+              if (_activeId == QPersonalities.customId) ...[
+                const SizedBox(height: 12),
+                _buildCustomEditor(context),
+              ],
+              const SizedBox(height: 20),
+            ],
+          );
+
+    if (widget.embedded) {
+      return body;
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('小Q个性'),
         centerTitle: false,
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                Text(
-                  '个性决定小Q的身份与说话风格，不影响它的任何能力；'
-                  '切换后下轮对话生效。也可以直接对小Q说「你以后活泼一点」。',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                ...QPersonalities.presets.map(
-                  (p) => _buildPresetCard(context, p),
-                ),
-                if (_activeId == QPersonalities.customId) ...[
-                  const SizedBox(height: 12),
-                  _buildCustomEditor(context),
-                ],
-                const SizedBox(height: 20),
-              ],
-            ),
+      body: body,
     );
   }
 

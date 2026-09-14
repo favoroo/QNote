@@ -7,6 +7,7 @@ import 'package:qnote_flutter/pages/todo_page.dart';
 import 'package:qnote_flutter/pages/ai_page.dart';
 import 'package:qnote_flutter/pages/statistics_page.dart';
 import 'package:qnote_flutter/pages/settings/user_profile_page.dart';
+import 'package:qnote_flutter/pages/settings/q_settings_page.dart';
 import 'package:qnote_flutter/pages/settings/q_memory_page.dart';
 import 'package:qnote_flutter/pages/settings/q_personality_page.dart';
 import 'package:qnote_flutter/pages/settings/q_skills_page.dart';
@@ -131,6 +132,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/settings/profile',
         parentNavigatorKey: rootNavigatorKey,
         pageBuilder: (context, state) => _fadeTransitionPage(const UserProfilePage()),
+      ),
+      GoRoute(
+        path: '/settings/q-settings',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) {
+          final tabStr = state.uri.queryParameters['tab'];
+          final initialTab = tabStr != null ? int.tryParse(tabStr) ?? 0 : 0;
+          return _fadeTransitionPage(QSettingsPage(initialTab: initialTab));
+        },
       ),
       GoRoute(
         path: '/settings/q-memory',

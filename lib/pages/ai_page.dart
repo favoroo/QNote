@@ -28,8 +28,9 @@ import 'package:qnote_flutter/widgets/empty_state.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
 import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
-import 'package:qnote_flutter/widgets/animated_gradient_border.dart';
 import 'package:qnote_flutter/widgets/common/animated_ellipsis.dart';
+import 'package:qnote_flutter/widgets/common/loading_ring.dart';
+import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
 import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
 import 'package:qnote_flutter/widgets/common/thought_tail_scroll_view.dart';
 import 'package:qnote_flutter/core/agent/services/agent_interaction_service.dart';
@@ -1317,45 +1318,47 @@ class _AiPageState extends ConsumerState<AiPage> {
                       final canSend = (hasText || hasAttachments) && !busy;
 
                       // 小Q工作过程中：发送按钮变为中断/停止按钮，
-                      // 外圈套主题色灵动流光描边表达「智能体运行中」
+                      // 外层环绕极简现代 LoadingRing 缺口圆环旋转动画，中央为圆角停止方块
                       if (busy) {
                         final isDark = theme.brightness == Brightness.dark;
                         final primary = theme.colorScheme.primary;
                         return Tooltip(
                           message: '点击中止小Q当前操作',
-                          child: AnimatedGradientBorder(
-                            isAnimating: true,
-                            borderRadius: 22,
-                            strokeWidth: 2,
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: () {
-                                  HapticFeedback.lightImpact();
-                                  _stopGenerating();
-                                },
-                                borderRadius: BorderRadius.circular(22),
-                                child: Ink(
-                                  width: 44,
-                                  height: 44,
-                                  decoration: BoxDecoration(
-                                    // 告别突兀的深黑底色，采用通透轻盈的主题色浅底，
-                                    // 衬托主题色灵动流光，呈现高级纯粹的智能体运转质感
-                                    color: primary.withValues(
-                                      alpha: isDark ? 0.20 : 0.12,
-                                    ),
-                                    shape: BoxShape.circle,
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: () {
+                                HapticFeedback.lightImpact();
+                                _stopGenerating();
+                              },
+                              borderRadius: BorderRadius.circular(22),
+                              child: Ink(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: primary.withValues(
+                                    alpha: isDark ? 0.18 : 0.10,
                                   ),
-                                  child: Center(
-                                    child: Container(
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    LoadingRing(
+                                      size: 40,
+                                      strokeWidth: 2,
+                                      color: primary,
+                                    ),
+                                    Container(
                                       width: 12,
                                       height: 12,
                                       decoration: BoxDecoration(
                                         color: primary,
-                                        borderRadius: BorderRadius.circular(2.5),
+                                        borderRadius:
+                                            BorderRadius.circular(2.5),
                                       ),
                                     ),
-                                  ),
+                                  ],
                                 ),
                               ),
                             ),
@@ -2038,15 +2041,12 @@ class _AiPageState extends ConsumerState<AiPage> {
                 },
               )
             : isRunning
-                ? SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: isActive
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.onSurfaceVariant,
-                    ),
+                ? LoadingRing(
+                    size: 16,
+                    strokeWidth: 1.8,
+                    color: isActive
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurfaceVariant,
                   )
                 : Icon(
                     Icons.chat_bubble_outline,
@@ -2379,7 +2379,7 @@ class _ChatBubble extends StatelessWidget {
                     ],
                   )
                 : !hasRenderableBody
-                ? const _TypingDots()
+                ? const MorphingInfinity()
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
@@ -3035,63 +3035,14 @@ class _TypingBubble extends StatelessWidget {
                 ),
               ],
             ),
-            child: const _TypingDots(),
+            child: MorphingInfinity(
+              size: 22,
+              strokeWidth: 1.6,
+              color: theme.colorScheme.primary,
+            ),
           ),
         ),
       ],
-    );
-  }
-}
-
-class _TypingDots extends StatefulWidget {
-  const _TypingDots();
-
-  @override
-  State<_TypingDots> createState() => _TypingDotsState();
-}
-
-class _TypingDotsState extends State<_TypingDots>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late List<Animation<double>> _animations;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    )..repeat();
-    _animations = List.generate(3, (i) {
-      return CurvedAnimation(
-        parent: _controller,
-        curve: Interval(i * 0.2, i * 0.2 + 0.4, curve: Curves.easeInOut),
-      );
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.onSurfaceVariant;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(3, (i) {
-        return ScaleTransition(
-          scale: _animations[i],
-          child: Container(
-            width: 6,
-            height: 6,
-            margin: const EdgeInsets.symmetric(horizontal: 2),
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-        );
-      }),
     );
   }
 }

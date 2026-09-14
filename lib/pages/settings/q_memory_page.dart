@@ -10,7 +10,10 @@ import 'package:qnote_flutter/providers/agent_memory_provider.dart';
 /// 展示并编辑小Q在对话中自主沉淀的长期记忆（用户画像 / 小Q手记），
 /// 与 Agent 侧的 `/memory/*.md` 虚拟文件为同一份数据，双向实时同步
 class QMemoryPage extends ConsumerStatefulWidget {
-  const QMemoryPage({super.key});
+  const QMemoryPage({super.key, this.embedded = false});
+
+  /// 嵌入模式：由综合设置页承载时为 true，不重复生成外层 Scaffold 与 AppBar
+  final bool embedded;
 
   @override
   ConsumerState<QMemoryPage> createState() => _QMemoryPageState();
@@ -22,42 +25,48 @@ class _QMemoryPageState extends ConsumerState<QMemoryPage> {
     final memoriesAsync = ref.watch(agentMemoryListProvider);
     final theme = Theme.of(context);
 
+    final body = memoriesAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('加载失败: $e', style: theme.textTheme.bodyMedium),
+            const SizedBox(height: 12),
+            FilledButton.tonal(
+              onPressed: () => ref.invalidate(agentMemoryListProvider),
+              child: const Text('重试'),
+            ),
+          ],
+        ),
+      ),
+      data: (docs) {
+        if (docs.every((d) => d.entries.isEmpty)) {
+          return _buildEmptyState(theme);
+        }
+        return ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            for (int i = 0; i < docs.length; i++) ...[
+              if (i > 0) const SizedBox(height: 20),
+              _buildMemoryCard(context, docs[i]),
+            ],
+            const SizedBox(height: 20),
+          ],
+        );
+      },
+    );
+
+    if (widget.embedded) {
+      return body;
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('小Q记忆'),
         centerTitle: false,
       ),
-      body: memoriesAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('加载失败: $e', style: theme.textTheme.bodyMedium),
-              const SizedBox(height: 12),
-              FilledButton.tonal(
-                onPressed: () => ref.invalidate(agentMemoryListProvider),
-                child: const Text('重试'),
-              ),
-            ],
-          ),
-        ),
-        data: (docs) {
-          if (docs.every((d) => d.entries.isEmpty)) {
-            return _buildEmptyState(theme);
-          }
-          return ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              for (int i = 0; i < docs.length; i++) ...[
-                if (i > 0) const SizedBox(height: 20),
-                _buildMemoryCard(context, docs[i]),
-              ],
-              const SizedBox(height: 20),
-            ],
-          );
-        },
-      ),
+      body: body,
     );
   }
 

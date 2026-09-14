@@ -486,12 +486,12 @@ description: 数据洞察与生活评分分析技能：调阅待办完成率、�
 
   static const String frontendDesignDoc = '''---
 name: frontend-design
-description: 网页设计技能：精美单文件 HTML 网页/落地页/H5/海报/邀请函/贺卡/简历页/作品集/数据可视化页面等展示型内容的生成规范，涵盖美学方向选择、移动端适配、动效与工艺细节
+description: 网页设计技能：精美单文件 HTML 网页/落地页/H5/待办打卡工具/海报/邀请函/贺卡/简历页/数据可视化页面等展示与交互型内容的生成规范，涵盖美学方向、移动端适配、动效细节与 LocalStorage 交互状态持久化
 ---
 
 # 网页设计技能 (Frontend Design)
 
-用户让你「做个网页/页面/海报/邀请函/贺卡/简历页/可视化大屏」时按本手册执行，产出**有设计感、适配手机屏幕**的单文件 HTML，避免千篇一律的「AI 生成感」。
+用户让你「做个网页/页面/待办清单/打卡工具/记账页/海报/邀请函/贺卡/简历页/可视化大屏」时按本手册执行，产出**有设计感、适配手机屏幕、交互状态自留存**的单文件 HTML，避免千篇一律的「AI 生成感」。
 
 ## 1. 交付规范（QNote 环境）
 - **输出方式**：一次 `write_file(path: "/notes/<标题>.html", content: ...)` 写入**完整单文件 HTML**（以 `<!DOCTYPE html>` 开头），App 会自动渲染网页预览；写完告知用户「已写入 /notes/xx.html，在笔记中点开即可预览」。
@@ -538,13 +538,43 @@ description: 网页设计技能：精美单文件 HTML 网页/落地页/H5/海�
 - 所有模块同宽同高的均质卡片阵列；
 - emoji 满天飞充当图标与装饰；
 - 重阴影、大色块等过度装饰抢内容的风头；
-- 每次产出长得一样：明暗、字体、构图、风格应随内容轮换，两次产出不应雷同。
+- 每次产出长得一样：明暗、字体、构图、风格应随内容轮换，两次产出不应雷同；
+- **交互型页面写成纯静态死页面（刷新即丢状态）**。
 
 ## 7. 典型工作流
 - 用户「帮我做个 XX 网页/海报」→ 心里定下基调与记忆点（不必长篇复述给用户）→ 一次 `write_file` 产出完整单文件 HTML → 告知预览位置；
 - 简单小卡片可省略完整流程，但第 6 章反模式清单始终生效；
 - **数据可视化**：优先纯 CSS/内联 SVG（不依赖网络，最稳）；需要交互图表时用 Chart.js CDN，并确保断网时页面仍有可读的内容降级；
 - 大段数据（表格、榜单）用低饱和底 + 高对比文字，密度可以高，但层级必须清楚。
+
+## 8. 交互与状态持久化规范 (State Persistence)
+QNote 预览环境原生开启了 DOM Storage 与独立 Origin 存储沙箱，**全面支持标准 `localStorage` 持久化**。当用户要求制作具有交互实用价值的工具（如待办清单 TodoList、打卡签到、计数器、记账、习惯追踪、问卷、设置、折叠备忘等）时，**必须实现状态本地持久留存**，确保用户退出重新打开后，之前的勾选、输入和操作依然完好保存：
+- **数据驱动模式**：定义清晰的数据模型（Array/Object），界面渲染由数据驱动，而非单纯零散修改 DOM；
+- **专属存储 Key**：在 `<script>` 开头声明业务唯一 Key，例如 `const STORAGE_KEY = 'qnote_app_todo_v1';`；
+- **启动自动读取恢复**：
+  ```javascript
+  let state = [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) state = JSON.parse(raw);
+  } catch (e) {
+    console.warn('读取本地数据失败', e);
+  }
+  ```
+  页面加载后调用 `render()` 将 `state` 渲染到 DOM 中；
+- **交互实时持久化**：用户勾选 Checkbox、编辑文本、新增或删除列表项时，先更新 `state`，再执行：
+  ```javascript
+  function saveState() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (e) {
+      console.warn('保存数据失败', e);
+    }
+    render();
+  }
+  ```
+- **贴心配套清空/重置能力**：在页面次要位置（如标题右侧或底部小字）提供小巧的「清空 / 重置数据」操作（带简单确认），执行 `localStorage.removeItem(STORAGE_KEY)` 并重置为默认初始数据；
+- **异常保护**：涉及 `localStorage` 的读写必须使用 `try...catch` 包裹，保障极端情况或受限环境下页面基础展示不崩溃。
 ''';
 
   /// 获取所有可用 Skill 清单（内置 + 用户技能，含 `origin` 来源标记）
@@ -598,7 +628,7 @@ description: 网页设计技能：精美单文件 HTML 网页/落地页/H5/海�
       {
         'name': 'frontend-design',
         'path': '/skills/frontend-design.md',
-        'description': '网页设计：精美单文件 HTML 网页/海报/邀请函/简历/数据可视化页面，美学方向、移动端适配、动效与工艺规范',
+        'description': '网页设计：精美单文件 HTML 网页/待办打卡工具/海报/邀请函/简历/数据可视化，美学方向、移动端适配、动效细节与状态本地持久化规范',
         'origin': AgentSkillOrigin.builtin,
       },
       // 用户技能追加在内置之后，由 Agent/UI 按需加载；归档技能默认不可见

@@ -18,6 +18,7 @@ import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
 import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
 import 'package:qnote_flutter/widgets/animated_gradient_border.dart';
 import 'package:qnote_flutter/widgets/common/animated_ellipsis.dart';
+import 'package:qnote_flutter/widgets/common/loading_ring.dart';
 import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
 import 'package:qnote_flutter/widgets/common/thought_tail_scroll_view.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
@@ -489,8 +490,8 @@ class _FloatingBallState extends State<_FloatingBall> {
   /// 拖动判定阈值（逻辑像素）：位移超过该值视为拖动而非点击
   static const double _dragSlop = 8;
 
-  /// 折叠时向屏幕外滑出的逻辑像素（44px 圆球滑出 26px，露出约 18px 弧形胶囊边）
-  static const double _dockSlideOffset = 26;
+  /// 折叠时向屏幕外滑出的逻辑像素（44px 圆球滑出 32px，仅露出约 12px 细巧微弧，极大减少遮挡）
+  static const double _dockSlideOffset = 32;
 
   Offset? _pointerStart;
   Offset? _origin;
@@ -600,8 +601,6 @@ class _FloatingBallState extends State<_FloatingBall> {
                   : _IdleBall(
                       key: const ValueKey('idle'),
                       size: widget.size,
-                      isDocked: widget.isDocked,
-                      dockSide: widget.dockSide,
                     ),
             ),
           ),
@@ -611,17 +610,13 @@ class _FloatingBallState extends State<_FloatingBall> {
   }
 }
 
-/// 待机状态悬浮球：高质感双层微渐变 + 柔和立体光晕 + 边缘折叠小耳微弧
+/// 待机状态悬浮球：高质感双层微渐变 + 柔和立体光晕
 class _IdleBall extends StatelessWidget {
   final double size;
-  final bool isDocked;
-  final _DockSide dockSide;
 
   const _IdleBall({
     super.key,
     required this.size,
-    required this.isDocked,
-    required this.dockSide,
   });
 
   @override
@@ -664,30 +659,12 @@ class _IdleBall extends StatelessWidget {
           ),
         ],
       ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // 中心机器人图标
-          Icon(
-            Icons.smart_toy_rounded,
-            color: theme.colorScheme.onPrimary,
-            size: 20,
-          ),
-          // 折叠态露出的侧边高光小耳朵指示微弧，保证在边缘也有极佳识别度与萌感
-          if (isDocked)
-            Positioned(
-              left: dockSide == _DockSide.right ? 2 : null,
-              right: dockSide == _DockSide.left ? 2 : null,
-              child: Container(
-                width: 3.5,
-                height: 14,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.85),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-        ],
+      child: Center(
+        child: Icon(
+          Icons.smart_toy_rounded,
+          color: theme.colorScheme.onPrimary,
+          size: 20,
+        ),
       ),
     );
   }
@@ -1234,10 +1211,10 @@ class _PanelUndoBanner extends ConsumerWidget {
                     TextButton(
                       onPressed: isUndoing ? null : onUndo,
                       child: isUndoing
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                          ? LoadingRing(
+                              size: 14,
+                              strokeWidth: 1.8,
+                              color: theme.colorScheme.primary,
                             )
                           : const Text('撤回'),
                     ),
@@ -1559,46 +1536,60 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
           const SizedBox(width: 8),
           // 小Q工作中：发送按钮变为中断/停止按钮（与 AI 主页面交互一致）；
           // 空闲态长按可切换模型（工作中为停止按钮，不响应长按）。
-          // 工作期间外圈套主题色灵动流光描边（与悬浮球脉冲环同一「运行中」语义）
-          AnimatedGradientBorder(
-            isAnimating: isWorking,
-            borderRadius: 20,
-            strokeWidth: 2,
-            child: IconButton.filled(
-              onPressed: isWorking
-                  ? () {
+          // 工作态外圈环绕极简现代 LoadingRing 缺口圆环旋转动画，中央为圆角停止方块
+          isWorking
+              ? Tooltip(
+                  message: '点击中止小Q当前操作',
+                  child: InkWell(
+                    onTap: () {
                       HapticFeedback.lightImpact();
                       _handleStop();
-                    }
-                  : _handleSend,
-              onLongPress: isWorking ? null : _handleModelSelect,
-              tooltip:
-                  isWorking ? '点击中止小Q当前操作' : '发送（长按切换模型）',
-              style: IconButton.styleFrom(
-                // 告别突兀的深黑底色，工作态采用通透轻盈的主题色浅底，衬托主题色灵动流光
-                backgroundColor: isWorking
-                    ? theme.colorScheme.primary.withValues(
-                        alpha: theme.brightness == Brightness.dark ? 0.20 : 0.12,
-                      )
-                    : theme.colorScheme.primary,
-                foregroundColor:
-                    isWorking ? theme.colorScheme.primary : theme.colorScheme.onPrimary,
-              ),
-              icon: isWorking
-                  ? Container(
-                      width: 12,
-                      height: 12,
+                    },
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      width: 40,
+                      height: 40,
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.primary,
-                        borderRadius: BorderRadius.circular(2.5),
+                        color: theme.colorScheme.primary.withValues(
+                          alpha:
+                              theme.brightness == Brightness.dark ? 0.18 : 0.10,
+                        ),
+                        shape: BoxShape.circle,
                       ),
-                    )
-                  : const Icon(
-                      Icons.arrow_upward_rounded,
-                      size: 22,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          LoadingRing(
+                            size: 36,
+                            strokeWidth: 2,
+                            color: theme.colorScheme.primary,
+                          ),
+                          Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary,
+                              borderRadius: BorderRadius.circular(2.5),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-            ),
-          ),
+                  ),
+                )
+              : IconButton.filled(
+                  onPressed: _handleSend,
+                  onLongPress: _handleModelSelect,
+                  tooltip: '发送（长按切换模型）',
+                  style: IconButton.styleFrom(
+                    backgroundColor: theme.colorScheme.primary,
+                    foregroundColor: theme.colorScheme.onPrimary,
+                  ),
+                  icon: const Icon(
+                    Icons.arrow_upward_rounded,
+                    size: 22,
+                  ),
+                ),
         ],
       ),
     );

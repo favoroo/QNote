@@ -3,9 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/pages/settings/user_profile_page.dart';
-import 'package:qnote_flutter/pages/settings/q_memory_page.dart';
-import 'package:qnote_flutter/pages/settings/q_personality_page.dart';
-import 'package:qnote_flutter/pages/settings/q_skills_page.dart';
+import 'package:qnote_flutter/pages/settings/q_settings_page.dart';
 import 'package:qnote_flutter/pages/settings/personalization_page.dart';
 import 'package:qnote_flutter/pages/settings/ai_config_page.dart';
 import 'package:qnote_flutter/pages/settings/shortcuts_page.dart';
@@ -126,25 +124,11 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
                     onTap: () => _navigateTo(context, const UserProfilePage()),
                   ),
                   _DrawerMenuItem(
-                    icon: Icons.psychology_outlined,
+                    icon: Icons.auto_awesome_outlined,
                     iconBgColor: itemBgColor,
                     iconColor: itemColor,
-                    label: '小Q记忆',
-                    onTap: () => _navigateTo(context, const QMemoryPage()),
-                  ),
-                  _DrawerMenuItem(
-                    icon: Icons.auto_fix_high_outlined,
-                    iconBgColor: itemBgColor,
-                    iconColor: itemColor,
-                    label: '小Q技能',
-                    onTap: () => _navigateTo(context, const QSkillsPage()),
-                  ),
-                  _DrawerMenuItem(
-                    icon: Icons.mood_outlined,
-                    iconBgColor: itemBgColor,
-                    iconColor: itemColor,
-                    label: '小Q个性',
-                    onTap: () => _navigateTo(context, const QPersonalityPage()),
+                    label: '小Q设置',
+                    onTap: () => _navigateTo(context, const QSettingsPage()),
                   ),
                   _DrawerMenuItem(
                     icon: Icons.smart_toy_outlined,
