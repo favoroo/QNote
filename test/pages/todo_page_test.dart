@@ -28,7 +28,7 @@ class _MockTodoListNotifier extends TodoListNotifier {
     String? reminderTime,
   }) async {
     final todo = Todo(
-      id: 'mock-todo-id',
+      id: 'mock-todo-${DateTime.now().microsecondsSinceEpoch}',
       title: title,
       description: description,
       folderId: folderId,
@@ -119,7 +119,7 @@ void main() {
     expect(find.byIcon(Icons.more_vert), findsNothing);
   });
 
-  testWidgets('点击FAB弹出底部小窗，输入空白直接返回不会添加空事项', (tester) async {
+  testWidgets('点击FAB弹出底部大弹窗，支持回车连续添加待办', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -138,9 +138,60 @@ void main() {
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
 
-    // 验证底部小窗已弹出，包含"完成"按钮与"设置提醒"
-    expect(find.text('完成'), findsOneWidget);
+    // 验证小米风格大弹窗已弹出，文案对齐
+    expect(find.text('回车即可连续添加待办'), findsOneWidget);
+    expect(find.text('重复'), findsOneWidget);
     expect(find.text('设置提醒'), findsOneWidget);
+    expect(find.byIcon(Icons.arrow_upward_rounded), findsOneWidget);
+
+    // 1. 输入第一条，按回车提交
+    await tester.enterText(find.byType(TextField), '第一项任务');
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pumpAndSettle();
+
+    // 验证弹窗依然存在（光标保留可连续输入），输入框已清空，列表中已录入第一条
+    expect(find.text('回车即可连续添加待办'), findsOneWidget);
+    expect(find.text('第一项任务'), findsOneWidget);
+
+    // 2. 输入第二条，按回车提交
+    await tester.enterText(find.byType(TextField), '第二项任务');
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pumpAndSettle();
+
+    // 验证第二条也已成功录入
+    expect(find.text('第二项任务'), findsOneWidget);
+
+    // 3. 点击圆形的上箭头按钮退出
+    await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+    await tester.pumpAndSettle();
+
+    // 验证弹窗关闭，两条待办都在列表中展示
+    expect(find.text('设置提醒'), findsNothing);
+    expect(find.text('第一项任务'), findsOneWidget);
+    expect(find.text('第二项任务'), findsOneWidget);
+  });
+
+  testWidgets('点击FAB弹出底部小窗，未输入任何内容点击空白退出不添加空事项', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          todoListProvider.overrideWith(() => _MockTodoListNotifier([])),
+          todoFolderListProvider.overrideWith(() => _MockTodoFolderNotifier()),
+        ],
+        child: const MaterialApp(
+          home: TodoPage(),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    // 点击浮动按钮添加待办
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+
+    // 验证底部小窗已弹出
+    expect(find.text('回车即可连续添加待办'), findsOneWidget);
 
     // 点空白处返回
     await tester.tapAt(const Offset(20, 20));
@@ -149,37 +200,5 @@ void main() {
     // 验证弹窗关闭，且列表依然为空（没有添加空事项）
     expect(find.text('设置提醒'), findsNothing);
     expect(find.text('待办事项'), findsNothing);
-  });
-
-  testWidgets('底部小窗输入内容并点击完成，成功添加新待办', (tester) async {
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          todoListProvider.overrideWith(() => _MockTodoListNotifier([])),
-          todoFolderListProvider.overrideWith(() => _MockTodoFolderNotifier()),
-        ],
-        child: const MaterialApp(
-          home: TodoPage(),
-        ),
-      ),
-    );
-
-    await tester.pumpAndSettle();
-
-    // 点击浮动按钮添加待办
-    await tester.tap(find.byType(FloatingActionButton));
-    await tester.pumpAndSettle();
-
-    // 输入待办内容
-    await tester.enterText(find.byType(TextField), '优化Qwen模型推理');
-    await tester.pumpAndSettle();
-
-    // 点击完成按钮
-    await tester.tap(find.text('完成'));
-    await tester.pumpAndSettle();
-
-    // 验证弹窗关闭，且列表中出现了新增的待办事项
-    expect(find.text('设置提醒'), findsNothing);
-    expect(find.text('优化Qwen模型推理'), findsOneWidget);
   });
 }

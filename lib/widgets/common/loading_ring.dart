@@ -15,7 +15,7 @@ class LoadingRing extends StatefulWidget {
     super.key,
     this.size = 24.0,
     this.color,
-    this.strokeWidth = 2.0,
+    this.strokeWidth = 1.4,
     this.duration = const Duration(milliseconds: 1000),
   });
 
@@ -103,7 +103,7 @@ class _LoadingRingPainter extends CustomPainter {
     final scale = size.width / 24.0;
     final paint = Paint()
       ..color = color
-      ..strokeWidth = math.max(strokeWidth, 1.0)
+      ..strokeWidth = math.max(strokeWidth, 0.5)
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;

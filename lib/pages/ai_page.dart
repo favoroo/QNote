@@ -28,7 +28,6 @@ import 'package:qnote_flutter/widgets/empty_state.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
 import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
-import 'package:qnote_flutter/widgets/common/animated_ellipsis.dart';
 import 'package:qnote_flutter/widgets/common/loading_ring.dart';
 import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
 import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
@@ -1318,7 +1317,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                       final canSend = (hasText || hasAttachments) && !busy;
 
                       // 小Q工作过程中：发送按钮变为中断/停止按钮，
-                      // 外层环绕极简现代 LoadingRing 缺口圆环旋转动画，中央为圆角停止方块
+                      // 外层环绕极简细线 LoadingRing 缺口圆环旋转动画，中央为精致圆角停止方块
                       if (busy) {
                         final isDark = theme.brightness == Brightness.dark;
                         final primary = theme.colorScheme.primary;
@@ -1337,25 +1336,31 @@ class _AiPageState extends ConsumerState<AiPage> {
                                 height: 44,
                                 decoration: BoxDecoration(
                                   color: primary.withValues(
-                                    alpha: isDark ? 0.18 : 0.10,
+                                    alpha: isDark ? 0.14 : 0.08,
                                   ),
                                   shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: primary.withValues(
+                                      alpha: isDark ? 0.22 : 0.14,
+                                    ),
+                                    width: 0.8,
+                                  ),
                                 ),
                                 child: Stack(
                                   alignment: Alignment.center,
                                   children: [
                                     LoadingRing(
-                                      size: 40,
-                                      strokeWidth: 2,
+                                      size: 32,
+                                      strokeWidth: 1.3,
                                       color: primary,
                                     ),
                                     Container(
-                                      width: 12,
-                                      height: 12,
+                                      width: 9.5,
+                                      height: 9.5,
                                       decoration: BoxDecoration(
                                         color: primary,
                                         borderRadius:
-                                            BorderRadius.circular(2.5),
+                                            BorderRadius.circular(2.0),
                                       ),
                                     ),
                                   ],
@@ -2344,7 +2349,7 @@ class _ChatBubble extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(vertical: 2),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.end,
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             Flexible(
                               child: Text(
@@ -2356,14 +2361,18 @@ class _ChatBubble extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            // 底部留 5px 让圆点与文字基线视觉对齐
-                            const Padding(
-                              padding: EdgeInsets.only(left: 4, bottom: 5),
-                              child: AnimatedEllipsis(),
+                            // 思考中采用形变无限符号动画，流动生命力替代三个跳动圆点
+                            Padding(
+                              padding: const EdgeInsets.only(left: 6, right: 4),
+                              child: MorphingInfinity(
+                                size: 16,
+                                strokeWidth: 1.3,
+                                color: theme.colorScheme.primary,
+                              ),
                             ),
                             // 已用时递增计数：长任务期间传达"仍在推进，没有卡住"
                             Padding(
-                              padding: const EdgeInsets.only(left: 4, bottom: 5),
+                              padding: const EdgeInsets.only(left: 2),
                               child: StreamingElapsedText(
                                 startedAt: statusStartedAt,
                                 style: TextStyle(

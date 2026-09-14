@@ -1341,10 +1341,34 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
     super.dispose();
   }
 
+  void _handleSubmitted(String value) {
+    final text = value.trim();
+    if (widget.todo == null) {
+      // 添加模式：回车即可连续添加待办
+      if (text.isNotEmpty) {
+        widget.onSaveAdd(
+          title: text,
+          reminderTime: _reminderTime,
+          repeatRule: _repeatRule,
+          folderId: _selectedFolderId,
+        );
+        HapticFeedback.lightImpact();
+        _textController.clear();
+        setState(() {
+          _reminderTime = null;
+          _repeatRule = 'none';
+        });
+      }
+    } else {
+      // 编辑模式：回车直接保存并关闭
+      _handleComplete();
+    }
+  }
+
   void _handleComplete() {
     final text = _textController.text.trim();
     if (text.isEmpty) {
-      // 若没有编辑内容，返回且不会把空的事项添加上去
+      // 若没有编辑内容，直接返回，程序不会把空的事项添加上去
       Navigator.pop(context);
       return;
     }
@@ -1547,7 +1571,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
       case 'yearly':
         return '每年重复';
       default:
-        return '设置重复';
+        return '重复';
     }
   }
 
@@ -1563,28 +1587,32 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
         widget.folders.firstOrNull;
     final selectedFolderName = selectedFolder?.name ?? '';
 
+    final viewInsetsBottom = MediaQuery.of(context).viewInsets.bottom;
+    final bottomMargin = viewInsetsBottom > 0 ? (viewInsetsBottom + 12.0) : 16.0;
+
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(bottom: bottomMargin, left: 14, right: 14),
       child: Container(
         decoration: BoxDecoration(
-          color: isDark ? colorScheme.surfaceContainerHigh : colorScheme.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          color: isDark ? const Color(0xFF222222) : colorScheme.surface,
+          borderRadius: BorderRadius.circular(28),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.15),
-              blurRadius: 16,
-              offset: const Offset(0, -4),
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 24,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+        padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
         child: SafeArea(
           top: false,
+          bottom: viewInsetsBottom == 0,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 待办输入区（左侧圆角方块，中间自动聚焦输入框）
+              // 待办输入区（左侧圆角方块，中间自动聚焦输入框，更舒展宽阔）
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1597,59 +1625,65 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                             });
                           },
                     child: Container(
-                      width: 20,
-                      height: 20,
-                      margin: const EdgeInsets.only(top: 2, right: 12),
+                      width: 22,
+                      height: 22,
+                      margin: const EdgeInsets.only(top: 3, right: 14),
                       decoration: BoxDecoration(
                         color: _isCompleted
                             ? (isDark ? Colors.white24 : colorScheme.primary.withValues(alpha: 0.15))
                             : Colors.transparent,
-                        borderRadius: BorderRadius.circular(5),
+                        borderRadius: BorderRadius.circular(6),
                         border: Border.all(
                           color: _isCompleted
-                              ? (isDark ? Colors.white30 : colorScheme.outline.withValues(alpha: 0.4))
-                              : colorScheme.outline.withValues(alpha: 0.5),
-                          width: 1.8,
+                              ? (isDark ? Colors.white38 : colorScheme.outline.withValues(alpha: 0.4))
+                              : (isDark ? Colors.white54 : colorScheme.outline.withValues(alpha: 0.5)),
+                          width: 2.0,
                         ),
                       ),
                       child: _isCompleted
                           ? Icon(
                               Icons.check,
-                              size: 14,
+                              size: 15,
                               color: isDark ? Colors.white70 : colorScheme.primary,
                             )
                           : null,
                     ),
                   ),
                   Expanded(
-                    child: TextField(
-                      controller: _textController,
-                      autofocus: true,
-                      maxLines: 4,
-                      minLines: 1,
-                      textInputAction: TextInputAction.done,
-                      onSubmitted: (_) => _handleComplete(),
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: colorScheme.onSurface,
-                      ),
-                      decoration: InputDecoration(
-                        isDense: true,
-                        contentPadding: EdgeInsets.zero,
-                        border: InputBorder.none,
-                        hintText: '输入待办内容...',
-                        hintStyle: TextStyle(
-                          fontSize: 16,
-                          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-                          fontWeight: FontWeight.normal,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 52),
+                      child: TextField(
+                        controller: _textController,
+                        autofocus: true,
+                        maxLines: 5,
+                        minLines: 1,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: _handleSubmitted,
+                        style: TextStyle(
+                          fontSize: 17.5,
+                          height: 1.35,
+                          fontWeight: FontWeight.w500,
+                          color: isDark ? Colors.white : colorScheme.onSurface,
+                        ),
+                        decoration: InputDecoration(
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(vertical: 2),
+                          border: InputBorder.none,
+                          hintText: widget.todo == null ? '回车即可连续添加待办' : '输入待办内容...',
+                          hintStyle: TextStyle(
+                            fontSize: 17.5,
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.35)
+                                : colorScheme.onSurfaceVariant.withValues(alpha: 0.45),
+                            fontWeight: FontWeight.normal,
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 26),
               // 底部功能胶囊栏与完成按钮
               Row(
                 children: [
@@ -1661,81 +1695,81 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                           // 设置提醒胶囊
                           InkWell(
                             onTap: _pickReminderTime,
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(10),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                               decoration: BoxDecoration(
                                 color: _reminderTime != null
-                                    ? colorScheme.primary.withValues(alpha: 0.12)
-                                    : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                                borderRadius: BorderRadius.circular(8),
+                                    ? colorScheme.primary.withValues(alpha: 0.15)
+                                    : (isDark ? Colors.white.withValues(alpha: 0.08) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6)),
+                                borderRadius: BorderRadius.circular(10),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(
                                     Icons.alarm,
-                                    size: 15,
+                                    size: 16,
                                     color: _reminderTime != null
                                         ? colorScheme.primary
-                                        : colorScheme.onSurfaceVariant,
+                                        : (isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
                                   ),
-                                  const SizedBox(width: 4),
+                                  const SizedBox(width: 5),
                                   Text(
                                     _reminderTime ?? '设置提醒',
                                     style: TextStyle(
-                                      fontSize: 13,
+                                      fontSize: 13.5,
                                       fontWeight: _reminderTime != null ? FontWeight.w600 : FontWeight.normal,
                                       color: _reminderTime != null
                                           ? colorScheme.primary
-                                          : colorScheme.onSurfaceVariant,
+                                          : (isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
                                     ),
                                   ),
                                   if (_reminderTime != null) ...[
-                                    const SizedBox(width: 4),
+                                    const SizedBox(width: 5),
                                     GestureDetector(
                                       onTap: () {
                                         setState(() => _reminderTime = null);
                                       },
-                                      child: Icon(Icons.close, size: 13, color: colorScheme.primary),
+                                      child: Icon(Icons.close, size: 14, color: colorScheme.primary),
                                     ),
                                   ],
                                 ],
                               ),
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 10),
                           // 设置重复胶囊
                           InkWell(
                             onTap: _pickRepeatRule,
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(10),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                               decoration: BoxDecoration(
                                 color: _repeatRule != 'none'
-                                    ? colorScheme.primary.withValues(alpha: 0.12)
-                                    : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                                borderRadius: BorderRadius.circular(8),
+                                    ? colorScheme.primary.withValues(alpha: 0.15)
+                                    : (isDark ? Colors.white.withValues(alpha: 0.08) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6)),
+                                borderRadius: BorderRadius.circular(10),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(
                                     Icons.repeat,
-                                    size: 15,
+                                    size: 16,
                                     color: _repeatRule != 'none'
                                         ? colorScheme.primary
-                                        : colorScheme.onSurfaceVariant,
+                                        : (isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
                                   ),
-                                  const SizedBox(width: 4),
+                                  const SizedBox(width: 5),
                                   Text(
                                     _repeatRuleLabel(_repeatRule),
                                     style: TextStyle(
-                                      fontSize: 13,
+                                      fontSize: 13.5,
                                       fontWeight: _repeatRule != 'none' ? FontWeight.w600 : FontWeight.normal,
                                       color: _repeatRule != 'none'
                                           ? colorScheme.primary
-                                          : colorScheme.onSurfaceVariant,
+                                          : (isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
                                     ),
                                   ),
                                 ],
@@ -1744,24 +1778,24 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                           ),
                           // 切换分类胶囊（若分类数大于1）
                           if (widget.folders.length > 1 && selectedFolderName.isNotEmpty) ...[
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 10),
                             InkWell(
                               onTap: _pickFolder,
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(10),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                                 decoration: BoxDecoration(
-                                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                                  borderRadius: BorderRadius.circular(8),
+                                  color: isDark ? Colors.white.withValues(alpha: 0.08) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                                  borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.folder_outlined, size: 15, color: colorScheme.onSurfaceVariant),
-                                    const SizedBox(width: 4),
+                                    Icon(Icons.folder_outlined, size: 16, color: isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
+                                    const SizedBox(width: 5),
                                     Text(
                                       selectedFolderName,
-                                      style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+                                      style: TextStyle(fontSize: 13.5, color: isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
                                     ),
                                   ],
                                 ),
@@ -1770,49 +1804,64 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                           ],
                           // 编辑模式：给小Q 与 删除操作
                           if (widget.todo != null) ...[
-                            const SizedBox(width: 6),
+                            const SizedBox(width: 8),
                             IconButton(
-                              icon: const Icon(Icons.smart_toy_rounded, size: 20),
+                              icon: const Icon(Icons.smart_toy_rounded, size: 21),
                               tooltip: '给小Q',
                               onPressed: () {
                                 Navigator.pop(context);
                                 widget.onQuoteToQ?.call(widget.todo!);
                               },
                               padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                              constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
                             ),
                             IconButton(
-                              icon: Icon(Icons.delete_outline, size: 20, color: colorScheme.error),
+                              icon: Icon(Icons.delete_outline, size: 21, color: colorScheme.error),
                               tooltip: '删除',
                               onPressed: () {
                                 Navigator.pop(context);
                                 widget.onDelete?.call(widget.todo!);
                               },
                               padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                              constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
                             ),
                           ],
                         ],
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  // 完成按钮
-                  TextButton(
-                    onPressed: hasText ? _handleComplete : null,
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: Text(
-                      '完成',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: hasText
-                            ? colorScheme.primary
-                            : colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
+                  const SizedBox(width: 12),
+                  // 圆形上箭头完成/提交按钮（统一遵循应用全局主题色）
+                  Semantics(
+                    button: true,
+                    label: '完成',
+                    child: Tooltip(
+                      message: '完成',
+                      child: GestureDetector(
+                        onTap: _handleComplete,
+                        child: AnimatedContainer(
+                          duration: AppDurations.normal,
+                          curve: Curves.easeInOut,
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: hasText
+                                ? colorScheme.primary
+                                : (isDark
+                                    ? Colors.white.withValues(alpha: 0.1)
+                                    : colorScheme.surfaceContainerHighest.withValues(alpha: 0.8)),
+                          ),
+                          child: Icon(
+                            Icons.arrow_upward_rounded,
+                            size: 20,
+                            color: hasText
+                                ? colorScheme.onPrimary
+                                : (isDark
+                                    ? Colors.white.withValues(alpha: 0.3)
+                                    : colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
+                          ),
+                        ),
                       ),
                     ),
                   ),

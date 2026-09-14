@@ -123,60 +123,117 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
   /// 单个预设卡片：选中态高亮 + 自定义时附编辑区
   Widget _buildPresetCard(BuildContext context, QPersonality preset) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final selected = preset.id == _activeId;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
+      child: Material(
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(24),
-        onTap: () => _select(preset.id),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: selected
-                ? theme.colorScheme.primaryContainer.withValues(alpha: 0.35)
-                : theme.colorScheme.surface,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: () => _select(preset.id),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOut,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
               color: selected
-                  ? theme.colorScheme.primary.withValues(alpha: 0.6)
-                  : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-              width: selected ? 1.5 : 1,
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                selected
-                    ? Icons.radio_button_checked_rounded
-                    : Icons.radio_button_unchecked_rounded,
-                size: 22,
+                  ? (isDark
+                      ? theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.6)
+                      : theme.colorScheme.primary.withValues(alpha: 0.035))
+                  : theme.colorScheme.surface,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
                 color: selected
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.onSurfaceVariant,
+                    ? theme.colorScheme.primary.withValues(alpha: 0.85)
+                    : theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+                width: selected ? 1.5 : 1,
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      preset.name,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
+              boxShadow: selected
+                  ? [
+                      BoxShadow(
+                        color: theme.colorScheme.primary.withValues(alpha: isDark ? 0.20 : 0.08),
+                        blurRadius: 14,
+                        offset: const Offset(0, 4),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      preset.description,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.02),
+                        blurRadius: 4,
+                        offset: const Offset(0, 1),
                       ),
-                    ),
-                  ],
+                    ]
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.10 : 0.02),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  selected
+                      ? Icons.radio_button_checked_rounded
+                      : Icons.radio_button_unchecked_rounded,
+                  size: 22,
+                  color: selected
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.outlineVariant.withValues(alpha: 0.9),
                 ),
-              ),
-            ],
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              preset.name,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: selected ? FontWeight.bold : FontWeight.w600,
+                                color: selected
+                                    ? theme.colorScheme.primary
+                                    : theme.colorScheme.onSurface,
+                              ),
+                            ),
+                          ),
+                          if (selected) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.primary.withValues(alpha: isDark ? 0.20 : 0.10),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                '使用中',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: theme.colorScheme.primary,
+                                  height: 1.2,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        preset.description,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -186,6 +243,7 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
   /// 自定义人格编辑区：多行输入 + 保存按钮
   Widget _buildCustomEditor(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -194,6 +252,13 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
         border: Border.all(
           color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.12 : 0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

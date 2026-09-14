@@ -17,8 +17,8 @@ import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
 import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
 import 'package:qnote_flutter/widgets/animated_gradient_border.dart';
-import 'package:qnote_flutter/widgets/common/animated_ellipsis.dart';
 import 'package:qnote_flutter/widgets/common/loading_ring.dart';
+import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
 import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
 import 'package:qnote_flutter/widgets/common/thought_tail_scroll_view.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
@@ -490,8 +490,10 @@ class _FloatingBallState extends State<_FloatingBall> {
   /// 拖动判定阈值（逻辑像素）：位移超过该值视为拖动而非点击
   static const double _dragSlop = 8;
 
-  /// 折叠时向屏幕外滑出的逻辑像素（44px 圆球滑出 32px，仅露出约 12px 细巧微弧，极大减少遮挡）
-  static const double _dockSlideOffset = 32;
+  /// 折叠时向屏幕外滑出的逻辑像素（44px 圆球滑出 24px，露出约 20px 弧面，
+  /// 兼顾减少遮挡与可触摸命中面积；命中区跟随 AnimatedSlide 平移，折叠后
+  /// 命中区与可见弧面完全重合，不再错位）
+  static const double _dockSlideOffset = 24;
 
   Offset? _pointerStart;
   Offset? _origin;
@@ -558,21 +560,23 @@ class _FloatingBallState extends State<_FloatingBall> {
             : _dockSlideOffset / widget.size)
         : 0.0;
 
-    return Listener(
-      behavior: HitTestBehavior.opaque,
-      onPointerDown: _onPointerDown,
-      onPointerMove: _onPointerMove,
-      onPointerUp: _onPointerUp,
-      onPointerCancel: _onPointerCancel,
-      // 撤回入口只保留在面板横幅中：悬浮球不再切换撤回倒计时形态，
-      // 撤回就绪期点击球同样是弹出面板
-      child: AnimatedSlide(
-        offset: Offset(slideX, 0),
-        duration: const Duration(milliseconds: 280),
-        curve: Curves.easeOutCubic,
+    // AnimatedSlide 在外层、Listener 在内层：命中区跟随平移，
+    // 折叠时命中区与可见弧面完全重合，不再出现"看得见点不到"的错位
+    return AnimatedSlide(
+      offset: Offset(slideX, 0),
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: _onPointerDown,
+        onPointerMove: _onPointerMove,
+        onPointerUp: _onPointerUp,
+        onPointerCancel: _onPointerCancel,
+        // 撤回入口只保留在面板横幅中：悬浮球不再切换撤回倒计时形态，
+        // 撤回就绪期点击球同样是弹出面板
         child: AnimatedOpacity(
-          // 静置半折叠时衰减不透明度至 0.42，阅读正文无干扰；触碰唤醒后立即恢复 1.0
-          opacity: widget.isDocked ? 0.42 : 1.0,
+          // 静置半折叠时衰减不透明度至 0.5，阅读正文无干扰；触碰唤醒后立即恢复 1.0
+          opacity: widget.isDocked ? 0.5 : 1.0,
           duration: const Duration(milliseconds: 280),
           curve: Curves.easeOut,
           child: AnimatedScale(
@@ -754,9 +758,9 @@ class _WorkingBallState extends State<_WorkingBall>
               color: primary.withValues(alpha: isDark ? 0.22 : 0.12),
             ),
             child: Center(
-              child: AnimatedEllipsis(
-                dotSize: 4.5,
-                dotSpacing: 2.2,
+              child: MorphingInfinity(
+                size: 18,
+                strokeWidth: 1.4,
                 color: primary,
               ),
             ),
@@ -1103,13 +1107,13 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
     );
   }
 
-  /// 等待态状态行：状态文案 + 动态省略号 + 已用时递增计数
+  /// 等待态状态行：状态文案 + 思考形变无限符号动画 + 已用时递增计数
   /// （遵循小Q等待态显示规范，不用闪烁光标）
   Widget _buildStatusLine(ThemeData theme, String statusText, DateTime? startedAt) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8, top: 2),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Flexible(
             child: Text(
@@ -1121,18 +1125,18 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          const SizedBox(width: 4),
-          const Padding(
-            padding: EdgeInsets.only(bottom: 3),
-            child: AnimatedEllipsis(),
-          ),
           Padding(
-            padding: const EdgeInsets.only(left: 2, bottom: 3),
-            child: StreamingElapsedText(
-              startedAt: startedAt,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+            padding: const EdgeInsets.symmetric(horizontal: 5),
+            child: MorphingInfinity(
+              size: 15,
+              strokeWidth: 1.3,
+              color: theme.colorScheme.primary,
+            ),
+          ),
+          StreamingElapsedText(
+            startedAt: startedAt,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
         ],
@@ -1536,7 +1540,7 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
           const SizedBox(width: 8),
           // 小Q工作中：发送按钮变为中断/停止按钮（与 AI 主页面交互一致）；
           // 空闲态长按可切换模型（工作中为停止按钮，不响应长按）。
-          // 工作态外圈环绕极简现代 LoadingRing 缺口圆环旋转动画，中央为圆角停止方块
+          // 工作态外圈环绕极简细线 LoadingRing 缺口圆环旋转动画，中央为精致圆角停止方块
           isWorking
               ? Tooltip(
                   message: '点击中止小Q当前操作',
@@ -1552,24 +1556,32 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
                       decoration: BoxDecoration(
                         color: theme.colorScheme.primary.withValues(
                           alpha:
-                              theme.brightness == Brightness.dark ? 0.18 : 0.10,
+                              theme.brightness == Brightness.dark ? 0.14 : 0.08,
                         ),
                         shape: BoxShape.circle,
+                        border: Border.all(
+                          color: theme.colorScheme.primary.withValues(
+                            alpha: theme.brightness == Brightness.dark
+                                ? 0.22
+                                : 0.14,
+                          ),
+                          width: 0.8,
+                        ),
                       ),
                       child: Stack(
                         alignment: Alignment.center,
                         children: [
                           LoadingRing(
-                            size: 36,
-                            strokeWidth: 2,
+                            size: 30,
+                            strokeWidth: 1.3,
                             color: theme.colorScheme.primary,
                           ),
                           Container(
-                            width: 12,
-                            height: 12,
+                            width: 9.5,
+                            height: 9.5,
                             decoration: BoxDecoration(
                               color: theme.colorScheme.primary,
-                              borderRadius: BorderRadius.circular(2.5),
+                              borderRadius: BorderRadius.circular(2.0),
                             ),
                           ),
                         ],
