@@ -1412,16 +1412,12 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       configs = await ref.read(aiConfigListProvider.future);
     } catch (_) {}
 
-    // mounted 为 false 时不能再用 context，必须先返回再提示
+    // mounted 为 false 时不能再用 context，必须先返回
     if (!mounted) return;
-    if (configs.isEmpty) {
-      Toast.warning(context, '无可用模型');
-      return;
-    }
 
     final roles = await AiRoleService.instance.getRoles();
     final currentModelId = roles.timelineOptimizationUseFreeModel
-        ? '__free_model__'
+        ? 'free:${roles.timelineOptimizationFreeModelId ?? 'gemini-3.5-flash-lite'}'
         : roles.timelineOptimization;
     if (!mounted) return;
 
@@ -1432,17 +1428,21 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     );
 
     if (selectedId != null && mounted) {
-      final isFree = selectedId == '__free_model__';
-      final newRoles = AiRoles(
-        assistant: roles.assistant,
-        assistantUseFreeModel: roles.assistantUseFreeModel,
+      final isFree = selectedId.startsWith('free:');
+      final freeModelId = isFree ? selectedId.substring(5) : null;
+      final newRoles = roles.copyWith(
         timelineOptimization: isFree ? null : selectedId,
         timelineOptimizationUseFreeModel: isFree,
+        timelineOptimizationFreeModelId: freeModelId,
       );
       await AiRoleService.instance.saveRoles(newRoles);
+      ref.invalidate(aiRolesProvider);
       if (mounted) {
         final displayName = isFree
-            ? 'QNote内置模型'
+            ? (kAssistantBuiltinModels
+                    .firstWhere((m) => m['id'] == selectedId,
+                        orElse: () => {'name': selectedId})['name'] ??
+                'QNote内置模型')
             : (configs
                     .firstWhere((c) => c.id == selectedId,
                         orElse: () => configs.first)
@@ -1588,15 +1588,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       configs = await ref.read(aiConfigListProvider.future);
     } catch (_) {}
 
-    // mounted 为 false 时不能再用 context，必须先返回再提示
+    // mounted 为 false 时不能再用 context，必须先返回
     if (!mounted) return;
-    if (configs.isEmpty) {
-      Toast.warning(context, '无可用模型');
-      return;
-    }
 
     final roles = await AiRoleService.instance.getRoles();
-    final currentModelId = roles.timelineOptimizationUseFreeModel ? '__free_model__' : roles.timelineOptimization;
+    final currentModelId = roles.timelineOptimizationUseFreeModel
+        ? 'free:${roles.timelineOptimizationFreeModelId ?? 'gemini-3.5-flash-lite'}'
+        : roles.timelineOptimization;
     if (!mounted) return;
 
     final selectedId = await showDialog<String>(
@@ -1606,16 +1604,25 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     );
 
     if (selectedId != null && mounted) {
-      final isFree = selectedId == '__free_model__';
-      final newRoles = AiRoles(
-        assistant: roles.assistant,
-        assistantUseFreeModel: roles.assistantUseFreeModel,
+      final isFree = selectedId.startsWith('free:');
+      final freeModelId = isFree ? selectedId.substring(5) : null;
+      final newRoles = roles.copyWith(
         timelineOptimization: isFree ? null : selectedId,
         timelineOptimizationUseFreeModel: isFree,
+        timelineOptimizationFreeModelId: freeModelId,
       );
       await AiRoleService.instance.saveRoles(newRoles);
+      ref.invalidate(aiRolesProvider);
       if (mounted) {
-        final displayName = isFree ? 'QNote内置模型' : (configs.firstWhere((c) => c.id == selectedId, orElse: () => configs.first).name);
+        final displayName = isFree
+            ? (kAssistantBuiltinModels
+                    .firstWhere((m) => m['id'] == selectedId,
+                        orElse: () => {'name': selectedId})['name'] ??
+                'QNote内置模型')
+            : (configs
+                    .firstWhere((c) => c.id == selectedId,
+                        orElse: () => configs.first)
+                    .name);
         Toast.success(
           context,
           '已切换：$displayName',

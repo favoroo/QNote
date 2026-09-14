@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -33,15 +34,21 @@ class FloatingQOverlay extends ConsumerStatefulWidget {
   ConsumerState<FloatingQOverlay> createState() => _FloatingQOverlayState();
 }
 
-class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
+enum _DockSide { left, right }
+
+class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay>
+    with SingleTickerProviderStateMixin {
   /// 球直径与时间线页"智能提取"悬浮按钮（44×44）保持一致
   static const double _ballSize = 44;
-  static const double _edgeMargin = 16;
+  static const double _edgeMargin = 12;
 
   /// 默认位置的底部净空：底部导航栏(60) + 收起态日记输入条(约48) +
   /// 提取按钮(bottom 12 + 高 44) + 间距 12，球悬停在时间线输入栏上方，
   /// 与右侧提取按钮同一水平线
   static const double _ballBottomClearance = 176;
+
+  /// 静置多长时间后自动向屏幕外侧半折叠（毫秒）
+  static const int _dockIdleDelayMs = 2500;
 
   /// 悬浮球位置的持久化键（设备本地 UI 偏好，不进同步链路）
   static const String _prefsKeyDx = 'floating_q_ball_dx';
@@ -55,9 +62,35 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
   /// 拖拽结束后持久化到 SharedPreferences，重启后恢复用户上次摆放的位置
   Offset? _ballPosition;
 
+  /// 贴边吸附动画控制器
+  late final AnimationController _snapController;
+  Animation<Offset>? _snapAnimation;
+
+  /// 靠边半折叠（Docking）状态与停靠方向
+  bool _isDocked = false;
+  _DockSide _dockSide = _DockSide.left;
+  bool _isDragging = false;
+  Timer? _idleTimer;
+
   @override
   void initState() {
     super.initState();
+    _snapController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 280),
+    )..addListener(() {
+        if (_snapAnimation != null && mounted) {
+          setState(() => _ballPosition = _snapAnimation!.value);
+        }
+      })
+      ..addStatusListener((status) {
+        if (status == AnimationStatus.completed) {
+          _snapAnimation = null;
+          _persistBallPosition();
+          _scheduleDockTimer();
+        }
+      });
+
     _router = ref.read(routerProvider);
     _location = _router!.routerDelegate.currentConfiguration.uri.toString();
     _routeListener = () {
@@ -90,6 +123,8 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
 
   @override
   void dispose() {
+    _idleTimer?.cancel();
+    _snapController.dispose();
     _router?.routerDelegate.removeListener(_routeListener);
     super.dispose();
   }
@@ -97,22 +132,63 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
   Offset _defaultBallPosition(Size size) =>
       Offset(_edgeMargin, size.height - _ballSize - _ballBottomClearance);
 
-  /// 从 SharedPreferences 恢复球位置；按当前屏幕钳制，
-  /// 防止跨设备/旋转后存储值越界（显示层还有每帧钳制兜底）
+  /// 唤醒展开：按下、拖动或点击时立即退出折叠态，重置空闲计时
+  void _wakeUpFromDock() {
+    _idleTimer?.cancel();
+    if (_isDocked) {
+      setState(() => _isDocked = false);
+    }
+  }
+
+  /// 调度静置靠边半收折计时器
+  void _scheduleDockTimer() {
+    _idleTimer?.cancel();
+    // 面板打开、小Q执行中、正在拖拽或吸附动画进行中时不收折
+    final panelOpen = ref.read(floatingQProvider).panelOpen;
+    final isWorking = ref.read(floatingQProvider).phase == FloatingQPhase.working;
+    if (panelOpen || isWorking || _isDragging || _snapController.isAnimating) {
+      return;
+    }
+
+    _idleTimer = Timer(const Duration(milliseconds: _dockIdleDelayMs), () {
+      if (!mounted) return;
+      final panelOpen = ref.read(floatingQProvider).panelOpen;
+      final isWorking = ref.read(floatingQProvider).phase == FloatingQPhase.working;
+      if (panelOpen || isWorking || _isDragging || _snapController.isAnimating) {
+        return;
+      }
+      final size = MediaQuery.sizeOf(context);
+      final pos = _ballPosition ?? _defaultBallPosition(size);
+      final isAtLeft = pos.dx <= _edgeMargin + 4;
+      final isAtRight = pos.dx >= size.width - _ballSize - _edgeMargin - 4;
+      if (isAtLeft || isAtRight) {
+        setState(() {
+          _isDocked = true;
+          _dockSide = isAtLeft ? _DockSide.left : _DockSide.right;
+        });
+      }
+    });
+  }
+
+  /// 从 SharedPreferences 恢复球位置；按当前屏幕贴边吸附并钳制，
+  /// 防止跨设备/旋转后存储值越界
   Future<void> _loadBallPosition() async {
     final prefs = await SharedPreferences.getInstance();
     final dx = prefs.getDouble(_prefsKeyDx);
     final dy = prefs.getDouble(_prefsKeyDy);
     if (dx == null || dy == null || !mounted) return;
     final size = MediaQuery.sizeOf(context);
+    final isLeft = (dx + _ballSize / 2) < size.width / 2;
+    final snapDx = isLeft ? _edgeMargin : size.width - _ballSize - _edgeMargin;
+    final clampedDy = dy.clamp(
+      _edgeMargin,
+      math.max(_edgeMargin, size.height - _ballSize - _edgeMargin).toDouble(),
+    );
     setState(() {
-      _ballPosition = Offset(
-        dx.clamp(_edgeMargin,
-            math.max(_edgeMargin, size.width - _ballSize - _edgeMargin)),
-        dy.clamp(_edgeMargin,
-            math.max(_edgeMargin, size.height - _ballSize - _edgeMargin)),
-      );
+      _ballPosition = Offset(snapDx, clampedDy);
+      _dockSide = isLeft ? _DockSide.left : _DockSide.right;
     });
+    _scheduleDockTimer();
   }
 
   /// 拖拽结束时持久化位置（松手才写，避免拖动过程高频 IO）
@@ -132,11 +208,18 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
     return Offset(
       base.dx.clamp(
           _edgeMargin, math.max(_edgeMargin, size.width - _ballSize - _edgeMargin)),
-      math.min(base.dy, math.max(_edgeMargin, maxTop)),
+      math.min(base.dy, math.max(_edgeMargin, maxTop).toDouble()),
     );
   }
 
+  void _onDragStart() {
+    _wakeUpFromDock();
+    _isDragging = true;
+    _snapController.stop();
+  }
+
   void _onDragBall(Offset newTopLeft) {
+    _wakeUpFromDock();
     final size = MediaQuery.sizeOf(context);
     final dx = newTopLeft.dx
         .clamp(_edgeMargin, size.width - _ballSize - _edgeMargin);
@@ -145,8 +228,65 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
     setState(() => _ballPosition = Offset(dx, dy));
   }
 
+  /// 拖拽松手：智能磁吸贴边动画，弹射到左侧或右侧边缘
+  void _onDragEnd() {
+    _isDragging = false;
+    final size = MediaQuery.sizeOf(context);
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final current = _ballPosition ?? _defaultBallPosition(size);
+    final isLeft = (current.dx + _ballSize / 2) < (size.width / 2);
+    final targetDx = isLeft ? _edgeMargin : size.width - _ballSize - _edgeMargin;
+
+    final maxTop = size.height - keyboardInset - _ballSize - _edgeMargin;
+    final targetDy = current.dy.clamp(
+      _edgeMargin,
+      math.max(_edgeMargin, maxTop).toDouble(),
+    );
+    final target = Offset(targetDx, targetDy);
+
+    _dockSide = isLeft ? _DockSide.left : _DockSide.right;
+
+    if ((current - target).distance < 1.0) {
+      _ballPosition = target;
+      _persistBallPosition();
+      _scheduleDockTimer();
+      return;
+    }
+
+    _snapAnimation = Tween<Offset>(
+      begin: current,
+      end: target,
+    ).animate(CurvedAnimation(
+      parent: _snapController,
+      curve: Curves.easeOutBack,
+    ));
+    _snapController.forward(from: 0.0);
+  }
+
   @override
   Widget build(BuildContext context) {
+    // 监听小Q任务状态与面板开关：执行工作或打开面板时立即唤醒展开，任务完成或面板关闭后重新倒计时收折
+    ref.listen<FloatingQPhase>(
+      floatingQProvider.select((s) => s.phase),
+      (previous, next) {
+        if (next == FloatingQPhase.working) {
+          _wakeUpFromDock();
+        } else {
+          _scheduleDockTimer();
+        }
+      },
+    );
+    ref.listen<bool>(
+      floatingQProvider.select((s) => s.panelOpen),
+      (previous, next) {
+        if (next) {
+          _wakeUpFromDock();
+        } else {
+          _scheduleDockTimer();
+        }
+      },
+    );
+
     // 精确订阅：流式期间 provider 以约 60ms 节奏刷新消息/流式文本，
     // 这里只关心面板开关与工作态，避免整条悬浮层（含面板输入框）被高频重建，
     // 否则 Web 端中文输入法组合态会被反复打断（删字复活、光标错乱）
@@ -241,9 +381,13 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
                             size: _ballSize,
                             position: _displayBallPosition(size, keyboardInset),
                             isWorking: isWorking,
+                            isDocked: _isDocked && !isWorking && !panelOpen,
+                            dockSide: _dockSide,
+                            onPointerDown: _wakeUpFromDock,
+                            onDragStart: _onDragStart,
                             onTap: _handleBallTap,
                             onDragUpdate: _onDragBall,
-                            onDragEnd: _persistBallPosition,
+                            onDragEnd: _onDragEnd,
                           ),
                   ),
                 ),
@@ -275,10 +419,10 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
   /// 撤回小Q本会话的全部修改并提示结果
   Future<void> _handleUndo() async {
     final result = await ref.read(floatingQProvider.notifier).undo();
-    if (result == null) return;
+    if (result == null || !mounted) return;
     final (restored, failed) = result;
     final toastContext = rootNavigatorKey.currentContext;
-    if (toastContext == null) return;
+    if (toastContext == null || !toastContext.mounted) return;
     if (failed > 0) {
       Toast.warning(toastContext, '已撤回 $restored 处修改，$failed 处失败');
     } else {
@@ -298,12 +442,25 @@ class _FloatingBall extends StatefulWidget {
 
   /// 任务执行中（显示工作动画球）
   final bool isWorking;
+
+  /// 靠边半收折状态（静置时向屏幕外滑入约 60%，仅露出边缘弧形以防遮挡）
+  final bool isDocked;
+
+  /// 靠边停靠方向（左侧或右侧）
+  final _DockSide dockSide;
+
+  /// 指针按下时触发唤醒展开
+  final VoidCallback onPointerDown;
+
+  /// 开始拖动回调
+  final VoidCallback onDragStart;
+
   final VoidCallback onTap;
 
   /// 拖动回调：新的球左上角位置（屏幕坐标，未钳制，由宿主钳制后存储）
   final ValueChanged<Offset> onDragUpdate;
 
-  /// 拖动结束回调：松手或拖动中被打断时触发，宿主借此持久化位置
+  /// 拖动结束回调：松手或拖动中被打断时触发，宿主借此持久化位置并触发吸附动画
   final VoidCallback onDragEnd;
 
   const _FloatingBall({
@@ -311,6 +468,10 @@ class _FloatingBall extends StatefulWidget {
     required this.size,
     required this.position,
     required this.isWorking,
+    required this.isDocked,
+    required this.dockSide,
+    required this.onPointerDown,
+    required this.onDragStart,
     required this.onTap,
     required this.onDragUpdate,
     required this.onDragEnd,
@@ -328,6 +489,9 @@ class _FloatingBallState extends State<_FloatingBall> {
   /// 拖动判定阈值（逻辑像素）：位移超过该值视为拖动而非点击
   static const double _dragSlop = 8;
 
+  /// 折叠时向屏幕外滑出的逻辑像素（44px 圆球滑出 26px，露出约 18px 弧形胶囊边）
+  static const double _dockSlideOffset = 26;
+
   Offset? _pointerStart;
   Offset? _origin;
   bool _dragging = false;
@@ -336,6 +500,7 @@ class _FloatingBallState extends State<_FloatingBall> {
   bool _pressed = false;
 
   void _onPointerDown(PointerDownEvent event) {
+    widget.onPointerDown();
     // 只跟踪首个按下的指针，多指触控时忽略后续指针
     _pointerStart ??= event.position;
     _origin ??= widget.position;
@@ -349,6 +514,7 @@ class _FloatingBallState extends State<_FloatingBall> {
     if (start == null || origin == null) return;
     if (!_dragging && (event.position - start).distance > _dragSlop) {
       _dragging = true;
+      widget.onDragStart();
       HapticFeedback.selectionClick();
     }
     if (_dragging) {
@@ -378,13 +544,19 @@ class _FloatingBallState extends State<_FloatingBall> {
     _origin = null;
     _dragging = false;
     if (_pressed) setState(() => _pressed = false);
-    // 拖动中被打断时位置已随 move 更新，同样持久化，避免丢一次摆放
+    // 拖动中被打断时位置已随 move 更新，同样触发结束吸附与持久化
     if (wasDragging) widget.onDragEnd();
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    // 折叠时的水平平移比例（相对于球体尺寸）
+    final slideX = widget.isDocked
+        ? (widget.dockSide == _DockSide.left
+            ? -_dockSlideOffset / widget.size
+            : _dockSlideOffset / widget.size)
+        : 0.0;
+
     return Listener(
       behavior: HitTestBehavior.opaque,
       onPointerDown: _onPointerDown,
@@ -393,61 +565,135 @@ class _FloatingBallState extends State<_FloatingBall> {
       onPointerCancel: _onPointerCancel,
       // 撤回入口只保留在面板横幅中：悬浮球不再切换撤回倒计时形态，
       // 撤回就绪期点击球同样是弹出面板
-      child: AnimatedScale(
-        // 按压反馈：球体轻微缩小，松开回弹
-        scale: _pressed ? 0.92 : 1.0,
-        duration: AppDurations.fast,
-        curve: Curves.easeOut,
-        child: AnimatedSwitcher(
-          duration: AppDurations.normal,
-          switchInCurve: Curves.easeOut,
-          switchOutCurve: Curves.easeIn,
-          // 工作态脉冲环会溢出 44px 球体边界，布局 Stack 需关闭裁剪
-          layoutBuilder: (currentChild, previousChildren) => Stack(
-            alignment: Alignment.center,
-            clipBehavior: Clip.none,
-            children: [
-              ...previousChildren,
-              ?currentChild,
-            ],
-          ),
-          child: widget.isWorking
-              ? _WorkingBall(
-                  key: const ValueKey('working'), size: widget.size)
-              : Container(
-                  key: const ValueKey('idle'),
-                  width: widget.size,
-                  height: widget.size,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: theme.colorScheme.surface.withValues(alpha: 0.6),
-                      width: 1.5,
+      child: AnimatedSlide(
+        offset: Offset(slideX, 0),
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+        child: AnimatedOpacity(
+          // 静置半折叠时衰减不透明度至 0.42，阅读正文无干扰；触碰唤醒后立即恢复 1.0
+          opacity: widget.isDocked ? 0.42 : 1.0,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOut,
+          child: AnimatedScale(
+            // 按压反馈：球体轻微缩小，松开回弹
+            scale: _pressed ? 0.92 : 1.0,
+            duration: AppDurations.fast,
+            curve: Curves.easeOut,
+            child: AnimatedSwitcher(
+              duration: AppDurations.normal,
+              switchInCurve: Curves.easeOut,
+              switchOutCurve: Curves.easeIn,
+              // 工作态流光环会溢出球体边界，布局 Stack 需关闭裁剪
+              layoutBuilder: (currentChild, previousChildren) => Stack(
+                alignment: Alignment.center,
+                clipBehavior: Clip.none,
+                children: [
+                  ...previousChildren,
+                  ?currentChild,
+                ],
+              ),
+              child: widget.isWorking
+                  ? _WorkingBall(
+                      key: const ValueKey('working'),
+                      size: widget.size,
+                    )
+                  : _IdleBall(
+                      key: const ValueKey('idle'),
+                      size: widget.size,
+                      isDocked: widget.isDocked,
+                      dockSide: widget.dockSide,
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color:
-                            theme.colorScheme.shadow.withValues(alpha: 0.25),
-                        blurRadius: 10,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    Icons.smart_toy_rounded,
-                    color: theme.colorScheme.onPrimary,
-                    // 图标随球缩小（44px），与提取按钮的图标比例一致
-                    size: 20,
-                  ),
-                ),
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-/// 工作中悬浮球：外圈脉冲呼吸环 + 三点渐显动画
+/// 待机状态悬浮球：高质感双层微渐变 + 柔和立体光晕 + 边缘折叠小耳微弧
+class _IdleBall extends StatelessWidget {
+  final double size;
+  final bool isDocked;
+  final _DockSide dockSide;
+
+  const _IdleBall({
+    super.key,
+    required this.size,
+    required this.isDocked,
+    required this.dockSide,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+    final isDark = theme.brightness == Brightness.dark;
+
+    // 轻柔浅淡高光与核心主色双层渐变，打破死板纯色
+    final topHighlight =
+        Color.lerp(primary, Colors.white, isDark ? 0.22 : 0.28)!;
+    final bottomCore = primary;
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [topHighlight, bottomCore],
+        ),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: isDark ? 0.28 : 0.45),
+          width: 1.2,
+        ),
+        boxShadow: [
+          // 主题色微光晕
+          BoxShadow(
+            color: primary.withValues(alpha: isDark ? 0.35 : 0.25),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+          // 底层环境景深柔阴影
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
+            blurRadius: 6,
+            offset: const Offset(0, 1.5),
+          ),
+        ],
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // 中心机器人图标
+          Icon(
+            Icons.smart_toy_rounded,
+            color: theme.colorScheme.onPrimary,
+            size: 20,
+          ),
+          // 折叠态露出的侧边高光小耳朵指示微弧，保证在边缘也有极佳识别度与萌感
+          if (isDocked)
+            Positioned(
+              left: dockSide == _DockSide.right ? 2 : null,
+              right: dockSide == _DockSide.left ? 2 : null,
+              child: Container(
+                width: 3.5,
+                height: 14,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.85),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 工作中悬浮球：AI 极光流光边框（双流星对称追逐） + 中心脉冲与三点跳动
 class _WorkingBall extends StatefulWidget {
   final double size;
 
@@ -466,7 +712,7 @@ class _WorkingBallState extends State<_WorkingBall>
     super.initState();
     _pulse = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 1400),
     )..repeat(reverse: true);
   }
 
@@ -479,11 +725,14 @@ class _WorkingBallState extends State<_WorkingBall>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+    final isDark = theme.brightness == Brightness.dark;
+
     return AnimatedBuilder(
       animation: _pulse,
       builder: (context, child) {
-        // 呼吸环随脉冲放大并淡出，表达"正在处理"
-        final ringScale = 1.0 + _pulse.value * 0.25;
+        // 外圈轻度脉冲光晕（1.0 ~ 1.25 倍），表达能量汇聚
+        final ringScale = 1.0 + _pulse.value * 0.22;
         return Stack(
           alignment: Alignment.center,
           clipBehavior: Clip.none,
@@ -495,8 +744,8 @@ class _WorkingBallState extends State<_WorkingBall>
                 height: widget.size,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: theme.colorScheme.primary
-                      .withValues(alpha: 0.35 * (1 - _pulse.value)),
+                  color: primary.withValues(
+                      alpha: (isDark ? 0.30 : 0.20) * (1 - _pulse.value)),
                 ),
               ),
             ),
@@ -508,15 +757,33 @@ class _WorkingBallState extends State<_WorkingBall>
         width: widget.size,
         height: widget.size,
         decoration: BoxDecoration(
-          color: theme.colorScheme.primary,
           shape: BoxShape.circle,
-          border: Border.all(
-            color: theme.colorScheme.surface.withValues(alpha: 0.6),
-            width: 1.5,
-          ),
+          color: theme.colorScheme.surface,
+          boxShadow: [
+            BoxShadow(
+              color: primary.withValues(alpha: isDark ? 0.40 : 0.30),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
-        child: const Center(
-          child: AnimatedEllipsis(dotSize: 5, dotSpacing: 2.5),
+        child: AnimatedGradientBorder(
+          isAnimating: true,
+          borderRadius: widget.size / 2, // 22px 完美贴合圆形
+          strokeWidth: 2.2,
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: primary.withValues(alpha: isDark ? 0.22 : 0.12),
+            ),
+            child: Center(
+              child: AnimatedEllipsis(
+                dotSize: 4.5,
+                dotSpacing: 2.2,
+                color: primary,
+              ),
+            ),
+          ),
         ),
       ),
     );

@@ -352,8 +352,6 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
             ..._buildCustomFieldCards(theme),
             const SizedBox(height: 12),
             _buildAddCustomFieldButton(theme),
-            const SizedBox(height: 20),
-            _buildAiHint(theme),
           ],
         ),
       ),
@@ -1210,53 +1208,6 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
       },
     );
   }
-
-  Widget _buildAiHint(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: theme.colorScheme.primary.withValues(alpha: 0.1),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.smart_toy_outlined,
-            size: 20,
-            color: theme.colorScheme.primary,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: RichText(
-              text: TextSpan(
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  height: 1.6,
-                  fontSize: 12,
-                ),
-                children: [
-                  const TextSpan(text: '您的资料已集成至 '),
-                  TextSpan(
-                    text: 'AI 助手',
-                    style: TextStyle(
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const TextSpan(text: '，我们将为您提供更精准的健康与运动建议。'),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
 
   Widget _buildWeightChart(List<dynamic> weightHistory, ThemeData theme) {
     final sortedHistory = List<WeightRecord>.from(weightHistory)

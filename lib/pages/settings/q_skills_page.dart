@@ -88,8 +88,7 @@ class _QSkillsPageState extends ConsumerState<QSkillsPage> {
                 icon: Icons.auto_fix_high_outlined,
                 title: '用户技能',
                 count: activeSkills.length,
-                emptyText: '还没有自定义技能。点击右上角「+」新建，或直接对小Q说'
-                    '「帮我把这套流程做成技能」，它会写入 /skills/ 下的技能手册。',
+                emptyText: '暂无自定义技能，可点击右上角「+」新建',
                 children: [
                   for (final skill in activeSkills) _buildSkillRow(context, skill),
                 ],

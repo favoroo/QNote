@@ -745,7 +745,7 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       final agentLoop = AgentLoop(
         aiService: aiService,
         dispatcher: dispatcher,
-        maxTurns: 20,
+        maxTurns: 60,
         afterToolCall: (call, result) async {
           // 按 VFS 路径前缀联动刷新对应业务数据
           refreshWorkspaceSideEffects(

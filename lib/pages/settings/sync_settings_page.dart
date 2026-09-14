@@ -525,9 +525,6 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
             icon: Icons.autorenew_rounded,
             iconColor: colorScheme.primary,
             title: '自动同步',
-            description: _webdavEnabled
-                ? '启动应用以及每 ${_syncInterval > 0 ? "$_syncInterval 分钟" : "一段时间"} 后台自动同步'
-                : '开启后将在应用启动与后台运行期间自动同步',
             trailing: Switch(
               value: _webdavEnabled,
               onChanged: (val) {
@@ -550,7 +547,6 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
               icon: Icons.schedule_rounded,
               iconColor: colorScheme.primary,
               title: '同步频率',
-              description: '应用在后台运行时的自动同步轮询周期',
               trailing: DropdownButtonHideUnderline(
                 child: DropdownButton<int>(
                   value: _syncIntervalOptions.any((e) => e.value == _syncInterval)
@@ -586,7 +582,6 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
             icon: Icons.photo_library_outlined,
             iconColor: colorScheme.primary,
             title: '同步附件图片',
-            description: '备份与同步日记、笔记中的插图文件',
             trailing: Switch(
               value: _syncImages,
               onChanged: (val) {
@@ -730,7 +725,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
     required IconData icon,
     required Color iconColor,
     required String title,
-    required String description,
+    String? description,
     required Widget trailing,
   }) {
     final theme = Theme.of(context);
@@ -750,6 +745,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   title,
@@ -758,14 +754,16 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                     fontSize: 14,
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  description,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.hintColor,
-                    fontSize: 11,
+                if (description != null && description.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    description,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.hintColor,
+                      fontSize: 11,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),

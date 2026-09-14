@@ -936,9 +936,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   Widget _buildToolSwitchCard(BuildContext context) {
     final theme = Theme.of(context);
     const toolMeta = {
-      'fetch_url': ('网页阅读', '读取链接真实正文并总结，关闭后小Q无法访问网页'),
-      'web_search': ('网页搜索', '查询新闻、天气等时效性信息，关闭后仅凭模型知识回答'),
-      'generate_image': ('图片生成', '生成插画、配图与表情包，关闭后不再产生生图开销'),
+      'fetch_url': '网页阅读',
+      'web_search': '网页搜索',
+      'generate_image': '图片生成',
     };
 
     return Column(
@@ -948,13 +948,6 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           '小Q工具能力',
           style: theme.textTheme.titleSmall?.copyWith(
             fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          '关闭的工具下次对话生效；核心能力（文件读写、检索、确认）不可关闭。',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
         const SizedBox(height: 8),
@@ -971,8 +964,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
               for (final entry in toolMeta.entries) ...[
                 SwitchListTile(
                   value: !_disabledTools.contains(entry.key),
-                  title: Text(entry.value.$1),
-                  subtitle: Text(entry.value.$2),
+                  title: Text(entry.value),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                   onChanged: (enabled) => _toggleTool(entry.key, enabled),
                 ),
@@ -1420,9 +1412,6 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     final roleIconColor = isAssistant
         ? colorScheme.primary
         : Colors.purple.shade600;
-    final roleSubtitle = isAssistant
-        ? '随身生活顾问 · 深度分析与智能问答'
-        : '自然语言结构化 · 标签与日程精准提取';
 
     return Container(
       decoration: BoxDecoration(
@@ -1436,7 +1425,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 头部：场景徽标 + 角色标题与副标题
+          // 头部：场景徽标 + 角色标题
           Row(
             children: [
               Container(
@@ -1450,27 +1439,12 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      roleSubtitle,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                        fontSize: 11,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+                child: Text(
+                  label,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
                 ),
               ),
             ],
@@ -1666,25 +1640,12 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                       ),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '提取图片内容',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              '日记附带照片时自动识别图像与数据',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.65),
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
+                        child: Text(
+                          '提取图片内容',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
                       Switch(
@@ -2911,10 +2872,6 @@ class _ModelPickerBottomSheetState extends State<_ModelPickerBottomSheet> {
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600,
                                   ),
-                                ),
-                                subtitle: const Text(
-                                  '手动输入其他模型 ID',
-                                  style: TextStyle(fontSize: 11),
                                 ),
                                 trailing: isSelected
                                     ? Icon(

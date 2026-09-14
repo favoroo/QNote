@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
+import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
 
-/// 统一的模型选择弹窗，供日记页 FAB 长按、输入栏长按、编辑器长按共用。
+export 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart'
+    show kAssistantBuiltinModels, assistantModelDisplayName;
+
+/// 统一的时间线/日记模型选择弹窗，供日记页 FAB 长按、输入栏长按、编辑器长按共用。
 ///
-/// 返回值为选中的模型 ID 字符串，免费模型返回 `'__free_model__'`。
+/// 返回值为选中的模型 ID 字符串：
+/// - 免费模型返回 `'free:<model-name>'`（例如 `'free:gemini-3.5-flash-lite'`）
+/// - 自定义模型返回对应的配置 id（UUID）
 class ModelSelectionDialog extends StatelessWidget {
   final List<AiConfig> configs;
   final String? selectedId;
@@ -18,7 +24,11 @@ class ModelSelectionDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final isFreeSelected = selectedId == '__free_model__';
+
+    // 解析当前选中的有效 ID（兼容旧的哨兵值 __free_model__）
+    final effectiveSelectedId = selectedId == '__free_model__'
+        ? 'free:gemini-3.5-flash-lite'
+        : (selectedId ?? 'free:gemini-3.5-flash-lite');
 
     return Dialog(
       backgroundColor: colorScheme.surface,
@@ -43,19 +53,48 @@ class ModelSelectionDialog extends StatelessWidget {
             Flexible(
               child: SingleChildScrollView(
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _ModelFreeItem(
-                      isSelected: isFreeSelected,
-                      onTap: () => Navigator.pop(context, '__free_model__'),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
+                      child: Text(
+                        'QNote 内置免费模型',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: colorScheme.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
-                    ...configs.map<Widget>((config) {
-                      final isSelected = config.id == selectedId;
-                      return _ModelItem(
-                        config: config,
+                    ...kAssistantBuiltinModels.map((m) {
+                      final isSelected = m['id'] == effectiveSelectedId;
+                      return _ModelFreeItem(
+                        id: m['id']!,
+                        name: m['name']!,
                         isSelected: isSelected,
-                        onTap: () => Navigator.pop(context, config.id),
+                        onTap: () => Navigator.pop(context, m['id']),
                       );
                     }),
+                    if (configs.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
+                        child: Text(
+                          '自定义模型',
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: colorScheme.outline,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      ...configs.map<Widget>((config) {
+                        final isSelected = config.id == effectiveSelectedId;
+                        return _ModelItem(
+                          config: config,
+                          isSelected: isSelected,
+                          onTap: () => Navigator.pop(context, config.id),
+                        );
+                      }),
+                    ],
                   ],
                 ),
               ),
@@ -68,10 +107,14 @@ class ModelSelectionDialog extends StatelessWidget {
 }
 
 class _ModelFreeItem extends StatelessWidget {
+  final String id;
+  final String name;
   final bool isSelected;
   final VoidCallback onTap;
 
   const _ModelFreeItem({
+    required this.id,
+    required this.name,
     required this.isSelected,
     required this.onTap,
   });
@@ -118,16 +161,28 @@ class _ModelFreeItem extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  'QNote内置模型',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: isSelected
-                        ? FontWeight.bold
-                        : FontWeight.normal,
-                    color: isSelected
-                        ? colorScheme.primary
-                        : colorScheme.onSurface,
-                  ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.auto_awesome_rounded,
+                      size: 15,
+                      color: colorScheme.primary,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        name,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                          color: isSelected
+                              ? colorScheme.primary
+                              : colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -189,27 +244,26 @@ class _ModelItem extends StatelessWidget {
                       )
                     : null,
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       config.name,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: isSelected
+                            ? FontWeight.bold
+                            : FontWeight.normal,
                         color: isSelected
                             ? colorScheme.primary
                             : colorScheme.onSurface,
                       ),
                     ),
-                    const SizedBox(height: 2),
                     Text(
                       '${config.provider} / ${config.modelName}',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant.withValues(
-                          alpha: 0.6,
-                        ),
+                        color: colorScheme.outline,
                       ),
                     ),
                   ],

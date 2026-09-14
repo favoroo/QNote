@@ -360,14 +360,12 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
             _ActionTile(
               icon: Icons.file_download_outlined,
               title: '导出 JSON 备份',
-              subtitle: '把全部数据导出为 JSON 文件用于存档',
               onTap: _isExporting ? null : _handleExport,
               isLoading: _isExporting,
             ),
             _ActionTile(
               icon: Icons.file_upload_outlined,
               title: '导入备份数据',
-              subtitle: '从 JSON 备份文件恢复，将覆盖当前数据',
               onTap: _isImporting ? null : _handleImport,
               isLoading: _isImporting,
             ),
@@ -380,7 +378,6 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
             _ActionTile(
               icon: Icons.settings_backup_restore_rounded,
               title: '从云端恢复到本地',
-              subtitle: '下载云端最新备份并覆盖本地（换机或重装时使用）',
               color: Colors.orange.shade700,
               onTap: _isRestoring ? null : _handleRestoreFromCloud,
               isLoading: _isRestoring,
@@ -586,13 +583,11 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
             _ActionTile(
               icon: Icons.cloud_upload_outlined,
               title: '强制全量同步',
-              subtitle: '忽略本地增量，重新上传完整数据快照',
               onTap: isSyncing ? null : _performFullSync,
             ),
             _ActionTile(
               icon: Icons.cleaning_services_outlined,
               title: '清理旧备份文件',
-              subtitle: '清理云端早期历史格式备份，释放网盘空间',
               color: Colors.teal.shade600,
               onTap: isSyncing ? null : _cleanupOldBackups,
             ),
@@ -605,7 +600,6 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
             _ActionTile(
               icon: Icons.terminal_rounded,
               title: '查看运行日志',
-              subtitle: '按级别筛选、复制日志，便于排查同步与导入导出问题',
               color: colorScheme.onSurfaceVariant,
               onTap: _openLogViewer,
             ),
@@ -618,7 +612,6 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
             _ActionTile(
               icon: Icons.delete_outline_rounded,
               title: '清空所有本地数据',
-              subtitle: '删除全部日记、笔记、待办与配置，且不可恢复',
               color: colorScheme.error,
               isDestructive: true,
               onTap: _isClearing ? null : _handleClearData,
@@ -700,7 +693,6 @@ class _ActionTile extends StatelessWidget {
   const _ActionTile({
     required this.icon,
     required this.title,
-    required this.subtitle,
     required this.onTap,
     this.color,
     this.isDestructive = false,
@@ -709,7 +701,6 @@ class _ActionTile extends StatelessWidget {
 
   final IconData icon;
   final String title;
-  final String subtitle;
   final VoidCallback? onTap;
   final Color? color;
   final bool isDestructive;
@@ -747,29 +738,15 @@ class _ActionTile extends StatelessWidget {
               const SizedBox(width: 14),
               // 文本区域
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: isDestructive
-                            ? effectiveColor.withValues(alpha: enabled ? 1.0 : 0.5)
-                            : colorScheme.onSurface.withValues(alpha: enabled ? 1.0 : 0.5),
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      subtitle,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant.withValues(alpha: enabled ? 0.8 : 0.4),
-                        fontSize: 12,
-                        height: 1.3,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: isDestructive
+                        ? effectiveColor.withValues(alpha: enabled ? 1.0 : 0.5)
+                        : colorScheme.onSurface.withValues(alpha: enabled ? 1.0 : 0.5),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),

@@ -173,32 +173,7 @@ class _AboutPageState extends State<AboutPage> {
                 letterSpacing: 1.2,
               ),
             ),
-            const SizedBox(height: 48),
-
-            // To User Card
-            _buildCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '致用户',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'QNote 是一款专注于个人思考与状态记录的应用。我们致力于提供最流畅的输入体验，并配合 AI 技术，让您的记录更有价值。',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.hintColor,
-                      height: 1.6,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
+            const SizedBox(height: 32),
 
             // Info List Card
             _buildCard(

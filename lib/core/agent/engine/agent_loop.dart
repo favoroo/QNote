@@ -35,7 +35,7 @@ class AgentLoop {
   AgentLoop({
     required this.aiService,
     required this.dispatcher,
-    this.maxTurns = 20,
+    this.maxTurns = 60,
     this.maxHistoryMessages = 30,
     this.beforeToolCall,
     this.afterToolCall,
