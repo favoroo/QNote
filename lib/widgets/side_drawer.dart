@@ -127,7 +127,10 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
                     onTap: () => _navigateTo(context, const UserProfilePage()),
                   ),
                   _DrawerMenuItem(
-                    iconWidget: QIcon(size: 22, color: itemColor),
+                    iconWidget: const QAvatar(
+                      size: 24,
+                      withBackground: true,
+                    ),
                     iconBgColor: itemBgColor,
                     iconColor: itemColor,
                     label: '小Q设置',

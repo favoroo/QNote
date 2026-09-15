@@ -40,6 +40,7 @@ import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_usage_tracker.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/widgets/ai/q_input_command_panels.dart';
+import 'package:qnote_flutter/widgets/ai/quick_prompt_dialog.dart';
 import 'package:qnote_flutter/widgets/q_text_selection_toolbar.dart';
 
 class AiPage extends ConsumerStatefulWidget {
@@ -278,7 +279,9 @@ class _AiPageState extends ConsumerState<AiPage> {
       return;
     }
     try {
-      final config = await AiRoleService.instance.getEffectiveConfigForRole('assistant');
+      final config = await AiRoleService.instance.getEffectiveConfigForRole(
+        'assistant',
+      );
       if (mounted) {
         setState(() => _activeModelId = config.id);
       }
@@ -287,7 +290,8 @@ class _AiPageState extends ConsumerState<AiPage> {
         if (mounted) setState(() => _activeModelId = roles!.assistant);
       } else {
         final config = await ref.read(defaultAiConfigProvider.future);
-        if (config != null && mounted) setState(() => _activeModelId = config.id);
+        if (config != null && mounted)
+          setState(() => _activeModelId = config.id);
       }
     }
   }
@@ -342,7 +346,12 @@ class _AiPageState extends ConsumerState<AiPage> {
     final hasTodos = _attachedTodoIds.isNotEmpty;
     final hasJournals = _attachedJournalIds.isNotEmpty;
 
-    if (text.isEmpty && !hasQuote && !hasImages && !hasNotes && !hasTodos && !hasJournals) {
+    if (text.isEmpty &&
+        !hasQuote &&
+        !hasImages &&
+        !hasNotes &&
+        !hasTodos &&
+        !hasJournals) {
       return;
     }
     if (_isTyping) {
@@ -363,13 +372,15 @@ class _AiPageState extends ConsumerState<AiPage> {
     final content = text.isNotEmpty
         ? '$quotePrefix$text'
         : (hasQuote
-            ? '请分析我引用的这段对话内容：\n$quoteToSend'
-            : (hasImages ? '请结合图片进行分析' : '请结合我分享的内容进行分析'));
+              ? '请分析我引用的这段对话内容：\n$quoteToSend'
+              : (hasImages ? '请结合图片进行分析' : '请结合我分享的内容进行分析'));
 
     final imagesToSend = hasImages ? List<String>.from(_attachedImages) : null;
     final notesToSend = hasNotes ? List<String>.from(_attachedNoteIds) : null;
     final todosToSend = hasTodos ? List<String>.from(_attachedTodoIds) : null;
-    final journalsToSend = hasJournals ? List<String>.from(_attachedJournalIds) : null;
+    final journalsToSend = hasJournals
+        ? List<String>.from(_attachedJournalIds)
+        : null;
 
     HapticFeedback.lightImpact();
     _inputController.clear();
@@ -396,7 +407,9 @@ class _AiPageState extends ConsumerState<AiPage> {
         ref.read(currentChatProvider.notifier).setSession(session);
       }
 
-      await ref.read(currentChatProvider.notifier).sendMessage(
+      await ref
+          .read(currentChatProvider.notifier)
+          .sendMessage(
             content,
             images: imagesToSend,
             noteIds: notesToSend,
@@ -460,7 +473,9 @@ class _AiPageState extends ConsumerState<AiPage> {
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 8),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                    color: theme.colorScheme.outlineVariant.withValues(
+                      alpha: 0.5,
+                    ),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -484,7 +499,10 @@ class _AiPageState extends ConsumerState<AiPage> {
                   ),
                   title: Text(
                     '撤回本轮对话',
-                    style: TextStyle(fontSize: 14, color: theme.colorScheme.error),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: theme.colorScheme.error,
+                    ),
                   ),
                   subtitle: const Text(
                     '回退到本轮对话发起前，并撤销本轮对数据的修改',
@@ -627,7 +645,9 @@ class _AiPageState extends ConsumerState<AiPage> {
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 8),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                    color: theme.colorScheme.outlineVariant.withValues(
+                      alpha: 0.5,
+                    ),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -728,7 +748,9 @@ class _AiPageState extends ConsumerState<AiPage> {
         Toast.error(context, '当前状态无法重试');
         return;
       }
-      await ref.read(currentChatProvider.notifier).sendMessage(
+      await ref
+          .read(currentChatProvider.notifier)
+          .sendMessage(
             userMessage.content,
             images: userMessage.images,
             noteIds: readIds('notes'),
@@ -780,10 +802,7 @@ class _AiPageState extends ConsumerState<AiPage> {
 
   Future<void> _pickFromGallery() async {
     try {
-      final images = await GalleryHelper.pickMultiImages(
-        context,
-        maxAssets: 9,
-      );
+      final images = await GalleryHelper.pickMultiImages(context, maxAssets: 9);
       if (images.isNotEmpty && mounted) {
         setState(() {
           for (final img in images) {
@@ -802,9 +821,9 @@ class _AiPageState extends ConsumerState<AiPage> {
     final journals = await JournalService.instance.getAllJournals();
     if (!mounted) return;
     if (journals.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('暂无已写日记，可在时间线左下角撰写日记')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('暂无已写日记，可在时间线左下角撰写日记')));
       return;
     }
     final result = await showDialog<List<String>>(
@@ -891,7 +910,9 @@ class _AiPageState extends ConsumerState<AiPage> {
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 20),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                    color: theme.colorScheme.outlineVariant.withValues(
+                      alpha: 0.5,
+                    ),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -904,7 +925,9 @@ class _AiPageState extends ConsumerState<AiPage> {
                         icon: Icons.camera_alt_rounded,
                         label: '相机',
                         iconColor: const Color(0xFF3F51B5),
-                        bgColor: const Color(0xFF3F51B5).withValues(alpha: 0.12),
+                        bgColor: const Color(
+                          0xFF3F51B5,
+                        ).withValues(alpha: 0.12),
                         onTap: () {
                           Navigator.pop(ctx);
                           _pickFromCamera();
@@ -916,7 +939,9 @@ class _AiPageState extends ConsumerState<AiPage> {
                         icon: Icons.photo_library_rounded,
                         label: '相册',
                         iconColor: const Color(0xFF009688),
-                        bgColor: const Color(0xFF009688).withValues(alpha: 0.12),
+                        bgColor: const Color(
+                          0xFF009688,
+                        ).withValues(alpha: 0.12),
                         onTap: () {
                           Navigator.pop(ctx);
                           _pickFromGallery();
@@ -928,7 +953,9 @@ class _AiPageState extends ConsumerState<AiPage> {
                         icon: Icons.auto_stories_rounded,
                         label: '日记',
                         iconColor: const Color(0xFFE91E63),
-                        bgColor: const Color(0xFFE91E63).withValues(alpha: 0.12),
+                        bgColor: const Color(
+                          0xFFE91E63,
+                        ).withValues(alpha: 0.12),
                         onTap: () {
                           Navigator.pop(ctx);
                           _pickJournals();
@@ -940,7 +967,9 @@ class _AiPageState extends ConsumerState<AiPage> {
                         icon: Icons.description_rounded,
                         label: '笔记',
                         iconColor: const Color(0xFFFF9800),
-                        bgColor: const Color(0xFFFF9800).withValues(alpha: 0.12),
+                        bgColor: const Color(
+                          0xFFFF9800,
+                        ).withValues(alpha: 0.12),
                         onTap: () {
                           Navigator.pop(ctx);
                           _pickNotes();
@@ -952,7 +981,9 @@ class _AiPageState extends ConsumerState<AiPage> {
                         icon: Icons.check_circle_outline_rounded,
                         label: '待办',
                         iconColor: const Color(0xFF4CAF50),
-                        bgColor: const Color(0xFF4CAF50).withValues(alpha: 0.12),
+                        bgColor: const Color(
+                          0xFF4CAF50,
+                        ).withValues(alpha: 0.12),
                         onTap: () {
                           Navigator.pop(ctx);
                           _pickTodos();
@@ -1028,7 +1059,8 @@ class _AiPageState extends ConsumerState<AiPage> {
         if (roles != null) {
           String? newActiveId;
           if (roles.assistantUseFreeModel) {
-            final freeId = roles.assistantFreeModelId ?? 'gemini-3.5-flash-lite';
+            final freeId =
+                roles.assistantFreeModelId ?? 'gemini-3.5-flash-lite';
             newActiveId = 'free:$freeId';
           } else if (roles.assistant != null) {
             newActiveId = roles.assistant;
@@ -1052,7 +1084,8 @@ class _AiPageState extends ConsumerState<AiPage> {
           // If current active ID is not in the list, or null, pick the first or default
           final currentValid = configs.any((c) => c.id == _activeModelId);
           if (!currentValid) {
-            final defaultCfg = configs.where((c) => c.isDefault).firstOrNull ?? configs.first;
+            final defaultCfg =
+                configs.where((c) => c.isDefault).firstOrNull ?? configs.first;
             setState(() => _activeModelId = defaultCfg.id);
           }
         } else {
@@ -1121,9 +1154,7 @@ class _AiPageState extends ConsumerState<AiPage> {
       endDrawer: Consumer(
         builder: (context, ref, _) {
           final sessionsAsync = ref.watch(chatSessionListProvider);
-          final activeId = ref.watch(
-            currentChatProvider.select((c) => c?.id),
-          );
+          final activeId = ref.watch(currentChatProvider.select((c) => c?.id));
           return _buildHistoryDrawer(sessionsAsync, activeId, theme);
         },
       ),
@@ -1144,7 +1175,8 @@ class _AiPageState extends ConsumerState<AiPage> {
   bool _isVisibleMessage(ChatMessage message) {
     if (message.role == 'user') return true;
     if (message.content.trim().isNotEmpty) return true;
-    if (message.thought != null && message.thought!.trim().isNotEmpty) return true;
+    if (message.thought != null && message.thought!.trim().isNotEmpty)
+      return true;
     if (message.uiDetails != null) return true;
     return false;
   }
@@ -1159,26 +1191,34 @@ class _AiPageState extends ConsumerState<AiPage> {
       if (_isVisibleMessage(stateMessages[i])) visibleIndexes.add(i);
     }
     final messages = visibleIndexes.map((i) => stateMessages[i]).toList();
-    
+
     // If messages are empty, virtualize the assistant's greeting bubble so it's shown.
     final displayMessages = messages.isEmpty
         ? [
             ChatMessage(
               role: 'assistant',
-              content: defaultSystemPrompts['assistant_greeting'] ?? '你好！我是你的全能助手「小Q」。你可以直接向我提问，或者让我帮你添加待办、记录流水、修改笔记与设置等。',
+              content:
+                  defaultSystemPrompts['assistant_greeting'] ??
+                  '你好！我是你的全能助手「小Q」。你可以直接向我提问，或者让我帮你添加待办、记录流水、修改笔记与设置等。',
               timestamp: DateTime.now(),
-            )
+            ),
           ]
         : messages;
 
     final hasStreaming =
-        ref.watch(aiStreamingMessageProvider.select((value) => value != null)) ||
+        ref.watch(
+          aiStreamingMessageProvider.select((value) => value != null),
+        ) ||
         ref.watch(aiStreamingStatusProvider.select((value) => value != null));
     final showTyping =
-        _isTyping && !hasStreaming && messages.isNotEmpty && messages.last.role == 'user';
+        _isTyping &&
+        !hasStreaming &&
+        messages.isNotEmpty &&
+        messages.last.role == 'user';
     final showStreaming = hasStreaming;
 
-    final totalCount = displayMessages.length + (showTyping ? 1 : 0) + (showStreaming ? 1 : 0);
+    final totalCount =
+        displayMessages.length + (showTyping ? 1 : 0) + (showStreaming ? 1 : 0);
 
     bool isUserMsg(ChatMessage m) => m.role == 'user';
 
@@ -1193,8 +1233,9 @@ class _AiPageState extends ConsumerState<AiPage> {
         return QTextSelectionToolbar(
           anchors: selectableRegionState.contextMenuAnchors,
           buttonItems: [
-            ...selectableRegionState.contextMenuButtonItems
-                .where((item) => item.type != ContextMenuButtonType.custom),
+            ...selectableRegionState.contextMenuButtonItems.where(
+              (item) => item.type != ContextMenuButtonType.custom,
+            ),
             if (hasSelection)
               ContextMenuButtonItem(
                 label: '给小Q',
@@ -1213,113 +1254,128 @@ class _AiPageState extends ConsumerState<AiPage> {
           _inputFocusNode.unfocus();
         },
         child: ListView.builder(
-        controller: _scrollController,
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-        itemCount: totalCount,
-        itemBuilder: (context, index) {
-        // 隔离每条消息的重绘，流式输出时只重绘最后一条
-        if (index < displayMessages.length) {
-          final currentMsg = displayMessages[index];
-          final currentIsUser = isUserMsg(currentMsg);
+          controller: _scrollController,
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+          itemCount: totalCount,
+          itemBuilder: (context, index) {
+            // 隔离每条消息的重绘，流式输出时只重绘最后一条
+            if (index < displayMessages.length) {
+              final currentMsg = displayMessages[index];
+              final currentIsUser = isUserMsg(currentMsg);
 
-          // 1. 判断是否是同组的第一条消息（若前一条也是同一方且时间相近，则不重复显示头像）
-          var isFirstInGroup = true;
-          if (index > 0) {
-            final prevMsg = displayMessages[index - 1];
-            final prevIsUser = isUserMsg(prevMsg);
-            if (prevIsUser == currentIsUser) {
-              final prevTime = prevMsg.timestamp;
-              final currTime = currentMsg.timestamp;
-              if (prevTime == null || currTime == null || currTime.difference(prevTime).abs().inMinutes < 5) {
-                isFirstInGroup = false;
+              // 1. 判断是否是同组的第一条消息（若前一条也是同一方且时间相近，则不重复显示头像）
+              var isFirstInGroup = true;
+              if (index > 0) {
+                final prevMsg = displayMessages[index - 1];
+                final prevIsUser = isUserMsg(prevMsg);
+                if (prevIsUser == currentIsUser) {
+                  final prevTime = prevMsg.timestamp;
+                  final currTime = currentMsg.timestamp;
+                  if (prevTime == null ||
+                      currTime == null ||
+                      currTime.difference(prevTime).abs().inMinutes < 5) {
+                    isFirstInGroup = false;
+                  }
+                }
               }
-            }
-          }
 
-          // 2. 判断是否是同组的最后一条消息（若后面还有同方连续消息/流式输出，则收缩底部间距）
-          var isLastInGroup = true;
-          if (index < displayMessages.length - 1) {
-            final nextMsg = displayMessages[index + 1];
-            final nextIsUser = isUserMsg(nextMsg);
-            if (nextIsUser == currentIsUser) {
-              final nextTime = nextMsg.timestamp;
-              final currTime = currentMsg.timestamp;
-              if (nextTime == null || currTime == null || nextTime.difference(currTime).abs().inMinutes < 5) {
-                isLastInGroup = false;
+              // 2. 判断是否是同组的最后一条消息（若后面还有同方连续消息/流式输出，则收缩底部间距）
+              var isLastInGroup = true;
+              if (index < displayMessages.length - 1) {
+                final nextMsg = displayMessages[index + 1];
+                final nextIsUser = isUserMsg(nextMsg);
+                if (nextIsUser == currentIsUser) {
+                  final nextTime = nextMsg.timestamp;
+                  final currTime = currentMsg.timestamp;
+                  if (nextTime == null ||
+                      currTime == null ||
+                      nextTime.difference(currTime).abs().inMinutes < 5) {
+                    isLastInGroup = false;
+                  }
+                }
+              } else {
+                // 当前是已存列表的最后一条，如果紧接着有 typing 或 streaming，且小Q是发送方，则不是最后一条
+                if (!currentIsUser && (showTyping || showStreaming)) {
+                  isLastInGroup = false;
+                }
               }
-            }
-          } else {
-            // 当前是已存列表的最后一条，如果紧接着有 typing 或 streaming，且小Q是发送方，则不是最后一条
-            if (!currentIsUser && (showTyping || showStreaming)) {
-              isLastInGroup = false;
-            }
-          }
 
-          final bubble = _ChatBubble(
-            message: currentMsg,
-            isFirstInGroup: isFirstInGroup,
-            isLastInGroup: isLastInGroup,
-            actionsEnabled: !hasStreaming,
-            onContinue: () =>
-                ref.read(currentChatProvider.notifier).continueAfterTurnLimit(),
-            onPause: () =>
-                ref.read(currentChatProvider.notifier).pauseAfterTurnLimit(),
-          );
-          // 用户消息长按弹出操作菜单（撤回本轮 / 再次编辑 / 复制）；
-          // 失败气泡长按弹出重试菜单（重试本轮 / 复制错误详情）
-          return RepaintBoundary(
-            child: currentIsUser && index < visibleIndexes.length
-                ? GestureDetector(
-                    onLongPress: () =>
-                        _showUserMessageActions(visibleIndexes[index], currentMsg),
-                    child: bubble,
-                  )
-                : !currentIsUser &&
-                        currentMsg.isError == true &&
-                        index < visibleIndexes.length
+              final bubble = _ChatBubble(
+                message: currentMsg,
+                isFirstInGroup: isFirstInGroup,
+                isLastInGroup: isLastInGroup,
+                actionsEnabled: !hasStreaming,
+                onContinue: () => ref
+                    .read(currentChatProvider.notifier)
+                    .continueAfterTurnLimit(),
+                onPause: () => ref
+                    .read(currentChatProvider.notifier)
+                    .pauseAfterTurnLimit(),
+              );
+              // 用户消息长按弹出操作菜单（撤回本轮 / 再次编辑 / 复制）；
+              // 失败气泡长按弹出重试菜单（重试本轮 / 复制错误详情）
+              return RepaintBoundary(
+                child: currentIsUser && index < visibleIndexes.length
+                    ? GestureDetector(
+                        onLongPress: () => _showUserMessageActions(
+                          visibleIndexes[index],
+                          currentMsg,
+                        ),
+                        child: bubble,
+                      )
+                    : !currentIsUser &&
+                          currentMsg.isError == true &&
+                          index < visibleIndexes.length
                     ? GestureDetector(
                         onLongPress: () => _showErrorAssistantActions(
-                            visibleIndexes[index], currentMsg),
+                          visibleIndexes[index],
+                          currentMsg,
+                        ),
                         child: bubble,
                       )
                     : bubble,
-          );
-        }
+              );
+            }
 
-        if (showTyping && index == displayMessages.length) {
-          // 如果上一条已经是小Q回复，打字指示器隐藏头像并紧凑排列
-          final prevIsAssistant = displayMessages.isNotEmpty && !isUserMsg(displayMessages.last);
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: _TypingBubble(
-              isFirstInGroup: !prevIsAssistant,
-              isLastInGroup: !showStreaming,
-            ),
-          );
-        }
+            if (showTyping && index == displayMessages.length) {
+              // 如果上一条已经是小Q回复，打字指示器隐藏头像并紧凑排列
+              final prevIsAssistant =
+                  displayMessages.isNotEmpty &&
+                  !isUserMsg(displayMessages.last);
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _TypingBubble(
+                  isFirstInGroup: !prevIsAssistant,
+                  isLastInGroup: !showStreaming,
+                ),
+              );
+            }
 
-        // 流式气泡（含思考中状态卡）：底部增加留白，确保不紧贴输入栏
-        final lastMsg = displayMessages.isNotEmpty ? displayMessages.last : null;
-        final prevIsAssistant = lastMsg != null && !isUserMsg(lastMsg);
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: _StreamingBubble(
-            isFirstInGroup: !prevIsAssistant && !showTyping,
-            isLastInGroup: true,
-          ),
-        );
-      },
-    ),
-  ),
-);
-}
+            // 流式气泡（含思考中状态卡）：底部增加留白，确保不紧贴输入栏
+            final lastMsg = displayMessages.isNotEmpty
+                ? displayMessages.last
+                : null;
+            final prevIsAssistant = lastMsg != null && !isUserMsg(lastMsg);
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _StreamingBubble(
+                isFirstInGroup: !prevIsAssistant && !showTyping,
+                isLastInGroup: true,
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
 
   Widget _buildInputArea(
     AsyncValue<List<AiConfig>> aiConfigsAsync,
     ThemeData theme,
   ) {
-    final hasAttachments = _attachedImages.isNotEmpty ||
+    final hasAttachments =
+        _attachedImages.isNotEmpty ||
         _attachedJournalIds.isNotEmpty ||
         _attachedNoteIds.isNotEmpty ||
         _attachedTodoIds.isNotEmpty;
@@ -1328,8 +1384,9 @@ class _AiPageState extends ConsumerState<AiPage> {
     // 防止往正在生成的会话并发发送第二条消息
     final activeId = ref.watch(currentChatProvider.select((c) => c?.id));
     final isSessionBusy = ref.watch(
-      agentRunningSessionsProvider
-          .select((s) => activeId != null && s.contains(activeId)),
+      agentRunningSessionsProvider.select(
+        (s) => activeId != null && s.contains(activeId),
+      ),
     );
     final busy = _isTyping || isSessionBusy;
 
@@ -1367,6 +1424,48 @@ class _AiPageState extends ConsumerState<AiPage> {
                 const SizedBox(height: 6),
               ],
 
+              // 1.5 常用提示词按钮（点击弹出列表，选中即覆盖输入框）
+              Align(
+                alignment: Alignment.centerLeft,
+                child: GestureDetector(
+                  onTap: () => showQuickPromptDialog(context, ref, (text) {
+                    _inputController.text = text;
+                    _inputController.selection = TextSelection.fromPosition(
+                      TextPosition(offset: text.length),
+                    );
+                    _inputFocusNode.requestFocus();
+                  }),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest
+                          .withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.bolt_rounded,
+                          size: 15,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '常用提示词',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
               // 2. 底部输入栏与操作按钮
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -1381,7 +1480,8 @@ class _AiPageState extends ConsumerState<AiPage> {
                         width: 42,
                         height: 42,
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                          color: theme.colorScheme.surfaceContainerHighest
+                              .withValues(alpha: 0.6),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
@@ -1443,8 +1543,9 @@ class _AiPageState extends ConsumerState<AiPage> {
                                       height: 9.5,
                                       decoration: BoxDecoration(
                                         color: primary,
-                                        borderRadius:
-                                            BorderRadius.circular(2.0),
+                                        borderRadius: BorderRadius.circular(
+                                          2.0,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -1468,7 +1569,8 @@ class _AiPageState extends ConsumerState<AiPage> {
                           decoration: BoxDecoration(
                             color: canSend
                                 ? theme.colorScheme.primary
-                                : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                                : theme.colorScheme.surfaceContainerHighest
+                                      .withValues(alpha: 0.5),
                             shape: BoxShape.circle,
                           ),
                           child: Center(
@@ -1477,7 +1579,8 @@ class _AiPageState extends ConsumerState<AiPage> {
                               size: 22,
                               color: canSend
                                   ? theme.colorScheme.onPrimary
-                                  : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                                  : theme.colorScheme.onSurfaceVariant
+                                        .withValues(alpha: 0.3),
                             ),
                           ),
                         ),
@@ -1599,12 +1702,17 @@ class _AiPageState extends ConsumerState<AiPage> {
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+                      color: theme.colorScheme.outlineVariant.withValues(
+                        alpha: 0.4,
+                      ),
                     ),
                   ),
                   child: Row(
@@ -1653,12 +1761,17 @@ class _AiPageState extends ConsumerState<AiPage> {
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+                      color: theme.colorScheme.outlineVariant.withValues(
+                        alpha: 0.4,
+                      ),
                     ),
                   ),
                   child: Row(
@@ -1707,12 +1820,17 @@ class _AiPageState extends ConsumerState<AiPage> {
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+                      color: theme.colorScheme.outlineVariant.withValues(
+                        alpha: 0.4,
+                      ),
                     ),
                   ),
                   child: Row(
@@ -1764,17 +1882,15 @@ class _AiPageState extends ConsumerState<AiPage> {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+                    color: theme.colorScheme.outlineVariant.withValues(
+                      alpha: 0.4,
+                    ),
                   ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      Icons.add,
-                      size: 14,
-                      color: theme.colorScheme.primary,
-                    ),
+                    Icon(Icons.add, size: 14, color: theme.colorScheme.primary),
                     const SizedBox(width: 2),
                     Text(
                       '添加',
@@ -1797,7 +1913,8 @@ class _AiPageState extends ConsumerState<AiPage> {
   /// 软键盘行为由 textInputAction:newline 交给 IME（移动端发送一律点按钮）；
   /// 返回 handled 后 engine 不再把 Enter 送入文本输入通道，避免发送与换行叠加
   KeyEventResult _handleEnterKey(FocusNode node, KeyEvent event) {
-    final isEnter = event.logicalKey == LogicalKeyboardKey.enter ||
+    final isEnter =
+        event.logicalKey == LogicalKeyboardKey.enter ||
         event.logicalKey == LogicalKeyboardKey.numpadEnter;
     if (!isEnter || event is KeyRepeatEvent) return KeyEventResult.ignored;
     if (HardwareKeyboard.instance.isShiftPressed) return KeyEventResult.ignored;
@@ -1866,11 +1983,15 @@ class _AiPageState extends ConsumerState<AiPage> {
                         width: 20,
                         height: 20,
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.error.withValues(alpha: 0.85),
+                          color: theme.colorScheme.error.withValues(
+                            alpha: 0.85,
+                          ),
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: theme.colorScheme.error.withValues(alpha: 0.25),
+                              color: theme.colorScheme.error.withValues(
+                                alpha: 0.25,
+                              ),
                               blurRadius: 4,
                               offset: const Offset(0, 2),
                             ),
@@ -1904,7 +2025,7 @@ class _AiPageState extends ConsumerState<AiPage> {
       child: sessionsAsync.when(
         data: (sessions) {
           return Column(
-          children: [
+            children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 8, 0),
                 child: Row(
@@ -2034,7 +2155,10 @@ class _AiPageState extends ConsumerState<AiPage> {
               const Divider(height: 1),
               Expanded(
                 child: sessions.isEmpty
-                    ? const EmptyStateWidget(icon: Icons.chat_bubble_outline, message: '暂无对话')
+                    ? const EmptyStateWidget(
+                        icon: Icons.chat_bubble_outline,
+                        message: '暂无对话',
+                      )
                     : ListView.builder(
                         itemCount: sessions.length,
                         itemBuilder: (ctx, i) => _buildSessionTile(
@@ -2176,20 +2300,20 @@ class _AiPageState extends ConsumerState<AiPage> {
                 },
               )
             : isRunning
-                ? LoadingRing(
-                    size: 16,
-                    strokeWidth: 1.8,
-                    color: isActive
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurfaceVariant,
-                  )
-                : Icon(
-                    Icons.chat_bubble_outline,
-                    size: 16,
-                    color: isActive
-                        ? theme.colorScheme.primary
-                        : theme.disabledColor,
-                  ),
+            ? LoadingRing(
+                size: 16,
+                strokeWidth: 1.8,
+                color: isActive
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurfaceVariant,
+              )
+            : Icon(
+                Icons.chat_bubble_outline,
+                size: 16,
+                color: isActive
+                    ? theme.colorScheme.primary
+                    : theme.disabledColor,
+              ),
         title: Text(
           session.title,
           maxLines: 1,
@@ -2264,8 +2388,9 @@ class _StreamingBubble extends ConsumerWidget {
         streamingContent != null && streamingContent.trim().isNotEmpty;
     final statusText = hasContent ? null : ref.watch(aiStreamingStatusProvider);
     // 正文流式输出时本身在持续增长，无需已用时计时
-    final statusStartedAt =
-        hasContent ? null : ref.watch(aiStreamingStartedAtProvider);
+    final statusStartedAt = hasContent
+        ? null
+        : ref.watch(aiStreamingStartedAtProvider);
     return _ChatBubble(
       message: ChatMessage(
         role: 'assistant',
@@ -2322,7 +2447,8 @@ class _ChatBubble extends StatelessWidget {
     final statusText = this.statusText;
 
     // 该消息是否还有可渲染的主体（正文 / 思考过程 / 工具卡片）
-    final hasRenderableBody = message.content.trim().isNotEmpty ||
+    final hasRenderableBody =
+        message.content.trim().isNotEmpty ||
         (message.thought?.trim().isNotEmpty ?? false) ||
         message.role == 'tool' ||
         message.uiDetails != null;
@@ -2347,262 +2473,282 @@ class _ChatBubble extends StatelessWidget {
         );
       },
       child: Column(
-      crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-      children: [
-        // Avatar and sender name header - 仅当同组第一条消息时显示，同一回复多条消息避免重复显示头像
-        if (isFirstInGroup)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6, left: 4, right: 4),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (!isUser) ...[
-                  const QAvatar(
-                    size: 24,
-                    withBackground: true,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '小Q',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w500,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ] else ...[
-                  Text(
-                    '您的提问',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w500,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Icon(
-                        Icons.chat_bubble_outline_rounded,
-                        size: 12,
+        crossAxisAlignment: isUser
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
+        children: [
+          // Avatar and sender name header - 仅当同组第一条消息时显示，同一回复多条消息避免重复显示头像
+          if (isFirstInGroup)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6, left: 4, right: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!isUser) ...[
+                    const QAvatar(size: 24, withBackground: true),
+                    const SizedBox(width: 6),
+                    Text(
+                      '小Q',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        // Bubble container
-        Align(
-          alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            width: isUser ? null : double.infinity,
-            margin: EdgeInsets.only(bottom: isLastInGroup ? 16 : 4),
-            padding: EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: isUser ? 10 : 12,
-            ),
-            constraints: BoxConstraints(
-              maxWidth: isUser
-                  ? MediaQuery.of(context).size.width * 0.82
-                  : double.infinity,
-            ),
-            decoration: BoxDecoration(
-              color: isUser
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.surfaceContainer,
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(16),
-                topRight: const Radius.circular(16),
-                bottomLeft: isUser ? const Radius.circular(16) : const Radius.circular(4),
-                bottomRight: isUser ? const Radius.circular(4) : const Radius.circular(16),
-              ),
-              border: isUser
-                  ? null
-                  : Border.all(
-                      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                      width: 1,
+                  ] else ...[
+                    Text(
+                      '您的提问',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
-              boxShadow: isUser
-                  ? null
-                  : [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.03),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
+                    const SizedBox(width: 6),
+                    Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerHighest,
+                        shape: BoxShape.circle,
                       ),
-                    ],
+                      child: Center(
+                        child: Icon(
+                          Icons.chat_bubble_outline_rounded,
+                          size: 12,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
-            child: isUser
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (message.images != null && message.images!.isNotEmpty)
-                        _buildImagesGrid(context, message.images!),
-                      if (message.content.isNotEmpty)
-                        Text(
-                          message.content,
-                          style: TextStyle(
-                            color: theme.colorScheme.onPrimary,
-                            fontSize: 14,
-                          ),
+          // Bubble container
+          Align(
+            alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+            child: Container(
+              width: isUser ? null : double.infinity,
+              margin: EdgeInsets.only(bottom: isLastInGroup ? 16 : 4),
+              padding: EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: isUser ? 10 : 12,
+              ),
+              constraints: BoxConstraints(
+                maxWidth: isUser
+                    ? MediaQuery.of(context).size.width * 0.82
+                    : double.infinity,
+              ),
+              decoration: BoxDecoration(
+                color: isUser
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.surfaceContainer,
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(16),
+                  topRight: const Radius.circular(16),
+                  bottomLeft: isUser
+                      ? const Radius.circular(16)
+                      : const Radius.circular(4),
+                  bottomRight: isUser
+                      ? const Radius.circular(4)
+                      : const Radius.circular(16),
+                ),
+                border: isUser
+                    ? null
+                    : Border.all(
+                        color: theme.colorScheme.outlineVariant.withValues(
+                          alpha: 0.5,
                         ),
-                    ],
-                  )
-                : statusText != null
-                ? // 阶段性状态行：弱化色文案 + 逐点渐显的动态省略号，替代原先文本下方的闪烁光标；
-                  // 下方挂实时思考区（模型返回 reasoning_content 时滚动展示思考过程）
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Flexible(
-                              child: Text(
-                                statusText,
-                                style: TextStyle(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                  fontSize: 14,
-                                  height: 1.5,
-                                ),
-                              ),
-                            ),
-                            // 思考中采用形变无限符号动画，流动生命力替代三个跳动圆点
-                            Padding(
-                              padding: const EdgeInsets.only(left: 8, right: 6),
-                              child: MorphingInfinity(
-                                size: 21,
-                                strokeWidth: 1.5,
-                                color: theme.colorScheme.primary,
-                              ),
-                            ),
-                            // 已用时递增计数：长任务期间传达"仍在推进，没有卡住"
-                            Padding(
-                              padding: const EdgeInsets.only(left: 2),
-                              child: StreamingElapsedText(
-                                startedAt: statusStartedAt,
-                                style: TextStyle(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                        width: 1,
                       ),
-                      const _LiveThoughtView(),
-                    ],
-                  )
-                : !hasRenderableBody
-                ? const MorphingInfinity()
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // 思考过程展示（若有，折叠在单行流水中滚动展示，点击可展开完整内容）
-                      if (message.thought != null && message.thought!.trim().isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: _ThoughtProcessView(thought: message.thought!.trim()),
-                        ),
-
-                      // 工具调用或执行反馈卡片
-                      if (message.role == 'tool')
-                        _buildToolFeedbackWidget(context, message, theme)
-                      else ...[
-                        MarkdownBody(
-                          data: message.content,
-                          selectable: false,
-                          styleSheet: MarkdownStyleSheet(
-                            p: TextStyle(
-                              color: theme.colorScheme.onSurface,
-                              fontSize: 14,
-                              height: 1.5,
-                            ),
-                            h1: TextStyle(
-                              color: theme.colorScheme.onSurface,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              height: 1.6,
-                            ),
-                            h2: TextStyle(
-                              color: theme.colorScheme.onSurface,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              height: 1.5,
-                            ),
-                            h3: TextStyle(
-                              color: theme.colorScheme.onSurface,
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              height: 1.4,
-                            ),
-                            code: TextStyle(
-                              fontFamily: 'monospace',
-                              fontSize: 13,
-                              color: theme.colorScheme.primary,
-                              backgroundColor: Colors.transparent,
-                            ),
-                            codeblockDecoration: BoxDecoration(
-                              color: theme.colorScheme.surfaceContainerLow,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                              ),
-                            ),
-                            blockquoteDecoration: BoxDecoration(
-                              color: theme.colorScheme.surfaceContainerLow,
-                              border: Border(
-                                left: BorderSide(
-                                  color: theme.colorScheme.primary,
-                                  width: 4,
-                                ),
-                              ),
-                              borderRadius: const BorderRadius.horizontal(
-                                right: Radius.circular(6),
-                              ),
-                            ),
-                            blockquotePadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            listBullet: TextStyle(color: theme.colorScheme.onSurface),
-                          ),
+                boxShadow: isUser
+                    ? null
+                    : [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.03),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
                         ),
                       ],
-                    ],
-                  ),
+              ),
+              child: isUser
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (message.images != null &&
+                            message.images!.isNotEmpty)
+                          _buildImagesGrid(context, message.images!),
+                        if (message.content.isNotEmpty)
+                          Text(
+                            message.content,
+                            style: TextStyle(
+                              color: theme.colorScheme.onPrimary,
+                              fontSize: 14,
+                            ),
+                          ),
+                      ],
+                    )
+                  : statusText != null
+                  ? // 阶段性状态行：弱化色文案 + 逐点渐显的动态省略号，替代原先文本下方的闪烁光标；
+                    // 下方挂实时思考区（模型返回 reasoning_content 时滚动展示思考过程）
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  statusText,
+                                  style: TextStyle(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                    fontSize: 14,
+                                    height: 1.5,
+                                  ),
+                                ),
+                              ),
+                              // 思考中采用形变无限符号动画，流动生命力替代三个跳动圆点
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                  left: 8,
+                                  right: 6,
+                                ),
+                                child: MorphingInfinity(
+                                  size: 21,
+                                  strokeWidth: 1.5,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                              // 已用时递增计数：长任务期间传达"仍在推进，没有卡住"
+                              Padding(
+                                padding: const EdgeInsets.only(left: 2),
+                                child: StreamingElapsedText(
+                                  startedAt: statusStartedAt,
+                                  style: TextStyle(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const _LiveThoughtView(),
+                      ],
+                    )
+                  : !hasRenderableBody
+                  ? const MorphingInfinity()
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // 思考过程展示（若有，折叠在单行流水中滚动展示，点击可展开完整内容）
+                        if (message.thought != null &&
+                            message.thought!.trim().isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: _ThoughtProcessView(
+                              thought: message.thought!.trim(),
+                            ),
+                          ),
+
+                        // 工具调用或执行反馈卡片
+                        if (message.role == 'tool')
+                          _buildToolFeedbackWidget(context, message, theme)
+                        else ...[
+                          MarkdownBody(
+                            data: message.content,
+                            selectable: false,
+                            styleSheet: MarkdownStyleSheet(
+                              p: TextStyle(
+                                color: theme.colorScheme.onSurface,
+                                fontSize: 14,
+                                height: 1.5,
+                              ),
+                              h1: TextStyle(
+                                color: theme.colorScheme.onSurface,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                height: 1.6,
+                              ),
+                              h2: TextStyle(
+                                color: theme.colorScheme.onSurface,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                height: 1.5,
+                              ),
+                              h3: TextStyle(
+                                color: theme.colorScheme.onSurface,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                height: 1.4,
+                              ),
+                              code: TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 13,
+                                color: theme.colorScheme.primary,
+                                backgroundColor: Colors.transparent,
+                              ),
+                              codeblockDecoration: BoxDecoration(
+                                color: theme.colorScheme.surfaceContainerLow,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: theme.colorScheme.outlineVariant
+                                      .withValues(alpha: 0.5),
+                                ),
+                              ),
+                              blockquoteDecoration: BoxDecoration(
+                                color: theme.colorScheme.surfaceContainerLow,
+                                border: Border(
+                                  left: BorderSide(
+                                    color: theme.colorScheme.primary,
+                                    width: 4,
+                                  ),
+                                ),
+                                borderRadius: const BorderRadius.horizontal(
+                                  right: Radius.circular(6),
+                                ),
+                              ),
+                              blockquotePadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              listBullet: TextStyle(
+                                color: theme.colorScheme.onSurface,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+            ),
           ),
-        ),
-        // 步数上限提示：待处理时在气泡下方渲染「继续/暂停」按钮
-        if (!isUser && _isTurnLimitPending)
-          AgentTurnLimitActions(
-            onContinue: onContinue,
-            onPause: onPause,
-            enabled: actionsEnabled,
-          ),
-      ],
-    ),
+          // 步数上限提示：待处理时在气泡下方渲染「继续/暂停」按钮
+          if (!isUser && _isTurnLimitPending)
+            AgentTurnLimitActions(
+              onContinue: onContinue,
+              onPause: onPause,
+              enabled: actionsEnabled,
+            ),
+        ],
+      ),
     );
   }
 
   /// 构建工具调用执行反馈与小Q确认交互卡片
-  Widget _buildToolFeedbackWidget(BuildContext context, ChatMessage message, ThemeData theme) {
+  Widget _buildToolFeedbackWidget(
+    BuildContext context,
+    ChatMessage message,
+    ThemeData theme,
+  ) {
     final uiDetails = message.uiDetails;
-    final isAskUser = message.toolName == 'ask_user' || uiDetails?['type'] == 'ask_user';
+    final isAskUser =
+        message.toolName == 'ask_user' || uiDetails?['type'] == 'ask_user';
 
     if (isAskUser) {
       final question = uiDetails?['question'] as String? ?? message.content;
@@ -2615,7 +2761,9 @@ class _ChatBubble extends StatelessWidget {
         margin: const EdgeInsets.symmetric(vertical: 4),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+          color: theme.colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.35,
+          ),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isCancelled
@@ -2646,11 +2794,16 @@ class _ChatBubble extends StatelessWidget {
                 const Spacer(),
                 if (isConfirmed)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.green.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+                      border: Border.all(
+                        color: Colors.green.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -2670,15 +2823,24 @@ class _ChatBubble extends StatelessWidget {
                   )
                 else if (isCancelled)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
+                      color: theme.colorScheme.errorContainer.withValues(
+                        alpha: 0.3,
+                      ),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.close, size: 12, color: theme.colorScheme.error),
+                        Icon(
+                          Icons.close,
+                          size: 12,
+                          color: theme.colorScheme.error,
+                        ),
                         const SizedBox(width: 4),
                         Text(
                           '已取消',
@@ -2712,7 +2874,9 @@ class _ChatBubble extends StatelessWidget {
 
     // generate_image 生图完成：气泡内直接大图预览，附模型与提示词摘要
     if (message.toolName == 'generate_image' && message.isError != true) {
-      final paths = (uiDetails?['paths'] as List?)?.whereType<String>().toList() ?? const [];
+      final paths =
+          (uiDetails?['paths'] as List?)?.whereType<String>().toList() ??
+          const [];
       final model = uiDetails?['model'] as String? ?? '';
       final prompt = uiDetails?['prompt'] as String? ?? '';
       return Container(
@@ -2797,7 +2961,9 @@ class _ChatBubble extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             GestureDetector(
-              onTap: path.isEmpty ? null : () => _showFullImageDialog(context, path),
+              onTap: path.isEmpty
+                  ? null
+                  : () => _showFullImageDialog(context, path),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(6),
                 child: SizedBox(
@@ -2883,7 +3049,9 @@ class _ChatBubble extends StatelessWidget {
             Icon(
               hasError ? Icons.link_off : Icons.language,
               size: 14,
-              color: hasError ? theme.colorScheme.error : theme.colorScheme.primary,
+              color: hasError
+                  ? theme.colorScheme.error
+                  : theme.colorScheme.primary,
             ),
             const SizedBox(width: 6),
             Expanded(
@@ -2900,7 +3068,10 @@ class _ChatBubble extends StatelessWidget {
             // 点击卡片用系统浏览器打开原网页，方便用户核对来源
             if (!hasError && url.isNotEmpty)
               GestureDetector(
-                onTap: () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+                onTap: () => launchUrl(
+                  Uri.parse(url),
+                  mode: LaunchMode.externalApplication,
+                ),
                 child: Icon(
                   Icons.open_in_new,
                   size: 14,
@@ -2932,15 +3103,22 @@ class _ChatBubble extends StatelessWidget {
               Icon(
                 isError ? Icons.error_outline : Icons.check_circle_outline,
                 size: 14,
-                color: isError ? theme.colorScheme.error : theme.colorScheme.primary,
+                color: isError
+                    ? theme.colorScheme.error
+                    : theme.colorScheme.primary,
               ),
               const SizedBox(width: 4),
               Text(
-                AgentToolLabels.resultLabel(message.toolName ?? '', message.uiDetails),
+                AgentToolLabels.resultLabel(
+                  message.toolName ?? '',
+                  message.uiDetails,
+                ),
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
-                  color: isError ? theme.colorScheme.error : theme.colorScheme.primary,
+                  color: isError
+                      ? theme.colorScheme.error
+                      : theme.colorScheme.primary,
                 ),
               ),
             ],
@@ -2989,10 +3167,7 @@ class _ChatBubble extends StatelessWidget {
             blockquoteDecoration: BoxDecoration(
               color: theme.colorScheme.surfaceContainerLow,
               border: Border(
-                left: BorderSide(
-                  color: theme.colorScheme.primary,
-                  width: 4,
-                ),
+                left: BorderSide(color: theme.colorScheme.primary, width: 4),
               ),
               borderRadius: const BorderRadius.horizontal(
                 right: Radius.circular(6),
@@ -3018,14 +3193,8 @@ class _ChatBubble extends StatelessWidget {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: 200,
-                maxHeight: 200,
-              ),
-              child: UnifiedImage(
-                imagePath: images.first,
-                fit: BoxFit.cover,
-              ),
+              constraints: const BoxConstraints(maxWidth: 200, maxHeight: 200),
+              child: UnifiedImage(imagePath: images.first, fit: BoxFit.cover),
             ),
           ),
         ),
@@ -3045,10 +3214,7 @@ class _ChatBubble extends StatelessWidget {
               child: SizedBox(
                 width: 68,
                 height: 68,
-                child: UnifiedImage(
-                  imagePath: imgPath,
-                  fit: BoxFit.cover,
-                ),
+                child: UnifiedImage(imagePath: imgPath, fit: BoxFit.cover),
               ),
             ),
           );
@@ -3068,10 +3234,7 @@ class _ChatBubble extends StatelessWidget {
           children: [
             InteractiveViewer(
               child: Center(
-                child: UnifiedImage(
-                  imagePath: imagePath,
-                  fit: BoxFit.contain,
-                ),
+                child: UnifiedImage(imagePath: imagePath, fit: BoxFit.contain),
               ),
             ),
             SafeArea(
@@ -3094,10 +3257,7 @@ class _TypingBubble extends StatelessWidget {
   final bool isFirstInGroup;
   final bool isLastInGroup;
 
-  const _TypingBubble({
-    this.isFirstInGroup = true,
-    this.isLastInGroup = true,
-  });
+  const _TypingBubble({this.isFirstInGroup = true, this.isLastInGroup = true});
 
   @override
   Widget build(BuildContext context) {
@@ -3111,10 +3271,7 @@ class _TypingBubble extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const QAvatar(
-                  size: 24,
-                  withBackground: true,
-                ),
+                const QAvatar(size: 24, withBackground: true),
                 const SizedBox(width: 6),
                 Text(
                   '小Q',
@@ -3168,9 +3325,7 @@ class _TypingBubble extends StatelessWidget {
 class _ThoughtProcessView extends StatefulWidget {
   final String thought;
 
-  const _ThoughtProcessView({
-    required this.thought,
-  });
+  const _ThoughtProcessView({required this.thought});
 
   @override
   State<_ThoughtProcessView> createState() => _ThoughtProcessViewState();
@@ -3188,7 +3343,9 @@ class _ThoughtProcessViewState extends State<_ThoughtProcessView> {
       curve: Curves.easeOutCubic,
       child: Container(
         decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+          color: theme.colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.4,
+          ),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: theme.colorScheme.primary.withValues(alpha: 0.18),
@@ -3217,9 +3374,14 @@ class _ThoughtProcessViewState extends State<_ThoughtProcessView> {
                       ),
                       const SizedBox(width: 6),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 1.5,
+                        ),
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                          color: theme.colorScheme.primary.withValues(
+                            alpha: 0.12,
+                          ),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
@@ -3255,7 +3417,9 @@ class _ThoughtProcessViewState extends State<_ThoughtProcessView> {
                         color: theme.colorScheme.surfaceContainerLow,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+                          color: theme.colorScheme.outlineVariant.withValues(
+                            alpha: 0.4,
+                          ),
                         ),
                       ),
                       child: SingleChildScrollView(
@@ -3264,7 +3428,9 @@ class _ThoughtProcessViewState extends State<_ThoughtProcessView> {
                           style: TextStyle(
                             fontSize: 12,
                             height: 1.55,
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
+                            color: theme.colorScheme.onSurface.withValues(
+                              alpha: 0.9,
+                            ),
                             fontStyle: FontStyle.italic,
                             fontFamily: 'monospace',
                           ),
@@ -3304,7 +3470,9 @@ class _LiveThoughtView extends ConsumerWidget {
           width: double.infinity,
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+            color: theme.colorScheme.surfaceContainerHighest.withValues(
+              alpha: 0.4,
+            ),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
               color: theme.colorScheme.primary.withValues(alpha: 0.18),
@@ -3351,7 +3519,8 @@ class _MultiNoteSelectorDialogState extends State<_MultiNoteSelectorDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isAllSelected = _selected.length == widget.notes.length && widget.notes.isNotEmpty;
+    final isAllSelected =
+        _selected.length == widget.notes.length && widget.notes.isNotEmpty;
 
     return AlertDialog(
       title: Row(
@@ -3456,8 +3625,9 @@ class _MultiTodoSelectorDialogState extends State<_MultiTodoSelectorDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isAllSelected = _selected.length == widget.todos.length && widget.todos.isNotEmpty;
-    
+    final isAllSelected =
+        _selected.length == widget.todos.length && widget.todos.isNotEmpty;
+
     return AlertDialog(
       title: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -3502,7 +3672,9 @@ class _MultiTodoSelectorDialogState extends State<_MultiTodoSelectorDialog> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        decoration: todo.isCompleted ? TextDecoration.lineThrough : null,
+                        decoration: todo.isCompleted
+                            ? TextDecoration.lineThrough
+                            : null,
                       ),
                     ),
                     subtitle: Text(
@@ -3566,7 +3738,8 @@ class _MultiJournalSelectorDialogState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isAllSelected =
-        _selected.length == widget.journals.length && widget.journals.isNotEmpty;
+        _selected.length == widget.journals.length &&
+        widget.journals.isNotEmpty;
 
     return AlertDialog(
       title: Row(
@@ -3662,5 +3835,3 @@ class _MultiJournalSelectorDialogState
     );
   }
 }
-
-

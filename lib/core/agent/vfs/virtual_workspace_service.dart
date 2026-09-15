@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:qnote_flutter/core/agent/prompts/q_personalities.dart';
 import 'package:qnote_flutter/core/agent/services/q_personality_service.dart';
+import 'package:qnote_flutter/core/agent/services/quick_prompt_service.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
@@ -50,7 +51,9 @@ class VirtualWorkspaceService {
   final ConfigRepository _configRepo = ConfigRepository.instance;
   final DailyScoreRepository _dailyScoreRepo = DailyScoreRepository();
   final ColorMarkRepository _colorMarkRepo = ColorMarkRepository();
-  final HealthMetricRepository _healthRepo = HealthMetricRepository(DatabaseHelper.instance);
+  final HealthMetricRepository _healthRepo = HealthMetricRepository(
+    DatabaseHelper.instance,
+  );
   final SkillRegistry _skillRegistry = SkillRegistry.instance;
 
   // ==========================================
@@ -71,6 +74,7 @@ class VirtualWorkspaceService {
     '/memory/',
     '/skills/',
     '/stats/',
+    '/quick_prompts/',
   ];
 
   /// /settings/ 下全部可读写的配置文件（目录列举、grep 检索、追加模式禁用判定共用）
@@ -99,7 +103,10 @@ class VirtualWorkspaceService {
   /// 与读取端共用同一条锚定规则（仅匹配行首数字+制表符），避免误伤正文里
   /// 本身含制表符的内容。edit_file 的参数清洗与追加写入的基底还原都依赖它。
   static String stripLineNumbers(String text) {
-    return text.split('\n').map((l) => l.replaceFirst(RegExp(r'^\d+\t'), '')).join('\n');
+    return text
+        .split('\n')
+        .map((l) => l.replaceFirst(RegExp(r'^\d+\t'), ''))
+        .join('\n');
   }
 
   /// 空态占位文案特征串：由读取端在「无数据/未编写」时生成，并非用户真实内容，
@@ -109,6 +116,7 @@ class VirtualWorkspaceService {
     '尚未开始编写这天的深度反思日记',
     '暂无记忆条目',
     '当天暂无生活评分记录',
+    '暂无常用提示词',
   ];
 
   /// 判断读取结果是否为空态占位文案（无真实内容的端点）
@@ -132,6 +140,7 @@ class VirtualWorkspaceService {
     '/timeline/',
     '/journal/',
     '/memory/',
+    '/quick_prompts/',
   ];
 
   /// 追加写入的内容合并：读取既有真实内容后与新内容拼接
@@ -215,13 +224,17 @@ class VirtualWorkspaceService {
     // 日记的空态读取不抛错而是返回占位文案，需单独判定真实存在性
     if (path.startsWith('/journal/')) {
       try {
-        final dateStr = path.substring('/journal/'.length).replaceAll('.md', '').trim();
+        final dateStr = path
+            .substring('/journal/'.length)
+            .replaceAll('.md', '')
+            .trim();
         final date = DateTime.parse(dateStr);
         final existing = await _journalService.getNoteForDate(date);
         return WorkspaceUndoEntry(
           path: path,
           existedBefore: existing != null && existing.content.trim().isNotEmpty,
-          beforeContent: (existing != null && existing.content.trim().isNotEmpty)
+          beforeContent:
+              (existing != null && existing.content.trim().isNotEmpty)
               ? existing.content
               : null,
         );
@@ -257,7 +270,8 @@ class VirtualWorkspaceService {
           .map((l) => l.replaceFirst(RegExp(r'^\d+\t'), ''))
           .join('\n');
       // 时间线或评分空天文件的占位文案写回会被差量逻辑拒绝，按"本轮前不存在"处理
-      final isEmptyPlaceholder = (path.startsWith('/timeline/') && before.contains('暂无流水事件打卡')) ||
+      final isEmptyPlaceholder =
+          (path.startsWith('/timeline/') && before.contains('暂无流水事件打卡')) ||
           (path.startsWith('/stats/scores/') && before.contains('当天暂无生活评分记录'));
       return WorkspaceUndoEntry(
         path: path,
@@ -297,7 +311,10 @@ class VirtualWorkspaceService {
 
   /// 将 /timeline/ 下的单条记录路径归一化为天文件路径；记录不存在时返回 null（跳过捕获以保证撤回安全）
   Future<String?> _resolveTimelineDayPath(String path) async {
-    final subPath = path.substring('/timeline/'.length).replaceAll('.md', '').trim();
+    final subPath = path
+        .substring('/timeline/'.length)
+        .replaceAll('.md', '')
+        .trim();
     if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(subPath)) return path;
 
     // 支持带日期前缀（/timeline/日期/<id>.md）与纯 id（/timeline/<id>.md）两种形态
@@ -319,7 +336,9 @@ class VirtualWorkspaceService {
   Future<String?> _canonicalTodoPath(String path) async {
     if (!path.endsWith('.md')) return null;
     final segments = path.substring('/todos/'.length).split('/');
-    final titleWithExt = segments.length >= 2 ? segments.sublist(1).join('/') : segments[0];
+    final titleWithExt = segments.length >= 2
+        ? segments.sublist(1).join('/')
+        : segments[0];
     final rawTitle = titleWithExt
         .replaceAll('.md', '')
         .replaceAll(RegExp(r'^\[[ x]\]\s*'), '')
@@ -327,15 +346,14 @@ class VirtualWorkspaceService {
     if (rawTitle.isEmpty) return null;
     try {
       final allTodos = await _todoRepo.getAll();
-      final matched = allTodos.where((t) => t.id == rawTitle).firstOrNull ??
+      final matched =
+          allTodos.where((t) => t.id == rawTitle).firstOrNull ??
           allTodos.where((t) => t.title.trim() == rawTitle).firstOrNull;
       if (matched == null) return null;
       String folderName = '今日';
       final folders = await _folderRepo.getByType('todo');
-      folderName = folders
-              .where((f) => f.id == matched.folderId)
-              .firstOrNull
-              ?.name ??
+      folderName =
+          folders.where((f) => f.id == matched.folderId).firstOrNull?.name ??
           folderName;
       return '/todos/$folderName/${matched.id}.md';
     } catch (_) {
@@ -356,7 +374,8 @@ class VirtualWorkspaceService {
     if (rawTitle.isEmpty) return null;
     try {
       final allNotes = await _noteRepo.getAll();
-      final matched = allNotes.where((n) => n.id == rawTitle).firstOrNull ??
+      final matched =
+          allNotes.where((n) => n.id == rawTitle).firstOrNull ??
           allNotes.where((n) => n.title.trim() == rawTitle).firstOrNull;
       if (matched == null) return null;
       return '/notes/${matched.id}.md';
@@ -374,6 +393,7 @@ class VirtualWorkspaceService {
 - `/AGENTS.md`: 本工作区指南与系统说明（只读）。
 - `/skills/`: 专业技能手册库（查阅对应领域的规范与操作手册）。内置技能只读；可通过 `write_file(path: "/skills/<名称>.md")` 创建或更新用户自定义技能（Markdown 手册，带 `name`/`description` frontmatter），删除自定义技能用 `delete_file`。
 - `/memory/`: 小Q长期记忆（`user.md` 用户画像与习惯、`agent.md` 小Q手记；每次对话自动载入上下文，支持查看与增改）。
+- `/quick_prompts/`: 常用提示词库（`prompts.md`，每行一条以 "- " 开头的提示词，对应输入框快捷填充项；支持全量覆写与追加，删除即清空全部）。
 - `/todos/`: 待办事项库（目录名对应分类，如 `/todos/今日/`、`/todos/长期/`、`/todos/工作/`）。
 - `/notes/`: 笔记与知识库（目录名对应笔记本，如 `/notes/技术架构/`。除 Markdown 外还支持写入 `.html` 网页、`.svg` 矢量图、`.json` 数据文件及常见代码文件，App 内会按后缀自动渲染预览；生成展示型内容（卡片、海报、可视化页面）时优先使用带内联样式的单文件 HTML，网页设计规范详见 `frontend-design` 技能）。
 - `/timeline/`: 时间线流水日志（按日期归档，如 `/timeline/2026-09-11.md`，支持单点打卡与时间段打卡）。
@@ -422,6 +442,7 @@ class VirtualWorkspaceService {
         'health/',
         'chats/',
         'settings/',
+        'quick_prompts/',
       ];
     }
 
@@ -431,6 +452,10 @@ class VirtualWorkspaceService {
 
     if (path == '/memory' || path == '/memory/') {
       return ['user.md', 'agent.md'];
+    }
+
+    if (path == '/quick_prompts' || path == '/quick_prompts/') {
+      return ['prompts.md'];
     }
 
     if (path == '/folders' || path == '/folders/') {
@@ -452,9 +477,15 @@ class VirtualWorkspaceService {
 
     if (path == '/stats/scores' || path == '/stats/scores/') {
       final now = DateTime.now();
-      final startDate = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 30));
+      final startDate = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).subtract(const Duration(days: 30));
       final scores = await _dailyScoreRepo.getByDateRange(startDate, now);
-      return scores.map((s) => '${s.date.toIso8601String().substring(0, 10)}.json').toList();
+      return scores
+          .map((s) => '${s.date.toIso8601String().substring(0, 10)}.json')
+          .toList();
     }
 
     if (path == '/chats' || path == '/chats/') {
@@ -478,21 +509,33 @@ class VirtualWorkspaceService {
     }
 
     if (path.startsWith('/todos/')) {
-      final folderName = path.substring('/todos/'.length).replaceAll('/', '').trim();
+      final folderName = path
+          .substring('/todos/'.length)
+          .replaceAll('/', '')
+          .trim();
       final todos = await _todoRepo.getAll();
       final folders = await _folderRepo.getByType('todo');
-      final matchedFolder = folders.where((f) => f.name.trim() == folderName).firstOrNull;
+      final matchedFolder = folders
+          .where((f) => f.name.trim() == folderName)
+          .firstOrNull;
 
       final matchedTodos = todos.where((t) {
         if (matchedFolder != null) {
           if (t.folderId == matchedFolder.id) return true;
         }
         // 若为今日，容错兜底未分类且非长期待办
-        if (folderName == '今日' && (t.folderId == null || t.folderId!.isEmpty || t.folderId == 'todo_default_today') && !t.isLongTerm) {
+        if (folderName == '今日' &&
+            (t.folderId == null ||
+                t.folderId!.isEmpty ||
+                t.folderId == 'todo_default_today') &&
+            !t.isLongTerm) {
           return true;
         }
         // 若为长期，容错兜底未分类长期待办
-        if (folderName == '长期' && (t.folderId == 'todo_default_longterm' || (t.isLongTerm && (t.folderId == null || t.folderId!.isEmpty)))) {
+        if (folderName == '长期' &&
+            (t.folderId == 'todo_default_longterm' ||
+                (t.isLongTerm &&
+                    (t.folderId == null || t.folderId!.isEmpty)))) {
           return true;
         }
         return false;
@@ -512,7 +555,9 @@ class VirtualWorkspaceService {
       for (final f in folders) {
         result.add('${f.name}/');
       }
-      final rootNotes = notes.where((n) => n.folderId == null || n.folderId!.isEmpty).toList();
+      final rootNotes = notes
+          .where((n) => n.folderId == null || n.folderId!.isEmpty)
+          .toList();
       for (final n in rootNotes) {
         result.add('${n.title.trim().isEmpty ? "未命名笔记" : n.title}.md');
       }
@@ -520,14 +565,23 @@ class VirtualWorkspaceService {
     }
 
     if (path.startsWith('/notes/')) {
-      final folderName = path.substring('/notes/'.length).replaceAll('/', '').trim();
+      final folderName = path
+          .substring('/notes/'.length)
+          .replaceAll('/', '')
+          .trim();
       final folders = await _folderRepo.getByType('note');
-      final matchedFolder = folders.where((f) => f.name.trim() == folderName).firstOrNull;
+      final matchedFolder = folders
+          .where((f) => f.name.trim() == folderName)
+          .firstOrNull;
       if (matchedFolder == null) return [];
 
       final notes = await _noteRepo.getAll();
-      final folderNotes = notes.where((n) => n.folderId == matchedFolder.id).toList();
-      return folderNotes.map((n) => '${n.title.trim().isEmpty ? "未命名笔记" : n.title}.md').toList();
+      final folderNotes = notes
+          .where((n) => n.folderId == matchedFolder.id)
+          .toList();
+      return folderNotes
+          .map((n) => '${n.title.trim().isEmpty ? "未命名笔记" : n.title}.md')
+          .toList();
     }
 
     // 3. /timeline 目录
@@ -564,7 +618,10 @@ class VirtualWorkspaceService {
   /// 采用广度优先：先把顶层各目录及其下一层铺开，再逐层深入。即便条目数达到
   /// [maxEntries] 被截断，当前目录的 children 也会完整展开完毕再停止——不会出现
   /// "看到了目录条目但看不到其下文件"的半截展开。
-  Future<List<String>> _listDirRecursive(String root, {int maxEntries = 500}) async {
+  Future<List<String>> _listDirRecursive(
+    String root, {
+    int maxEntries = 500,
+  }) async {
     final result = <String>[];
     final queue = <String>[root];
     var truncated = false;
@@ -616,6 +673,8 @@ class VirtualWorkspaceService {
       fullContent = await _readJournalFile(path);
     } else if (path.startsWith('/memory/')) {
       fullContent = await _readMemoryFile(path);
+    } else if (path.startsWith('/quick_prompts/')) {
+      fullContent = await _readQuickPromptsFile(path);
     } else if (path.startsWith('/folders/')) {
       fullContent = await _readFoldersFile(path);
     } else if (path.startsWith('/stats/')) {
@@ -632,8 +691,12 @@ class VirtualWorkspaceService {
 
     // 处理行切片
     final lines = fullContent.split('\n');
-    final start = (offset != null && offset > 0) ? (offset - 1).clamp(0, lines.length) : 0;
-    final end = (limit != null && limit > 0) ? (start + limit).clamp(0, lines.length) : lines.length;
+    final start = (offset != null && offset > 0)
+        ? (offset - 1).clamp(0, lines.length)
+        : 0;
+    final end = (limit != null && limit > 0)
+        ? (start + limit).clamp(0, lines.length)
+        : lines.length;
 
     final slicedLines = lines.sublist(start, end);
     final buffer = StringBuffer();
@@ -647,8 +710,13 @@ class VirtualWorkspaceService {
 
   Future<String> _readTodoFile(String path) async {
     final segments = path.substring('/todos/'.length).split('/');
-    final String titleWithExt = segments.length >= 2 ? segments.sublist(1).join('/') : segments[0];
-    final rawTitle = titleWithExt.replaceAll('.md', '').replaceAll(RegExp(r'^\[[ x]\]\s*'), '').trim();
+    final String titleWithExt = segments.length >= 2
+        ? segments.sublist(1).join('/')
+        : segments[0];
+    final rawTitle = titleWithExt
+        .replaceAll('.md', '')
+        .replaceAll(RegExp(r'^\[[ x]\]\s*'), '')
+        .trim();
 
     final allTodos = await _todoRepo.getAll();
     Todo? matched;
@@ -716,7 +784,10 @@ class VirtualWorkspaceService {
   }
 
   Future<String> _readTimelineFile(String path) async {
-    final dateStr = path.substring('/timeline/'.length).replaceAll('.md', '').trim();
+    final dateStr = path
+        .substring('/timeline/'.length)
+        .replaceAll('.md', '')
+        .trim();
     DateTime date;
     try {
       date = DateTime.parse(dateStr);
@@ -736,10 +807,12 @@ class VirtualWorkspaceService {
     }
 
     for (final r in records) {
-      final startStr = '${r.time.hour.toString().padLeft(2, '0')}:${r.time.minute.toString().padLeft(2, '0')}';
+      final startStr =
+          '${r.time.hour.toString().padLeft(2, '0')}:${r.time.minute.toString().padLeft(2, '0')}';
       String timeHeader = startStr;
       if (r.endTime != null) {
-        final endStr = '${r.endTime!.hour.toString().padLeft(2, '0')}:${r.endTime!.minute.toString().padLeft(2, '0')}';
+        final endStr =
+            '${r.endTime!.hour.toString().padLeft(2, '0')}:${r.endTime!.minute.toString().padLeft(2, '0')}';
         timeHeader = '$startStr - $endStr';
       }
 
@@ -767,7 +840,10 @@ class VirtualWorkspaceService {
   }
 
   Future<String> _readJournalFile(String path) async {
-    final dateStr = path.substring('/journal/'.length).replaceAll('.md', '').trim();
+    final dateStr = path
+        .substring('/journal/'.length)
+        .replaceAll('.md', '')
+        .trim();
     DateTime date;
     try {
       date = DateTime.parse(dateStr);
@@ -792,35 +868,55 @@ class VirtualWorkspaceService {
     return doc.content;
   }
 
+  /// 读取常用提示词列表，以 Markdown 列表格式返回
+  Future<String> _readQuickPromptsFile(String path) async {
+    final name = path.substring('/quick_prompts/'.length).trim();
+    if (name != 'prompts.md' && name.isNotEmpty) {
+      throw Exception('未知的提示词文件: $path（仅支持 /quick_prompts/prompts.md）');
+    }
+    final prompts = await QuickPromptService.instance.getPrompts();
+    if (prompts.isEmpty) {
+      return '# 常用提示词\n\n> 暂无常用提示词。可以通过 write_file / edit_file 写入，'
+          '每行一条提示词（以 "- " 开头），即对应输入框的快捷填充内容。';
+    }
+    return prompts.map((p) => '- $p').join('\n');
+  }
+
   Future<String> _readSettingsFile(String path) async {
     final name = path.substring('/settings/'.length).trim();
     if (name == 'appearance.json') {
       final prefs = await SharedPreferences.getInstance();
       final themeIndex = prefs.getInt('theme_mode') ?? 0;
-      final themeMode = ThemeMode.values[themeIndex.clamp(0, ThemeMode.values.length - 1)];
+      final themeMode =
+          ThemeMode.values[themeIndex.clamp(0, ThemeMode.values.length - 1)];
       final accentVal = prefs.getInt('accent_color') ?? 0xFF005BCB;
       final colorHex = _colorToHex(Color(accentVal));
       final data = {
         'themeMode': _themeModeToString(themeMode),
         'accentColor': colorHex,
-        'description': 'themeMode 可选: "system" | "light" | "dark"；accentColor 为 16 进制颜色（如 #005BCB 经典蓝、#C5E803 荧光黄绿、#E91E8C 玫瑰粉红、#00E676 春天亮绿）',
+        'description':
+            'themeMode 可选: "system" | "light" | "dark"；accentColor 为 16 进制颜色（如 #005BCB 经典蓝、#C5E803 荧光黄绿、#E91E8C 玫瑰粉红、#00E676 春天亮绿）',
       };
       return const JsonEncoder.withIndent('  ').convert(data);
     } else if (name == 'ai.json') {
       final roles = await _configRepo.getAiRoles() ?? const AiRoles();
-      final temps = await _configRepo.getAiTemperatures() ?? const AiTemperatures();
+      final temps =
+          await _configRepo.getAiTemperatures() ?? const AiTemperatures();
       final customConfigs = await _configRepo.getAllAiConfigs();
       final freeModels = await FreeModelService.instance.getCachedModels();
       final data = {
         'roles': {
           'assistant': {
             'useFreeModel': roles.assistantUseFreeModel,
-            'freeModelId': roles.assistantFreeModelId ?? 'gemini-3.5-flash-lite',
+            'freeModelId':
+                roles.assistantFreeModelId ?? 'gemini-3.5-flash-lite',
             'customModelId': roles.assistant,
           },
           'timelineOptimization': {
             'useFreeModel': roles.timelineOptimizationUseFreeModel,
-            'freeModelId': roles.timelineOptimizationFreeModelId ?? 'gemini-3.5-flash-lite',
+            'freeModelId':
+                roles.timelineOptimizationFreeModelId ??
+                'gemini-3.5-flash-lite',
             'customModelId': roles.timelineOptimization,
           },
         },
@@ -835,20 +931,28 @@ class VirtualWorkspaceService {
             'extractImages': temps.timelineOptimization.extractImages,
           },
         },
-        'customModels': customConfigs.map((c) => {
-          'id': c.id,
-          'name': c.name,
-          'provider': c.provider,
-          'baseUrl': c.baseUrl,
-          'modelName': c.modelName,
-          'isDefault': c.isDefault,
-        }).toList(),
-        'availableFreeModels': freeModels.map((m) => {
-          'id': m.id,
-          'displayName': m.displayName,
-          'provider': m.provider,
-          'modelName': m.modelName,
-        }).toList(),
+        'customModels': customConfigs
+            .map(
+              (c) => {
+                'id': c.id,
+                'name': c.name,
+                'provider': c.provider,
+                'baseUrl': c.baseUrl,
+                'modelName': c.modelName,
+                'isDefault': c.isDefault,
+              },
+            )
+            .toList(),
+        'availableFreeModels': freeModels
+            .map(
+              (m) => {
+                'id': m.id,
+                'displayName': m.displayName,
+                'provider': m.provider,
+                'modelName': m.modelName,
+              },
+            )
+            .toList(),
       };
       return const JsonEncoder.withIndent('  ').convert(data);
     } else if (name == 'personality.json') {
@@ -860,17 +964,36 @@ class VirtualWorkspaceService {
           for (final p in QPersonalities.presets)
             {'id': p.id, 'name': p.name, 'description': p.description},
         ],
-        'description': 'activeId 可选 default(经典管家) | energetic(活泼元气) | concise(简洁干练) | '
+        'description':
+            'activeId 可选 default(经典管家) | energetic(活泼元气) | concise(简洁干练) | '
             'gentle(温柔陪伴) | custom(自定义)；选 custom 时在 customPrompt 提供人格描述（3~6 句），'
             '修改后下轮对话生效',
       };
       return const JsonEncoder.withIndent('  ').convert(data);
     } else if (name == 'shortcuts.json') {
       final shortcuts = await _configRepo.getAllShortcutConfigs();
-      return const JsonEncoder.withIndent('  ').convert(shortcuts.map((s) => s.toMap()).toList());
+      return const JsonEncoder.withIndent(
+        '  ',
+      ).convert(shortcuts.map((s) => s.toMap()).toList());
     } else if (name == 'fixed_events.json') {
       final templates = await FixedEventRepository.instance.getAll();
-      return const JsonEncoder.withIndent('  ').convert(templates.map((t) => t.toMap()).toList());
+      final list = templates
+          .map(
+            (t) => {
+              'id': t.id,
+              'name': t.name,
+              'isTimePoint': t.isTimePoint,
+              'timePeriods': t.timePeriods
+                  .map((p) => {'startTime': p.startTime, 'endTime': p.endTime})
+                  .toList(),
+              'content': t.content ?? '',
+              'tags': t.tags,
+              'sortOrder': t.sortOrder,
+              'isEnabled': t.isEnabled,
+            },
+          )
+          .toList();
+      return const JsonEncoder.withIndent('  ').convert(list);
     } else if (name == 'weight.json') {
       final profile = await _configRepo.getUserProfile();
       final history = profile?.weightHistory ?? [];
@@ -890,11 +1013,15 @@ class VirtualWorkspaceService {
         'bmi': bmi,
         'height': profile?.height,
         'totalRecords': sortedHistory.length,
-        'history': sortedHistory.map((w) => {
-          'id': w.id,
-          'weight': w.weight,
-          'time': w.time.toIso8601String(),
-        }).toList(),
+        'history': sortedHistory
+            .map(
+              (w) => {
+                'id': w.id,
+                'weight': w.weight,
+                'time': w.time.toIso8601String(),
+              },
+            )
+            .toList(),
       };
       return const JsonEncoder.withIndent('  ').convert(data);
     } else if (name == 'profile.json') {
@@ -904,12 +1031,14 @@ class VirtualWorkspaceService {
       }
       final map = profile.toMap();
       try {
-        if (map['weight_history'] is String && (map['weight_history'] as String).isNotEmpty) {
+        if (map['weight_history'] is String &&
+            (map['weight_history'] as String).isNotEmpty) {
           map['weight_history'] = jsonDecode(map['weight_history'] as String);
         }
       } catch (_) {}
       try {
-        if (map['custom_fields'] is String && (map['custom_fields'] as String).isNotEmpty) {
+        if (map['custom_fields'] is String &&
+            (map['custom_fields'] as String).isNotEmpty) {
           map['custom_fields'] = jsonDecode(map['custom_fields'] as String);
         }
       } catch (_) {}
@@ -934,7 +1063,9 @@ class VirtualWorkspaceService {
       return const JsonEncoder.withIndent('  ').convert(list);
     } else if (name == 'webdav.json') {
       final webdav = await _configRepo.getWebdavConfig();
-      return const JsonEncoder.withIndent('  ').convert(webdav?.toMap() ?? {'enabled': false});
+      return const JsonEncoder.withIndent(
+        '  ',
+      ).convert(webdav?.toMap() ?? {'enabled': false});
     }
     throw Exception('未知的配置文件: $path');
   }
@@ -944,23 +1075,31 @@ class VirtualWorkspaceService {
     if (name == 'todos.json') {
       final folders = await _folderRepo.getByType('todo');
       return const JsonEncoder.withIndent('  ').convert(
-        folders.map((f) => {
-          'id': f.id,
-          'name': f.name,
-          'sortOrder': f.sortOrder,
-          'isExpanded': f.isExpanded,
-        }).toList(),
+        folders
+            .map(
+              (f) => {
+                'id': f.id,
+                'name': f.name,
+                'sortOrder': f.sortOrder,
+                'isExpanded': f.isExpanded,
+              },
+            )
+            .toList(),
       );
     } else if (name == 'notes.json') {
       final folders = await _folderRepo.getByType('note');
       return const JsonEncoder.withIndent('  ').convert(
-        folders.map((f) => {
-          'id': f.id,
-          'name': f.name,
-          'parentId': f.parentId,
-          'sortOrder': f.sortOrder,
-          'isExpanded': f.isExpanded,
-        }).toList(),
+        folders
+            .map(
+              (f) => {
+                'id': f.id,
+                'name': f.name,
+                'parentId': f.parentId,
+                'sortOrder': f.sortOrder,
+                'isExpanded': f.isExpanded,
+              },
+            )
+            .toList(),
       );
     }
     throw Exception('未知的分类配置文件: $path');
@@ -974,11 +1113,17 @@ class VirtualWorkspaceService {
       final totalTodos = allTodos.length;
       final completedTodos = allTodos.where((t) => t.isCompleted).length;
       final pendingTodos = totalTodos - completedTodos;
-      final completionRate = totalTodos > 0 ? '${(completedTodos / totalTodos * 100).toStringAsFixed(1)}%' : '0.0%';
+      final completionRate = totalTodos > 0
+          ? '${(completedTodos / totalTodos * 100).toStringAsFixed(1)}%'
+          : '0.0%';
 
       // 2. 近 7 天时间线统计
       final now = DateTime.now();
-      final startDate = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 6));
+      final startDate = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).subtract(const Duration(days: 6));
       final recentRecords = await _diaryRepo.getByDateRange(startDate, now);
 
       final categoryCounts = <String, int>{};
@@ -993,10 +1138,13 @@ class VirtualWorkspaceService {
         }
       }
 
-      final avgMood = moodRecordCount > 0 ? (totalMood / moodRecordCount).toStringAsFixed(1) : '3.0';
+      final avgMood = moodRecordCount > 0
+          ? (totalMood / moodRecordCount).toStringAsFixed(1)
+          : '3.0';
 
       final data = {
-        'timeRange': '${startDate.toIso8601String().substring(0, 10)} ~ ${now.toIso8601String().substring(0, 10)}',
+        'timeRange':
+            '${startDate.toIso8601String().substring(0, 10)} ~ ${now.toIso8601String().substring(0, 10)}',
         'todos': {
           'total': totalTodos,
           'completed': completedTodos,
@@ -1012,19 +1160,30 @@ class VirtualWorkspaceService {
       return const JsonEncoder.withIndent('  ').convert(data);
     } else if (name == 'daily_scores.json') {
       final now = DateTime.now();
-      final startDate = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 14));
+      final startDate = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).subtract(const Duration(days: 14));
       final scores = await _dailyScoreRepo.getByDateRange(startDate, now);
-      final list = scores.map((s) => {
-        'date': s.date.toIso8601String().substring(0, 10),
-        'totalScore': s.totalScore,
-        'dimensionScores': s.dimensionScores,
-        'summary': s.summary,
-        'suggestions': s.suggestions,
-        'recordCount': s.recordCount,
-      }).toList();
+      final list = scores
+          .map(
+            (s) => {
+              'date': s.date.toIso8601String().substring(0, 10),
+              'totalScore': s.totalScore,
+              'dimensionScores': s.dimensionScores,
+              'summary': s.summary,
+              'suggestions': s.suggestions,
+              'recordCount': s.recordCount,
+            },
+          )
+          .toList();
       return const JsonEncoder.withIndent('  ').convert(list);
     } else if (path.startsWith('/stats/scores/')) {
-      final dateStr = path.substring('/stats/scores/'.length).replaceAll('.json', '').trim();
+      final dateStr = path
+          .substring('/stats/scores/'.length)
+          .replaceAll('.json', '')
+          .trim();
       DateTime date;
       try {
         date = DateTime.parse(dateStr);
@@ -1058,27 +1217,35 @@ class VirtualWorkspaceService {
       final recentSports = await _healthRepo.getSportRecords(limit: 10);
       return const JsonEncoder.withIndent('  ').convert({
         'description': '小米运动健康最近同步汇总',
-        'recent_daily_metrics': recents.map((m) => {
-          'date': m.date,
-          'steps': m.steps,
-          'calories_kcal': m.calories,
-          'sleep_duration_min': m.sleepDurationMinutes,
-          'sleep_score': m.sleepScore,
-          'avg_heart_rate': m.avgHeartRate,
-          'resting_heart_rate': m.restingHeartRate,
-          'avg_spo2': m.avgSpo2,
-          'avg_stress': m.avgStress,
-        }).toList(),
-        'recent_sports': recentSports.map((s) => {
-          'title': s.title,
-          'category': s.category,
-          'start_time': s.startTime.toIso8601String(),
-          'duration_min': s.durationSeconds ~/ 60,
-          'distance_km': (s.distanceMeters / 1000).toStringAsFixed(2),
-          'calories_kcal': s.calories,
-          'avg_pace': s.avgPace,
-          'avg_hr': s.avgHeartRate,
-        }).toList(),
+        'recent_daily_metrics': recents
+            .map(
+              (m) => {
+                'date': m.date,
+                'steps': m.steps,
+                'calories_kcal': m.calories,
+                'sleep_duration_min': m.sleepDurationMinutes,
+                'sleep_score': m.sleepScore,
+                'avg_heart_rate': m.avgHeartRate,
+                'resting_heart_rate': m.restingHeartRate,
+                'avg_spo2': m.avgSpo2,
+                'avg_stress': m.avgStress,
+              },
+            )
+            .toList(),
+        'recent_sports': recentSports
+            .map(
+              (s) => {
+                'title': s.title,
+                'category': s.category,
+                'start_time': s.startTime.toIso8601String(),
+                'duration_min': s.durationSeconds ~/ 60,
+                'distance_km': (s.distanceMeters / 1000).toStringAsFixed(2),
+                'calories_kcal': s.calories,
+                'avg_pace': s.avgPace,
+                'avg_hr': s.avgHeartRate,
+              },
+            )
+            .toList(),
       });
     }
 
@@ -1118,27 +1285,25 @@ class VirtualWorkspaceService {
           'min_bpm': metric.minHeartRate,
           'resting_bpm': metric.restingHeartRate,
         },
-        'spo2': {
-          'avg_percent': metric.avgSpo2,
-          'min_percent': metric.minSpo2,
-        },
-        'stress': {
-          'avg': metric.avgStress,
-          'max': metric.maxStress,
-        },
+        'spo2': {'avg_percent': metric.avgSpo2, 'min_percent': metric.minSpo2},
+        'stress': {'avg': metric.avgStress, 'max': metric.maxStress},
       },
-      'sports': sports.map((s) => {
-        'title': s.title,
-        'category': s.category,
-        'start_time': s.startTime.toIso8601String(),
-        'end_time': s.endTime.toIso8601String(),
-        'duration_min': s.durationSeconds ~/ 60,
-        'distance_km': (s.distanceMeters / 1000).toStringAsFixed(2),
-        'calories_kcal': s.calories,
-        'avg_pace': s.avgPace,
-        'avg_hr': s.avgHeartRate,
-        'steps': s.steps,
-      }).toList(),
+      'sports': sports
+          .map(
+            (s) => {
+              'title': s.title,
+              'category': s.category,
+              'start_time': s.startTime.toIso8601String(),
+              'end_time': s.endTime.toIso8601String(),
+              'duration_min': s.durationSeconds ~/ 60,
+              'distance_km': (s.distanceMeters / 1000).toStringAsFixed(2),
+              'calories_kcal': s.calories,
+              'avg_pace': s.avgPace,
+              'avg_hr': s.avgHeartRate,
+              'steps': s.steps,
+            },
+          )
+          .toList(),
     });
   }
 
@@ -1146,13 +1311,17 @@ class VirtualWorkspaceService {
     final name = path.substring('/chats/'.length).trim();
     if (name == 'sessions.json') {
       final sessions = await _configRepo.getAllChatSessions();
-      final list = sessions.map((s) => {
-        'id': s.id,
-        'title': s.title,
-        'messageCount': s.messages.length,
-        'createdAt': s.createdAt.toIso8601String(),
-        'updatedAt': s.updatedAt.toIso8601String(),
-      }).toList();
+      final list = sessions
+          .map(
+            (s) => {
+              'id': s.id,
+              'title': s.title,
+              'messageCount': s.messages.length,
+              'createdAt': s.createdAt.toIso8601String(),
+              'updatedAt': s.updatedAt.toIso8601String(),
+            },
+          )
+          .toList();
       return const JsonEncoder.withIndent('  ').convert(list);
     }
     throw Exception('未知的会话管理文件: $path');
@@ -1168,7 +1337,9 @@ class VirtualWorkspaceService {
     bool append = false,
   }) async {
     final path = normalizePath(rawPath);
-    final effectiveContent = append ? await _mergeAppendContent(path, content) : content;
+    final effectiveContent = append
+        ? await _mergeAppendContent(path, content)
+        : content;
     // 撤回录制：捕获本轮首次修改前的旧状态（editFile 内部最终也走 writeFile，靠同路径去重）
     await _captureUndoState(path);
 
@@ -1182,6 +1353,8 @@ class VirtualWorkspaceService {
       return await _writeJournalFile(path, effectiveContent);
     } else if (path.startsWith('/memory/')) {
       return await _writeMemoryFile(path, effectiveContent);
+    } else if (path.startsWith('/quick_prompts/')) {
+      return await _writeQuickPromptsFile(path, effectiveContent);
     } else if (path.startsWith('/skills/')) {
       return await _writeSkillFile(path, effectiveContent);
     } else if (path.startsWith('/folders/')) {
@@ -1196,7 +1369,10 @@ class VirtualWorkspaceService {
     throw Exception('不支持写入只读或未知的路径: $path');
   }
 
-  Future<Map<String, dynamic>> _writeTodoFile(String path, String content) async {
+  Future<Map<String, dynamic>> _writeTodoFile(
+    String path,
+    String content,
+  ) async {
     final segments = path.substring('/todos/'.length).split('/');
     String folderName = '今日';
     String titleWithExt = '';
@@ -1206,7 +1382,10 @@ class VirtualWorkspaceService {
     } else {
       titleWithExt = segments[0];
     }
-    final title = titleWithExt.replaceAll('.md', '').replaceAll(RegExp(r'^\[[ x]\]\s*'), '').trim();
+    final title = titleWithExt
+        .replaceAll('.md', '')
+        .replaceAll(RegExp(r'^\[[ x]\]\s*'), '')
+        .trim();
 
     // 1. 解析 Frontmatter
     final parsed = _parseFrontmatter(content);
@@ -1214,13 +1393,19 @@ class VirtualWorkspaceService {
     final description = parsed.body.trim();
 
     final status = (meta['status'] as String? ?? '').toLowerCase();
-    final isCompleted = status == 'completed' || status == 'done' || path.contains('[x]');
+    final isCompleted =
+        status == 'completed' || status == 'done' || path.contains('[x]');
     final rawPriority = (meta['priority'] as String? ?? 'normal').toLowerCase();
-    final priority = (rawPriority == 'important' || rawPriority == 'high') ? 'important' : 'normal';
+    final priority = (rawPriority == 'important' || rawPriority == 'high')
+        ? 'important'
+        : 'normal';
     final isLongTerm = meta['is_long_term'] == true || folderName == '长期';
 
     // 重复规则
-    final rawRepeat = (meta['repeat_rule'] ?? meta['repeat'] ?? '').toString().trim().toLowerCase();
+    final rawRepeat = (meta['repeat_rule'] ?? meta['repeat'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
     String repeatRule = 'none';
     if (rawRepeat == 'daily' || rawRepeat == '每天' || rawRepeat == '每日') {
       repeatRule = 'daily';
@@ -1232,7 +1417,14 @@ class VirtualWorkspaceService {
       repeatRule = 'monthly';
     } else if (rawRepeat == 'yearly' || rawRepeat == '每年') {
       repeatRule = 'yearly';
-    } else if (['daily', 'workday', 'weekly', 'monthly', 'yearly', 'none'].contains(rawRepeat)) {
+    } else if ([
+      'daily',
+      'workday',
+      'weekly',
+      'monthly',
+      'yearly',
+      'none',
+    ].contains(rawRepeat)) {
       repeatRule = rawRepeat;
     }
 
@@ -1242,14 +1434,21 @@ class VirtualWorkspaceService {
       if (meta['tags'] is List) {
         tags = (meta['tags'] as List).map((e) => e.toString().trim()).join(',');
       } else {
-        tags = meta['tags'].toString().replaceAll('[', '').replaceAll(']', '').replaceAll('"', '').trim();
+        tags = meta['tags']
+            .toString()
+            .replaceAll('[', '')
+            .replaceAll(']', '')
+            .replaceAll('"', '')
+            .trim();
       }
     }
 
     DateTime? dueDate;
     if (meta['due_date'] != null) {
       try {
-        dueDate = DateTime.parse(meta['due_date'].toString().replaceAll('"', ''));
+        dueDate = DateTime.parse(
+          meta['due_date'].toString().replaceAll('"', ''),
+        );
       } catch (_) {}
     }
 
@@ -1260,7 +1459,10 @@ class VirtualWorkspaceService {
     );
 
     // 2. 解析或自动创建分类
-    final folderId = await _resolveTodoFolder(folderName, isLongTerm: isLongTerm);
+    final folderId = await _resolveTodoFolder(
+      folderName,
+      isLongTerm: isLongTerm,
+    );
 
     // 3. 判断是更新还是创建
     final allTodos = await _todoRepo.getAll();
@@ -1271,10 +1473,14 @@ class VirtualWorkspaceService {
       // 撤回恢复场景：id 命中已软删除的记录时复活，否则被删待办写回后仍然不可见
       if (existing == null) {
         final allWithDeleted = await _todoRepo.getAll(includeDeleted: true);
-        existing = allWithDeleted.where((t) => t.id == existingId && t.isDeleted).firstOrNull;
+        existing = allWithDeleted
+            .where((t) => t.id == existingId && t.isDeleted)
+            .firstOrNull;
       }
     }
-    existing ??= allTodos.where((t) => t.title.trim() == title && t.folderId == folderId).firstOrNull;
+    existing ??= allTodos
+        .where((t) => t.title.trim() == title && t.folderId == folderId)
+        .firstOrNull;
 
     // 路径末段直接是实体 id 的 canonical 形态（/todos/<分类>/<id>.md：grep 命中、撤回快照、
     // 页面上下文提示都会产出这种路径）。两条防护缺一不可：
@@ -1308,7 +1514,11 @@ class VirtualWorkspaceService {
       );
       await _todoRepo.update(updated);
       await NotificationService.instance.scheduleTodoReminder(updated);
-      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, updated);
+      WorkspaceEventBus.instance.emit(
+        path,
+        WorkspaceChangeType.updated,
+        updated,
+      );
       return {
         'status': 'updated',
         'path': path,
@@ -1341,7 +1551,11 @@ class VirtualWorkspaceService {
       );
       await _todoRepo.insert(newTodo);
       await NotificationService.instance.scheduleTodoReminder(newTodo);
-      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.created, newTodo);
+      WorkspaceEventBus.instance.emit(
+        path,
+        WorkspaceChangeType.created,
+        newTodo,
+      );
       return {
         'status': 'created',
         'path': path,
@@ -1369,20 +1583,29 @@ class VirtualWorkspaceService {
     return '$y-$m-$d $hh:$mi';
   }
 
-  Future<String> _resolveTodoFolder(String folderName, {bool isLongTerm = false}) async {
+  Future<String> _resolveTodoFolder(
+    String folderName, {
+    bool isLongTerm = false,
+  }) async {
     final folders = await _folderRepo.getByType('todo');
     final trimmed = folderName.trim();
 
     if (trimmed == '今日' || trimmed == 'today') {
-      final today = folders.where((f) => f.id == 'todo_default_today' || f.name == '今日').firstOrNull;
+      final today = folders
+          .where((f) => f.id == 'todo_default_today' || f.name == '今日')
+          .firstOrNull;
       if (today != null) return today.id;
     }
     if (trimmed == '长期' || trimmed == 'longterm' || isLongTerm) {
-      final longterm = folders.where((f) => f.id == 'todo_default_longterm' || f.name == '长期').firstOrNull;
+      final longterm = folders
+          .where((f) => f.id == 'todo_default_longterm' || f.name == '长期')
+          .firstOrNull;
       if (longterm != null) return longterm.id;
     }
 
-    final matched = folders.where((f) => f.name.toLowerCase() == trimmed.toLowerCase()).firstOrNull;
+    final matched = folders
+        .where((f) => f.name.toLowerCase() == trimmed.toLowerCase())
+        .firstOrNull;
     if (matched != null) return matched.id;
 
     // 不存在则自动新建待办分类
@@ -1419,7 +1642,10 @@ class VirtualWorkspaceService {
     return newFolder.id;
   }
 
-  Future<Map<String, dynamic>> _writeNoteFile(String path, String content) async {
+  Future<Map<String, dynamic>> _writeNoteFile(
+    String path,
+    String content,
+  ) async {
     final segments = path.substring('/notes/'.length).split('/');
     String? folderName;
     String titleWithExt;
@@ -1447,10 +1673,14 @@ class VirtualWorkspaceService {
       // 撤回恢复场景：id 命中已软删除的记录时复活，否则被删笔记写回后仍然不可见
       if (existing == null) {
         final allWithDeleted = await _noteRepo.getAll(includeDeleted: true);
-        existing = allWithDeleted.where((n) => n.id == existingId && n.isDeleted).firstOrNull;
+        existing = allWithDeleted
+            .where((n) => n.id == existingId && n.isDeleted)
+            .firstOrNull;
       }
     }
-    existing ??= allNotes.where((n) => n.title.trim() == title && n.folderId == folderId).firstOrNull;
+    existing ??= allNotes
+        .where((n) => n.title.trim() == title && n.folderId == folderId)
+        .firstOrNull;
 
     // 路径末段是笔记 id 的 canonical 形态（/notes/<id>.md）时，命中既有实体且标题沿用原值，
     // 避免把 id 顶成笔记标题（撤回恢复的正文自带 `id:`，重写路径时会走到这里）；
@@ -1486,8 +1716,17 @@ class VirtualWorkspaceService {
         updatedAt: now,
       );
       await _noteRepo.update(updated);
-      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, updated);
-      return {'status': 'updated', 'path': path, 'id': updated.id, 'title': updated.title};
+      WorkspaceEventBus.instance.emit(
+        path,
+        WorkspaceChangeType.updated,
+        updated,
+      );
+      return {
+        'status': 'updated',
+        'path': path,
+        'id': updated.id,
+        'title': updated.title,
+      };
     } else {
       final newNote = Note(
         id: const Uuid().v4(),
@@ -1501,8 +1740,17 @@ class VirtualWorkspaceService {
         updatedAt: now,
       );
       await _noteRepo.insert(newNote);
-      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.created, newNote);
-      return {'status': 'created', 'path': path, 'id': newNote.id, 'title': newNote.title};
+      WorkspaceEventBus.instance.emit(
+        path,
+        WorkspaceChangeType.created,
+        newNote,
+      );
+      return {
+        'status': 'created',
+        'path': path,
+        'id': newNote.id,
+        'title': newNote.title,
+      };
     }
   }
 
@@ -1521,8 +1769,14 @@ class VirtualWorkspaceService {
     return paths;
   }
 
-  Future<Map<String, dynamic>> _writeTimelineFile(String path, String content) async {
-    final dateStr = path.substring('/timeline/'.length).replaceAll('.md', '').trim();
+  Future<Map<String, dynamic>> _writeTimelineFile(
+    String path,
+    String content,
+  ) async {
+    final dateStr = path
+        .substring('/timeline/'.length)
+        .replaceAll('.md', '')
+        .trim();
     DateTime baseDate;
     try {
       baseDate = DateTime.parse(dateStr);
@@ -1549,7 +1803,9 @@ class VirtualWorkspaceService {
       final startTimeStr = m.group(1)!.trim();
       final endTimeStr = m.group(2)?.trim();
       var title = m.group(3) ?? '';
-      final inlineId = RegExp(r'<!--\s*id:\s*([^\s>]+)\s*-->').firstMatch(title);
+      final inlineId = RegExp(
+        r'<!--\s*id:\s*([^\s>]+)\s*-->',
+      ).firstMatch(title);
       final recordId = inlineId?.group(1)?.trim() ?? m.group(4)?.trim();
       title = title.replaceAll(RegExp(r'<!--.*?-->'), '').trim();
       final body = m.group(5)?.trim() ?? '';
@@ -1587,7 +1843,9 @@ class VirtualWorkspaceService {
         final l = line.trim().replaceAll('：', ':');
         if (l.startsWith('- 分类:') || l.startsWith('- category:')) {
           category = _fieldValue(l);
-        } else if (l.startsWith('- 标签:') || l.startsWith('- tags:') || l.startsWith('- tag:')) {
+        } else if (l.startsWith('- 标签:') ||
+            l.startsWith('- tags:') ||
+            l.startsWith('- tag:')) {
           final tStr = _fieldValue(l);
           for (final part in tStr.split(RegExp('[,，、 ]+'))) {
             final t = part.trim();
@@ -1599,7 +1857,9 @@ class VirtualWorkspaceService {
           mood = int.tryParse(_fieldValue(l));
         } else if (l.startsWith('- 天气:') || l.startsWith('- weather:')) {
           weather = _fieldValue(l);
-        } else if (l.startsWith('- 标记颜色:') || l.startsWith('- 颜色标记:') || l.startsWith('- color_mark:')) {
+        } else if (l.startsWith('- 标记颜色:') ||
+            l.startsWith('- 颜色标记:') ||
+            l.startsWith('- color_mark:')) {
           final colorVal = _fieldValue(l);
           if (colorVal.isNotEmpty) {
             String hexColor = '#FFFF3B30';
@@ -1616,21 +1876,26 @@ class VirtualWorkspaceService {
             } else {
               final c = _parseColor(colorVal);
               if (c != null) {
-                hexColor = '#${c.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase()}';
+                hexColor =
+                    '#${c.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase()}';
               }
             }
-            _colorMarkRepo.insert(DateColorMark(
-              id: const Uuid().v4(),
-              date: baseDate,
-              color: hexColor,
-            ));
+            _colorMarkRepo.insert(
+              DateColorMark(
+                id: const Uuid().v4(),
+                date: baseDate,
+                color: hexColor,
+              ),
+            );
             WorkspaceEventBus.instance.emit(
               '/settings/color_marks.json',
               WorkspaceChangeType.updated,
               {'date': dateStr, 'color': hexColor},
             );
           }
-        } else if (l.startsWith('- 图片:') || l.startsWith('- photo:') || l.startsWith('- photos:')) {
+        } else if (l.startsWith('- 图片:') ||
+            l.startsWith('- photo:') ||
+            l.startsWith('- photos:')) {
           final pStr = _fieldValue(l);
           for (final p in pStr.split(',')) {
             // 读取时行尾附加了 view_image 提示标注，写回解析时剥离，避免混入图片路径
@@ -1667,7 +1932,8 @@ class VirtualWorkspaceService {
 
       // 饮食/活动常见二级字段标准化兼容：
       if (category == '饮食') {
-        if (!customFields.containsKey('rating') && !customFields.containsKey('评价')) {
+        if (!customFields.containsKey('rating') &&
+            !customFields.containsKey('评价')) {
           if (customFields.containsKey('健康度')) {
             customFields['评价'] = customFields.remove('健康度');
           } else if (customFields.containsKey('健康评价')) {
@@ -1675,7 +1941,8 @@ class VirtualWorkspaceService {
           }
         }
       } else if (category == '活动') {
-        if (!customFields.containsKey('type') && !customFields.containsKey('类型')) {
+        if (!customFields.containsKey('type') &&
+            !customFields.containsKey('类型')) {
           if (customFields.containsKey('活动类型')) {
             customFields['类型'] = customFields.remove('活动类型');
           } else if (customFields.containsKey('项目')) {
@@ -1691,7 +1958,8 @@ class VirtualWorkspaceService {
             id: const Uuid().v4(),
             name: category,
             fields: customFields,
-            time: '${recordTime.hour.toString().padLeft(2, '0')}:${recordTime.minute.toString().padLeft(2, '0')}',
+            time:
+                '${recordTime.hour.toString().padLeft(2, '0')}:${recordTime.minute.toString().padLeft(2, '0')}',
           ),
         );
       }
@@ -1762,7 +2030,11 @@ class VirtualWorkspaceService {
       for (final oldRecord in existingRecords) {
         if (!retainedIds.contains(oldRecord.id)) {
           await _diaryRepo.softDelete(oldRecord.id);
-          WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.deleted, oldRecord);
+          WorkspaceEventBus.instance.emit(
+            path,
+            WorkspaceChangeType.deleted,
+            oldRecord,
+          );
           deletedCount++;
         }
       }
@@ -1780,7 +2052,11 @@ class VirtualWorkspaceService {
         // 显式清空：若当天有记录，则全部软删除
         for (final oldRecord in existingRecords) {
           await _diaryRepo.softDelete(oldRecord.id);
-          WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.deleted, oldRecord);
+          WorkspaceEventBus.instance.emit(
+            path,
+            WorkspaceChangeType.deleted,
+            oldRecord,
+          );
           deletedCount++;
         }
         WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, {
@@ -1830,7 +2106,11 @@ class VirtualWorkspaceService {
   }
 
   /// 按「同一天 + 同一时刻 + 同一标题」查找已有时间线记录，作为 id 注释丢失时的去重兜底
-  Future<DiaryRecord?> _findTimelineRecord(DateTime date, DateTime recordTime, String title) async {
+  Future<DiaryRecord?> _findTimelineRecord(
+    DateTime date,
+    DateTime recordTime,
+    String title,
+  ) async {
     final trimmed = title.trim();
     if (trimmed.isEmpty) return null;
     final records = await _diaryRepo.getByDate(date);
@@ -1848,8 +2128,14 @@ class VirtualWorkspaceService {
     return line.substring(idx + 1).trim();
   }
 
-  Future<Map<String, dynamic>> _writeJournalFile(String path, String content) async {
-    final dateStr = path.substring('/journal/'.length).replaceAll('.md', '').trim();
+  Future<Map<String, dynamic>> _writeJournalFile(
+    String path,
+    String content,
+  ) async {
+    final dateStr = path
+        .substring('/journal/'.length)
+        .replaceAll('.md', '')
+        .trim();
     DateTime date;
     try {
       date = DateTime.parse(dateStr);
@@ -1857,13 +2143,18 @@ class VirtualWorkspaceService {
       date = DateTime.now();
     }
     await _journalService.saveJournal(date, content);
-    WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, {'date': dateStr});
+    WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, {
+      'date': dateStr,
+    });
     return {'status': 'saved', 'path': path, 'date': dateStr};
   }
 
   /// 写入小Q长期记忆文档：校验分类与容量上限，保存并广播事件。
   /// 容量超限直接抛错（对齐 Hermes 有界记忆），引导小Q先整合再写入
-  Future<Map<String, dynamic>> _writeMemoryFile(String path, String content) async {
+  Future<Map<String, dynamic>> _writeMemoryFile(
+    String path,
+    String content,
+  ) async {
     final category = AgentMemoryCategory.fromPath(path);
     if (category == null) {
       throw Exception('未知的记忆文件: $path（仅支持 /memory/user.md 与 /memory/agent.md）');
@@ -1877,7 +2168,11 @@ class VirtualWorkspaceService {
     }
     final doc = AgentMemoryDocument(category: category, content: normalized);
     await _configRepo.saveAgentMemory(doc);
-    WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, doc.toMap());
+    WorkspaceEventBus.instance.emit(
+      path,
+      WorkspaceChangeType.updated,
+      doc.toMap(),
+    );
     return {
       'status': 'updated',
       'path': path,
@@ -1885,11 +2180,44 @@ class VirtualWorkspaceService {
     };
   }
 
+  /// 写入常用提示词列表：`/quick_prompts/prompts.md`
+  ///
+  /// 每行解析为一条提示词，以 "- " 开头的行自动剥离前缀；
+  /// 空行自动跳过。全量覆写替换整个列表。
+  Future<Map<String, dynamic>> _writeQuickPromptsFile(
+    String path,
+    String content,
+  ) async {
+    final name = path.substring('/quick_prompts/'.length).trim();
+    if (name != 'prompts.md' && name.isNotEmpty) {
+      throw Exception('未知的提示词文件: $path（仅支持 /quick_prompts/prompts.md）');
+    }
+    final prompts = content
+        .split('\n')
+        .map((line) => line.replaceFirst(RegExp(r'^-\s*'), '').trim())
+        .where((line) => line.isNotEmpty)
+        .toList();
+    await QuickPromptService.instance.setPrompts(prompts);
+    WorkspaceEventBus.instance.emit(
+      '/quick_prompts/prompts.md',
+      WorkspaceChangeType.updated,
+      {'count': prompts.length},
+    );
+    return {
+      'status': 'updated',
+      'path': '/quick_prompts/prompts.md',
+      'count': prompts.length,
+    };
+  }
+
   /// 写入用户自定义技能：`/skills/<名称>.md`（内置技能只读，直接拒绝）
   ///
   /// 正文为 Markdown 手册，frontmatter 的 `description` 作为技能索引描述；
   /// 缺失时回退取正文首个非空非标题行截断，避免索引里出现空描述。
-  Future<Map<String, dynamic>> _writeSkillFile(String path, String content) async {
+  Future<Map<String, dynamic>> _writeSkillFile(
+    String path,
+    String content,
+  ) async {
     final name = path.substring('/skills/'.length).trim();
     if (name.isEmpty || !name.endsWith('.md') || name.contains('/')) {
       throw Exception('非法的技能路径: $path（应为 /skills/<名称>.md，不支持子目录）');
@@ -1912,10 +2240,16 @@ class VirtualWorkspaceService {
     // 正文只有标题时退而取首个标题文本，避免索引里出现空描述
     var description = (parsed.meta['description'] as String? ?? '').trim();
     if (description.isEmpty) {
-      final lines = body.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
+      final lines = body
+          .split('\n')
+          .map((l) => l.trim())
+          .where((l) => l.isNotEmpty)
+          .toList();
       var fallback = lines.firstWhere(
         (l) => !l.startsWith('#'),
-        orElse: () => lines.isEmpty ? '' : lines.first.replaceFirst(RegExp(r'^#+\s*'), ''),
+        orElse: () => lines.isEmpty
+            ? ''
+            : lines.first.replaceFirst(RegExp(r'^#+\s*'), ''),
       );
       if (fallback.length > 80) fallback = '${fallback.substring(0, 80)}…';
       description = fallback;
@@ -1938,7 +2272,10 @@ class VirtualWorkspaceService {
     };
   }
 
-  Future<Map<String, dynamic>> _writeSettingsFile(String path, String content) async {
+  Future<Map<String, dynamic>> _writeSettingsFile(
+    String path,
+    String content,
+  ) async {
     final name = path.substring('/settings/'.length).trim();
     dynamic decoded;
     try {
@@ -1968,7 +2305,11 @@ class VirtualWorkspaceService {
         'themeMode': _themeModeToString(ThemeMode.values[currentThemeIndex]),
         'accentColor': _colorToHex(Color(currentColorVal)),
       };
-      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, updatedData);
+      WorkspaceEventBus.instance.emit(
+        path,
+        WorkspaceChangeType.updated,
+        updatedData,
+      );
       return {'status': 'updated', 'path': path, 'data': updatedData};
     }
 
@@ -1977,55 +2318,88 @@ class VirtualWorkspaceService {
         throw Exception('ai.json 必须是 JSON 对象');
       }
       // 1. 更新 roles
-      if (decoded.containsKey('roles') && decoded['roles'] is Map<String, dynamic>) {
+      if (decoded.containsKey('roles') &&
+          decoded['roles'] is Map<String, dynamic>) {
         final rolesMap = decoded['roles'] as Map<String, dynamic>;
         var currentRoles = await _configRepo.getAiRoles() ?? const AiRoles();
-        if (rolesMap.containsKey('assistant') && rolesMap['assistant'] is Map<String, dynamic>) {
+        if (rolesMap.containsKey('assistant') &&
+            rolesMap['assistant'] is Map<String, dynamic>) {
           final ast = rolesMap['assistant'] as Map<String, dynamic>;
           currentRoles = currentRoles.copyWith(
-            assistantUseFreeModel: ast['useFreeModel'] as bool? ?? currentRoles.assistantUseFreeModel,
-            assistantFreeModelId: ast['freeModelId'] as String? ?? currentRoles.assistantFreeModelId,
-            assistant: ast.containsKey('customModelId') ? ast['customModelId'] as String? : currentRoles.assistant,
+            assistantUseFreeModel:
+                ast['useFreeModel'] as bool? ??
+                currentRoles.assistantUseFreeModel,
+            assistantFreeModelId:
+                ast['freeModelId'] as String? ??
+                currentRoles.assistantFreeModelId,
+            assistant: ast.containsKey('customModelId')
+                ? ast['customModelId'] as String?
+                : currentRoles.assistant,
           );
         }
-        if (rolesMap.containsKey('timelineOptimization') && rolesMap['timelineOptimization'] is Map<String, dynamic>) {
+        if (rolesMap.containsKey('timelineOptimization') &&
+            rolesMap['timelineOptimization'] is Map<String, dynamic>) {
           final tlo = rolesMap['timelineOptimization'] as Map<String, dynamic>;
           currentRoles = currentRoles.copyWith(
-            timelineOptimizationUseFreeModel: tlo['useFreeModel'] as bool? ?? currentRoles.timelineOptimizationUseFreeModel,
-            timelineOptimizationFreeModelId: tlo['freeModelId'] as String? ?? currentRoles.timelineOptimizationFreeModelId,
-            timelineOptimization: tlo.containsKey('customModelId') ? tlo['customModelId'] as String? : currentRoles.timelineOptimization,
+            timelineOptimizationUseFreeModel:
+                tlo['useFreeModel'] as bool? ??
+                currentRoles.timelineOptimizationUseFreeModel,
+            timelineOptimizationFreeModelId:
+                tlo['freeModelId'] as String? ??
+                currentRoles.timelineOptimizationFreeModelId,
+            timelineOptimization: tlo.containsKey('customModelId')
+                ? tlo['customModelId'] as String?
+                : currentRoles.timelineOptimization,
           );
         }
         await _configRepo.saveAiRoles(currentRoles);
       }
 
       // 2. 更新 temperatures
-      if (decoded.containsKey('temperatures') && decoded['temperatures'] is Map<String, dynamic>) {
+      if (decoded.containsKey('temperatures') &&
+          decoded['temperatures'] is Map<String, dynamic>) {
         final tempsMap = decoded['temperatures'] as Map<String, dynamic>;
-        var currentTemps = await _configRepo.getAiTemperatures() ?? const AiTemperatures();
-        if (tempsMap.containsKey('assistant') && tempsMap['assistant'] is Map<String, dynamic>) {
+        var currentTemps =
+            await _configRepo.getAiTemperatures() ?? const AiTemperatures();
+        if (tempsMap.containsKey('assistant') &&
+            tempsMap['assistant'] is Map<String, dynamic>) {
           final ast = tempsMap['assistant'] as Map<String, dynamic>;
           currentTemps = currentTemps.copyWith(
             assistant: currentTemps.assistant.copyWith(
-              temperature: (ast['temperature'] as num?)?.toDouble() ?? currentTemps.assistant.temperature,
-              maxTokens: (ast['maxTokens'] as num?)?.toInt() ?? currentTemps.assistant.maxTokens,
+              temperature:
+                  (ast['temperature'] as num?)?.toDouble() ??
+                  currentTemps.assistant.temperature,
+              maxTokens:
+                  (ast['maxTokens'] as num?)?.toInt() ??
+                  currentTemps.assistant.maxTokens,
             ),
           );
         }
-        if (tempsMap.containsKey('timelineOptimization') && tempsMap['timelineOptimization'] is Map<String, dynamic>) {
+        if (tempsMap.containsKey('timelineOptimization') &&
+            tempsMap['timelineOptimization'] is Map<String, dynamic>) {
           final tlo = tempsMap['timelineOptimization'] as Map<String, dynamic>;
           currentTemps = currentTemps.copyWith(
             timelineOptimization: currentTemps.timelineOptimization.copyWith(
-              temperature: (tlo['temperature'] as num?)?.toDouble() ?? currentTemps.timelineOptimization.temperature,
-              maxTokens: (tlo['maxTokens'] as num?)?.toInt() ?? currentTemps.timelineOptimization.maxTokens,
-              extractImages: (tlo['extractImages'] as bool?) ?? currentTemps.timelineOptimization.extractImages,
+              temperature:
+                  (tlo['temperature'] as num?)?.toDouble() ??
+                  currentTemps.timelineOptimization.temperature,
+              maxTokens:
+                  (tlo['maxTokens'] as num?)?.toInt() ??
+                  currentTemps.timelineOptimization.maxTokens,
+              extractImages:
+                  (tlo['extractImages'] as bool?) ??
+                  currentTemps.timelineOptimization.extractImages,
             ),
           );
         }
         await _configRepo.saveAiTemperatures(currentTemps);
       }
 
-      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, decoded);
+      WorkspaceEventBus.instance.emit(
+        path,
+        WorkspaceChangeType.updated,
+        decoded,
+      );
       return {'status': 'updated', 'path': path};
     }
 
@@ -2038,7 +2412,11 @@ class VirtualWorkspaceService {
         'activeId': await QPersonalityService.instance.getActiveId(),
         'note': '个性已更新，下轮对话生效',
       };
-      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, updatedData);
+      WorkspaceEventBus.instance.emit(
+        path,
+        WorkspaceChangeType.updated,
+        updatedData,
+      );
       return {'status': 'updated', 'path': path, 'data': updatedData};
     }
 
@@ -2046,7 +2424,8 @@ class VirtualWorkspaceService {
       List<dynamic> list;
       if (decoded is List) {
         list = decoded;
-      } else if (decoded is Map<String, dynamic> && decoded['shortcuts'] is List) {
+      } else if (decoded is Map<String, dynamic> &&
+          decoded['shortcuts'] is List) {
         list = decoded['shortcuts'] as List;
       } else if (decoded is Map<String, dynamic>) {
         list = [decoded];
@@ -2069,7 +2448,8 @@ class VirtualWorkspaceService {
           id: id,
           name: (map['name'] ?? map['label'] ?? '未命名快捷键').toString(),
           hasPopup: map['has_popup'] == 1 || map['hasPopup'] == true,
-          sortOrder: (map['sort_order'] ?? map['sortOrder'] as num?)?.toInt() ?? i,
+          sortOrder:
+              (map['sort_order'] ?? map['sortOrder'] as num?)?.toInt() ?? i,
           isVisible: map['is_visible'] != 0 && map['isVisible'] != false,
           createdAt: currentMap[id]?.createdAt ?? now,
           updatedAt: now,
@@ -2110,12 +2490,70 @@ class VirtualWorkspaceService {
         map['id'] = id;
         final now = DateTime.now();
         final name = (map['name'] ?? map['title'] ?? '未命名习惯').toString();
-        final startTime = (map['start_time'] ?? map['startTime'] ?? '08:00').toString();
-        final endTime = (map['end_time'] ?? map['endTime'] ?? '').toString();
-        final isTimePoint = map['is_time_point'] == 1 || map['isTimePoint'] == true;
+        final isTimePoint =
+            map['is_time_point'] == 1 || map['isTimePoint'] == true;
         final content = map['content']?.toString();
         final isEnabled = map['is_enabled'] != 0 && map['isEnabled'] != false;
-        final sortOrder = (map['sort_order'] ?? map['sortOrder'] as num?)?.toInt() ?? i;
+        final sortOrder =
+            (map['sort_order'] ?? map['sortOrder'] as num?)?.toInt() ?? i;
+
+        // 解析多时间段（兼顾标准 timePeriods、下划线 time_periods，以及模型自拟的 timeSlots / periods）
+        List<TimePeriod> periods = [];
+        dynamic rawPeriods =
+            map['timePeriods'] ??
+            map['time_periods'] ??
+            map['timeSlots'] ??
+            map['periods'];
+        if (rawPeriods is String && rawPeriods.isNotEmpty) {
+          try {
+            rawPeriods = jsonDecode(rawPeriods);
+          } catch (_) {}
+        }
+        if (rawPeriods is List) {
+          for (final p in rawPeriods) {
+            if (p is Map) {
+              final s =
+                  (p['startTime'] ?? p['start_time'] ?? p['start'] ?? '08:00')
+                      .toString();
+              final e = (p['endTime'] ?? p['end_time'] ?? p['end'] ?? '')
+                  .toString();
+              periods.add(
+                TimePeriod(startTime: s, endTime: isTimePoint ? '' : e),
+              );
+            }
+          }
+        }
+
+        // 如果没有提供多时段数组，则使用顶层的 start_time/startTime 与 end_time/endTime
+        final fallbackStart = (map['start_time'] ?? map['startTime'] ?? '08:00')
+            .toString();
+        final fallbackEnd = (map['end_time'] ?? map['endTime'] ?? '')
+            .toString();
+
+        if (periods.isEmpty) {
+          periods.add(
+            TimePeriod(
+              startTime: fallbackStart,
+              endTime: isTimePoint ? '' : fallbackEnd,
+            ),
+          );
+        }
+
+        final startTime = periods.first.startTime;
+        final endTime = isTimePoint ? '' : periods.first.endTime;
+
+        List<String> tags = currentMap[id]?.tags ?? [];
+        if (map['tags'] is List) {
+          tags = (map['tags'] as List).map((e) => e.toString()).toList();
+        } else if (map['tags'] is String &&
+            (map['tags'] as String).isNotEmpty) {
+          try {
+            final decodedTags = jsonDecode(map['tags'] as String);
+            if (decodedTags is List) {
+              tags = decodedTags.map((e) => e.toString()).toList();
+            }
+          } catch (_) {}
+        }
 
         final template = FixedEventTemplate(
           id: id,
@@ -2124,8 +2562,11 @@ class VirtualWorkspaceService {
           endTime: endTime,
           isTimePoint: isTimePoint,
           content: content,
+          tags: tags,
+          tagFields: currentMap[id]?.tagFields ?? {},
           sortOrder: sortOrder,
           isEnabled: isEnabled,
+          timePeriods: periods,
           createdAt: currentMap[id]?.createdAt ?? now,
           updatedAt: now,
         );
@@ -2157,11 +2598,13 @@ class VirtualWorkspaceService {
       if (newWeight == null || newWeight <= 0) {
         throw Exception('weight.json 必须包含有效的 weight 数值（例如: {"weight": 68.5}）');
       }
-      final profile = await _configRepo.getUserProfile() ?? UserProfile(
-        id: const Uuid().v4(),
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      );
+      final profile =
+          await _configRepo.getUserProfile() ??
+          UserProfile(
+            id: const Uuid().v4(),
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          );
       final record = WeightRecord(
         id: const Uuid().v4(),
         weight: newWeight,
@@ -2171,8 +2614,16 @@ class VirtualWorkspaceService {
         weightHistory: [...profile.weightHistory, record],
       );
       await _configRepo.saveUserProfile(updatedProfile);
-      WorkspaceEventBus.instance.emit('/settings/profile.json', WorkspaceChangeType.updated, updatedProfile);
-      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, record);
+      WorkspaceEventBus.instance.emit(
+        '/settings/profile.json',
+        WorkspaceChangeType.updated,
+        updatedProfile,
+      );
+      WorkspaceEventBus.instance.emit(
+        path,
+        WorkspaceChangeType.updated,
+        record,
+      );
       return {
         'status': 'created',
         'path': path,
@@ -2190,10 +2641,12 @@ class VirtualWorkspaceService {
       mergedMap.addAll(decoded);
 
       // 类型归一化：若模型传入原生 List/Map，转换为 JSON 字符串以防 ClassCastException
-      if (mergedMap['weight_history'] != null && mergedMap['weight_history'] is! String) {
+      if (mergedMap['weight_history'] != null &&
+          mergedMap['weight_history'] is! String) {
         mergedMap['weight_history'] = jsonEncode(mergedMap['weight_history']);
       }
-      if (mergedMap['custom_fields'] != null && mergedMap['custom_fields'] is! String) {
+      if (mergedMap['custom_fields'] != null &&
+          mergedMap['custom_fields'] is! String) {
         mergedMap['custom_fields'] = jsonEncode(mergedMap['custom_fields']);
       }
 
@@ -2205,7 +2658,11 @@ class VirtualWorkspaceService {
 
       final profile = UserProfile.fromMap(mergedMap);
       await _configRepo.saveUserProfile(profile);
-      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, profile);
+      WorkspaceEventBus.instance.emit(
+        path,
+        WorkspaceChangeType.updated,
+        profile,
+      );
       return {'status': 'updated', 'path': path, 'name': profile.name};
     }
 
@@ -2235,7 +2692,11 @@ class VirtualWorkspaceService {
           continue;
         }
 
-        if (rawColor == null || rawColor.isEmpty || rawColor == 'none' || rawColor == 'clear' || rawColor == '清除') {
+        if (rawColor == null ||
+            rawColor.isEmpty ||
+            rawColor == 'none' ||
+            rawColor == 'clear' ||
+            rawColor == '清除') {
           await _colorMarkRepo.deleteByDate(date);
           processed++;
           continue;
@@ -2256,7 +2717,8 @@ class VirtualWorkspaceService {
         } else {
           final c = _parseColor(rawColor);
           if (c != null) {
-            hexColor = '#${c.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase()}';
+            hexColor =
+                '#${c.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase()}';
           }
         }
 
@@ -2269,8 +2731,16 @@ class VirtualWorkspaceService {
         processed++;
       }
 
-      WorkspaceEventBus.instance.emit('/settings/color_marks.json', WorkspaceChangeType.updated, {'count': processed});
-      WorkspaceEventBus.instance.emit('/timeline/', WorkspaceChangeType.updated, {'count': processed});
+      WorkspaceEventBus.instance.emit(
+        '/settings/color_marks.json',
+        WorkspaceChangeType.updated,
+        {'count': processed},
+      );
+      WorkspaceEventBus.instance.emit(
+        '/timeline/',
+        WorkspaceChangeType.updated,
+        {'count': processed},
+      );
       return {'status': 'updated', 'path': path, 'count': processed};
     }
 
@@ -2288,14 +2758,21 @@ class VirtualWorkspaceService {
 
       final webdav = WebdavConfig.fromMap(mergedMap);
       await _configRepo.upsertWebdavConfig(webdav);
-      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, webdav);
+      WorkspaceEventBus.instance.emit(
+        path,
+        WorkspaceChangeType.updated,
+        webdav,
+      );
       return {'status': 'updated', 'path': path};
     }
 
     throw Exception('不支持修改此配置: $path');
   }
 
-  Future<Map<String, dynamic>> _writeFoldersFile(String path, String content) async {
+  Future<Map<String, dynamic>> _writeFoldersFile(
+    String path,
+    String content,
+  ) async {
     final name = path.substring('/folders/'.length).trim();
     dynamic decoded;
     try {
@@ -2304,7 +2781,9 @@ class VirtualWorkspaceService {
       throw Exception('分类配置必须为合法 JSON 格式: $e');
     }
 
-    final type = name == 'todos.json' ? 'todo' : (name == 'notes.json' ? 'note' : null);
+    final type = name == 'todos.json'
+        ? 'todo'
+        : (name == 'notes.json' ? 'note' : null);
     if (type == null) {
       throw Exception('不支持修改的分类配置: $path');
     }
@@ -2332,8 +2811,10 @@ class VirtualWorkspaceService {
       if (rawName.isEmpty) continue;
 
       final id = map['id']?.toString() ?? const Uuid().v4();
-      final parentId = map['parentId']?.toString() ?? map['parent_id']?.toString();
-      final sortOrder = (map['sortOrder'] ?? map['sort_order'] as num?)?.toInt() ?? i;
+      final parentId =
+          map['parentId']?.toString() ?? map['parent_id']?.toString();
+      final sortOrder =
+          (map['sortOrder'] ?? map['sort_order'] as num?)?.toInt() ?? i;
       final isExpanded = map['isExpanded'] != false && map['is_expanded'] != 0;
       final now = DateTime.now();
 
@@ -2356,11 +2837,17 @@ class VirtualWorkspaceService {
       count++;
     }
 
-    WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, {'type': type, 'count': count});
+    WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, {
+      'type': type,
+      'count': count,
+    });
     return {'status': 'updated', 'path': path, 'type': type, 'count': count};
   }
 
-  Future<Map<String, dynamic>> _writeChatsFile(String path, String content) async {
+  Future<Map<String, dynamic>> _writeChatsFile(
+    String path,
+    String content,
+  ) async {
     final name = path.substring('/chats/'.length).trim();
     if (name != 'sessions.json') {
       throw Exception('不支持修改的会话文件: $path');
@@ -2389,7 +2876,8 @@ class VirtualWorkspaceService {
       if (item is! Map<String, dynamic>) continue;
       final id = item['id']?.toString();
       final newTitle = item['title']?.toString().trim();
-      if (id == null || id.isEmpty || newTitle == null || newTitle.isEmpty) continue;
+      if (id == null || id.isEmpty || newTitle == null || newTitle.isEmpty)
+        continue;
 
       final existing = await _configRepo.getChatSession(id);
       if (existing != null) {
@@ -2402,17 +2890,29 @@ class VirtualWorkspaceService {
       }
     }
 
-    WorkspaceEventBus.instance.emit('/chats/sessions.json', WorkspaceChangeType.updated, {'count': updatedCount});
+    WorkspaceEventBus.instance.emit(
+      '/chats/sessions.json',
+      WorkspaceChangeType.updated,
+      {'count': updatedCount},
+    );
     return {'status': 'updated', 'path': path, 'updated_count': updatedCount};
   }
 
   /// 写入 /stats/ 下的评分数据
-  Future<Map<String, dynamic>> _writeStatsFile(String path, String content) async {
+  Future<Map<String, dynamic>> _writeStatsFile(
+    String path,
+    String content,
+  ) async {
     if (!path.startsWith('/stats/scores/')) {
-      throw Exception('当前统计路径不支持直接覆写: $path（宏观汇总 summary.json / daily_scores.json 仅供读取，若要给某天评分或修改分数，请写入单日路径: /stats/scores/YYYY-MM-DD.json）');
+      throw Exception(
+        '当前统计路径不支持直接覆写: $path（宏观汇总 summary.json / daily_scores.json 仅供读取，若要给某天评分或修改分数，请写入单日路径: /stats/scores/YYYY-MM-DD.json）',
+      );
     }
 
-    final dateStr = path.substring('/stats/scores/'.length).replaceAll('.json', '').trim();
+    final dateStr = path
+        .substring('/stats/scores/'.length)
+        .replaceAll('.json', '')
+        .trim();
     DateTime date;
     try {
       date = DateTime.parse(dateStr);
@@ -2432,14 +2932,18 @@ class VirtualWorkspaceService {
     }
 
     // 解析总分 totalScore（0-100）
-    final rawTotal = decoded['totalScore'] ?? decoded['total_score'] ?? decoded['score'];
+    final rawTotal =
+        decoded['totalScore'] ?? decoded['total_score'] ?? decoded['score'];
     int totalScore = 60;
     if (rawTotal is num) {
       totalScore = rawTotal.toInt().clamp(0, 100);
     }
 
     // 解析维度分 dimensionScores
-    final rawDims = decoded['dimensionScores'] ?? decoded['dimension_scores'] ?? decoded['dimensions'];
+    final rawDims =
+        decoded['dimensionScores'] ??
+        decoded['dimension_scores'] ??
+        decoded['dimensions'];
     final Map<String, int> dimensionScores = {};
     if (rawDims is Map) {
       for (final entry in rawDims.entries) {
@@ -2458,7 +2962,9 @@ class VirtualWorkspaceService {
 
     // 总结与建议
     final summary = (decoded['summary'] ?? '').toString().trim();
-    final suggestions = (decoded['suggestions'] ?? decoded['suggestion'] ?? '').toString().trim();
+    final suggestions = (decoded['suggestions'] ?? decoded['suggestion'] ?? '')
+        .toString()
+        .trim();
 
     // 记录数量
     int recordCount = 0;
@@ -2479,7 +2985,9 @@ class VirtualWorkspaceService {
         totalScore: totalScore,
         dimensionScores: dimensionScores,
         summary: summary.isNotEmpty ? summary : existing.summary,
-        suggestions: suggestions.isNotEmpty ? suggestions : existing.suggestions,
+        suggestions: suggestions.isNotEmpty
+            ? suggestions
+            : existing.suggestions,
         recordCount: recordCount > 0 ? recordCount : existing.recordCount,
         updatedAt: DateTime.now(),
       );
@@ -2505,7 +3013,9 @@ class VirtualWorkspaceService {
     // 触发工作区总线广播（通知 UI 刷新每日评分图表）
     WorkspaceEventBus.instance.emit(
       path,
-      op == 'created' ? WorkspaceChangeType.created : WorkspaceChangeType.updated,
+      op == 'created'
+          ? WorkspaceChangeType.created
+          : WorkspaceChangeType.updated,
       savedScore,
     );
     WorkspaceEventBus.instance.emit(
@@ -2531,9 +3041,11 @@ class VirtualWorkspaceService {
     if (raw is int) return Color(raw);
     if (raw is String) {
       final s = raw.trim().toLowerCase();
-      if (s == 'classic_blue' || s == 'blue' || s == '经典蓝') return const Color(0xFF005BCB);
+      if (s == 'classic_blue' || s == 'blue' || s == '经典蓝')
+        return const Color(0xFF005BCB);
       if (s == 'yellow_green' || s == '荧光黄绿') return const Color(0xFFC5E803);
-      if (s == 'pink' || s == 'rose' || s == '玫瑰粉红') return const Color(0xFFE91E8C);
+      if (s == 'pink' || s == 'rose' || s == '玫瑰粉红')
+        return const Color(0xFFE91E8C);
       if (s == 'green' || s == '春天亮绿') return const Color(0xFF00E676);
       var hex = s.replaceAll('#', '').replaceAll('0x', '');
       if (hex.length == 6) hex = 'ff$hex';
@@ -2555,8 +3067,10 @@ class VirtualWorkspaceService {
   ThemeMode _parseThemeMode(dynamic raw) {
     if (raw == null) return ThemeMode.system;
     final s = raw.toString().trim().toLowerCase();
-    if (s == 'dark' || s == '深色' || s == '暗色' || s == '夜间' || s == '黑') return ThemeMode.dark;
-    if (s == 'light' || s == '浅色' || s == '明亮' || s == '日间' || s == '白') return ThemeMode.light;
+    if (s == 'dark' || s == '深色' || s == '暗色' || s == '夜间' || s == '黑')
+      return ThemeMode.dark;
+    if (s == 'light' || s == '浅色' || s == '明亮' || s == '日间' || s == '白')
+      return ThemeMode.light;
     return ThemeMode.system;
   }
 
@@ -2617,11 +3131,17 @@ class VirtualWorkspaceService {
     if (path.startsWith('/todos/')) {
       // 1. 如果路径是分类目录（以 '/' 结尾或没有 .md 后缀）
       if (!path.endsWith('.md')) {
-        final folderName = path.substring('/todos/'.length).replaceAll('/', '').trim();
+        final folderName = path
+            .substring('/todos/'.length)
+            .replaceAll('/', '')
+            .trim();
         final folders = await _folderRepo.getByType('todo');
-        final matched = folders.where((f) => f.name == folderName || f.id == folderName).firstOrNull;
+        final matched = folders
+            .where((f) => f.name == folderName || f.id == folderName)
+            .firstOrNull;
         if (matched != null) {
-          if (matched.id == 'todo_default_today' || matched.id == 'todo_default_longterm') {
+          if (matched.id == 'todo_default_today' ||
+              matched.id == 'todo_default_longterm') {
             throw Exception('系统默认分类不可删除: ${matched.name}');
           }
           final allTodos = await _todoRepo.getAll();
@@ -2635,21 +3155,48 @@ class VirtualWorkspaceService {
           // 分类本身为硬删除，捕获分类清单快照以便撤回时重建
           await _captureUndoState('/folders/todos.json');
           await _folderRepo.delete(matched.id);
-          WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.deleted, matched);
-          WorkspaceEventBus.instance.emit('/folders/todos.json', WorkspaceChangeType.updated, matched);
-          return {'status': 'deleted', 'path': path, 'folder': matched.name, 'todos_deleted': deletedCount};
+          WorkspaceEventBus.instance.emit(
+            path,
+            WorkspaceChangeType.deleted,
+            matched,
+          );
+          WorkspaceEventBus.instance.emit(
+            '/folders/todos.json',
+            WorkspaceChangeType.updated,
+            matched,
+          );
+          return {
+            'status': 'deleted',
+            'path': path,
+            'folder': matched.name,
+            'todos_deleted': deletedCount,
+          };
         }
       }
 
       // 2. 单个待办文件删除
       final segments = path.substring('/todos/'.length).split('/');
-      final rawTitle = segments.last.replaceAll('.md', '').replaceAll(RegExp(r'^\[[ x]\]\s*'), '').trim();
+      final rawTitle = segments.last
+          .replaceAll('.md', '')
+          .replaceAll(RegExp(r'^\[[ x]\]\s*'), '')
+          .trim();
       final allTodos = await _todoRepo.getAll();
-      final matched = allTodos.where((t) => t.id == rawTitle || t.title.trim() == rawTitle).firstOrNull;
+      final matched = allTodos
+          .where((t) => t.id == rawTitle || t.title.trim() == rawTitle)
+          .firstOrNull;
       if (matched != null) {
         await _todoRepo.softDelete(matched.id);
-        WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.deleted, matched);
-        return {'status': 'deleted', 'path': path, 'id': matched.id, 'title': matched.title};
+        WorkspaceEventBus.instance.emit(
+          path,
+          WorkspaceChangeType.deleted,
+          matched,
+        );
+        return {
+          'status': 'deleted',
+          'path': path,
+          'id': matched.id,
+          'title': matched.title,
+        };
       }
       throw Exception('未找到要删除的待办: $path');
     }
@@ -2657,9 +3204,14 @@ class VirtualWorkspaceService {
     if (path.startsWith('/notes/')) {
       // 1. 如果路径是笔记本分类目录（以 '/' 结尾或没有 .md 后缀）
       if (!path.endsWith('.md')) {
-        final folderName = path.substring('/notes/'.length).replaceAll('/', '').trim();
+        final folderName = path
+            .substring('/notes/'.length)
+            .replaceAll('/', '')
+            .trim();
         final folders = await _folderRepo.getByType('note');
-        final matched = folders.where((f) => f.name == folderName || f.id == folderName).firstOrNull;
+        final matched = folders
+            .where((f) => f.name == folderName || f.id == folderName)
+            .firstOrNull;
         if (matched != null) {
           final allNotes = await _noteRepo.getAll();
           int deletedCount = 0;
@@ -2672,9 +3224,22 @@ class VirtualWorkspaceService {
           // 分类本身为硬删除，捕获分类清单快照以便撤回时重建
           await _captureUndoState('/folders/notes.json');
           await _folderRepo.delete(matched.id);
-          WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.deleted, matched);
-          WorkspaceEventBus.instance.emit('/folders/notes.json', WorkspaceChangeType.updated, matched);
-          return {'status': 'deleted', 'path': path, 'folder': matched.name, 'notes_deleted': deletedCount};
+          WorkspaceEventBus.instance.emit(
+            path,
+            WorkspaceChangeType.deleted,
+            matched,
+          );
+          WorkspaceEventBus.instance.emit(
+            '/folders/notes.json',
+            WorkspaceChangeType.updated,
+            matched,
+          );
+          return {
+            'status': 'deleted',
+            'path': path,
+            'folder': matched.name,
+            'notes_deleted': deletedCount,
+          };
         }
       }
 
@@ -2682,17 +3247,31 @@ class VirtualWorkspaceService {
       final segments = path.substring('/notes/'.length).split('/');
       final rawTitle = segments.last.replaceAll('.md', '').trim();
       final allNotes = await _noteRepo.getAll();
-      final matched = allNotes.where((n) => n.id == rawTitle || n.title.trim() == rawTitle).firstOrNull;
+      final matched = allNotes
+          .where((n) => n.id == rawTitle || n.title.trim() == rawTitle)
+          .firstOrNull;
       if (matched != null) {
         await _noteRepo.softDelete(matched.id);
-        WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.deleted, matched);
-        return {'status': 'deleted', 'path': path, 'id': matched.id, 'title': matched.title};
+        WorkspaceEventBus.instance.emit(
+          path,
+          WorkspaceChangeType.deleted,
+          matched,
+        );
+        return {
+          'status': 'deleted',
+          'path': path,
+          'id': matched.id,
+          'title': matched.title,
+        };
       }
       throw Exception('未找到要删除的笔记: $path');
     }
 
     if (path.startsWith('/journal/')) {
-      final dateStr = path.substring('/journal/'.length).replaceAll('.md', '').trim();
+      final dateStr = path
+          .substring('/journal/'.length)
+          .replaceAll('.md', '')
+          .trim();
       DateTime date;
       try {
         date = DateTime.parse(dateStr);
@@ -2704,7 +3283,10 @@ class VirtualWorkspaceService {
         throw Exception('日期 $dateStr 尚未记录日记，无需删除');
       }
       await _journalService.saveJournal(date, '');
-      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.deleted, {'date': dateStr, 'id': existing.id});
+      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.deleted, {
+        'date': dateStr,
+        'id': existing.id,
+      });
       return {
         'status': 'deleted',
         'path': path,
@@ -2714,7 +3296,10 @@ class VirtualWorkspaceService {
     }
 
     if (path.startsWith('/timeline/')) {
-      final subPath = path.substring('/timeline/'.length).replaceAll('.md', '').trim();
+      final subPath = path
+          .substring('/timeline/'.length)
+          .replaceAll('.md', '')
+          .trim();
       final dateRegex = RegExp(r'^\d{4}-\d{2}-\d{2}$');
 
       // 1. 如果路径是按日期格式（如 /timeline/2026-09-11.md），则删除该整天所有时间线记录
@@ -2727,7 +3312,10 @@ class VirtualWorkspaceService {
         for (final r in records) {
           await _diaryRepo.softDelete(r.id);
         }
-        WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.deleted, {'date': subPath, 'count': records.length});
+        WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.deleted, {
+          'date': subPath,
+          'count': records.length,
+        });
         return {
           'status': 'deleted',
           'path': path,
@@ -2743,7 +3331,11 @@ class VirtualWorkspaceService {
         final record = await _diaryRepo.getById(recordId);
         if (record != null) {
           await _diaryRepo.softDelete(record.id);
-          WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.deleted, record);
+          WorkspaceEventBus.instance.emit(
+            path,
+            WorkspaceChangeType.deleted,
+            record,
+          );
           return {
             'status': 'deleted',
             'path': path,
@@ -2754,19 +3346,25 @@ class VirtualWorkspaceService {
         }
       }
 
-      throw Exception('未找到对应的时间线记录或无效的日期路径: $path (必须为 /timeline/YYYY-MM-DD.md 或 /timeline/<id>.md)');
+      throw Exception(
+        '未找到对应的时间线记录或无效的日期路径: $path (必须为 /timeline/YYYY-MM-DD.md 或 /timeline/<id>.md)',
+      );
     }
 
     if (path.startsWith('/memory/')) {
       final category = AgentMemoryCategory.fromPath(path);
       if (category == null) {
-        throw Exception('未知的记忆文件: $path（仅支持 /memory/user.md 与 /memory/agent.md）');
+        throw Exception(
+          '未知的记忆文件: $path（仅支持 /memory/user.md 与 /memory/agent.md）',
+        );
       }
       // 删除记忆文档 = 清空全部条目（保留分类本身，可随时重新写入）
       await _configRepo.saveAgentMemory(
         AgentMemoryDocument(category: category, content: ''),
       );
-      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.deleted, {'category': category});
+      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.deleted, {
+        'category': category,
+      });
       return {
         'status': 'deleted',
         'path': path,
@@ -2774,8 +3372,23 @@ class VirtualWorkspaceService {
       };
     }
 
+    if (path.startsWith('/quick_prompts/')) {
+      // 删除 = 清空全部提示词（列表本身可随时重新写入）
+      await QuickPromptService.instance.setPrompts([]);
+      WorkspaceEventBus.instance.emit(
+        '/quick_prompts/prompts.md',
+        WorkspaceChangeType.deleted,
+        {'cleared': true},
+      );
+      return {'status': 'deleted', 'path': path, 'title': '常用提示词已清空'};
+    }
+
     if (path.startsWith('/skills/')) {
-      final name = path.substring('/skills/'.length).trim().replaceAll(RegExp(r'\.md$'), '').trim();
+      final name = path
+          .substring('/skills/'.length)
+          .trim()
+          .replaceAll(RegExp(r'\.md$'), '')
+          .trim();
       if (name.isEmpty || name.contains('/')) {
         throw Exception('非法的技能路径: $path（应为 /skills/<名称>.md）');
       }
@@ -2799,14 +3412,21 @@ class VirtualWorkspaceService {
       final id = segments.last.replaceAll('.json', '').trim();
       if (id.isNotEmpty) {
         await _configRepo.softDeleteChatSession(id);
-        WorkspaceEventBus.instance.emit('/chats/sessions.json', WorkspaceChangeType.deleted, {'id': id});
+        WorkspaceEventBus.instance.emit(
+          '/chats/sessions.json',
+          WorkspaceChangeType.deleted,
+          {'id': id},
+        );
         return {'status': 'deleted', 'path': path, 'id': id};
       }
       throw Exception('未指定要删除的会话 ID: $path (例如: /chats/<session_id>.json)');
     }
 
     if (path.startsWith('/stats/scores/')) {
-      final dateStr = path.substring('/stats/scores/'.length).replaceAll('.json', '').trim();
+      final dateStr = path
+          .substring('/stats/scores/'.length)
+          .replaceAll('.json', '')
+          .trim();
       DateTime date;
       try {
         date = DateTime.parse(dateStr);
@@ -2816,9 +3436,21 @@ class VirtualWorkspaceService {
       final existing = await _dailyScoreRepo.getByDate(date);
       if (existing != null) {
         await _dailyScoreRepo.delete(existing.id);
-        WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.deleted, {'id': existing.id, 'date': dateStr});
-        WorkspaceEventBus.instance.emit('/stats/daily_scores.json', WorkspaceChangeType.updated, {'id': existing.id, 'date': dateStr});
-        return {'status': 'deleted', 'path': path, 'id': existing.id, 'date': dateStr};
+        WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.deleted, {
+          'id': existing.id,
+          'date': dateStr,
+        });
+        WorkspaceEventBus.instance.emit(
+          '/stats/daily_scores.json',
+          WorkspaceChangeType.updated,
+          {'id': existing.id, 'date': dateStr},
+        );
+        return {
+          'status': 'deleted',
+          'path': path,
+          'id': existing.id,
+          'date': dateStr,
+        };
       }
       return {'status': 'noop', 'path': path, 'message': '未找到该日期的评分记录，无需删除'};
     }
@@ -2853,7 +3485,8 @@ class VirtualWorkspaceService {
   Future<Map<String, dynamic>> _moveTodo(String from, String to) async {
     final sourceKey = _entityKeyFromPath(from, '/todos/');
     final allTodos = await _todoRepo.getAll();
-    final existing = allTodos.where((t) => t.id == sourceKey).firstOrNull ??
+    final existing =
+        allTodos.where((t) => t.id == sourceKey).firstOrNull ??
         allTodos.where((t) => t.title.trim() == sourceKey).firstOrNull;
     if (existing == null) {
       throw Exception('未找到要移动的待办: $from');
@@ -2863,7 +3496,10 @@ class VirtualWorkspaceService {
     final hasFolder = segments.length >= 2;
     final folderName = hasFolder ? segments.first.trim() : '今日';
     final targetTitle = _stripTodoTitlePrefix(
-      (hasFolder ? segments.sublist(1).join('/') : segments.first).replaceAll('.md', ''),
+      (hasFolder ? segments.sublist(1).join('/') : segments.first).replaceAll(
+        '.md',
+        '',
+      ),
     );
     if (targetTitle.isEmpty) {
       throw Exception('目标待办标题不能为空: $to');
@@ -2874,7 +3510,10 @@ class VirtualWorkspaceService {
     await _captureUndoState(to);
 
     final isLongTerm = folderName == '长期';
-    final folderId = await _resolveTodoFolder(folderName, isLongTerm: isLongTerm);
+    final folderId = await _resolveTodoFolder(
+      folderName,
+      isLongTerm: isLongTerm,
+    );
     final updated = existing.copyWith(
       title: targetTitle,
       folderId: folderId,
@@ -2883,7 +3522,11 @@ class VirtualWorkspaceService {
     );
     await _todoRepo.update(updated);
     await NotificationService.instance.scheduleTodoReminder(updated);
-    WorkspaceEventBus.instance.emit(from, WorkspaceChangeType.deleted, existing);
+    WorkspaceEventBus.instance.emit(
+      from,
+      WorkspaceChangeType.deleted,
+      existing,
+    );
     WorkspaceEventBus.instance.emit(to, WorkspaceChangeType.created, updated);
     return {
       'status': 'moved',
@@ -2899,7 +3542,8 @@ class VirtualWorkspaceService {
   Future<Map<String, dynamic>> _moveNote(String from, String to) async {
     final sourceKey = _entityKeyFromPath(from, '/notes/');
     final allNotes = await _noteRepo.getAll();
-    final existing = allNotes.where((n) => n.id == sourceKey).firstOrNull ??
+    final existing =
+        allNotes.where((n) => n.id == sourceKey).firstOrNull ??
         allNotes.where((n) => n.title.trim() == sourceKey).firstOrNull;
     if (existing == null) {
       throw Exception('未找到要移动的笔记: $from');
@@ -2912,7 +3556,9 @@ class VirtualWorkspaceService {
     final segments = to.substring('/notes/'.length).split('/');
     final hasFolder = segments.length >= 2;
     final targetTitle =
-        (hasFolder ? segments.sublist(1).join('/') : segments.first).replaceAll('.md', '').trim();
+        (hasFolder ? segments.sublist(1).join('/') : segments.first)
+            .replaceAll('.md', '')
+            .trim();
     if (targetTitle.isEmpty) {
       throw Exception('目标笔记标题不能为空: $to');
     }
@@ -2921,15 +3567,20 @@ class VirtualWorkspaceService {
     await _captureUndoState(to);
 
     // 目标路径带笔记本段则移入该笔记本（不存在会自动创建）；不带则移出到根目录
-    final String? folderId =
-        hasFolder ? await _resolveOrCreateNoteFolder(segments.first.trim()) : null;
+    final String? folderId = hasFolder
+        ? await _resolveOrCreateNoteFolder(segments.first.trim())
+        : null;
     final updated = existing.copyWith(
       title: targetTitle,
       folderId: folderId,
       updatedAt: DateTime.now(),
     );
     await _noteRepo.update(updated);
-    WorkspaceEventBus.instance.emit(from, WorkspaceChangeType.deleted, existing);
+    WorkspaceEventBus.instance.emit(
+      from,
+      WorkspaceChangeType.deleted,
+      existing,
+    );
     WorkspaceEventBus.instance.emit(to, WorkspaceChangeType.created, updated);
     return {
       'status': 'moved',
@@ -2997,7 +3648,8 @@ class VirtualWorkspaceService {
       for (final t in todos) {
         if (results.length >= limit) break;
         if (!reg.hasMatch(t.title) && !reg.hasMatch(t.description)) continue;
-        final folderName = folderMap[t.folderId] ?? (t.isLongTerm ? '长期' : '今日');
+        final folderName =
+            folderMap[t.folderId] ?? (t.isLongTerm ? '长期' : '今日');
         final title = t.title.trim().isEmpty ? '未命名待办' : t.title.trim();
         results.add({
           'type': 'todo',
@@ -3061,7 +3713,8 @@ class VirtualWorkspaceService {
           continue;
         }
         final dateStr = _formatDate(r.time);
-        final timeStr = '${r.time.hour.toString().padLeft(2, '0')}:'
+        final timeStr =
+            '${r.time.hour.toString().padLeft(2, '0')}:'
             '${r.time.minute.toString().padLeft(2, '0')}';
         results.add({
           'type': 'timeline',
@@ -3122,12 +3775,17 @@ class VirtualWorkspaceService {
     // 7. 统计评分（/stats/scores/YYYY-MM-DD.json 及 /stats/daily_scores.json）
     if (inScope('stats')) {
       final now = DateTime.now();
-      final startDate = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 30));
+      final startDate = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).subtract(const Duration(days: 30));
       final scores = await _dailyScoreRepo.getByDateRange(startDate, now);
       for (final s in scores) {
         if (results.length >= limit) break;
         final dateStr = s.date.toIso8601String().substring(0, 10);
-        final fullText = '${s.summary} ${s.suggestions} 总分:${s.totalScore} 维度:${s.dimensionScores}';
+        final fullText =
+            '${s.summary} ${s.suggestions} 总分:${s.totalScore} 维度:${s.dimensionScores}';
         if (!reg.hasMatch(fullText) && !reg.hasMatch(dateStr)) continue;
         results.add({
           'type': 'stats',
@@ -3136,7 +3794,10 @@ class VirtualWorkspaceService {
           'date': dateStr,
           'totalScore': s.totalScore,
           'match': '[$dateStr] 生活评分 ${s.totalScore}分: ${s.summary}',
-          'snippet': _grepSnippet(s.summary.isNotEmpty ? s.summary : s.suggestions, reg),
+          'snippet': _grepSnippet(
+            s.summary.isNotEmpty ? s.summary : s.suggestions,
+            reg,
+          ),
         });
       }
     }

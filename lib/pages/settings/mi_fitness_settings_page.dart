@@ -29,6 +29,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
   DateTime? _lastSyncTime;
   bool _autoTimeline = true;
   bool _autoSync = true;
+  int _stepTarget = 8000; // 每日目标步数，默认 8000
 
   // 日期浏览状态
   late DateTime _selectedDate;
@@ -67,6 +68,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
     final lastSync = await syncService.getLastSyncTime();
     final autoTimeline = await syncService.getAutoCreateTimelineCards();
     final autoSync = await syncService.getAutoSync();
+    final stepTarget = await syncService.getDailyStepTarget();
 
     if (mounted) {
       setState(() {
@@ -74,6 +76,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
         _lastSyncTime = lastSync;
         _autoTimeline = autoTimeline;
         _autoSync = autoSync;
+        _stepTarget = stepTarget;
         _isLoading = false;
       });
       await _loadDateData(_selectedDate);
@@ -373,17 +376,25 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                 _buildStepsCard(context),
                 const SizedBox(height: 12),
 
-                // 4. 生理体征指标（四宫格）
-                _buildVitalsGrid(context),
+                // 4. 深度作息睡眠卡片（含比例条、阶段明细、作息区间与评分徽标）
+                _buildSleepCard(context),
                 const SizedBox(height: 12),
 
-                // 5. 单次运动记录列表
+                // 5. 心率健康深度指标卡片（静息心率、均值与极值范围、状态评估）
+                _buildHeartRateCard(context),
+                const SizedBox(height: 12),
+
+                // 6. 血氧饱和度与全天压力双联状态卡片
+                _buildSpo2AndStressRow(context),
+                const SizedBox(height: 12),
+
+                // 7. 单次运动记录列表
                 if (_selectedSports.isNotEmpty) ...[
                   _buildSportRecordsSection(context),
                   const SizedBox(height: 12),
                 ],
 
-                // 6. 基础设置（自动沉淀开关）
+                // 8. 基础设置（自动沉淀开关）
                 _buildPreferencesCard(context, isAuthed),
                 const SizedBox(height: 16),
               ],
@@ -567,7 +578,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
     }
 
     final steps = m?.steps ?? 0;
-    const targetSteps = 8000;
+    final targetSteps = _stepTarget;
     final progress = (steps / targetSteps).clamp(0.0, 1.0);
     final distanceKm = m != null
         ? (m.distanceMeters / 1000).toStringAsFixed(2)
@@ -619,7 +630,9 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                   )
                 else
                   Text(
-                    steps >= targetSteps ? '已达标' : '目标 8,000 步',
+                    steps >= targetSteps
+                        ? '已达标'
+                        : '目标 ${NumberFormat('#,###').format(targetSteps)} 步',
                     style: TextStyle(
                       fontSize: 12,
                       color: steps >= targetSteps
@@ -750,146 +763,717 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
     );
   }
 
-  Widget _buildVitalsGrid(BuildContext context) {
+  /// 睡眠监测深度分析卡片
+  Widget _buildSleepCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final m = _selectedMetrics;
 
+    const sleepPurple = Color(0xFF8B5CF6);
     final sleepMins = m?.sleepDurationMinutes ?? 0;
-    final sleepStr = sleepMins > 0
-        ? '${sleepMins ~/ 60}h ${sleepMins % 60}m'
-        : '--';
-    final sleepSub = (m?.deepSleepMinutes ?? 0) > 0
-        ? '深睡 ${m!.deepSleepMinutes}m'
-        : '作息监测';
+    final deepMins = m?.deepSleepMinutes ?? 0;
+    final lightMins = m?.lightSleepMinutes ?? 0;
+    final remMins = m?.remSleepMinutes ?? 0;
+    final awakeMins = m?.awakeMinutes ?? 0;
+    final sleepScore = m?.sleepScore;
 
-    final hrStr = m?.avgHeartRate != null && m!.avgHeartRate! > 0
-        ? '${m.avgHeartRate} bpm'
-        : '--';
-    final hrSub = m?.restingHeartRate != null
-        ? '静息 ${m!.restingHeartRate}'
-        : '连续心率';
+    final startStr = _formatSleepTime(m?.sleepStartTime);
+    final endStr = _formatSleepTime(m?.sleepEndTime);
+    final hasTimeRange = startStr != null && endStr != null;
 
-    final spo2Str = m?.avgSpo2 != null && m!.avgSpo2! > 0
-        ? '${m.avgSpo2}%'
-        : '--';
-    final spo2Sub = (m?.minSpo2 ?? 0) > 0 ? '最低 ${m!.minSpo2}%' : '血氧饱和度';
+    final totalStages = deepMins + lightMins + remMins + awakeMins;
+    final calcTotal = totalStages > 0 ? totalStages : (sleepMins > 0 ? sleepMins : 1);
 
-    final stressStr = m?.avgStress != null && m!.avgStress! > 0
-        ? '${m.avgStress}'
-        : '--';
-    final stressSub = m?.maxStress != null ? '最高 ${m!.maxStress}' : '压力指数';
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.large),
+        side: BorderSide(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 头部：图标 + 标题 + 作息时间 + 睡眠时长 + 评分
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: sleepPurple.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.nightlight_round,
+                    size: 18,
+                    color: sleepPurple,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '作息睡眠',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                if (hasTimeRange) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '$startStr ~ $endStr',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontSize: 11,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+                const Spacer(),
+                if (sleepMins > 0) ...[
+                  Text(
+                    '${sleepMins ~/ 60}小时${sleepMins % 60}分',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: sleepPurple,
+                    ),
+                  ),
+                  if (sleepScore != null && sleepScore > 0) ...[
+                    const SizedBox(width: 6),
+                    _buildSleepScoreBadge(sleepScore),
+                  ],
+                ] else
+                  Text(
+                    '未检测到',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.outline,
+                    ),
+                  ),
+              ],
+            ),
 
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      crossAxisSpacing: 10,
-      mainAxisSpacing: 10,
-      childAspectRatio: 2.1,
-      children: [
-        _buildVitalTile(
-          context,
-          title: '睡眠',
-          value: sleepStr,
-          sub: sleepSub,
-          icon: Icons.bedtime_rounded,
-          color: Colors.purple,
+            if (sleepMins > 0) ...[
+              const SizedBox(height: 14),
+              // 睡眠分期比例条
+              ClipRRect(
+                borderRadius: BorderRadius.circular(5),
+                child: SizedBox(
+                  height: 10,
+                  child: Row(
+                    children: [
+                      if (deepMins > 0)
+                        Expanded(
+                          flex: (deepMins * 100 ~/ calcTotal).clamp(1, 100),
+                          child: Container(
+                            color: const Color(0xFF6366F1), // 深睡
+                          ),
+                        ),
+                      if (lightMins > 0)
+                        Expanded(
+                          flex: (lightMins * 100 ~/ calcTotal).clamp(1, 100),
+                          child: Container(
+                            color: const Color(0xFFA855F7), // 浅睡
+                          ),
+                        ),
+                      if (remMins > 0)
+                        Expanded(
+                          flex: (remMins * 100 ~/ calcTotal).clamp(1, 100),
+                          child: Container(
+                            color: const Color(0xFF38BDF8), // REM
+                          ),
+                        ),
+                      if (awakeMins > 0)
+                        Expanded(
+                          flex: (awakeMins * 100 ~/ calcTotal).clamp(1, 100),
+                          child: Container(
+                            color: const Color(0xFFCBD5E1), // 清醒
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+              // 4分期指标网格
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildSleepStageItem(
+                      context,
+                      label: '深睡',
+                      minutes: deepMins,
+                      pct: calcTotal > 0 ? (deepMins * 100 ~/ calcTotal) : 0,
+                      color: const Color(0xFF6366F1),
+                    ),
+                  ),
+                  Expanded(
+                    child: _buildSleepStageItem(
+                      context,
+                      label: '浅睡',
+                      minutes: lightMins,
+                      pct: calcTotal > 0 ? (lightMins * 100 ~/ calcTotal) : 0,
+                      color: const Color(0xFFA855F7),
+                    ),
+                  ),
+                  Expanded(
+                    child: _buildSleepStageItem(
+                      context,
+                      label: '快速眼动',
+                      minutes: remMins,
+                      pct: calcTotal > 0 ? (remMins * 100 ~/ calcTotal) : 0,
+                      color: const Color(0xFF38BDF8),
+                    ),
+                  ),
+                  Expanded(
+                    child: _buildSleepStageItem(
+                      context,
+                      label: '清醒',
+                      minutes: awakeMins,
+                      pct: calcTotal > 0 ? (awakeMins * 100 ~/ calcTotal) : 0,
+                      color: const Color(0xFF94A3B8),
+                    ),
+                  ),
+                ],
+              ),
+            ] else ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '当天暂无睡眠监测数据，佩戴手环/手表入睡后将自动同步睡眠分期与分析',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+          ],
         ),
-        _buildVitalTile(
-          context,
-          title: '心率',
-          value: hrStr,
-          sub: hrSub,
-          icon: Icons.favorite_rounded,
-          color: Colors.red,
-        ),
-        _buildVitalTile(
-          context,
-          title: '血氧',
-          value: spo2Str,
-          sub: spo2Sub,
-          icon: Icons.bloodtype_rounded,
-          color: Colors.teal,
-        ),
-        _buildVitalTile(
-          context,
-          title: '压力',
-          value: stressStr,
-          sub: stressSub,
-          icon: Icons.mood_rounded,
-          color: Colors.orange,
-        ),
-      ],
+      ),
     );
   }
 
-  Widget _buildVitalTile(
+  Widget _buildSleepScoreBadge(int score) {
+    Color badgeColor;
+    String scoreText;
+    if (score >= 90) {
+      badgeColor = const Color(0xFF10B981);
+      scoreText = '$score分 极佳';
+    } else if (score >= 75) {
+      badgeColor = const Color(0xFF8B5CF6);
+      scoreText = '$score分 良好';
+    } else if (score >= 60) {
+      badgeColor = const Color(0xFFF59E0B);
+      scoreText = '$score分 一般';
+    } else {
+      badgeColor = const Color(0xFFEF4444);
+      scoreText = '$score分 偏低';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: badgeColor.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: badgeColor.withValues(alpha: 0.25),
+          width: 0.8,
+        ),
+      ),
+      child: Text(
+        scoreText,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          color: badgeColor,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSleepStageItem(
     BuildContext context, {
-    required String title,
-    required String value,
-    required String sub,
-    required IconData icon,
+    required String label,
+    required int minutes,
+    required int pct,
     required Color color,
   }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+    final hours = minutes ~/ 60;
+    final remainMins = minutes % 60;
+    final timeStr = hours > 0 ? '${hours}h ${remainMins}m' : '${remainMins}m';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                fontSize: 11,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 3),
+        Text(
+          timeStr,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
+          ),
+        ),
+        Text(
+          '$pct%',
+          style: TextStyle(
+            fontSize: 10,
+            color: colorScheme.outline,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 心率健康卡片
+  Widget _buildHeartRateCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final m = _selectedMetrics;
+
+    const hrColor = Color(0xFFEF4444);
+    final avgHr = m?.avgHeartRate;
+    final restingHr = m?.restingHeartRate;
+    final minHr = m?.minHeartRate;
+    final maxHr = m?.maxHeartRate;
+
+    final hasHrData = (avgHr != null && avgHr > 0) ||
+        (restingHr != null && restingHr > 0);
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.large),
+        side: BorderSide(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
         ),
       ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, size: 16, color: color),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 头部
+            Row(
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      title,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                        fontSize: 11,
-                      ),
-                    ),
-                    Text(
-                      sub,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.outline,
-                        fontSize: 9,
-                      ),
-                    ),
-                  ],
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: hrColor.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.favorite_rounded,
+                    size: 18,
+                    color: hrColor,
+                  ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(width: 8),
                 Text(
-                  value,
+                  '心率健康',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+                const Spacer(),
+                if (hasHrData)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        avgHr != null ? '$avgHr' : '--',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: hrColor,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      Text(
+                        'bpm 平均',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.outline,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  Text(
+                    '暂无数据',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.outline,
+                    ),
+                  ),
               ],
             ),
-          ),
-        ],
+
+            const SizedBox(height: 14),
+
+            // 指标三列
+            Row(
+              children: [
+                Expanded(
+                  child: _buildMetricTile(
+                    context,
+                    label: '静息心率',
+                    value: restingHr != null && restingHr > 0
+                        ? '$restingHr'
+                        : '--',
+                    unit: 'bpm',
+                    tag: restingHr != null && restingHr > 0 && restingHr <= 75
+                        ? '优质'
+                        : null,
+                    tagColor: Colors.green,
+                  ),
+                ),
+                Expanded(
+                  child: _buildMetricTile(
+                    context,
+                    label: '全天最低',
+                    value: minHr != null && minHr > 0 ? '$minHr' : '--',
+                    unit: 'bpm',
+                  ),
+                ),
+                Expanded(
+                  child: _buildMetricTile(
+                    context,
+                    label: '全天最高',
+                    value: maxHr != null && maxHr > 0 ? '$maxHr' : '--',
+                    unit: 'bpm',
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  /// 血氧与压力双联卡片
+  Widget _buildSpo2AndStressRow(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final m = _selectedMetrics;
+
+    const spo2Color = Color(0xFF0D9488);
+    const stressColor = Color(0xFFF97316);
+
+    final avgSpo2 = m?.avgSpo2;
+    final minSpo2 = m?.minSpo2;
+    final hasSpo2 = avgSpo2 != null && avgSpo2 > 0;
+
+    final avgStress = m?.avgStress;
+    final maxStress = m?.maxStress;
+    final hasStress = avgStress != null && avgStress > 0;
+
+    return Row(
+      children: [
+        // 血氧卡片
+        Expanded(
+          child: Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.large),
+              side: BorderSide(
+                color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.water_drop_rounded, size: 16, color: spo2Color),
+                          const SizedBox(width: 4),
+                          Text(
+                            '血氧饱和度',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (hasSpo2)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: (avgSpo2 >= 95 ? Colors.green : Colors.orange)
+                                .withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            avgSpo2 >= 95 ? '正常' : '偏低',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: avgSpo2 >= 95 ? Colors.green : Colors.orange,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        hasSpo2 ? '$avgSpo2' : '--',
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: hasSpo2 ? spo2Color : null,
+                        ),
+                      ),
+                      if (hasSpo2) ...[
+                        const SizedBox(width: 2),
+                        Text(
+                          '%',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.outline,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    minSpo2 != null && minSpo2 > 0 ? '最低 $minSpo2%' : '连续监测',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        // 压力卡片
+        Expanded(
+          child: Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.large),
+              side: BorderSide(
+                color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.mood_rounded, size: 16, color: stressColor),
+                          const SizedBox(width: 4),
+                          Text(
+                            '全天压力',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (hasStress)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: _getStressColor(avgStress).withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            _getStressLabel(avgStress),
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: _getStressColor(avgStress),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        hasStress ? '$avgStress' : '--',
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: hasStress ? stressColor : null,
+                        ),
+                      ),
+                      if (hasStress) ...[
+                        const SizedBox(width: 2),
+                        Text(
+                          '指数',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.outline,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    maxStress != null && maxStress > 0 ? '最高 $maxStress' : '身心负荷',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMetricTile(
+    BuildContext context, {
+    required String label,
+    required String value,
+    required String unit,
+    String? tag,
+    Color? tagColor,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                fontSize: 11,
+              ),
+            ),
+            if (tag != null) ...[
+              const SizedBox(width: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                decoration: BoxDecoration(
+                  color: (tagColor ?? Colors.green).withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  tag,
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                    color: tagColor ?? Colors.green,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 2),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text(
+              value,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            if (value != '--') ...[
+              const SizedBox(width: 2),
+              Text(
+                unit,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.outline,
+                  fontSize: 10,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+
+  String? _formatSleepTime(String? timeStr) {
+    if (timeStr == null || timeStr.isEmpty) return null;
+    if (timeStr.contains('T')) {
+      final dt = DateTime.tryParse(timeStr);
+      if (dt != null) {
+        return DateFormat('HH:mm').format(dt.toLocal());
+      }
+    }
+    return timeStr;
+  }
+
+  Color _getStressColor(int stress) {
+    if (stress < 30) return const Color(0xFF10B981); // 轻松 绿
+    if (stress < 60) return const Color(0xFF3B82F6); // 正常 蓝
+    if (stress < 80) return const Color(0xFFF59E0B); // 中等 橙
+    return const Color(0xFFEF4444); // 偏高 红
+  }
+
+  String _getStressLabel(int stress) {
+    if (stress < 30) return '轻松';
+    if (stress < 60) return '正常';
+    if (stress < 80) return '中等';
+    return '偏高';
   }
 
   Widget _buildSportRecordsSection(BuildContext context) {
@@ -990,6 +1574,27 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
     );
   }
 
+  /// 弹窗编辑每日目标步数，提供快捷预设与自定义输入
+  Future<void> _showStepTargetEditor() async {
+    final result = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => _StepTargetSheet(initial: _stepTarget),
+    );
+
+    if (result != null && result != _stepTarget && mounted) {
+      final syncService = ref.read(healthSyncServiceProvider);
+      await syncService.setDailyStepTarget(result);
+      setState(() => _stepTarget = result);
+      if (mounted) {
+        Toast.success(context, '每日目标步数已设为 ${NumberFormat('#,###').format(result)} 步');
+      }
+    }
+  }
+
   Widget _buildPreferencesCard(BuildContext context, bool isAuthed) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -1026,6 +1631,25 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                 final syncService = ref.read(healthSyncServiceProvider);
                 await syncService.setAutoCreateTimelineCards(val);
               },
+            ),
+            const Divider(height: 1),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(
+                Icons.flag_rounded,
+                size: 20,
+                color: Colors.blue,
+              ),
+              title: const Text('每日目标步数'),
+              subtitle: Text(
+                '${NumberFormat('#,###').format(_stepTarget)} 步',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              trailing: const Icon(Icons.chevron_right, size: 20),
+              onTap: _showStepTargetEditor,
             ),
             if (isAuthed) ...[
               const Divider(height: 1),
@@ -1306,6 +1930,132 @@ class _SyncProgressDialog extends StatelessWidget {
               );
             },
           ),
+    );
+  }
+}
+
+/// 每日目标步数选择底部弹窗
+class _StepTargetSheet extends StatefulWidget {
+  final int initial;
+
+  const _StepTargetSheet({required this.initial});
+
+  @override
+  State<_StepTargetSheet> createState() => _StepTargetSheetState();
+}
+
+class _StepTargetSheetState extends State<_StepTargetSheet> {
+  late final TextEditingController _controller;
+  int? _selectedPreset;
+
+  static const _presets = [5000, 6000, 7000, 8000, 9000, 10000, 12000];
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initial.toString());
+    _selectedPreset = _presets.contains(widget.initial) ? widget.initial : null;
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final viewInsets = MediaQuery.of(context).viewInsets;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: viewInsets.bottom),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: colorScheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Row(
+              children: [
+                const Icon(Icons.flag_rounded, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  '每日目标步数',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _presets.map((v) {
+                final isSelected = v == _selectedPreset;
+                return ChoiceChip(
+                  label: Text('${NumberFormat('#,###').format(v)} 步'),
+                  selected: isSelected,
+                  onSelected: (_) {
+                    setState(() {
+                      _selectedPreset = v;
+                      _controller.text = v.toString();
+                    });
+                  },
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _controller,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: '自定义步数',
+                suffixText: '步',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (val) {
+                final parsed = int.tryParse(val);
+                if (parsed != null && _presets.contains(parsed)) {
+                  setState(() => _selectedPreset = parsed);
+                } else {
+                  setState(() => _selectedPreset = null);
+                }
+              },
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () {
+                  final parsed = int.tryParse(_controller.text.trim());
+                  if (parsed != null && parsed > 0) {
+                    Navigator.of(context).pop(parsed);
+                  }
+                },
+                child: const Text('确定'),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

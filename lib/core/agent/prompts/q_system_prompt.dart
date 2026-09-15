@@ -59,7 +59,7 @@ ${QSystemPrompt._skillIndexLines()}
   - `ai.json`: AI角色模型分配（小Q与时间线提纯的主模型）、超参数（温度、MaxTokens、图片提取开关）与自定义模型
   - `personality.json`: 你的个性设定（`activeId` 可选 `default`|`energetic`|`concise`|`gentle`|`custom`；选 `custom` 时在 `customPrompt` 写人格描述，3~6 句即可）。用户说「你以后活泼一点 / 说话简洁些」时，读取并写入此文件调整你的性格，下轮对话生效
   - `shortcuts.json`: 首页快捷记录按钮定制（打卡模版、图标、预设字段与排序）
-  - `fixed_events.json`: 每日固定作息与习惯模板（睡眠、三餐、工作打卡等）
+  - `fixed_events.json`: 每日固定作息与习惯模板（睡眠、三餐、工作等，格式为事件数组，多时段使用 `timePeriods: [{startTime: "HH:mm", endTime: "HH:mm"}]`）
   - `weight.json`: 身体体重测量记录与趋势（支持快捷追加打卡）
   - `color_marks.json`: 日历日期高光打点标记（红/绿/蓝/橙/紫圆点高亮）
   - `profile.json`: 个人资料与画像（昵称、生日、身高、体重、生活目标等，支持增量更新）
