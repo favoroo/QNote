@@ -27,8 +27,12 @@ class _QSkillEditPageState extends ConsumerState<QSkillEditPage> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.skill?.name ?? '');
-    _descriptionController = TextEditingController(text: widget.skill?.description ?? '');
-    _contentController = TextEditingController(text: widget.skill?.content ?? '');
+    _descriptionController = TextEditingController(
+      text: widget.skill?.description ?? '',
+    );
+    _contentController = TextEditingController(
+      text: widget.skill?.content ?? '',
+    );
   }
 
   @override
@@ -57,10 +61,9 @@ class _QSkillEditPageState extends ConsumerState<QSkillEditPage> {
             controller: _nameController,
             readOnly: isEditingExisting,
             enabled: !isEditingExisting,
-            decoration: InputDecoration(
+            decoration: const InputDecoration(
               labelText: '技能名称（对应 /skills/<名称>.md）',
               hintText: '例如：投资复盘',
-              helperText: isEditingExisting ? null : '创建后不可修改；不能与内置技能重名',
             ),
           ),
           const SizedBox(height: 16),
@@ -89,7 +92,8 @@ class _QSkillEditPageState extends ConsumerState<QSkillEditPage> {
             keyboardType: TextInputType.multiline,
             decoration: const InputDecoration(
               alignLabelWithHint: true,
-              hintText: '按章节组织的手册内容，建议使用「## 1. 标题」二级标题分章，'
+              hintText:
+                  '按章节组织的手册内容，建议使用「## 1. 标题」二级标题分章，'
                   '小Q可按章节按需加载（section 参数）',
               border: OutlineInputBorder(),
             ),
@@ -135,7 +139,9 @@ class _QSkillEditPageState extends ConsumerState<QSkillEditPage> {
     }
 
     try {
-      await ref.read(agentSkillListProvider.notifier).saveUserSkill(
+      await ref
+          .read(agentSkillListProvider.notifier)
+          .saveUserSkill(
             AgentSkill(
               name: name,
               description: description,
@@ -179,7 +185,9 @@ class _QSkillEditPageState extends ConsumerState<QSkillEditPage> {
     if (confirmed != true) return;
 
     try {
-      await ref.read(agentSkillListProvider.notifier).deleteUserSkill(skill.name);
+      await ref
+          .read(agentSkillListProvider.notifier)
+          .deleteUserSkill(skill.name);
       if (!mounted) return;
       Toast.success(context, '已删除技能「${skill.name}」');
       Navigator.of(context).pop();

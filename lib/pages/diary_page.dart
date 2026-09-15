@@ -834,8 +834,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
-  void _goToDate(DateTime date) {
-    _expandDate(date);
+  void _goToDate(DateTime date, {bool expand = false}) {
+    if (expand) {
+      _expandDate(date);
+    }
     ref.read(selectedDateProvider.notifier).state = date;
     if (_isScrollingFromList) return;
 
@@ -844,7 +846,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     if (dayOffset < 0 || dayOffset >= _windowDays) {
       _ensureDateInWindow(date);
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _goToDate(date);
+        if (mounted) _goToDate(date, expand: expand);
       });
       return;
     }
@@ -995,7 +997,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       ),
     );
     if (result != null) {
-      _goToDate(result);
+      _goToDate(result, expand: true);
     }
   }
 

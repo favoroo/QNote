@@ -1321,6 +1321,7 @@ class _DiaryItemState extends State<DiaryItem> {
     final calories = (bs['calories'] as num?)?.toDouble() ?? 0.0;
     final distanceMeters = (bs['distance_meters'] as num?)?.toDouble() ?? 0.0;
     final activeMinutes = (bs['active_minutes'] as num?)?.toInt() ?? 0;
+    final standingCount = (bs['standing_count'] as num?)?.toInt() ?? 0;
 
     final sleepMinutes = (bs['sleep_duration_minutes'] as num?)?.toInt() ?? 0;
     final sleepScore = (bs['sleep_score'] as num?)?.toInt();
@@ -1449,6 +1450,14 @@ class _DiaryItemState extends State<DiaryItem> {
                       value: '$activeMinutes 分钟',
                       label: '活动',
                     ),
+                    if (standingCount > 0)
+                      _buildMetricItem(
+                        theme,
+                        icon: Icons.accessibility_new_rounded,
+                        iconColor: const Color(0xFF8B5CF6),
+                        value: '$standingCount 次',
+                        label: '站立',
+                      ),
                   ],
                 ),
               ],

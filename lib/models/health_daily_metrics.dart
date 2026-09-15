@@ -7,6 +7,7 @@ class HealthDailyMetrics {
   final double distanceMeters;
   final double calories;
   final int activeMinutes;
+  final int standingCount; // 站立次数
   
   // 睡眠相关 (单位：分钟)
   final int sleepDurationMinutes;
@@ -43,6 +44,7 @@ class HealthDailyMetrics {
     this.distanceMeters = 0.0,
     this.calories = 0.0,
     this.activeMinutes = 0,
+    this.standingCount = 0,
     this.sleepDurationMinutes = 0,
     this.deepSleepMinutes = 0,
     this.lightSleepMinutes = 0,
@@ -74,6 +76,7 @@ class HealthDailyMetrics {
       'distance_meters': distanceMeters,
       'calories': calories,
       'active_minutes': activeMinutes,
+      'standing_count': standingCount,
       'sleep_duration_minutes': sleepDurationMinutes,
       'deep_sleep_minutes': deepSleepMinutes,
       'light_sleep_minutes': lightSleepMinutes,
@@ -106,6 +109,7 @@ class HealthDailyMetrics {
       distanceMeters: (map['distance_meters'] as num?)?.toDouble() ?? 0.0,
       calories: (map['calories'] as num?)?.toDouble() ?? 0.0,
       activeMinutes: (map['active_minutes'] as num?)?.toInt() ?? 0,
+      standingCount: (map['standing_count'] as num?)?.toInt() ?? 0,
       sleepDurationMinutes: (map['sleep_duration_minutes'] as num?)?.toInt() ?? 0,
       deepSleepMinutes: (map['deep_sleep_minutes'] as num?)?.toInt() ?? 0,
       lightSleepMinutes: (map['light_sleep_minutes'] as num?)?.toInt() ?? 0,
@@ -137,6 +141,7 @@ class HealthDailyMetrics {
     double? distanceMeters,
     double? calories,
     int? activeMinutes,
+    int? standingCount,
     int? sleepDurationMinutes,
     int? deepSleepMinutes,
     int? lightSleepMinutes,
@@ -166,6 +171,7 @@ class HealthDailyMetrics {
       distanceMeters: distanceMeters ?? this.distanceMeters,
       calories: calories ?? this.calories,
       activeMinutes: activeMinutes ?? this.activeMinutes,
+      standingCount: standingCount ?? this.standingCount,
       sleepDurationMinutes: sleepDurationMinutes ?? this.sleepDurationMinutes,
       deepSleepMinutes: deepSleepMinutes ?? this.deepSleepMinutes,
       lightSleepMinutes: lightSleepMinutes ?? this.lightSleepMinutes,

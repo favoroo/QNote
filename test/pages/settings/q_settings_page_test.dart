@@ -36,8 +36,9 @@ void main() {
     expect(find.text('技能'), findsOneWidget);
     expect(find.text('记忆'), findsOneWidget);
 
-    // 初始处于「个性」Tab，包含个性说明文案
-    expect(find.textContaining('个性决定小Q的身份与说话风格'), findsOneWidget);
+    // 初始处于「个性」Tab，渲染预设个性卡片
+    expect(find.text('经典管家'), findsOneWidget);
+    expect(find.textContaining('沉稳可靠的全能终端管家'), findsOneWidget);
 
     // 点击切换到「技能」Tab
     await tester.tap(find.text('技能'));

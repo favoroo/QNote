@@ -114,16 +114,17 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/ai',
-                builder: (context, state) => const AiPage(),
+                path: '/statistics',
+                builder: (context, state) => const StatisticsPage(),
               ),
             ],
           ),
+          // /ai 小Q全页面：不作为导航栏 tab 显示，由中央停靠按钮单击进入
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/statistics',
-                builder: (context, state) => const StatisticsPage(),
+                path: '/ai',
+                builder: (context, state) => const AiPage(),
               ),
             ],
           ),

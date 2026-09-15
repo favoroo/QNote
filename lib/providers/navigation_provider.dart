@@ -25,12 +25,6 @@ final navigationItems = [
     activeIcon: Icons.check_circle,
   ),
   const NavigationItem(
-    path: '/ai',
-    label: '小Q',
-    icon: Icons.smart_toy_outlined,
-    activeIcon: Icons.smart_toy,
-  ),
-  const NavigationItem(
     path: '/statistics',
     label: '统计',
     icon: Icons.bar_chart_outlined,

@@ -1,14 +1,11 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:qnote_flutter/core/router/app_router.dart';
 import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
-import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
@@ -16,19 +13,18 @@ import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
 import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
-import 'package:qnote_flutter/widgets/animated_gradient_border.dart';
-import 'package:qnote_flutter/widgets/common/loading_ring.dart';
 import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
+import 'package:qnote_flutter/widgets/common/loading_ring.dart';
 import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
 import 'package:qnote_flutter/widgets/common/thought_tail_scroll_view.dart';
 import 'package:qnote_flutter/widgets/q_text_selection_toolbar.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 
-/// 全局悬浮小Q入口：悬浮球 + 快捷对话面板。
+/// 全局小Q快捷对话面板。
 ///
 /// 挂载于 MaterialApp.builder 的 Stack 上层，覆盖所有路由页面（含编辑器）。
-/// 隐藏规则：/ai 页（已有完整对话入口）、模态弹窗打开时。
-/// 键盘弹起时不隐藏，改为整体上移钳制避让，保证悬浮层任何时刻可见可点。
+/// 面板由底部导航栏中央停靠按钮长按唤起，或由「给小Q」选区菜单、
+/// 外部分享自动唤起。模态弹窗打开时淡出隐藏。
 class FloatingQOverlay extends ConsumerStatefulWidget {
   const FloatingQOverlay({super.key});
 
@@ -36,65 +32,19 @@ class FloatingQOverlay extends ConsumerStatefulWidget {
   ConsumerState<FloatingQOverlay> createState() => _FloatingQOverlayState();
 }
 
-enum _DockSide { left, right }
-
-class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay>
-    with SingleTickerProviderStateMixin {
-  /// 球直径与时间线页"智能提取"悬浮按钮（44×44）保持一致
-  static const double _ballSize = 44;
+class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
   static const double _edgeMargin = 12;
-
-  /// 默认位置的底部净空：底部导航栏(60) + 收起态日记输入条(约48) +
-  /// 提取按钮(bottom 12 + 高 44) + 间距 12，球悬停在时间线输入栏上方，
-  /// 与右侧提取按钮同一水平线
-  static const double _ballBottomClearance = 176;
-
-  /// 静置多长时间后自动向屏幕外侧半折叠（毫秒）
-  static const int _dockIdleDelayMs = 2500;
-
-  /// 悬浮球位置的持久化键（设备本地 UI 偏好，不进同步链路）
-  static const String _prefsKeyDx = 'floating_q_ball_dx';
-  static const String _prefsKeyDy = 'floating_q_ball_dy';
 
   GoRouter? _router;
   late final VoidCallback _routeListener;
   String _location = '';
 
-  /// 悬浮球位置（相对屏幕左上角）；null 表示使用默认左下角位置。
-  /// 拖拽结束后持久化到 SharedPreferences，重启后恢复用户上次摆放的位置
-  Offset? _ballPosition;
-
-  /// 贴边吸附动画控制器
-  late final AnimationController _snapController;
-  Animation<Offset>? _snapAnimation;
-
-  /// 靠边半折叠（Docking）状态与停靠方向
-  bool _isDocked = false;
-  _DockSide _dockSide = _DockSide.left;
-  bool _isDragging = false;
-  Timer? _idleTimer;
-
-  /// 面板内 SelectionArea 当前选中文本（供球点击引用面板消息选区）
+  /// 面板内 SelectionArea 当前选中文本（供面板内「给小Q」工具栏引用）
   final _panelSelection = ValueNotifier<String?>(null);
 
   @override
   void initState() {
     super.initState();
-    _snapController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 280),
-    )..addListener(() {
-        if (_snapAnimation != null && mounted) {
-          setState(() => _ballPosition = _snapAnimation!.value);
-        }
-      })
-      ..addStatusListener((status) {
-        if (status == AnimationStatus.completed) {
-          _snapAnimation = null;
-          _persistBallPosition();
-          _scheduleDockTimer();
-        }
-      });
 
     _router = ref.read(routerProvider);
     _location = _router!.routerDelegate.currentConfiguration.uri.toString();
@@ -122,194 +72,30 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay>
           .read(floatingQProvider.notifier)
           .setBaseContext(QPageContext.fromLocation(_location));
     });
-    // 恢复用户上次拖拽的球位置：读取完成前先按默认位置渲染，读到后钳制再赋值
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadBallPosition());
   }
 
   @override
   void dispose() {
-    _idleTimer?.cancel();
-    _snapController.dispose();
     _panelSelection.dispose();
     _router?.routerDelegate.removeListener(_routeListener);
     super.dispose();
   }
 
-  Offset _defaultBallPosition(Size size) =>
-      Offset(_edgeMargin, size.height - _ballSize - _ballBottomClearance);
-
-  /// 唤醒展开：按下、拖动或点击时立即退出折叠态，重置空闲计时
-  void _wakeUpFromDock() {
-    _idleTimer?.cancel();
-    if (_isDocked) {
-      setState(() => _isDocked = false);
-    }
-  }
-
-  /// 调度静置靠边半收折计时器
-  void _scheduleDockTimer() {
-    _idleTimer?.cancel();
-    // 面板打开、小Q执行中、正在拖拽或吸附动画进行中时不收折
-    final panelOpen = ref.read(floatingQProvider).panelOpen;
-    final isWorking = ref.read(floatingQProvider).phase == FloatingQPhase.working;
-    if (panelOpen || isWorking || _isDragging || _snapController.isAnimating) {
-      return;
-    }
-
-    _idleTimer = Timer(const Duration(milliseconds: _dockIdleDelayMs), () {
-      if (!mounted) return;
-      final panelOpen = ref.read(floatingQProvider).panelOpen;
-      final isWorking = ref.read(floatingQProvider).phase == FloatingQPhase.working;
-      if (panelOpen || isWorking || _isDragging || _snapController.isAnimating) {
-        return;
-      }
-      final size = MediaQuery.sizeOf(context);
-      final pos = _ballPosition ?? _defaultBallPosition(size);
-      final isAtLeft = pos.dx <= _edgeMargin + 4;
-      final isAtRight = pos.dx >= size.width - _ballSize - _edgeMargin - 4;
-      if (isAtLeft || isAtRight) {
-        setState(() {
-          _isDocked = true;
-          _dockSide = isAtLeft ? _DockSide.left : _DockSide.right;
-        });
-      }
-    });
-  }
-
-  /// 从 SharedPreferences 恢复球位置；按当前屏幕贴边吸附并钳制，
-  /// 防止跨设备/旋转后存储值越界
-  Future<void> _loadBallPosition() async {
-    final prefs = await SharedPreferences.getInstance();
-    final dx = prefs.getDouble(_prefsKeyDx);
-    final dy = prefs.getDouble(_prefsKeyDy);
-    if (dx == null || dy == null || !mounted) return;
-    final size = MediaQuery.sizeOf(context);
-    final isLeft = (dx + _ballSize / 2) < size.width / 2;
-    final snapDx = isLeft ? _edgeMargin : size.width - _ballSize - _edgeMargin;
-    final clampedDy = dy.clamp(
-      _edgeMargin,
-      math.max(_edgeMargin, size.height - _ballSize - _edgeMargin).toDouble(),
-    );
-    setState(() {
-      _ballPosition = Offset(snapDx, clampedDy);
-      _dockSide = isLeft ? _DockSide.left : _DockSide.right;
-    });
-    _scheduleDockTimer();
-  }
-
-  /// 拖拽结束时持久化位置（松手才写，避免拖动过程高频 IO）
-  Future<void> _persistBallPosition() async {
-    final pos = _ballPosition;
-    if (pos == null) return;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_prefsKeyDx, pos.dx);
-    await prefs.setDouble(_prefsKeyDy, pos.dy);
-  }
-
-  /// 悬浮球显示位置：拖动存储位置基础上，键盘弹起时整体上移钳制避让。
-  /// 渲染期计算、不改存储值，键盘收起自动回位；inset 异常残留时球也始终可见可点
-  Offset _displayBallPosition(Size size, double keyboardInset) {
-    final base = _ballPosition ?? _defaultBallPosition(size);
-    final maxTop = size.height - keyboardInset - _ballSize - _edgeMargin;
-    return Offset(
-      base.dx.clamp(
-          _edgeMargin, math.max(_edgeMargin, size.width - _ballSize - _edgeMargin)),
-      math.min(base.dy, math.max(_edgeMargin, maxTop).toDouble()),
-    );
-  }
-
-  void _onDragStart() {
-    _wakeUpFromDock();
-    _isDragging = true;
-    _snapController.stop();
-  }
-
-  void _onDragBall(Offset newTopLeft) {
-    _wakeUpFromDock();
-    final size = MediaQuery.sizeOf(context);
-    final dx = newTopLeft.dx
-        .clamp(_edgeMargin, size.width - _ballSize - _edgeMargin);
-    final dy = newTopLeft.dy
-        .clamp(_edgeMargin, size.height - _ballSize - _edgeMargin);
-    setState(() => _ballPosition = Offset(dx, dy));
-  }
-
-  /// 拖拽松手：智能磁吸贴边动画，弹射到左侧或右侧边缘
-  void _onDragEnd() {
-    _isDragging = false;
-    final size = MediaQuery.sizeOf(context);
-    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
-    final current = _ballPosition ?? _defaultBallPosition(size);
-    final isLeft = (current.dx + _ballSize / 2) < (size.width / 2);
-    final targetDx = isLeft ? _edgeMargin : size.width - _ballSize - _edgeMargin;
-
-    final maxTop = size.height - keyboardInset - _ballSize - _edgeMargin;
-    final targetDy = current.dy.clamp(
-      _edgeMargin,
-      math.max(_edgeMargin, maxTop).toDouble(),
-    );
-    final target = Offset(targetDx, targetDy);
-
-    _dockSide = isLeft ? _DockSide.left : _DockSide.right;
-
-    if ((current - target).distance < 1.0) {
-      _ballPosition = target;
-      _persistBallPosition();
-      _scheduleDockTimer();
-      return;
-    }
-
-    _snapAnimation = Tween<Offset>(
-      begin: current,
-      end: target,
-    ).animate(CurvedAnimation(
-      parent: _snapController,
-      curve: Curves.easeOutBack,
-    ));
-    _snapController.forward(from: 0.0);
-  }
-
   @override
   Widget build(BuildContext context) {
-    // 监听小Q任务状态与面板开关：执行工作或打开面板时立即唤醒展开，任务完成或面板关闭后重新倒计时收折
-    ref.listen<FloatingQPhase>(
-      floatingQProvider.select((s) => s.phase),
-      (previous, next) {
-        if (next == FloatingQPhase.working) {
-          _wakeUpFromDock();
-        } else {
-          _scheduleDockTimer();
-        }
-      },
-    );
-    ref.listen<bool>(
-      floatingQProvider.select((s) => s.panelOpen),
-      (previous, next) {
-        if (next) {
-          _wakeUpFromDock();
-        } else {
-          _scheduleDockTimer();
-        }
-      },
-    );
-
     // 精确订阅：流式期间 provider 以约 60ms 节奏刷新消息/流式文本，
-    // 这里只关心面板开关与工作态，避免整条悬浮层（含面板输入框）被高频重建，
+    // 这里只关心面板开关，避免整条悬浮层（含面板输入框）被高频重建，
     // 否则 Web 端中文输入法组合态会被反复打断（删字复活、光标错乱）
     final panelOpen = ref.watch(floatingQProvider.select((s) => s.panelOpen));
-    final isWorking = ref.watch(
-        floatingQProvider.select((s) => s.phase == FloatingQPhase.working));
     final size = MediaQuery.sizeOf(context);
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
 
     return ValueListenableBuilder<int>(
       valueListenable: floatingQModalCount,
       builder: (context, modalCount, _) {
-        // 模态弹窗（对话框/底部弹层）打开时隐藏悬浮层；
-        // /ai 小Q主页面悬浮球依然常驻显示，支持框选引用与快捷聚焦输入框。
+        // 模态弹窗（对话框/底部弹层）打开时隐藏悬浮层。
         // 改用淡出+禁点而非整层卸载：隐藏/恢复获得淡入淡出过渡，
-        // 面板开着时弹出补充提问框也不再丢失输入框文本；
-        // 键盘弹起仍不隐藏，改为钳制上移，杜绝 inset 异常残留导致的"永久消失"
+        // 面板开着时弹出补充提问框也不再丢失输入框文本
         final layerHidden = modalCount > 0;
 
         return IgnorePointer(
@@ -332,7 +118,7 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay>
                     ),
                   ),
                 ),
-                // 对话面板 + 面板上方悬浮球：弹出时自底边向上生长淡入，
+                // 对话面板：弹出时自底边向上生长淡入，
                 // 收起时缩回淡出，动画结束才卸载（autofocus 输入框每次打开重新挂载）
                 Positioned(
                   left: _edgeMargin,
@@ -346,7 +132,7 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay>
                     transitionBuilder: (child, animation) => FadeTransition(
                       opacity: animation,
                       child: ScaleTransition(
-                        // 以面板底边中心为锚点缩放：视觉上从球的位置向上展开
+                        // 以面板底边中心为锚点缩放：视觉上从底部向上展开
                         alignment: Alignment.bottomCenter,
                         scale: Tween<double>(begin: 0.88, end: 1)
                             .animate(animation),
@@ -355,74 +141,14 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay>
                     ),
                     child: panelOpen
                         ? SizedBox(
-                            // AnimatedSwitcher 内部 Stack 是松约束，
-                            // 需显式撑满宽度，面板才能保持左右贴边
-                            key: const ValueKey('panel-with-ball'),
+                            key: const ValueKey('panel'),
                             width: double.infinity,
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                // 面板打开时球浮在面板正上方，靠停靠侧对齐；
-                                // 不支持拖拽（仅点击引用），面板关闭后球回自由位
-                                Align(
-                                  alignment: _dockSide == _DockSide.right
-                                      ? Alignment.centerRight
-                                      : Alignment.centerLeft,
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(bottom: 8),
-                                    child: _FloatingBall(
-                                      key: const ValueKey('ball-panel'),
-                                      size: _ballSize,
-                                      position: Offset.zero,
-                                      isWorking: isWorking,
-                                      isDocked: false,
-                                      dockSide: _dockSide,
-                                      onPointerDown: _wakeUpFromDock,
-                                      onTap: _handleBallTap,
-                                    ),
-                                  ),
-                                ),
-                                _FloatingQPanel(
-                                  onUndo: _handleUndo,
-                                  panelSelection: _panelSelection,
-                                ),
-                              ],
+                            child: _FloatingQPanel(
+                              onUndo: _handleUndo,
+                              panelSelection: _panelSelection,
                             ),
                           )
                         : const SizedBox.shrink(key: ValueKey('panel-hidden')),
-                  ),
-                ),
-                // 自由球：面板关闭时在用户拖拽位置（可拖拽），面板打开时隐藏
-                Positioned(
-                  left: _displayBallPosition(size, keyboardInset).dx,
-                  top: _displayBallPosition(size, keyboardInset).dy,
-                  child: AnimatedSwitcher(
-                    duration: AppDurations.normal,
-                    switchInCurve: Curves.easeOutBack,
-                    switchOutCurve: Curves.easeIn,
-                    transitionBuilder: (child, animation) => FadeTransition(
-                      opacity: animation,
-                      child: ScaleTransition(
-                        scale: Tween<double>(begin: 0.6, end: 1)
-                            .animate(animation),
-                        child: child,
-                      ),
-                    ),
-                    child: !panelOpen
-                        ? _FloatingBall(
-                            key: const ValueKey('ball-free'),
-                            size: _ballSize,
-                            position: _displayBallPosition(size, keyboardInset),
-                            isWorking: isWorking,
-                            isDocked: _isDocked && !isWorking,
-                            dockSide: _dockSide,
-                            onPointerDown: _wakeUpFromDock,
-                            onDragStart: _onDragStart,
-                            onTap: _handleBallTap,
-                            onDragUpdate: _onDragBall,
-                            onDragEnd: _onDragEnd,
-                          )
-                        : const SizedBox.shrink(key: ValueKey('ball-hidden')),
                   ),
                 ),
               ],
@@ -431,66 +157,6 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay>
         );
       },
     );
-  }
-
-  /// 悬浮球点按：面板打开时优先引用面板内选中文本，再查编辑器选区；
-  /// 面板关闭时查编辑器选区作为引用打开面板（等同选择菜单「给小Q」），
-  /// 无选区则普通打开面板。球体用原生 Listener 处理指针，点按不会打断
-  /// 编辑器焦点与选区，捕获在点按回调内同步完成，不存在丢失窗口
-  void _handleBallTap() {
-    final notifier = ref.read(floatingQProvider.notifier);
-    final fqState = ref.read(floatingQProvider);
-    final isAiPage = _location.startsWith('/ai');
-
-    // 在小Q主对话界面（/ai）点击悬浮球：
-    // 优先将当前消息流中的框选文本引用到该页面下方的输入框；
-    // 无选区时轻触震动并聚焦下方输入框（不额外弹出重复的小Q浮动面板）
-    if (isAiPage) {
-      final quote = QTargetBridge.instance.captureQuote('page:/ai');
-      if (quote != null) {
-        QTargetBridge.instance.applyQuote('page:/ai', quote);
-        HapticFeedback.lightImpact();
-        return;
-      }
-      QTargetBridge.instance.focusInput('page:/ai');
-      HapticFeedback.selectionClick();
-      return;
-    }
-
-    // 面板打开时：优先检查面板内选中文本
-    if (fqState.panelOpen) {
-      final panelText = _panelSelection.value;
-      if (panelText != null && panelText.isNotEmpty) {
-        notifier.openWithQuote(QTextQuote(
-          source: QQuoteSource.chat,
-          sourceId: '',
-          sourceTitle: '对话内容',
-          quotedText: panelText,
-        ));
-        _panelSelection.value = null;
-        return;
-      }
-      // 面板无选区时再查编辑器选区（面板打开前可能已选中）
-      final signature = fqState.effectiveContext?.signature;
-      final editorQuote = QTargetBridge.instance.captureQuote(signature);
-      if (editorQuote != null) {
-        notifier.openWithQuote(editorQuote);
-        return;
-      }
-      // 都无选区：面板已展开，不额外操作
-      return;
-    }
-
-    // 面板关闭时：检查编辑器选区
-    final signature = fqState.effectiveContext?.signature;
-    final quote = QTargetBridge.instance.captureQuote(signature);
-    if (quote == null) {
-      notifier.openPanel();
-      return;
-    }
-    // 收起键盘与选择菜单，把焦点让给面板输入框（选中文本已在捕获时取得）
-    FocusManager.instance.primaryFocus?.unfocus();
-    notifier.openWithQuote(quote);
   }
 
   /// 撤回小Q本会话的全部修改并提示结果
@@ -505,347 +171,6 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay>
     } else {
       Toast.success(toastContext, '已撤回小Q的 $restored 处修改');
     }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 悬浮球
-// ---------------------------------------------------------------------------
-class _FloatingBall extends StatefulWidget {
-  final double size;
-
-  /// 当前显示位置（左上角，已含键盘避让钳制），作为拖动位移基准
-  final Offset position;
-
-  /// 任务执行中（显示工作动画球）
-  final bool isWorking;
-
-  /// 靠边半收折状态（静置时向屏幕外滑入约 60%，仅露出边缘弧形以防遮挡）
-  final bool isDocked;
-
-  /// 靠边停靠方向（左侧或右侧）
-  final _DockSide dockSide;
-
-  /// 指针按下时触发唤醒展开
-  final VoidCallback onPointerDown;
-
-  /// 开始拖动回调（为 null 时球仅支持点击，不支持拖拽）
-  final VoidCallback? onDragStart;
-
-  final VoidCallback onTap;
-
-  /// 拖动回调：新的球左上角位置（屏幕坐标，未钳制，由宿主钳制后存储）
-  final ValueChanged<Offset>? onDragUpdate;
-
-  /// 拖动结束回调：松手或拖动中被打断时触发，宿主借此持久化位置并触发吸附动画
-  final VoidCallback? onDragEnd;
-
-  const _FloatingBall({
-    super.key,
-    required this.size,
-    required this.position,
-    required this.isWorking,
-    required this.isDocked,
-    required this.dockSide,
-    required this.onPointerDown,
-    this.onDragStart,
-    required this.onTap,
-    this.onDragUpdate,
-    this.onDragEnd,
-  });
-
-  @override
-  State<_FloatingBall> createState() => _FloatingBallState();
-}
-
-/// 用原始 [Listener] 而非 GestureDetector 实现点击与拖动：
-/// Listener 不参与手势竞技场，指针事件分发阶段必定到达本组件，
-/// 即使某个手势识别器异常卡住竞技场，悬浮球也始终保持可点可拖
-/// （修复"球看得见但点不动、拖不动，需重启才恢复"的问题）
-class _FloatingBallState extends State<_FloatingBall> {
-  /// 拖动判定阈值（逻辑像素）：位移超过该值视为拖动而非点击
-  static const double _dragSlop = 8;
-
-  /// 折叠时向屏幕外滑出的逻辑像素（44px 圆球滑出 24px，露出约 20px 弧面，
-  /// 兼顾减少遮挡与可触摸命中面积；命中区跟随 AnimatedSlide 平移，折叠后
-  /// 命中区与可见弧面完全重合，不再错位）
-  static const double _dockSlideOffset = 24;
-
-  Offset? _pointerStart;
-  Offset? _origin;
-  bool _dragging = false;
-
-  /// 按压态：驱动球体轻微缩放的按压反馈，松开或转入拖动即恢复
-  bool _pressed = false;
-
-  void _onPointerDown(PointerDownEvent event) {
-    widget.onPointerDown();
-    // 只跟踪首个按下的指针，多指触控时忽略后续指针
-    _pointerStart ??= event.position;
-    _origin ??= widget.position;
-    _dragging = false;
-    if (!_pressed) setState(() => _pressed = true);
-  }
-
-  void _onPointerMove(PointerMoveEvent event) {
-    final start = _pointerStart;
-    final origin = _origin;
-    if (start == null || origin == null) return;
-    if (!_dragging && (event.position - start).distance > _dragSlop) {
-      // 无拖拽回调时仅支持点击，不进入拖动模式
-      if (widget.onDragStart == null) return;
-      _dragging = true;
-      widget.onDragStart!();
-      HapticFeedback.selectionClick();
-    }
-    if (_dragging) {
-      // 拖动即脱离按压语义，球体恢复正常大小随指针移动
-      if (_pressed) setState(() => _pressed = false);
-      widget.onDragUpdate!(origin + (event.position - start));
-    }
-  }
-
-  void _onPointerUp(PointerUpEvent event) {
-    final wasDragging = _dragging;
-    _pointerStart = null;
-    _origin = null;
-    _dragging = false;
-    if (_pressed) setState(() => _pressed = false);
-    if (wasDragging) {
-      widget.onDragEnd?.call();
-    } else {
-      HapticFeedback.lightImpact();
-      widget.onTap();
-    }
-  }
-
-  void _onPointerCancel(PointerCancelEvent event) {
-    final wasDragging = _dragging;
-    _pointerStart = null;
-    _origin = null;
-    _dragging = false;
-    if (_pressed) setState(() => _pressed = false);
-    // 拖动中被打断时位置已随 move 更新，同样触发结束吸附与持久化
-    if (wasDragging) widget.onDragEnd?.call();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // 折叠时的水平平移比例（相对于球体尺寸）
-    final slideX = widget.isDocked
-        ? (widget.dockSide == _DockSide.left
-            ? -_dockSlideOffset / widget.size
-            : _dockSlideOffset / widget.size)
-        : 0.0;
-
-    // AnimatedSlide 在外层、Listener 在内层：命中区跟随平移，
-    // 折叠时命中区与可见弧面完全重合，不再出现"看得见点不到"的错位
-    return AnimatedSlide(
-      offset: Offset(slideX, 0),
-      duration: const Duration(milliseconds: 280),
-      curve: Curves.easeOutCubic,
-      child: Listener(
-        behavior: HitTestBehavior.opaque,
-        onPointerDown: _onPointerDown,
-        onPointerMove: _onPointerMove,
-        onPointerUp: _onPointerUp,
-        onPointerCancel: _onPointerCancel,
-        // 撤回入口只保留在面板横幅中：悬浮球不再切换撤回倒计时形态，
-        // 撤回就绪期点击球同样是弹出面板
-        child: AnimatedOpacity(
-          // 静置半折叠时衰减不透明度至 0.5，阅读正文无干扰；触碰唤醒后立即恢复 1.0
-          opacity: widget.isDocked ? 0.5 : 1.0,
-          duration: const Duration(milliseconds: 280),
-          curve: Curves.easeOut,
-          child: AnimatedScale(
-            // 按压反馈：球体轻微缩小，松开回弹
-            scale: _pressed ? 0.92 : 1.0,
-            duration: AppDurations.fast,
-            curve: Curves.easeOut,
-            child: AnimatedSwitcher(
-              duration: AppDurations.normal,
-              switchInCurve: Curves.easeOut,
-              switchOutCurve: Curves.easeIn,
-              // 工作态流光环会溢出球体边界，布局 Stack 需关闭裁剪
-              layoutBuilder: (currentChild, previousChildren) => Stack(
-                alignment: Alignment.center,
-                clipBehavior: Clip.none,
-                children: [
-                  ...previousChildren,
-                  ?currentChild,
-                ],
-              ),
-              child: widget.isWorking
-                  ? _WorkingBall(
-                      key: const ValueKey('working'),
-                      size: widget.size,
-                    )
-                  : _IdleBall(
-                      key: const ValueKey('idle'),
-                      size: widget.size,
-                    ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 待机状态悬浮球：高质感双层微渐变 + 柔和立体光晕
-class _IdleBall extends StatelessWidget {
-  final double size;
-
-  const _IdleBall({
-    super.key,
-    required this.size,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final primary = theme.colorScheme.primary;
-    final isDark = theme.brightness == Brightness.dark;
-
-    // 轻柔浅淡高光与核心主色双层渐变，打破死板纯色
-    final topHighlight =
-        Color.lerp(primary, Colors.white, isDark ? 0.22 : 0.28)!;
-    final bottomCore = primary;
-
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [topHighlight, bottomCore],
-        ),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: isDark ? 0.28 : 0.45),
-          width: 1.2,
-        ),
-        boxShadow: [
-          // 主题色微光晕
-          BoxShadow(
-            color: primary.withValues(alpha: isDark ? 0.35 : 0.25),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-          // 底层环境景深柔阴影
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
-            blurRadius: 6,
-            offset: const Offset(0, 1.5),
-          ),
-        ],
-      ),
-      child: Center(
-        child: Icon(
-          Icons.smart_toy_rounded,
-          color: theme.colorScheme.onPrimary,
-          size: 20,
-        ),
-      ),
-    );
-  }
-}
-
-/// 工作中悬浮球：AI 极光流光边框（双流星对称追逐） + 中心脉冲与三点跳动
-class _WorkingBall extends StatefulWidget {
-  final double size;
-
-  const _WorkingBall({super.key, required this.size});
-
-  @override
-  State<_WorkingBall> createState() => _WorkingBallState();
-}
-
-class _WorkingBallState extends State<_WorkingBall>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _pulse;
-
-  @override
-  void initState() {
-    super.initState();
-    _pulse = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1400),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _pulse.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final primary = theme.colorScheme.primary;
-    final isDark = theme.brightness == Brightness.dark;
-
-    return AnimatedBuilder(
-      animation: _pulse,
-      builder: (context, child) {
-        // 外圈轻度脉冲光晕（1.0 ~ 1.25 倍），表达能量汇聚
-        final ringScale = 1.0 + _pulse.value * 0.22;
-        return Stack(
-          alignment: Alignment.center,
-          clipBehavior: Clip.none,
-          children: [
-            Transform.scale(
-              scale: ringScale,
-              child: Container(
-                width: widget.size,
-                height: widget.size,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: primary.withValues(
-                      alpha: (isDark ? 0.30 : 0.20) * (1 - _pulse.value)),
-                ),
-              ),
-            ),
-            child!,
-          ],
-        );
-      },
-      child: Container(
-        width: widget.size,
-        height: widget.size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: theme.colorScheme.surface,
-          boxShadow: [
-            BoxShadow(
-              color: primary.withValues(alpha: isDark ? 0.40 : 0.30),
-              blurRadius: 10,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: AnimatedGradientBorder(
-          isAnimating: true,
-          borderRadius: widget.size / 2, // 22px 完美贴合圆形
-          strokeWidth: 2.2,
-          child: Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: primary.withValues(alpha: isDark ? 0.22 : 0.12),
-            ),
-            child: Center(
-              child: MorphingInfinity(
-                size: 22,
-                strokeWidth: 1.5,
-                color: primary,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 
@@ -934,6 +259,18 @@ class _FloatingQPanelState extends ConsumerState<_FloatingQPanel> {
               color: theme.colorScheme.onSurfaceVariant,
               onPressed: () =>
                   ref.read(floatingQProvider.notifier).newConversation(),
+            ),
+          ),
+          // 展开到 /ai 全页面（完整对话体验）
+          Tooltip(
+            message: '展开全页面',
+            child: IconButton(
+              icon: const Icon(Icons.open_in_full_rounded, size: 18),
+              color: theme.colorScheme.onSurfaceVariant,
+              onPressed: () {
+                ref.read(floatingQProvider.notifier).closePanel();
+                context.push('/ai');
+              },
             ),
           ),
           Tooltip(
@@ -1073,7 +410,7 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
     }
 
     return SelectionArea(
-      // 跟踪面板内选中文本，供悬浮球点击引用
+      // 跟踪面板内选中文本，供面板内「给小Q」工具栏引用
       onSelectionChanged: (selection) {
         widget.panelSelection.value = selection?.plainText;
       },

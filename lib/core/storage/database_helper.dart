@@ -154,6 +154,7 @@ class DatabaseHelper {
           distance_meters REAL DEFAULT 0,
           calories REAL DEFAULT 0,
           active_minutes INTEGER DEFAULT 0,
+          standing_count INTEGER DEFAULT 0,
           sleep_duration_minutes INTEGER DEFAULT 0,
           deep_sleep_minutes INTEGER DEFAULT 0,
           light_sleep_minutes INTEGER DEFAULT 0,
@@ -178,6 +179,14 @@ class DatabaseHelper {
           updated_at TEXT NOT NULL
         )
       ''');
+      // 兜底：补 health_daily_metrics 缺失 standing_count 列
+      try {
+        final hdmColumns = await db.rawQuery('PRAGMA table_info(health_daily_metrics)');
+        final hdmColNames = hdmColumns.map((c) => c['name'] as String).toSet();
+        if (hdmColNames.isNotEmpty && !hdmColNames.contains('standing_count')) {
+          await db.execute('ALTER TABLE health_daily_metrics ADD COLUMN standing_count INTEGER DEFAULT 0');
+        }
+      } catch (_) {}
       await db.execute('''
         CREATE TABLE IF NOT EXISTS health_sport_records (
           id TEXT PRIMARY KEY,
@@ -441,6 +450,7 @@ class DatabaseHelper {
         distance_meters REAL DEFAULT 0,
         calories REAL DEFAULT 0,
         active_minutes INTEGER DEFAULT 0,
+        standing_count INTEGER DEFAULT 0,
         sleep_duration_minutes INTEGER DEFAULT 0,
         deep_sleep_minutes INTEGER DEFAULT 0,
         light_sleep_minutes INTEGER DEFAULT 0,
@@ -751,6 +761,7 @@ class DatabaseHelper {
             distance_meters REAL DEFAULT 0,
             calories REAL DEFAULT 0,
             active_minutes INTEGER DEFAULT 0,
+            standing_count INTEGER DEFAULT 0,
             sleep_duration_minutes INTEGER DEFAULT 0,
             deep_sleep_minutes INTEGER DEFAULT 0,
             light_sleep_minutes INTEGER DEFAULT 0,

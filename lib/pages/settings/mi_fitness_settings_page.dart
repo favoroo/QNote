@@ -16,7 +16,8 @@ class MiFitnessSettingsPage extends ConsumerStatefulWidget {
   const MiFitnessSettingsPage({super.key});
 
   @override
-  ConsumerState<MiFitnessSettingsPage> createState() => _MiFitnessSettingsPageState();
+  ConsumerState<MiFitnessSettingsPage> createState() =>
+      _MiFitnessSettingsPageState();
 }
 
 class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
@@ -34,9 +35,12 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
   bool _isLoadingDate = false;
 
   /// 同步进度通知器：(当前序号, 总天数, 状态文本)
-  final _progressNotifier = ValueNotifier<({int current, int total, String message})>(
-    (current: 0, total: 0, message: ''),
-  );
+  final _progressNotifier =
+      ValueNotifier<({int current, int total, String message})>((
+        current: 0,
+        total: 0,
+        message: '',
+      ));
 
   @override
   void initState() {
@@ -95,12 +99,18 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
   Future<void> _handleSyncNow({int daysBack = 7}) async {
     if (_isSyncing) return;
     setState(() => _isSyncing = true);
-    _progressNotifier.value = (current: 0, total: daysBack + 1, message: '准备同步...');
+    _progressNotifier.value = (
+      current: 0,
+      total: daysBack + 1,
+      message: '准备同步...',
+    );
 
     // 批量同步（≥14天）时显示进度弹窗
     final showProgress = daysBack >= 14;
     // 提前获取 root navigator，避免 async 后 widget 已卸载时 context 失效
-    final rootNav = showProgress ? Navigator.of(context, rootNavigator: true) : null;
+    final rootNav = showProgress
+        ? Navigator.of(context, rootNavigator: true)
+        : null;
     if (showProgress) {
       showDialog(
         context: context,
@@ -114,7 +124,11 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
       final res = await syncService.syncDays(
         daysBack: daysBack,
         onProgress: (current, total, message) {
-          _progressNotifier.value = (current: current, total: total, message: message);
+          _progressNotifier.value = (
+            current: current,
+            total: total,
+            message: message,
+          );
         },
       );
 
@@ -295,7 +309,9 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadius.large),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        side: BorderSide(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -305,12 +321,16 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
               width: 42,
               height: 42,
               decoration: BoxDecoration(
-                color: isAuthed ? colorScheme.primaryContainer : colorScheme.surfaceContainerHighest,
+                color: isAuthed
+                    ? colorScheme.primaryContainer
+                    : colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
                 Icons.favorite_rounded,
-                color: isAuthed ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                color: isAuthed
+                    ? colorScheme.primary
+                    : colorScheme.onSurfaceVariant,
                 size: 22,
               ),
             ),
@@ -321,18 +341,22 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                 children: [
                   Text(
                     isAuthed ? '小米账号: ${_credentials!.userId}' : '未连接小米账号',
-                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    isAuthed
-                        ? (_lastSyncTime != null ? '上次同步 ${_formatDateTime(_lastSyncTime!)}' : '尚未同步')
-                        : '扫码授权后可同步手环与运动数据',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                      fontSize: 11,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
+                  if (isAuthed) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      _lastSyncTime != null
+                          ? '上次同步 ${_formatDateTime(_lastSyncTime!)}'
+                          : '尚未同步',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -364,7 +388,8 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final now = DateTime.now();
-    final isToday = _selectedDate.year == now.year &&
+    final isToday =
+        _selectedDate.year == now.year &&
         _selectedDate.month == now.month &&
         _selectedDate.day == now.day;
 
@@ -373,7 +398,9 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.4),
+        ),
       ),
       child: Row(
         children: [
@@ -410,7 +437,8 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                 visualDensity: VisualDensity.compact,
                 padding: const EdgeInsets.symmetric(horizontal: 8),
               ),
-              onPressed: () => _loadDateData(DateTime(now.year, now.month, now.day)),
+              onPressed: () =>
+                  _loadDateData(DateTime(now.year, now.month, now.day)),
               child: const Text('今天', style: TextStyle(fontSize: 12)),
             ),
             IconButton(
@@ -440,15 +468,20 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
     final steps = m?.steps ?? 0;
     const targetSteps = 8000;
     final progress = (steps / targetSteps).clamp(0.0, 1.0);
-    final distanceKm = m != null ? (m.distanceMeters / 1000).toStringAsFixed(2) : '0.00';
+    final distanceKm = m != null
+        ? (m.distanceMeters / 1000).toStringAsFixed(2)
+        : '0.00';
     final calStr = m != null ? m.calories.toStringAsFixed(0) : '0';
     final activeMin = m?.activeMinutes ?? 0;
+    final standing = m?.standingCount ?? 0;
 
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadius.large),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        side: BorderSide(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.all(18),
@@ -460,17 +493,25 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.directions_walk, size: 20, color: Colors.blue),
+                    const Icon(
+                      Icons.directions_walk,
+                      size: 20,
+                      color: Colors.blue,
+                    ),
                     const SizedBox(width: 6),
                     Text(
                       '运动步数',
-                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ],
                 ),
                 if (m == null)
                   TextButton.icon(
-                    style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
                     icon: const Icon(Icons.download, size: 16),
                     label: const Text('拉取此日数据', style: TextStyle(fontSize: 12)),
                     onPressed: _isSyncing ? null : _handleSyncSelectedDate,
@@ -480,7 +521,9 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                     steps >= targetSteps ? '已达标' : '目标 8,000 步',
                     style: TextStyle(
                       fontSize: 12,
-                      color: steps >= targetSteps ? Colors.green : colorScheme.onSurfaceVariant,
+                      color: steps >= targetSteps
+                          ? Colors.green
+                          : colorScheme.onSurfaceVariant,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -499,7 +542,12 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                   ),
                 ),
                 const SizedBox(width: 6),
-                Text('步', style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.outline)),
+                Text(
+                  '步',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.outline,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 10),
@@ -509,7 +557,9 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                 value: progress,
                 minHeight: 6,
                 backgroundColor: colorScheme.surfaceContainerHighest,
-                color: steps >= targetSteps ? Colors.green : colorScheme.primary,
+                color: steps >= targetSteps
+                    ? Colors.green
+                    : colorScheme.primary,
               ),
             ),
             const SizedBox(height: 16),
@@ -537,6 +587,14 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                     label: '活动时长',
                     value: '$activeMin',
                     unit: '分钟',
+                  ),
+                ),
+                Expanded(
+                  child: _buildSubMetric(
+                    context,
+                    label: '站立',
+                    value: '$standing',
+                    unit: '次',
                   ),
                 ),
               ],
@@ -573,7 +631,9 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
           children: [
             Text(
               value,
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(width: 2),
             Text(
@@ -593,16 +653,28 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
     final m = _selectedMetrics;
 
     final sleepMins = m?.sleepDurationMinutes ?? 0;
-    final sleepStr = sleepMins > 0 ? '${sleepMins ~/ 60}h ${sleepMins % 60}m' : '--';
-    final sleepSub = (m?.deepSleepMinutes ?? 0) > 0 ? '深睡 ${m!.deepSleepMinutes}m' : '作息监测';
+    final sleepStr = sleepMins > 0
+        ? '${sleepMins ~/ 60}h ${sleepMins % 60}m'
+        : '--';
+    final sleepSub = (m?.deepSleepMinutes ?? 0) > 0
+        ? '深睡 ${m!.deepSleepMinutes}m'
+        : '作息监测';
 
-    final hrStr = m?.avgHeartRate != null && m!.avgHeartRate! > 0 ? '${m.avgHeartRate} bpm' : '--';
-    final hrSub = m?.restingHeartRate != null ? '静息 ${m!.restingHeartRate}' : '连续心率';
+    final hrStr = m?.avgHeartRate != null && m!.avgHeartRate! > 0
+        ? '${m.avgHeartRate} bpm'
+        : '--';
+    final hrSub = m?.restingHeartRate != null
+        ? '静息 ${m!.restingHeartRate}'
+        : '连续心率';
 
-    final spo2Str = m?.avgSpo2 != null && m!.avgSpo2! > 0 ? '${m.avgSpo2}%' : '--';
+    final spo2Str = m?.avgSpo2 != null && m!.avgSpo2! > 0
+        ? '${m.avgSpo2}%'
+        : '--';
     final spo2Sub = (m?.minSpo2 ?? 0) > 0 ? '最低 ${m!.minSpo2}%' : '血氧饱和度';
 
-    final stressStr = m?.avgStress != null && m!.avgStress! > 0 ? '${m.avgStress}' : '--';
+    final stressStr = m?.avgStress != null && m!.avgStress! > 0
+        ? '${m.avgStress}'
+        : '--';
     final stressSub = m?.maxStress != null ? '最高 ${m!.maxStress}' : '压力指数';
 
     return GridView.count(
@@ -665,7 +737,9 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.3)),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+        ),
       ),
       child: Row(
         children: [
@@ -705,7 +779,9 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                 const SizedBox(height: 2),
                 Text(
                   value,
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
@@ -726,7 +802,9 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
           padding: const EdgeInsets.only(left: 4, bottom: 8),
           child: Text(
             '当天运动 (${_selectedSports.length})',
-            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
         ListView.separated(
@@ -736,16 +814,24 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
           separatorBuilder: (_, index) => const SizedBox(height: 8),
           itemBuilder: (context, index) {
             final s = _selectedSports[index];
-            final distStr = s.distanceMeters > 0 ? '${(s.distanceMeters / 1000).toStringAsFixed(2)} km' : '';
+            final distStr = s.distanceMeters > 0
+                ? '${(s.distanceMeters / 1000).toStringAsFixed(2)} km'
+                : '';
             final durStr = '${s.durationSeconds ~/ 60} 分钟';
-            final calStr = s.calories > 0 ? '${s.calories.toStringAsFixed(0)} kcal' : '';
+            final calStr = s.calories > 0
+                ? '${s.calories.toStringAsFixed(0)} kcal'
+                : '';
 
             return Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                color: colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.35,
+                ),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.3)),
+                border: Border.all(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+                ),
               ),
               child: Row(
                 children: [
@@ -755,7 +841,11 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                       color: colorScheme.primaryContainer,
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(Icons.directions_run, color: colorScheme.primary, size: 18),
+                    child: Icon(
+                      Icons.directions_run,
+                      color: colorScheme.primary,
+                      size: 18,
+                    ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -764,10 +854,16 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                       children: [
                         Text(
                           s.title,
-                          style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         Text(
-                          [durStr, if (distStr.isNotEmpty) distStr, if (calStr.isNotEmpty) calStr].join(' · '),
+                          [
+                            durStr,
+                            if (distStr.isNotEmpty) distStr,
+                            if (calStr.isNotEmpty) calStr,
+                          ].join(' · '),
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: colorScheme.onSurfaceVariant,
                             fontSize: 11,
@@ -779,7 +875,10 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                   if (s.avgHeartRate != null && s.avgHeartRate! > 0)
                     Text(
                       '${s.avgHeartRate} bpm',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
                     ),
                 ],
               ),
@@ -798,7 +897,9 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadius.large),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        side: BorderSide(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -807,10 +908,6 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
             SwitchListTile.adaptive(
               contentPadding: EdgeInsets.zero,
               title: const Text('自动同步'),
-              subtitle: Text(
-                '每次打开应用时自动同步健康数据',
-                style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
-              ),
               value: _autoSync,
               onChanged: (val) async {
                 setState(() => _autoSync = val);
@@ -822,10 +919,6 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
             SwitchListTile.adaptive(
               contentPadding: EdgeInsets.zero,
               title: const Text('自动生成时间线卡片'),
-              subtitle: Text(
-                '同步后将运动和睡眠自动归档为时间线记录',
-                style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
-              ),
               value: _autoTimeline,
               onChanged: (val) async {
                 setState(() => _autoTimeline = val);
@@ -837,7 +930,11 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
               const Divider(height: 1),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.link_off, size: 20, color: colorScheme.error),
+                leading: Icon(
+                  Icons.link_off,
+                  size: 20,
+                  color: colorScheme.error,
+                ),
                 title: Text(
                   '解除账号绑定',
                   style: TextStyle(color: colorScheme.error, fontSize: 14),
@@ -992,7 +1089,11 @@ class _MiQrLoginDialogState extends ConsumerState<_MiQrLoginDialog> {
                     _session!.qrCodeUrl,
                     fit: BoxFit.contain,
                     errorBuilder: (context, error, stackTrace) => const Center(
-                      child: Icon(Icons.broken_image, size: 40, color: Colors.grey),
+                      child: Icon(
+                        Icons.broken_image,
+                        size: 40,
+                        color: Colors.grey,
+                      ),
                     ),
                   ),
                 ),
@@ -1019,7 +1120,10 @@ class _MiQrLoginDialogState extends ConsumerState<_MiQrLoginDialog> {
             ] else ...[
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 20),
-                child: Text(_statusText, style: TextStyle(color: colorScheme.error)),
+                child: Text(
+                  _statusText,
+                  style: TextStyle(color: colorScheme.error),
+                ),
               ),
               FilledButton(
                 onPressed: () {
@@ -1063,43 +1167,44 @@ class _SyncProgressDialog extends StatelessWidget {
           Text('批量同步中', style: TextStyle(fontSize: 16)),
         ],
       ),
-      content: ValueListenableBuilder<({int current, int total, String message})>(
-        valueListenable: notifier,
-        builder: (ctx, state, _) {
-          final progress = state.total > 0
-              ? (state.current / state.total).clamp(0.0, 1.0)
-              : 0.0;
-          final percent = (progress * 100).toInt();
+      content:
+          ValueListenableBuilder<({int current, int total, String message})>(
+            valueListenable: notifier,
+            builder: (ctx, state, _) {
+              final progress = state.total > 0
+                  ? (state.current / state.total).clamp(0.0, 1.0)
+                  : 0.0;
+              final percent = (progress * 100).toInt();
 
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: LinearProgressIndicator(
-                  value: progress,
-                  minHeight: 8,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                state.message,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '$percent%',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          );
-        },
-      ),
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 8,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    state.message,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$percent%',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
     );
   }
 }

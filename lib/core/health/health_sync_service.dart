@@ -287,7 +287,7 @@ class HealthSyncService {
     final sleepScoreStr = summary.sleepScore != null ? ' (得分: ${summary.sleepScore})' : '';
 
     final contentLines = <String>[];
-    contentLines.add('今日步数: ${summary.steps} 步 (目标 8000 步) | 消耗: $calStr kcal | 活动: ${summary.activeMinutes} 分钟 | 距离: $distKm km');
+    contentLines.add('今日步数: ${summary.steps} 步 (目标 8000 步) | 消耗: $calStr kcal | 活动: ${summary.activeMinutes} 分钟 | 距离: $distKm km${summary.standingCount > 0 ? ' | 站立: ${summary.standingCount}次' : ''}');
 
     if (summary.sleepDurationMinutes > 0) {
       final quality = _mapSleepScoreToQuality(summary.sleepScore);
@@ -342,6 +342,7 @@ class HealthSyncService {
       'distance_meters': summary.distanceMeters,
       'calories': summary.calories,
       'active_minutes': summary.activeMinutes,
+      'standing_count': summary.standingCount,
       'sleep_duration_minutes': summary.sleepDurationMinutes,
       'sleep_score': summary.sleepScore,
       'sleep_start_time': summary.sleepStartTime,
@@ -371,6 +372,7 @@ class HealthSyncService {
           fields: {
             '步数': summary.steps,
             '消耗': '${calStr}kcal',
+            if (summary.standingCount > 0) '站立': '${summary.standingCount}次',
             if (summary.sleepDurationMinutes > 0) '睡眠': '$sleepHours小时$sleepMins分',
             if (sports.isNotEmpty) '运动项': '${sports.length}项',
           },
