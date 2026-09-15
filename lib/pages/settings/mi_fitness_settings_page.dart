@@ -25,6 +25,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
   MiAuthCredentials? _credentials;
   DateTime? _lastSyncTime;
   bool _autoTimeline = true;
+  bool _autoSync = true;
 
   // 日期浏览状态
   late DateTime _selectedDate;
@@ -32,12 +33,23 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
   List<HealthSportRecord> _selectedSports = [];
   bool _isLoadingDate = false;
 
+  /// 同步进度通知器：(当前序号, 总天数, 状态文本)
+  final _progressNotifier = ValueNotifier<({int current, int total, String message})>(
+    (current: 0, total: 0, message: ''),
+  );
+
   @override
   void initState() {
     super.initState();
     final now = DateTime.now();
     _selectedDate = DateTime(now.year, now.month, now.day);
     _loadState();
+  }
+
+  @override
+  void dispose() {
+    _progressNotifier.dispose();
+    super.dispose();
   }
 
   Future<void> _loadState() async {
@@ -48,12 +60,14 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
     final creds = await authService.loadCredentials();
     final lastSync = await syncService.getLastSyncTime();
     final autoTimeline = await syncService.getAutoCreateTimelineCards();
+    final autoSync = await syncService.getAutoSync();
 
     if (mounted) {
       setState(() {
         _credentials = creds;
         _lastSyncTime = lastSync;
         _autoTimeline = autoTimeline;
+        _autoSync = autoSync;
         _isLoading = false;
       });
       await _loadDateData(_selectedDate);
@@ -78,22 +92,48 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
     }
   }
 
-  Future<void> _handleSyncNow() async {
+  Future<void> _handleSyncNow({int daysBack = 7}) async {
     if (_isSyncing) return;
     setState(() => _isSyncing = true);
+    _progressNotifier.value = (current: 0, total: daysBack + 1, message: '准备同步...');
+
+    // 批量同步（≥14天）时显示进度弹窗
+    final showProgress = daysBack >= 14;
+    // 提前获取 root navigator，避免 async 后 widget 已卸载时 context 失效
+    final rootNav = showProgress ? Navigator.of(context, rootNavigator: true) : null;
+    if (showProgress) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => _SyncProgressDialog(notifier: _progressNotifier),
+      );
+    }
 
     try {
       final syncService = ref.read(healthSyncServiceProvider);
-      final res = await syncService.syncDays(daysBack: 7);
+      final res = await syncService.syncDays(
+        daysBack: daysBack,
+        onProgress: (current, total, message) {
+          _progressNotifier.value = (current: current, total: total, message: message);
+        },
+      );
 
+      // 先关闭进度弹窗（rootNav 在 async 前已捕获，安全可用）
+      if (showProgress && rootNav != null) {
+        rootNav.pop();
+      }
       if (!mounted) return;
       if (res.success) {
-        Toast.success(context, '已同步最新健康数据');
+        final label = daysBack >= 30 ? '最近$daysBack天' : '最新健康数据';
+        Toast.success(context, '已同步$label（${res.syncedDays}天数据）');
         await _loadState();
       } else {
         Toast.error(context, res.errorMessage ?? '同步失败');
       }
     } catch (e) {
+      if (showProgress && rootNav != null) {
+        rootNav.pop();
+      }
       if (mounted) Toast.error(context, '同步异常: $e');
     } finally {
       if (mounted) setState(() => _isSyncing = false);
@@ -191,17 +231,25 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
         title: const Text('小米运动健康'),
         actions: [
           if (isAuthed)
-            IconButton(
-              icon: _isSyncing
-                  ? const SizedBox(
+            _isSyncing
+                ? const Padding(
+                    padding: EdgeInsets.all(14),
+                    child: SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.sync_rounded),
-              tooltip: '同步数据',
-              onPressed: _isSyncing ? null : _handleSyncNow,
-            ),
+                    ),
+                  )
+                : PopupMenuButton<int>(
+                    icon: const Icon(Icons.sync_rounded),
+                    tooltip: '批量同步',
+                    onSelected: (days) => _handleSyncNow(daysBack: days),
+                    itemBuilder: (ctx) => const [
+                      PopupMenuItem(value: 7, child: Text('同步最近 7 天')),
+                      PopupMenuItem(value: 30, child: Text('同步最近 30 天')),
+                      PopupMenuItem(value: 90, child: Text('同步最近 90 天')),
+                    ],
+                  ),
         ],
       ),
       body: _isLoading
@@ -758,6 +806,21 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
           children: [
             SwitchListTile.adaptive(
               contentPadding: EdgeInsets.zero,
+              title: const Text('自动同步'),
+              subtitle: Text(
+                '每次打开应用时自动同步健康数据',
+                style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
+              ),
+              value: _autoSync,
+              onChanged: (val) async {
+                setState(() => _autoSync = val);
+                final syncService = ref.read(healthSyncServiceProvider);
+                await syncService.setAutoSync(val);
+              },
+            ),
+            const Divider(height: 1),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
               title: const Text('自动生成时间线卡片'),
               subtitle: Text(
                 '同步后将运动和睡眠自动归档为时间线记录',
@@ -978,6 +1041,65 @@ class _MiQrLoginDialogState extends ConsumerState<_MiQrLoginDialog> {
           child: const Text('关闭'),
         ),
       ],
+    );
+  }
+}
+
+/// 批量同步进度弹窗
+class _SyncProgressDialog extends StatelessWidget {
+  final ValueNotifier<({int current, int total, String message})> notifier;
+
+  const _SyncProgressDialog({required this.notifier});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.sync_rounded, size: 20),
+          SizedBox(width: 8),
+          Text('批量同步中', style: TextStyle(fontSize: 16)),
+        ],
+      ),
+      content: ValueListenableBuilder<({int current, int total, String message})>(
+        valueListenable: notifier,
+        builder: (ctx, state, _) {
+          final progress = state.total > 0
+              ? (state.current / state.total).clamp(0.0, 1.0)
+              : 0.0;
+          final percent = (progress * 100).toInt();
+
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 8,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                state.message,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '$percent%',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }

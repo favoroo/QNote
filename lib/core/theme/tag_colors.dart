@@ -5,6 +5,7 @@ abstract class TagColors {
   static const Color diet = Color(0xFFF59E0B);
   static const Color activity = Color(0xFF10B981);
   static const Color finance = Color(0xFFEF4444);
+  static const Color health = Color(0xFF10B981);
   static const Color defaultTag = Color(0xFF6B7280);
 
   static const Map<String, Color> map = {
@@ -12,6 +13,8 @@ abstract class TagColors {
     '饮食': diet,
     '活动': activity,
     '记账': finance,
+    '运动健康': health,
+    '健康': health,
   };
 
   static Color of(String displayTag) => map[displayTag] ?? defaultTag;

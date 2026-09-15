@@ -48,6 +48,7 @@ class HealthSyncService {
 
   static const String keyAutoCreateTimelineCards = 'health_sync_auto_timeline';
   static const String keyLastSyncTime = 'health_sync_last_time';
+  static const String keyAutoSync = 'health_sync_auto_sync';
 
   HealthSyncService({
     required MiFitnessApiClient apiClient,
@@ -85,8 +86,25 @@ class HealthSyncService {
     await prefs.setBool(keyAutoCreateTimelineCards, enable);
   }
 
+  /// 是否在应用启动时自动同步（默认开启，已授权用户开箱即用）
+  Future<bool> getAutoSync() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(keyAutoSync) ?? true;
+  }
+
+  /// 设置是否在应用启动时自动同步
+  Future<void> setAutoSync(bool enable) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(keyAutoSync, enable);
+  }
+
   /// 执行单日或多日健康同步
-  Future<HealthSyncResult> syncDays({int daysBack = 2}) async {
+  ///
+  /// [onProgress] 回调用于通知 UI 层同步进度：(当前天数序号, 总天数, 状态文本)。
+  Future<HealthSyncResult> syncDays({
+    int daysBack = 2,
+    void Function(int current, int total, String message)? onProgress,
+  }) async {
     final authed = await isAuthorized();
     if (!authed) {
       return HealthSyncResult(
@@ -103,25 +121,8 @@ class HealthSyncService {
 
       final autoTimeline = await getAutoCreateTimelineCards();
 
-      // 1. 同步最近 N 天的每日健康汇总（含步数、睡眠、心率、血氧等）
-      for (int i = 0; i <= daysBack; i++) {
-        final targetDate = now.subtract(Duration(days: i));
-        try {
-          final summary = await _apiClient.fetchDaySummary(targetDate);
-          await _healthRepo.upsertDailyMetrics(summary);
-          syncedDaysCount++;
-
-          // 如果需要且有睡眠数据，自动沉淀睡眠卡片
-          if (autoTimeline && summary.sleepDurationMinutes > 0) {
-            final cardCreated = await _createSleepTimelineCardIfNeeded(summary);
-            if (cardCreated) newTimelineCardsCount++;
-          }
-        } catch (e) {
-          LoggerService.instance.warning('Failed to sync day summary for $targetDate: $e');
-        }
-      }
-
-      // 2. 同步时间段内的单次运动记录（含户外跑、骑行、游泳等）
+      // 1. 同步最近 N 天的单次运动记录（含户外跑、骑行、游泳等），先入库
+      onProgress?.call(0, daysBack + 1, '正在拉取运动记录...');
       final startTime = now.subtract(Duration(days: daysBack + 1));
       try {
         final sports = await _apiClient.fetchSportRecords(
@@ -134,20 +135,38 @@ class HealthSyncService {
           if (!exists) {
             await _healthRepo.upsertSportRecords([sport]);
             newSportRecordsCount++;
-
-            if (autoTimeline) {
-              final cardCreated = await _createSportTimelineCardIfNeeded(sport);
-              if (cardCreated) newTimelineCardsCount++;
-            }
           }
         }
       } catch (e) {
         LoggerService.instance.warning('Failed to sync sport records: $e');
       }
 
+      // 2. 同步最近 N 天的每日健康汇总（含步数、睡眠、心率、血氧等），按天生成/更新 23:00 专属聚合卡片
+      for (int i = 0; i <= daysBack; i++) {
+        final targetDate = now.subtract(Duration(days: i));
+        final dayLabel = i == 0 ? '今天' : '$i天前';
+        onProgress?.call(i, daysBack + 1, '正在同步 $dayLabel 的健康数据...');
+
+        try {
+          final summary = await _apiClient.fetchDaySummary(targetDate);
+          await _healthRepo.upsertDailyMetrics(summary);
+          syncedDaysCount++;
+
+          if (autoTimeline) {
+            final daySports = await _healthRepo.getSportRecordsByDate(summary.date);
+            final cardCreatedOrUpdated = await _upsertDailyHealthSummaryTimelineCard(summary, daySports);
+            if (cardCreatedOrUpdated) newTimelineCardsCount++;
+          }
+        } catch (e) {
+          LoggerService.instance.warning('Failed to sync day summary for $targetDate: $e');
+        }
+      }
+
       // 记录最新同步时间
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(keyLastSyncTime, now.toIso8601String());
+
+      onProgress?.call(daysBack + 1, daysBack + 1, '同步完成');
 
       return HealthSyncResult(
         success: true,
@@ -183,11 +202,6 @@ class HealthSyncService {
       final summary = await _apiClient.fetchDaySummary(targetDate);
       await _healthRepo.upsertDailyMetrics(summary);
 
-      if (autoTimeline && summary.sleepDurationMinutes > 0) {
-        final cardCreated = await _createSleepTimelineCardIfNeeded(summary);
-        if (cardCreated) newTimelineCardsCount++;
-      }
-
       // 2. 获取当天的运动记录
       final startOfDay = DateTime(targetDate.year, targetDate.month, targetDate.day, 0, 0, 0);
       final endOfDay = DateTime(targetDate.year, targetDate.month, targetDate.day, 23, 59, 59);
@@ -197,11 +211,13 @@ class HealthSyncService {
         if (!exists) {
           await _healthRepo.upsertSportRecords([sport]);
           newSportRecordsCount++;
-          if (autoTimeline) {
-            final cardCreated = await _createSportTimelineCardIfNeeded(sport);
-            if (cardCreated) newTimelineCardsCount++;
-          }
         }
+      }
+
+      if (autoTimeline) {
+        final daySports = await _healthRepo.getSportRecordsByDate(summary.date);
+        final cardCreatedOrUpdated = await _upsertDailyHealthSummaryTimelineCard(summary, daySports);
+        if (cardCreatedOrUpdated) newTimelineCardsCount++;
       }
 
       return HealthSyncResult(
@@ -219,145 +235,163 @@ class HealthSyncService {
     }
   }
 
-  /// 自动生成单次运动的时间线卡片（防重）
-  Future<bool> _createSportTimelineCardIfNeeded(HealthSportRecord sport) async {
-    final dateRecords = await _diaryRepo.getByDate(sport.startTime);
-    final isDuplicate = dateRecords.any((r) {
-      if (r.bodyState != null && r.bodyState!['mi_fitness_sid'] == sport.sid) {
-        return true;
-      }
-      return false;
-    });
-
-    if (isDuplicate) return false;
-
-    final distKm = (sport.distanceMeters / 1000).toStringAsFixed(2);
-    final durMin = sport.durationSeconds ~/ 60;
-    final calStr = sport.calories.toStringAsFixed(0);
-
-    final title = '${sport.title}${sport.distanceMeters > 0 ? ' $distKm km' : ''}';
-    final contentParts = <String>[
-      '运动时长: $durMin 分钟',
-      if (sport.distanceMeters > 0) '运动距离: $distKm km',
-      if (sport.calories > 0) '活动消耗: $calStr kcal',
-      if (sport.avgHeartRate != null && sport.avgHeartRate! > 0) '平均心率: ${sport.avgHeartRate} bpm',
-      if (sport.avgPace != null && sport.avgPace! > 0) '平均配速: ${_formatPace(sport.avgPace!)}',
-    ];
-
-    final record = DiaryRecord(
-      id: const Uuid().v4(),
-      title: title,
-      time: sport.startTime,
-      startTime: sport.startTime,
-      endTime: sport.endTime,
-      displayTag: '活动',
-      tags: ['活动', '运动'],
-      tagEntries: [
-        TagEntry(
-          id: 'activity',
-          name: '活动',
-          fields: {
-            'type': '运动',
-            'duration': (sport.durationSeconds / 3600).toStringAsFixed(2),
-            'sub_type': sport.title,
-            if (sport.distanceMeters > 0) 'distance_km': distKm,
-            if (sport.calories > 0) 'calories': calStr,
-            if (sport.avgHeartRate != null && sport.avgHeartRate! > 0) 'avg_hr': sport.avgHeartRate,
-            if (sport.avgPace != null && sport.avgPace! > 0) 'avg_pace': _formatPace(sport.avgPace!),
-          },
-          startHour: sport.startTime.hour,
-          startMinute: sport.startTime.minute,
-          endHour: sport.endTime.hour,
-          endMinute: sport.endTime.minute,
-        ),
-      ],
-      content: contentParts.join(' | '),
-      bodyState: {
-        'source': 'mi_fitness',
-        'mi_fitness_sid': sport.sid,
-        'category': sport.category,
-      },
-      colorMark: '#4CAF50',
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-    );
-
-    await _diaryRepo.insert(record);
-    return true;
-  }
-
-  /// 自动生成睡眠的时间线卡片（防重）
-  Future<bool> _createSleepTimelineCardIfNeeded(HealthDailyMetrics summary) async {
+  /// 自动生成或更新 23:00 专属「运动健康」日结卡片（聚合当天步数、睡眠、体征与单次运动，并清理历史分散卡片）
+  Future<bool> _upsertDailyHealthSummaryTimelineCard(
+    HealthDailyMetrics summary,
+    List<HealthSportRecord> sports,
+  ) async {
     final date = DateTime.tryParse(summary.date);
     if (date == null) return false;
 
-    final dateRecords = await _diaryRepo.getByDate(date);
-    final isDuplicate = dateRecords.any((r) {
-      if (r.bodyState != null &&
-          r.bodyState!['source'] == 'mi_fitness' &&
-          r.bodyState!['type'] == 'sleep' &&
-          r.bodyState!['date'] == summary.date) {
-        return true;
-      }
-      return false;
-    });
+    // 只有当有步数、睡眠、体征或运动数据时才生成
+    final hasData = summary.steps > 0 ||
+        summary.sleepDurationMinutes > 0 ||
+        sports.isNotEmpty ||
+        summary.calories > 0;
+    if (!hasData) return false;
 
-    if (isDuplicate) return false;
+    // 固定在当天的 23:00 作为健康日结
+    final targetTime = DateTime(date.year, date.month, date.day, 23, 0);
 
-    final hours = summary.sleepDurationMinutes ~/ 60;
-    final mins = summary.sleepDurationMinutes % 60;
-    final scoreStr = summary.sleepScore != null ? ' (得分: ${summary.sleepScore})' : '';
-
-    final sleepQuality = _mapSleepScoreToQuality(summary.sleepScore);
-
-    final contentParts = <String>[
-      '总睡眠: $hours小时$mins分$scoreStr',
-      if (summary.deepSleepMinutes > 0) '深睡: ${summary.deepSleepMinutes}分',
-      if (summary.lightSleepMinutes > 0) '浅睡: ${summary.lightSleepMinutes}分',
-      if (summary.remSleepMinutes > 0) '快速眼动: ${summary.remSleepMinutes}分',
-      if (summary.awakeMinutes > 0) '清醒: ${summary.awakeMinutes}分',
-    ];
-
-    // 默认以早晨 08:00 或醒来时间作为记录时间
-    DateTime recordTime = DateTime(date.year, date.month, date.day, 8, 0);
-    if (summary.sleepEndTime != null) {
-      final parts = summary.sleepEndTime!.split(':');
-      if (parts.length >= 2) {
-        final h = int.tryParse(parts[0]) ?? 8;
-        final m = int.tryParse(parts[1]) ?? 0;
-        recordTime = DateTime(date.year, date.month, date.day, h, m);
+    // 1. 清理该天历史上分散创建的单次运动卡片和睡眠卡片（软删除，避免界面重复散乱）
+    final dateRecords = await _diaryRepo.getByDate(targetTime);
+    for (final r in dateRecords) {
+      final bs = r.bodyState;
+      if (bs != null && bs['source'] == 'mi_fitness') {
+        final t = bs['type'];
+        if (t == 'sport' || t == 'sleep' || bs['mi_fitness_sid'] != null) {
+          await _diaryRepo.softDelete(r.id);
+        }
       }
     }
 
+    // 2. 查找当天是否已存在 23:00 运动健康综合卡片
+    DiaryRecord? existingCard;
+    for (final r in dateRecords) {
+      final bs = r.bodyState;
+      if (bs != null &&
+          bs['source'] == 'mi_fitness' &&
+          bs['type'] == 'daily_summary' &&
+          bs['date'] == summary.date &&
+          !r.isDeleted) {
+        existingCard = r;
+        break;
+      }
+    }
+
+    // 3. 构建结构化 bodyState 与 Markdown 文本
+    final distKm = (summary.distanceMeters / 1000).toStringAsFixed(2);
+    final calStr = summary.calories.toStringAsFixed(0);
+    final sleepHours = summary.sleepDurationMinutes ~/ 60;
+    final sleepMins = summary.sleepDurationMinutes % 60;
+    final sleepScoreStr = summary.sleepScore != null ? ' (得分: ${summary.sleepScore})' : '';
+
+    final contentLines = <String>[];
+    contentLines.add('今日步数: ${summary.steps} 步 (目标 8000 步) | 消耗: $calStr kcal | 活动: ${summary.activeMinutes} 分钟 | 距离: $distKm km');
+
+    if (summary.sleepDurationMinutes > 0) {
+      final quality = _mapSleepScoreToQuality(summary.sleepScore);
+      contentLines.add('昨晚睡眠: $sleepHours小时$sleepMins分 · $quality$sleepScoreStr | 深睡: ${summary.deepSleepMinutes}分 | 浅睡: ${summary.lightSleepMinutes}分 | REM: ${summary.remSleepMinutes}分');
+    }
+
+    final vitals = <String>[];
+    if (summary.restingHeartRate != null && summary.restingHeartRate! > 0) {
+      vitals.add('静息心率: ${summary.restingHeartRate} bpm');
+    }
+    if (summary.avgSpo2 != null && summary.avgSpo2! > 0) {
+      vitals.add('平均血氧: ${summary.avgSpo2}%');
+    }
+    if (summary.avgStress != null && summary.avgStress! > 0) {
+      vitals.add('压力指数: ${summary.avgStress}');
+    }
+    if (vitals.isNotEmpty) {
+      contentLines.add('生理体征: ${vitals.join(' | ')}');
+    }
+
+    if (sports.isNotEmpty) {
+      contentLines.add('今日运动 (${sports.length}次):');
+      for (final s in sports) {
+        final sDist = s.distanceMeters > 0 ? ' ${(s.distanceMeters / 1000).toStringAsFixed(2)}km' : '';
+        final sDur = '${s.durationSeconds ~/ 60}分钟';
+        final sCal = s.calories > 0 ? ', 消耗 ${s.calories.toStringAsFixed(0)}kcal' : '';
+        final sHr = s.avgHeartRate != null && s.avgHeartRate! > 0 ? ', 心率 ${s.avgHeartRate}bpm' : '';
+        final sPace = s.avgPace != null && s.avgPace! > 0 ? ', 配速 ${_formatPace(s.avgPace!)}' : '';
+        contentLines.add('· ${s.title}$sDist ($sDur$sCal$sHr$sPace)');
+      }
+    }
+
+    final sportsData = sports.map((s) => {
+      'sid': s.sid,
+      'title': s.title,
+      'category': s.category,
+      'start_time': s.startTime.toIso8601String(),
+      'end_time': s.endTime.toIso8601String(),
+      'duration_seconds': s.durationSeconds,
+      'distance_meters': s.distanceMeters,
+      'calories': s.calories,
+      'avg_hr': s.avgHeartRate,
+      'avg_pace': s.avgPace != null ? _formatPace(s.avgPace!) : null,
+    }).toList();
+
+    final bodyState = {
+      'source': 'mi_fitness',
+      'type': 'daily_summary',
+      'date': summary.date,
+      'steps': summary.steps,
+      'step_target': 8000,
+      'distance_meters': summary.distanceMeters,
+      'calories': summary.calories,
+      'active_minutes': summary.activeMinutes,
+      'sleep_duration_minutes': summary.sleepDurationMinutes,
+      'sleep_score': summary.sleepScore,
+      'sleep_start_time': summary.sleepStartTime,
+      'sleep_end_time': summary.sleepEndTime,
+      'deep_sleep_minutes': summary.deepSleepMinutes,
+      'light_sleep_minutes': summary.lightSleepMinutes,
+      'rem_sleep_minutes': summary.remSleepMinutes,
+      'awake_minutes': summary.awakeMinutes,
+      'resting_heart_rate': summary.restingHeartRate,
+      'avg_spo2': summary.avgSpo2,
+      'avg_stress': summary.avgStress,
+      'sports': sportsData,
+    };
+
     final record = DiaryRecord(
-      id: const Uuid().v4(),
-      title: '作息睡眠 $hours小时$mins分$scoreStr',
-      time: recordTime,
-      displayTag: '睡眠',
-      tags: ['睡眠'],
+      id: existingCard?.id ?? const Uuid().v4(),
+      title: '运动健康日结 · ${summary.steps} 步',
+      time: targetTime,
+      startTime: targetTime,
+      endTime: targetTime,
+      displayTag: '运动健康',
+      tags: ['运动健康'],
       tagEntries: [
         TagEntry(
-          id: 'sleep',
-          name: '睡眠',
+          id: 'health_summary',
+          name: '运动健康',
           fields: {
-            'fallAsleepTime': summary.sleepStartTime ?? '',
-            'duration': (summary.sleepDurationMinutes / 60).toStringAsFixed(1),
-            'quality': sleepQuality,
+            '步数': summary.steps,
+            '消耗': '${calStr}kcal',
+            if (summary.sleepDurationMinutes > 0) '睡眠': '$sleepHours小时$sleepMins分',
+            if (sports.isNotEmpty) '运动项': '${sports.length}项',
           },
+          startHour: 23,
+          startMinute: 0,
+          endHour: 23,
+          endMinute: 0,
         ),
       ],
-      content: contentParts.join(' | '),
-      bodyState: {
-        'source': 'mi_fitness',
-        'type': 'sleep',
-        'date': summary.date,
-      },
-      colorMark: '#9C27B0',
-      createdAt: DateTime.now(),
+      content: contentLines.join('\n'),
+      bodyState: bodyState,
+      colorMark: '#10B981',
+      createdAt: existingCard?.createdAt ?? DateTime.now(),
       updatedAt: DateTime.now(),
     );
 
-    await _diaryRepo.insert(record);
+    if (existingCard != null) {
+      await _diaryRepo.update(record);
+    } else {
+      await _diaryRepo.insert(record);
+    }
     return true;
   }
 

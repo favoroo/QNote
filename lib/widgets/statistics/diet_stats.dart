@@ -3,8 +3,6 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
 import 'package:qnote_flutter/widgets/stats_card.dart';
 
-const _chartColors = [Color(0xFF6366F1), Color(0xFF10B981), Color(0xFFF59E0B), Color(0xFFEF4444), Color(0xFF8B5CF6)];
-
 Color _getRatingColor(String key) {
   switch (key) {
     case '健康':
@@ -30,7 +28,6 @@ class DietStatsWidget extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final pieData = stats.typeDistribution.entries.toList();
     final healthData = stats.healthDistribution.entries.where((e) => e.value > 0).toList();
 
     return Column(
@@ -56,62 +53,6 @@ class DietStatsWidget extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 16),
-        if (pieData.isNotEmpty)
-          _SectionCard(
-            isDark: isDark,
-            iconBgColor: isDark ? const Color(0x33F59E0B) : const Color(0x1AF59E0B),
-            iconColor: Colors.orange,
-            icon: Icons.pie_chart,
-            title: '饮食类别分布',
-            child: Column(
-              children: [
-                SizedBox(
-                  height: 200,
-                  child: PieChart(
-                    PieChartData(
-                      sections: pieData.asMap().entries.map((e) {
-                        final color = _chartColors[e.key % _chartColors.length];
-                        return PieChartSectionData(
-                          value: e.value.value.toDouble(),
-                          color: color,
-                          radius: 60,
-                          title: '${e.value.value}',
-                          titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
-                        );
-                      }).toList(),
-                      sectionsSpace: 2,
-                      centerSpaceRadius: 28,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 16,
-                  runSpacing: 8,
-                  alignment: WrapAlignment.center,
-                  children: pieData.asMap().entries.map((e) {
-                    final color = _chartColors[e.key % _chartColors.length];
-                    return Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-                        const SizedBox(width: 6),
-                        Text(
-                          '${e.value.key} (${e.value.value})',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? const Color(0xFFC2C6D6) : const Color(0xFF424754),
-                          ),
-                        ),
-                      ],
-                    );
-                  }).toList(),
-                ),
-              ],
-            ),
-          ),
         const SizedBox(height: 16),
         if (healthData.isNotEmpty)
           _SectionCard(

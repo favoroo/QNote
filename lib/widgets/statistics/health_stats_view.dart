@@ -97,7 +97,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
             ),
             const SizedBox(height: 20),
             Text(
-              '开启小米运动健康体征监测',
+              '开启运动健康监测',
               style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 10),
@@ -126,7 +126,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
         children: [
           const EmptyStateWidget(
             icon: Icons.monitor_heart_outlined,
-            message: '当前时间区间暂无体征数据',
+            message: '当前时间区间暂无运动健康数据',
           ),
           const SizedBox(height: 12),
           OutlinedButton.icon(

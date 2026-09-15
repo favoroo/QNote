@@ -380,7 +380,7 @@ class VirtualWorkspaceService {
 - `/journal/`: 每日深度长篇日记与复盘（如 `/journal/2026-09-11.md`）。
 - `/folders/`: 分类与笔记本层级管理（`todos.json` 待办分类、`notes.json` 笔记本目录，支持增删改查与重命名）。
 - `/stats/`: 数据洞察与生活评分（`summary.json` 综合统计与完成率、`daily_scores.json` 每日AI生活评分与建议）。
-- `/health/`: 小米运动健康体征监测数据（`summary.json` 近期汇总、`YYYY-MM-DD.json` 单日步数/睡眠分期/心率曲线/血氧/压力/运动详情；撰写每日健康复盘与生活评分时可主动读取）。
+- `/health/`: 小米运动健康数据（`summary.json` 近期汇总、`YYYY-MM-DD.json` 单日步数/睡眠分期/心率曲线/血氧/压力/运动详情；撰写每日健康复盘与生活评分时可主动读取）。
 - `/chats/`: 对话会话管理（`sessions.json` 历史会话查看、标题重命名与软删除）。
 - `/settings/`: 系统偏好与个性化配置（包含 `appearance.json`、`ai.json`、`shortcuts.json`、`fixed_events.json`、`profile.json`、`weight.json`、`color_marks.json`、`webdav.json`）。
 
