@@ -15,6 +15,7 @@ import 'package:qnote_flutter/pages/settings/ai_config_page.dart';
 import 'package:qnote_flutter/pages/settings/shortcuts_page.dart';
 import 'package:qnote_flutter/pages/settings/fixed_events_page.dart';
 import 'package:qnote_flutter/pages/settings/data_sync_page.dart';
+import 'package:qnote_flutter/pages/settings/mi_fitness_settings_page.dart';
 import 'package:qnote_flutter/pages/settings/personalization_page.dart';
 import 'package:qnote_flutter/pages/settings/about_page.dart';
 import 'package:qnote_flutter/widgets/diary/diary_editor_view.dart';
@@ -189,6 +190,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         // 旧同步设置路径保留，统一重定向到数据与同步页的云同步分区
         path: '/settings/sync',
         redirect: (context, state) => '/settings/data?tab=sync',
+      ),
+      GoRoute(
+        path: '/settings/mi-fitness',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => _fadeTransitionPage(const MiFitnessSettingsPage()),
       ),
       GoRoute(
         path: '/settings/personalization',

@@ -1,7 +1,7 @@
 import 'package:qnote_flutter/models/diary_record.dart';
 
 /// 统计页 tab 类型，提到此处避免 stats_provider ↔ statistics_page 循环依赖
-enum StatTab { score, sleep, diet, finance, mood, activity }
+enum StatTab { score, healthDevice, sleep, diet, finance, mood, activity }
 
 class SleepDailyData {
   final String date;

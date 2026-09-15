@@ -17,6 +17,7 @@ import 'package:qnote_flutter/widgets/statistics/finance_stats.dart';
 import 'package:qnote_flutter/widgets/statistics/mood_stats.dart';
 import 'package:qnote_flutter/widgets/statistics/activity_stats.dart';
 import 'package:qnote_flutter/widgets/statistics/daily_score_stats.dart';
+import 'package:qnote_flutter/widgets/statistics/health_stats_view.dart';
 
 class _TabConfig {
   final StatTab tab;
@@ -31,6 +32,7 @@ class _TabConfig {
 
 const _tabs = [
   _TabConfig(tab: StatTab.score, label: '评分', icon: Icons.insights),
+  _TabConfig(tab: StatTab.healthDevice, label: '体征', icon: Icons.favorite_rounded),
   _TabConfig(tab: StatTab.sleep, label: '睡眠', icon: Icons.bedtime),
   _TabConfig(tab: StatTab.diet, label: '饮食', icon: Icons.restaurant),
   _TabConfig(
@@ -96,12 +98,17 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
 
   Widget _buildViewDataButton(ThemeData theme) {
     final colorScheme = theme.colorScheme;
+    final isHealthDevice = _activeTab == StatTab.healthDevice;
     return Tooltip(
-      message: '查看数据',
+      message: isHealthDevice ? '小米健康设置' : '查看数据',
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
+            if (isHealthDevice) {
+              context.push('/settings/mi-fitness');
+              return;
+            }
             final (startDate, endDate) = _getDateRange();
             final tagName = _getTagName(_activeTab);
             context.push('/diary/batch', extra: {
@@ -122,7 +129,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
               color: colorScheme.primary.withValues(alpha: 0.05),
             ),
             child: Icon(
-              Icons.analytics_outlined,
+              isHealthDevice ? Icons.settings_outlined : Icons.analytics_outlined,
               size: 20,
               color: colorScheme.primary,
             ),
@@ -195,6 +202,13 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
         child: DailyScoreStats(),
       );
     }
+    // healthDevice tab 呈现小米运动健康全量体征监测仪表盘
+    if (_activeTab == StatTab.healthDevice) {
+      return HealthStatsView(
+        startDate: startDate,
+        endDate: endDate,
+      );
+    }
 
     final query = StatsQuery(
       start: startDate,
@@ -221,6 +235,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
           case StatTab.activity:
             isEmpty = (stats as ActivityStatistics).totalActivities == 0;
           case StatTab.score:
+          case StatTab.healthDevice:
             isEmpty = true; // 不会执行到这里
         }
         if (isEmpty) {
@@ -243,7 +258,8 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
           case StatTab.activity:
             content = ActivityStatsWidget(stats: stats as ActivityStatistics);
           case StatTab.score:
-            content = const DailyScoreStats(); // 不会执行
+          case StatTab.healthDevice:
+            content = const SizedBox.shrink(); // 不会执行到这里
         }
 
         // 隔离统计卡片的重绘，fl_chart 动画跑动时不影响外部

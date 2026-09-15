@@ -106,6 +106,22 @@ class QTargetBridge {
       return null;
     }
   }
+
+  /// 向目标页面应用引用内容（如在页面中点击悬浮球，将选区应用到该页面的输入框）
+  void applyQuote(String? signature, QTextQuote quote) {
+    final hooks = signature == null ? null : _hooks[signature];
+    try {
+      hooks?.onApplyQuote?.call(quote);
+    } catch (_) {}
+  }
+
+  /// 请求目标页面聚焦其输入框
+  void focusInput(String? signature) {
+    final hooks = signature == null ? null : _hooks[signature];
+    try {
+      hooks?.onFocusInput?.call();
+    } catch (_) {}
+  }
 }
 
 /// 编辑页向桥接注册的钩子集合
@@ -126,11 +142,19 @@ class QTargetHooks {
   /// 供悬浮球点按时把选中文本连同位置引用给小Q（与选择菜单「给小Q」同一判定）
   final QTextQuote? Function()? quoteSelection;
 
+  /// 外部主动推入引用钩子（如悬浮球点按时把选中文本应用到当前页面的输入框）
+  final void Function(QTextQuote quote)? onApplyQuote;
+
+  /// 外部请求当前页面聚焦输入框
+  final void Function()? onFocusInput;
+
   const QTargetHooks({
     this.fingerprint,
     this.reload,
     this.onTaskStart,
     this.onTaskEnd,
     this.quoteSelection,
+    this.onApplyQuote,
+    this.onFocusInput,
   });
 }
