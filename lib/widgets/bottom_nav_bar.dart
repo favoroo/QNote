@@ -336,38 +336,69 @@ class _QDockButton extends ConsumerWidget {
       return const _WorkingDock(size: _size);
     }
 
-    // /ai 激活态：primary 填充
+    final isDark = theme.brightness == Brightness.dark;
+
+    // /ai 激活态：轻量微透背景底座 + 灵动立体渐变光环与专属活动指示，区别于笨重的死黑/死紫实心球
     if (isActive) {
-      return Container(
+      return AnimatedContainer(
+        duration: AppDurations.fast,
+        curve: Curves.easeOutCubic,
         width: _size,
         height: _size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: primary,
+          color: primary.withValues(alpha: isDark ? 0.22 : 0.14),
+          border: Border.all(
+            color: primary.withValues(alpha: isDark ? 0.75 : 0.65),
+            width: 1.8,
+          ),
           boxShadow: [
             BoxShadow(
-              color: primary.withValues(alpha: 0.3),
-              blurRadius: 8,
+              color: primary.withValues(alpha: isDark ? 0.35 : 0.20),
+              blurRadius: 10,
+              spreadRadius: 0.5,
               offset: const Offset(0, 2),
             ),
           ],
         ),
-        child: Center(
-          child: panelOpen
-              ? Icon(Icons.close_rounded,
-                  color: theme.colorScheme.onPrimary, size: 22)
-              : QIcon(
-                  size: 20,
-                  color: theme.colorScheme.onPrimary,
-                  screenColor: primary,
-                  eyeColor: theme.colorScheme.onPrimary,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Center(
+              child: panelOpen
+                  ? Icon(Icons.close_rounded, color: primary, size: 22)
+                  : QIcon(
+                      size: 21,
+                      color: primary,
+                      screenColor: isDark ? theme.colorScheme.surface : Colors.white,
+                      eyeColor: primary,
+                    ),
+            ),
+            // 底部专属微光活动指示胶囊（对齐 MD3 现代化导航指示器）
+            Positioned(
+              bottom: 3,
+              child: Container(
+                width: 12,
+                height: 2.5,
+                decoration: BoxDecoration(
+                  color: primary,
+                  borderRadius: BorderRadius.circular(2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: primary.withValues(alpha: 0.5),
+                      blurRadius: 3,
+                      offset: const Offset(0, 0.5),
+                    ),
+                  ],
                 ),
+              ),
+            ),
+          ],
         ),
       );
     }
 
     // 待机态：surface 背景 + primary 图标
-    final isDark = theme.brightness == Brightness.dark;
     return Container(
       width: _size,
       height: _size,
@@ -375,18 +406,18 @@ class _QDockButton extends ConsumerWidget {
         shape: BoxShape.circle,
         color: theme.colorScheme.surface,
         border: Border.all(
-          color: primary.withValues(alpha: isDark ? 0.5 : 0.6),
-          width: 1.5,
+          color: primary.withValues(alpha: isDark ? 0.45 : 0.5),
+          width: 1.2,
         ),
         boxShadow: [
           BoxShadow(
-            color: primary.withValues(alpha: isDark ? 0.25 : 0.15),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: primary.withValues(alpha: isDark ? 0.18 : 0.10),
+            blurRadius: 6,
+            offset: const Offset(0, 1.5),
           ),
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
-            blurRadius: 4,
+            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.06),
+            blurRadius: 3,
             offset: const Offset(0, 1),
           ),
         ],

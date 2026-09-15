@@ -431,6 +431,8 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                 children: [
                   Text(
                     isAuthed ? '小米账号: ${_credentials!.userId}' : '未连接小米账号',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
@@ -441,6 +443,8 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                       _lastSyncTime != null
                           ? '上次同步 ${_formatDateTime(_lastSyncTime!)}'
                           : '尚未同步',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: colorScheme.onSurfaceVariant,
                         fontSize: 11,

@@ -79,12 +79,25 @@ class QAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final effectiveColor = color ?? theme.colorScheme.primary;
+    final primary = theme.colorScheme.primary;
+
+    // 当 withBackground = true 时，默认采用用户最青睐的「白净通透机身」视觉：
+    // 底座为实心 primary 主色，机身为纯白 onPrimary，屏幕为 primary，内圈与眼睛为 onPrimary 纯白；
+    // 这样头像在列表与气泡中具备极高辨识度与现代质感。
+    final effectiveColor = color ??
+        (withBackground
+            ? theme.colorScheme.onPrimary
+            : primary);
+
+    final effectiveScreenColor = screenColor ??
+        (withBackground
+            ? (backgroundColor ?? primary)
+            : primary);
+
     final effectiveEyeColor = eyeColor ??
         (withBackground
-            ? (backgroundColor ?? theme.colorScheme.surface)
+            ? theme.colorScheme.onPrimary
             : theme.colorScheme.surface);
-    final effectiveScreenColor = screenColor ?? effectiveColor;
 
     final iconWidget = SizedBox(
       width: size,
@@ -103,7 +116,7 @@ class QAvatar extends StatelessWidget {
       return iconWidget;
     }
 
-    final effectiveBg = backgroundColor ?? theme.colorScheme.primary.withValues(alpha: 0.15);
+    final effectiveBg = backgroundColor ?? primary;
 
     return Container(
       width: size,
@@ -112,13 +125,20 @@ class QAvatar extends StatelessWidget {
       decoration: BoxDecoration(
         color: effectiveBg,
         shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: effectiveBg.withValues(alpha: 0.28),
+            blurRadius: 4,
+            offset: const Offset(0, 1.5),
+          ),
+        ],
       ),
       child: Center(
         child: SizedBox(
-          width: size * 0.64,
-          height: size * 0.64,
+          width: size * 0.65,
+          height: size * 0.65,
           child: CustomPaint(
-            size: Size(size * 0.64, size * 0.64),
+            size: Size(size * 0.65, size * 0.65),
             painter: _QRobotPainter(
               bodyColor: effectiveColor,
               innerColor: effectiveEyeColor,

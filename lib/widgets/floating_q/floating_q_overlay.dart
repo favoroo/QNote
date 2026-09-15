@@ -240,7 +240,10 @@ class _FloatingQPanelState extends ConsumerState<_FloatingQPanel> {
       padding: const EdgeInsets.fromLTRB(16, 10, 4, 10),
       child: Row(
         children: [
-          const QAvatar(size: 18),
+          const QAvatar(
+            size: 22,
+            withBackground: true,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(

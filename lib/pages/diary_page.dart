@@ -728,16 +728,16 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
     final offset = _scrollController.offset;
     final maxScroll = _scrollController.position.maxScrollExtent;
-    final viewportHeight = _scrollController.position.viewportDimension;
 
-    // 必须有足够的超视口可滚动内容才允许触发滑动窗口平移
-    // 当多个日期折叠后内容高度可能较小，此时严禁触发平移，避免 maxScroll 极小时产生连环 jumpTo 吸死
-    if (maxScroll <= viewportHeight * 1.5) return;
+    // 允许双向自由滑动平移窗口（最早 -365 天，最晚 +365 天）
+    // 当向上接近顶部（offset < 200 或回弹越界 offset <= 0）时，平滑向前平移
+    final earliestDate = _today.subtract(const Duration(days: 365));
+    final latestDate = _today.add(const Duration(days: 365));
 
-    // 只有在离边界小于 300px 且有明确安全余量时才触发平移
-    if (offset < 300.0 && _windowStartDate.isBefore(_today)) {
+    if ((offset < 200.0 || offset <= 0.0) && _windowStartDate.isAfter(earliestDate)) {
       _shiftWindowBackward();
-    } else if (offset > maxScroll - 300.0) {
+    } else if ((offset > maxScroll - 200.0 || offset >= maxScroll) &&
+        _windowStartDate.isBefore(latestDate)) {
       _shiftWindowForward();
     }
 

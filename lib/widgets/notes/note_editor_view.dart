@@ -19,6 +19,7 @@ import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/widgets/notes/html_preview/html_preview_view.dart';
 import 'package:qnote_flutter/widgets/q_text_selection_toolbar.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
+import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/core/utils/link_preview_helper.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
@@ -2319,8 +2320,10 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
                     ),
                   ),
                   _ToolbarButton(
-                    icon: Icons.auto_awesome_rounded,
-                    color: theme.colorScheme.primary,
+                    iconWidget: QIcon(
+                      size: 18,
+                      color: theme.colorScheme.primary,
+                    ),
                     tooltip: '给小Q',
                     onPressed: _sendToQFromToolbar,
                   ),
@@ -2350,26 +2353,26 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
 // Toolbar button
 // ---------------------------------------------------------------------------
 class _ToolbarButton extends StatelessWidget {
-  final IconData icon;
+  final IconData? icon;
+  final Widget? iconWidget;
   final VoidCallback? onPressed;
   final VoidCallback? onLongPress;
   final String? tooltip;
-  final Color? color;
 
   const _ToolbarButton({
-    required this.icon,
+    this.icon,
+    this.iconWidget,
     this.onPressed,
     this.onLongPress,
     this.tooltip,
-    this.color,
-  });
+  }) : assert(icon != null || iconWidget != null, 'Either icon or iconWidget must be provided');
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isEnabled = onPressed != null;
     final iconColor = isEnabled
-        ? (color ?? theme.colorScheme.onSurface)
+        ? theme.colorScheme.onSurface
         : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.38);
 
     Widget child = Padding(
@@ -2383,11 +2386,12 @@ class _ToolbarButton extends StatelessWidget {
           child: Container(
             constraints: const BoxConstraints(minWidth: 28, minHeight: 32),
             alignment: Alignment.center,
-            child: Icon(
-              icon,
-              size: 18,
-              color: iconColor,
-            ),
+            child: iconWidget ??
+                Icon(
+                  icon,
+                  size: 18,
+                  color: iconColor,
+                ),
           ),
         ),
       ),
