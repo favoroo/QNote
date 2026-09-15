@@ -46,8 +46,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
   late DateTime _today;
   late DateTime _windowStartDate;
-  final int _windowDays = 15;
-  static const int _shiftDays = 3;
+  final int _windowDays = 30;
+  static const int _shiftDays = 5;
   int _lastShiftTimestamp = 0;
   late ScrollController _scrollController;
   final GlobalKey _viewportKey = GlobalKey();
@@ -136,23 +136,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   bool _isDefaultExpanded(DateTime date) {
     final yesterday = _today.subtract(const Duration(days: 1));
     final tomorrow = _today.add(const Duration(days: 1));
-    // 昨天、今天、明天默认保持展开
-    if (_isSameDay(date, _today) ||
+    // 仅昨天、今天、明天默认保持展开，其余历史与未来日期全部默认折叠
+    return _isSameDay(date, _today) ||
         _isSameDay(date, yesterday) ||
-        _isSameDay(date, tomorrow)) {
-      return true;
-    }
-    // 存在记录的日期默认展开，让内容直接呈现且保证时间线骨架有充裕高度
-    final key = _dateKey(date);
-    final records = _cachedRecordsByDate?[key];
-    if (records != null && records.isNotEmpty) {
-      return true;
-    }
-    final allRecords = ref.read(diaryListProvider).valueOrNull;
-    if (allRecords != null) {
-      return allRecords.any((r) => !r.isDeleted && _isSameDay(r.getEffectiveDate(), date));
-    }
-    return false;
+        _isSameDay(date, tomorrow);
   }
 
   bool _isDateExpanded(DateTime date) {
@@ -165,52 +152,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     final current = _isDateExpanded(date);
     final willExpand = !current;
 
-    // 如果该日期在视口上方，计算其展开/折叠对滚动高度的影响并平滑修正 offset，防止视口跳动
-    final targetDayOffset = _dateToDayOffset(date);
-    double? heightDelta;
-    if (_scrollController.hasClients) {
-      final allRecords = ref.read(diaryListProvider).valueOrNull;
-      final recordsByDate = allRecords != null ? _buildRecordsByDate(allRecords) : null;
-      final dayRecords = recordsByDate?[key] ?? [];
-      final dayContentHeight = 48 * _nodeHeight + dayRecords.length * _averageRecordExtraHeight;
-      heightDelta = willExpand ? dayContentHeight : -dayContentHeight;
-    }
-
+    // 当用户点击屏幕上可见的日期分割栏时，内容是在该分割栏下方展开/收起；
+    // 该分割栏本身在 ListView 中的起始 offset 完全不变。
+    // 因此无需且严禁强行调用 jumpTo 重置 offset，否则会使当前视口发生剧烈跳动与位移。
     setState(() {
       _dateExpandedOverrides[key] = willExpand;
     });
     HapticFeedback.lightImpact();
-
-    // 只有当被操作的日期完全在当前滚动视口上方时，才做补偿以保持用户当前所看的内容位置稳定；
-    // 如果用户在屏幕可见范围内直接点击折叠条，不应发生视口跳动。
-    if (heightDelta != null && _scrollController.hasClients && targetDayOffset >= 0) {
-      // 预估该日期 Header 的 offset
-      double dateHeaderOffset = 0;
-      for (int d = 0; d < targetDayOffset; d++) {
-        final dDate = _indexToDate(d);
-        dateHeaderOffset += _dividerHeight;
-        if (_isDateExpanded(dDate)) {
-          dateHeaderOffset += 48 * _nodeHeight;
-          final dKey = _dateKey(dDate);
-          final dRecords = _cachedRecordsByDate?[dKey] ?? [];
-          dateHeaderOffset += dRecords.length * _averageRecordExtraHeight;
-        }
-      }
-
-      final currentOffset = _scrollController.offset;
-      // 只有当点击的日期严格位于视口上方（加上头部高度余量），才需要平移补偿
-      if (dateHeaderOffset + 100.0 < currentOffset) {
-        final newOffset = (currentOffset + heightDelta).clamp(
-          0.0,
-          _scrollController.position.maxScrollExtent + (heightDelta > 0 ? heightDelta : 0.0),
-        );
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_scrollController.hasClients) {
-            _scrollController.jumpTo(newOffset.clamp(0.0, _scrollController.position.maxScrollExtent));
-          }
-        });
-      }
-    }
   }
 
   void _expandDate(DateTime date) {
@@ -228,7 +176,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     WidgetsBinding.instance.addObserver(this);
     final now = DateTime.now();
     _today = DateTime(now.year, now.month, now.day);
-    _windowStartDate = _today.subtract(const Duration(days: 7));
+    _windowStartDate = _today.subtract(const Duration(days: 14));
     _hasPerformedInitialScroll = false;
     _itemContexts.clear();
     _itemHeights.clear();
@@ -707,7 +655,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       if (!_isSameDay(_today, todayNow)) {
         setState(() {
           _today = todayNow;
-          _windowStartDate = _today.subtract(const Duration(days: 7));
+          _windowStartDate = _today.subtract(const Duration(days: 14));
         });
         final allRecords = ref.read(diaryListProvider).valueOrNull;
         final recordsByDate = allRecords != null ? _buildRecordsByDate(allRecords) : null;
@@ -746,22 +694,22 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
     final offset = _scrollController.offset;
     final maxScroll = _scrollController.position.maxScrollExtent;
-    final viewportHeight = _scrollController.position.viewportDimension;
 
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     // 冷却期保护：平移完成后至少等待 300ms，防止高频震荡
     final canShift = nowMs - _lastShiftTimestamp >= 300;
 
     // 允许双向自由滑动平移窗口（最早 -365 天，最晚 +365 天）
-    // 必须列表具有足够健康的可滚动余量（大于视口 1.2 倍），且两端触发区绝不重叠
-    const shiftBuffer = 300.0;
-    if (canShift && maxScroll >= viewportHeight * 1.2 && maxScroll > shiftBuffer * 2) {
+    // 动态 edgeBuffer：取 maxScroll 的 20%，clamp 在 [100.0, 400.0] 之间，
+    // 保证顶部触发区与底部触发区之间永远有至少 60% 的死区隔离，数学上绝对不可能同时触发或死锁
+    final edgeBuffer = (maxScroll * 0.2).clamp(100.0, 400.0);
+    if (canShift && maxScroll > edgeBuffer * 2.5) {
       final earliestDate = _today.subtract(const Duration(days: 365));
       final latestDate = _today.add(const Duration(days: 365));
 
-      if (offset < shiftBuffer && _windowStartDate.isAfter(earliestDate)) {
+      if (offset < edgeBuffer && _windowStartDate.isAfter(earliestDate)) {
         _shiftWindowBackward();
-      } else if (offset > maxScroll - shiftBuffer &&
+      } else if (offset > maxScroll - edgeBuffer &&
           _windowStartDate.isBefore(latestDate)) {
         _shiftWindowForward();
       }
@@ -957,8 +905,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     final target = DateTime(date.year, date.month, date.day);
     final diff = target.difference(_today).inDays;
 
-    // 将目标日期尽量居中放置在 15 天窗口的中部（第 7 天）
-    final newStartDiff = (diff - 7).clamp(-365, 365 - _windowDays);
+    // 将目标日期尽量居中放置在 30 天窗口的中部（第 14 天）
+    final newStartDiff = (diff - 14).clamp(-365, 365 - _windowDays);
 
     _windowStartDate = _today.add(Duration(days: newStartDiff));
     _itemContexts.clear();

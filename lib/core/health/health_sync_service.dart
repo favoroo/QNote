@@ -47,7 +47,6 @@ class HealthSyncService {
   final MiFitnessAuthService _authService;
   final DiaryRepository _diaryRepo;
 
-  static const String keyAutoCreateTimelineCards = 'health_sync_auto_timeline';
   static const String keyLastSyncTime = 'health_sync_last_time';
   static const String keyAutoSync = 'health_sync_auto_sync';
   static const String keyDailyStepTarget = 'health_sync_daily_step_target';
@@ -77,16 +76,9 @@ class HealthSyncService {
     return DateTime.tryParse(str);
   }
 
-  /// 是否自动沉淀为时间线卡片
+  /// 是否自动沉淀为时间线卡片（始终开启，设置页已移除开关）
   Future<bool> getAutoCreateTimelineCards() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(keyAutoCreateTimelineCards) ?? true;
-  }
-
-  /// 设置是否自动沉淀为时间线卡片
-  Future<void> setAutoCreateTimelineCards(bool enable) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(keyAutoCreateTimelineCards, enable);
+    return true;
   }
 
   /// 是否在应用启动时自动同步（默认开启，已授权用户开箱即用）

@@ -13,7 +13,6 @@ import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/shortcut_field.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
-import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/models/fixed_event_template.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
@@ -643,9 +642,10 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
 
   /// 根据当前选中的固定事件集合，统一刷新草稿的时间与备注
   /// - 时间：用"最后选中"的模板时间（时间点模式无结束时间）
-  /// - 备注：所有选中模板的备注按选中顺序换行拼接
+  /// - 备注：所有选中模板的备注按选中顺序换行拼接（未填备注时默认使用事件标题）
   void _applyFixedEventsSelection(List<FixedEventTemplate> allTemplates, List<TagEntry> tagEntries) {
     if (_selectedFixedEventIds.isEmpty) {
+      _textController.text = '';
       _updateActiveDraft(
         inputText: '',
         tagEntries: tagEntries,
@@ -683,18 +683,23 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
             );
           }();
 
-    // 备注换行拼接（过滤掉空备注）
+    // 备注换行拼接（未填备注时默认使用事件标题）
     final contents = selectedTemplates
-        .map((t) => t.content?.trim() ?? '')
+        .map((t) => t.effectiveContent)
         .where((c) => c.isNotEmpty)
         .toList();
     final mergedText = contents.join('\n');
+
+    _textController.text = mergedText;
+    _textController.selection = TextSelection.fromPosition(
+      TextPosition(offset: mergedText.length),
+    );
 
     _updateActiveDraft(
       startTime: startTime,
       endTime: endTime,
       clearEndTime: last.isTimePoint,
-      inputText: mergedText.isEmpty ? _textController.text : mergedText,
+      inputText: mergedText,
       tagEntries: tagEntries,
       clearStartOffset: true,
       clearEndOffset: true,
@@ -1623,6 +1628,13 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       final allTemplates = ref.read(fixedEventListProvider).valueOrNull ?? [];
       final selectedTemplates = allTemplates.where((t) => _selectedFixedEventIds.contains(t.id)).toList();
 
+      final defaultMergedText = selectedTemplates
+          .map((t) => t.effectiveContent)
+          .where((c) => c.isNotEmpty)
+          .join('\n');
+      final isUserCustomizedText = draft.inputText.isNotEmpty &&
+          draft.inputText.trim() != defaultMergedText.trim();
+
       for (final template in selectedTemplates) {
         // 找到与该模板关联的标签在草稿中的 entries
         final templateTagEntries = <TagEntry>[];
@@ -1751,11 +1763,15 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
             }
             final allDetails = detailParts.join('；');
 
-            // 备注优先使用用户编辑过的输入框草稿文字，若无则使用模板预设的 content
-            final baseText = draft.inputText.isNotEmpty ? draft.inputText : (template.content ?? '');
+            // 备注：若用户手动编辑了输入框文字则以输入为准，否则使用模板备注（若未填则默认使用标题名称）
+            final baseText = isUserCustomizedText
+                ? draft.inputText
+                : template.effectiveContent;
             recordContent = '$allDetails${baseText.isNotEmpty ? '\n备注：$baseText' : ''}';
           } else {
-            recordContent = draft.inputText.isNotEmpty ? draft.inputText : (template.content ?? '');
+            recordContent = isUserCustomizedText
+                ? draft.inputText
+                : template.effectiveContent;
           }
 
           final recordTags = template.tags.isNotEmpty
