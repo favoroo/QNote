@@ -50,7 +50,7 @@ class FixedEventTemplate {
     List<TimePeriod>? timePeriods,
     required this.createdAt,
     required this.updatedAt,
-  }) : this.timePeriods = timePeriods ?? [TimePeriod(startTime: startTime, endTime: endTime)];
+  }) : timePeriods = timePeriods ?? [TimePeriod(startTime: startTime, endTime: endTime)];
 
   Map<String, dynamic> toMap() {
     return {
@@ -180,5 +180,14 @@ class FixedEventTemplate {
       if (isTimePoint || p.endTime.isEmpty) return p.startTime;
       return '${p.startTime}-${p.endTime}';
     }).join(', ');
+  }
+
+  /// 有效备注内容：若未设置或为空，默认回退为事件名称（标题）
+  String get effectiveContent {
+    final trimmed = content?.trim();
+    if (trimmed != null && trimmed.isNotEmpty) {
+      return trimmed;
+    }
+    return name.trim();
   }
 }

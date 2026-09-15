@@ -14,6 +14,16 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.44',
+    date: '2026-09-16',
+    notes: [
+      '日记时间线可视范围扩至 30 天，仅昨天/今天/明天默认展开，滑动平移不再卡顿死锁',
+      '选中固定事件时自动带上备注（未填写时默认用事件名称），取消选中自动清空输入框',
+      '用户资料页新增 BMI 指标与分级提示，体重按公斤/斤单位自动换算',
+      '小米健康同步简化：移除「自动生成时间线卡片」开关（默认始终开启）',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.43',
     date: '2026-09-16',
     notes: [

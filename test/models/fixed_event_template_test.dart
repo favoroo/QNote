@@ -84,5 +84,41 @@ void main() {
       expect(restored.timePeriods[1].endTime, '18:00');
       expect(restored.formattedTimeRange, '08:30-12:00, 13:30-18:00');
     });
+
+    test('effectiveContent should fallback to name when content is null or whitespace', () {
+      final now = DateTime.now();
+      final t1 = FixedEventTemplate(
+        id: '10',
+        name: '加班',
+        startTime: '19:15',
+        endTime: '21:20',
+        content: null,
+        createdAt: now,
+        updatedAt: now,
+      );
+      expect(t1.effectiveContent, '加班');
+
+      final t2 = FixedEventTemplate(
+        id: '11',
+        name: '加班',
+        startTime: '19:15',
+        endTime: '21:20',
+        content: '   ',
+        createdAt: now,
+        updatedAt: now,
+      );
+      expect(t2.effectiveContent, '加班');
+
+      final t3 = FixedEventTemplate(
+        id: '12',
+        name: '加班',
+        startTime: '19:15',
+        endTime: '21:20',
+        content: '紧急修复线上bug',
+        createdAt: now,
+        updatedAt: now,
+      );
+      expect(t3.effectiveContent, '紧急修复线上bug');
+    });
   });
 }

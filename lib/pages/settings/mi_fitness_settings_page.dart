@@ -27,7 +27,6 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
   bool _isSyncing = false;
   MiAuthCredentials? _credentials;
   DateTime? _lastSyncTime;
-  bool _autoTimeline = true;
   bool _autoSync = true;
   int _stepTarget = 8000; // 每日目标步数，默认 8000
 
@@ -66,7 +65,6 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
 
     final creds = await authService.loadCredentials();
     final lastSync = await syncService.getLastSyncTime();
-    final autoTimeline = await syncService.getAutoCreateTimelineCards();
     final autoSync = await syncService.getAutoSync();
     final stepTarget = await syncService.getDailyStepTarget();
 
@@ -74,7 +72,6 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
       setState(() {
         _credentials = creds;
         _lastSyncTime = lastSync;
-        _autoTimeline = autoTimeline;
         _autoSync = autoSync;
         _stepTarget = stepTarget;
         _isLoading = false;
@@ -354,8 +351,8 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                   )
                 : IconButton(
                     icon: const Icon(Icons.sync_rounded),
-                    tooltip: '选择同步天数',
-                    onPressed: () => _showSyncRangeSheet(context),
+                    tooltip: '同步最近 7 天',
+                    onPressed: () => _handleSyncNow(daysBack: 7),
                   ),
         ],
       ),
@@ -1601,17 +1598,6 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                 setState(() => _autoSync = val);
                 final syncService = ref.read(healthSyncServiceProvider);
                 await syncService.setAutoSync(val);
-              },
-            ),
-            const Divider(height: 1),
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('自动生成时间线卡片'),
-              value: _autoTimeline,
-              onChanged: (val) async {
-                setState(() => _autoTimeline = val);
-                final syncService = ref.read(healthSyncServiceProvider);
-                await syncService.setAutoCreateTimelineCards(val);
               },
             ),
             const Divider(height: 1),
