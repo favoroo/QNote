@@ -120,6 +120,7 @@ class MiFitnessApiClient {
       fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'heart_rate').catchError((e) => <Map<String, dynamic>>[]),
       fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'spo2').catchError((e) => <Map<String, dynamic>>[]),
       fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'stress').catchError((e) => <Map<String, dynamic>>[]),
+      fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'standing').catchError((e) => <Map<String, dynamic>>[]),
     ]);
 
     final stepsData = results[0];
@@ -127,6 +128,7 @@ class MiFitnessApiClient {
     final hrData = results[2];
     final spo2Data = results[3];
     final stressData = results[4];
+    final standingData = results[5];
 
     // 1. 步数处理与分钟去重 (解决手表与手机同时计步虚高)
     int totalSteps = 0;
@@ -276,12 +278,43 @@ class MiFitnessApiClient {
     }
     final avgStress = stressSamples.isNotEmpty ? (stressSum ~/ stressSamples.length) : null;
 
+    // 6. 站立次数解析
+    int totalStanding = 0;
+    for (final item in standingData) {
+      try {
+        final valStr = item['value'] as String? ?? '{}';
+        final valJson = json.decode(valStr) as Map<String, dynamic>;
+        // 兼容多种可能字段名
+        final standVal = valJson['standing_count'] ??
+            valJson['stand_count'] ??
+            valJson['count'] ??
+            valJson['standing'] ??
+            valJson['stand'];
+        if (standVal is num) {
+          totalStanding += standVal.toInt();
+        }
+      } catch (_) {}
+    }
+    // 若按分钟采样且字段为 has_stand，则统计达标时段数
+    if (totalStanding == 0 && standingData.isNotEmpty) {
+      totalStanding = standingData.where((item) {
+        try {
+          final valStr = item['value'] as String? ?? '{}';
+          final valJson = json.decode(valStr) as Map<String, dynamic>;
+          return valJson['has_stand'] == true || valJson['has_stand'] == 1;
+        } catch (_) {
+          return false;
+        }
+      }).length;
+    }
+
     return HealthDailyMetrics(
       date: dateStr,
       steps: totalSteps,
       distanceMeters: totalDistance,
       calories: totalCalories,
       activeMinutes: minuteStepMap.length,
+      standingCount: totalStanding,
       sleepDurationMinutes: sleepDuration,
       deepSleepMinutes: deepSleep,
       lightSleepMinutes: lightSleep,

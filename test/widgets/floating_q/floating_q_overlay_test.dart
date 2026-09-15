@@ -7,6 +7,7 @@ import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
 import 'package:qnote_flutter/core/router/app_router.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/widgets/floating_q/floating_q_overlay.dart';
+
 /// 测试宿主：与真实挂载方式一致（MaterialApp.builder 内用局部 Overlay 叠
 /// FloatingQOverlay，面板内 Tooltip 依赖该 Overlay），仅用极简 GoRouter 覆盖
 /// routerProvider（FloatingQOverlay initState 会读取），面板开合只依赖
@@ -36,8 +37,8 @@ Widget _host() {
   );
 }
 
-/// 通过 provider 直接驱动面板开合（悬浮球用原始 Listener 处理指针，
-/// 状态驱动比手势模拟更稳，转场动画由 overlay 的 widget 层负责）
+/// 通过 provider 直接驱动面板开合（悬浮球已移除，改为底部导航栏中央按钮
+/// 唤起；测试中直接用 provider 翻转 panelOpen 状态即可）
 void _setPanelOpen(WidgetTester tester, bool open) {
   final context = tester.element(find.byType(FloatingQOverlay));
   final container = ProviderScope.containerOf(context, listen: false);
@@ -62,30 +63,28 @@ void main() {
     floatingQModalCount.value = 0;
   });
 
-  testWidgets('初始只渲染悬浮球，面板不挂载', (tester) async {
+  testWidgets('初始面板不挂载', (tester) async {
     await tester.pumpWidget(_host());
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('ball-free')), findsOneWidget);
-    expect(find.byKey(const ValueKey('panel-with-ball')), findsNothing);
+    expect(find.byKey(const ValueKey('panel')), findsNothing);
+    expect(find.byKey(const ValueKey('panel-hidden')), findsOneWidget);
   });
 
-  testWidgets('打开面板：转场中球与面板共存，结束后球移除面板驻留', (tester) async {
+  testWidgets('打开面板：面板淡入并驻留', (tester) async {
     await tester.pumpWidget(_host());
     await tester.pumpAndSettle();
 
     _setPanelOpen(tester, true);
-    // 转场进行中：出场的球与入场的面板同时存在（交叉过渡）
+    // 转场进行中：面板开始淡入
     await tester.pump();
-    expect(find.byKey(const ValueKey('ball-free')), findsOneWidget);
-    expect(find.byKey(const ValueKey('panel-with-ball')), findsOneWidget);
+    expect(find.byKey(const ValueKey('panel')), findsOneWidget);
 
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('ball-free')), findsNothing);
-    expect(find.byKey(const ValueKey('panel-with-ball')), findsOneWidget);
+    expect(find.byKey(const ValueKey('panel')), findsOneWidget);
   });
 
-  testWidgets('关闭面板：转场中面板与球共存，结束后面板移除球弹回', (tester) async {
+  testWidgets('关闭面板：面板淡出后移除', (tester) async {
     await tester.pumpWidget(_host());
     await tester.pumpAndSettle();
 
@@ -93,13 +92,12 @@ void main() {
     await tester.pumpAndSettle();
 
     _setPanelOpen(tester, false);
+    // 转场进行中：面板仍在树中淡出
     await tester.pump();
-    expect(find.byKey(const ValueKey('panel-with-ball')), findsOneWidget);
-    expect(find.byKey(const ValueKey('ball-free')), findsOneWidget);
+    expect(find.byKey(const ValueKey('panel')), findsOneWidget);
 
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('panel-with-ball')), findsNothing);
-    expect(find.byKey(const ValueKey('ball-free')), findsOneWidget);
+    expect(find.byKey(const ValueKey('panel')), findsNothing);
   });
 
   testWidgets('模态打开时悬浮层淡出禁点但保持挂载，关闭后输入框文本保留', (tester) async {
@@ -113,7 +111,7 @@ void main() {
     floatingQModalCount.value = 1;
     await tester.pumpAndSettle();
     // 整层未卸载（面板仍在树中，仅淡出并禁点）
-    expect(find.byKey(const ValueKey('panel-with-ball')), findsOneWidget);
+    expect(find.byKey(const ValueKey('panel')), findsOneWidget);
     expect(_outerIgnorePointer(tester).ignoring, isTrue);
 
     floatingQModalCount.value = 0;
@@ -150,7 +148,7 @@ void main() {
       _openWithQuote(tester);
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('panel-with-ball')), findsOneWidget);
+      expect(find.byKey(const ValueKey('panel')), findsOneWidget);
       expect(find.byKey(const ValueKey('quote-card')), findsOneWidget);
       expect(find.text('笔记《小Q的自我介绍》 · 第 3 行附近'), findsOneWidget);
       expect(find.text('我是 QNote 内置的全能终端管家与专属助理。'), findsOneWidget);
@@ -166,7 +164,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('quote-card')), findsNothing);
-      expect(find.byKey(const ValueKey('panel-with-ball')), findsOneWidget);
+      expect(find.byKey(const ValueKey('panel')), findsOneWidget);
     });
 
     testWidgets('会话签名切换清空挂起引用，卡片不再渲染', (tester) async {
@@ -196,7 +194,7 @@ void main() {
       expect(find.byKey(const ValueKey('quote-card')), findsNothing);
     });
 
-    testWidgets('框选状态下点悬浮球：捕获引用打开面板并渲染引用卡片', (tester) async {
+    testWidgets('框选状态下打开面板：捕获引用打开面板并渲染引用卡片', (tester) async {
       await tester.pumpWidget(_host());
       await tester.pumpAndSettle();
 
@@ -224,22 +222,28 @@ void main() {
       );
       addTearDown(() => QTargetBridge.instance.unregister('note:sel'));
 
-      await tester.tap(find.byKey(const ValueKey('ball-free')));
+      // 悬浮球已移除，真实场景由底部导航栏中央按钮长按触发：
+      // 先经 QTargetBridge.captureQuote 捕获选区引用，有引用则 openWithQuote
+      final fqState = container.read(floatingQProvider);
+      final sig = fqState.effectiveContext?.signature;
+      final quote = QTargetBridge.instance.captureQuote(sig);
+      expect(quote, isNotNull);
+      container.read(floatingQProvider.notifier).openWithQuote(quote!);
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('panel-with-ball')), findsOneWidget);
+      expect(find.byKey(const ValueKey('panel')), findsOneWidget);
       expect(find.byKey(const ValueKey('quote-card')), findsOneWidget);
       expect(find.text('笔记《小Q的自我介绍》 · 第 5 行附近'), findsOneWidget);
     });
 
-    testWidgets('无框选时点悬浮球仅打开面板（不渲染引用卡片）', (tester) async {
+    testWidgets('无框选时打开面板仅渲染面板（不渲染引用卡片）', (tester) async {
       await tester.pumpWidget(_host());
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const ValueKey('ball-free')));
+      _setPanelOpen(tester, true);
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('panel-with-ball')), findsOneWidget);
+      expect(find.byKey(const ValueKey('panel')), findsOneWidget);
       expect(find.byKey(const ValueKey('quote-card')), findsNothing);
     });
   });

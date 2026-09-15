@@ -1542,7 +1542,14 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                   }
                   await AiRoleService.instance.saveRoles(newRoles);
                   ref.invalidate(aiRolesProvider);
-                  if (mounted) setState(() => _roles = newRoles);
+                  if (mounted) {
+                    setState(() {
+                      _roles = newRoles;
+                      if (roleKey == 'timelineOptimization') {
+                        _imageTestResult = null;
+                      }
+                    });
+                  }
                 },
               ),
             ),
@@ -1645,56 +1652,100 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                     ],
                   ),
                   if (settings.extractImages) ...[
-                    const SizedBox(height: 8),
-                    Divider(
-                      height: 1,
-                      color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Divider(
+                        height: 1,
+                        color: colorScheme.outlineVariant.withValues(alpha: 0.25),
+                      ),
                     ),
-                    const SizedBox(height: 8),
                     Row(
                       children: [
-                        Expanded(
-                          child: Text(
-                            _imageTestResult ?? '检测当前选择的模型是否支持多模态识图',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              fontSize: 11,
-                              color: _imageTestResult == null
-                                  ? colorScheme.onSurfaceVariant.withValues(alpha: 0.6)
-                                  : (_imageTestResult == '支持识别'
-                                      ? Colors.green.shade700
-                                      : colorScheme.error),
-                              fontWeight: _imageTestResult != null
-                                  ? FontWeight.w600
-                                  : FontWeight.normal,
-                            ),
-                          ),
-                        ),
-                        OutlinedButton(
+                        OutlinedButton.icon(
                           onPressed: _testingImageRecognition
                               ? null
                               : () => _testModelImageRecognition(roleKey, configs),
                           style: OutlinedButton.styleFrom(
                             visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             side: BorderSide(
-                              color: colorScheme.primary.withValues(alpha: 0.4),
+                              color: colorScheme.primary.withValues(alpha: 0.35),
                             ),
                           ),
-                          child: _testingImageRecognition
-                              ? const SizedBox(
+                          icon: _testingImageRecognition
+                              ? SizedBox(
                                   width: 12,
                                   height: 12,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : Text(
-                                  '检测识图能力',
-                                  style: TextStyle(
-                                    fontSize: 11,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
                                     color: colorScheme.primary,
                                   ),
+                                )
+                              : Icon(
+                                  Icons.image_search_rounded,
+                                  size: 14,
+                                  color: colorScheme.primary,
                                 ),
+                          label: Text(
+                            _testingImageRecognition ? '正在检测...' : '检测识图能力',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: colorScheme.primary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                         ),
+                        if (_imageTestResult != null) ...[
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Align(
+                              alignment: Alignment.centerRight,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: _imageTestResult == '支持识别'
+                                      ? Colors.green.withValues(alpha: 0.1)
+                                      : colorScheme.error.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: _imageTestResult == '支持识别'
+                                        ? Colors.green.withValues(alpha: 0.25)
+                                        : colorScheme.error.withValues(alpha: 0.25),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      _imageTestResult == '支持识别'
+                                          ? Icons.check_circle_rounded
+                                          : Icons.info_outline_rounded,
+                                      size: 13,
+                                      color: _imageTestResult == '支持识别'
+                                          ? Colors.green.shade700
+                                          : colorScheme.error,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Flexible(
+                                      child: Text(
+                                        _imageTestResult!,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: _imageTestResult == '支持识别'
+                                              ? Colors.green.shade700
+                                              : colorScheme.error,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ],
