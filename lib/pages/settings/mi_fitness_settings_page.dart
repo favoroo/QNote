@@ -154,6 +154,99 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
     }
   }
 
+  /// 弹出底部抽屉让用户清晰选择同步 7天 / 30天 / 90天
+  Future<void> _showSyncRangeSheet(BuildContext context) async {
+    if (_isSyncing) return;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    final days = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                child: Row(
+                  children: [
+                    const Icon(Icons.sync_rounded, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      '选择同步时间范围',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.today_rounded, color: Colors.blue, size: 20),
+                ),
+                title: const Text('同步最近 7 天'),
+                subtitle: const Text('日常快速拉取，用时极短'),
+                onTap: () => Navigator.of(ctx).pop(7),
+              ),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.teal.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.calendar_month_rounded, color: Colors.teal, size: 20),
+                ),
+                title: const Text('同步最近 30 天'),
+                subtitle: const Text('拉取近一个月完整数据与运动记录'),
+                onTap: () => Navigator.of(ctx).pop(30),
+              ),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.purple.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.history_rounded, color: Colors.purple, size: 20),
+                ),
+                title: const Text('同步最近 90 天'),
+                subtitle: const Text('拉取近一季度历史数据，首次同步推荐'),
+                onTap: () => Navigator.of(ctx).pop(90),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (days != null && mounted) {
+      _handleSyncNow(daysBack: days);
+    }
+  }
+
   Future<void> _handleSyncSelectedDate() async {
     if (_isSyncing) return;
     setState(() => _isSyncing = true);
@@ -254,15 +347,10 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                   )
-                : PopupMenuButton<int>(
+                : IconButton(
                     icon: const Icon(Icons.sync_rounded),
-                    tooltip: '批量同步',
-                    onSelected: (days) => _handleSyncNow(daysBack: days),
-                    itemBuilder: (ctx) => const [
-                      PopupMenuItem(value: 7, child: Text('同步最近 7 天')),
-                      PopupMenuItem(value: 30, child: Text('同步最近 30 天')),
-                      PopupMenuItem(value: 90, child: Text('同步最近 90 天')),
-                    ],
+                    tooltip: '选择同步天数',
+                    onPressed: () => _showSyncRangeSheet(context),
                   ),
         ],
       ),
@@ -366,8 +454,15 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   visualDensity: VisualDensity.compact,
                 ),
-                onPressed: _isSyncing ? null : _handleSyncNow,
-                child: Text(_isSyncing ? '同步中' : '立即同步'),
+                onPressed: _isSyncing ? null : () => _showSyncRangeSheet(context),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(_isSyncing ? '同步中' : '立即同步'),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.arrow_drop_down, size: 18),
+                  ],
+                ),
               )
             else
               FilledButton(

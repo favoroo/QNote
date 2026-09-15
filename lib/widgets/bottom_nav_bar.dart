@@ -219,9 +219,9 @@ class _BottomNavWithDock extends StatelessWidget {
               ],
             ),
           ),
-          // 中央小Q停靠按钮：凸出导航栏上沿
+          // 中央小Q停靠按钮：内嵌导航栏居中，不凸出
           Positioned(
-            top: -10,
+            top: 8,
             child: _QDockButton(
               currentIndex: currentIndex,
               onTap: onQTap,
@@ -291,7 +291,7 @@ class _QDockButton extends ConsumerWidget {
     required this.onTap,
   });
 
-  static const double _size = 48;
+  static const double _size = 44;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

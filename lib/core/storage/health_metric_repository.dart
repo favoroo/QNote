@@ -19,11 +19,36 @@ class HealthMetricRepository {
   /// 插入或更新单日汇总数据
   Future<void> upsertDailyMetrics(HealthDailyMetrics metrics) async {
     final db = await _db;
-    await db.insert(
-      'health_daily_metrics',
-      metrics.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    try {
+      await db.insert(
+        'health_daily_metrics',
+        metrics.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (e) {
+      // 容错自愈：若老表缺失列（如 standing_count），自动 ALTER TABLE 补齐并重试
+      if (e.toString().contains('no column named')) {
+        await _ensureColumns(db);
+        await db.insert(
+          'health_daily_metrics',
+          metrics.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      } else {
+        rethrow;
+      }
+    }
+  }
+
+  /// 动态检查并补齐缺失列（防热重载时未重走建表迁移）
+  Future<void> _ensureColumns(Database db) async {
+    try {
+      final columns = await db.rawQuery('PRAGMA table_info(health_daily_metrics)');
+      final colNames = columns.map((c) => c['name'] as String).toSet();
+      if (colNames.isNotEmpty && !colNames.contains('standing_count')) {
+        await db.execute('ALTER TABLE health_daily_metrics ADD COLUMN standing_count INTEGER DEFAULT 0');
+      }
+    } catch (_) {}
   }
 
   /// 获取指定日期的汇总数据 (YYYY-MM-DD)

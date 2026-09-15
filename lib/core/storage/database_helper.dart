@@ -28,7 +28,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 21,
+      version: 22,
       onConfigure: (db) async {
         // 遇到写锁时等待重试（默认立即抛 database is locked），提升并发访问健壮性
         try {
@@ -812,6 +812,16 @@ class DatabaseHelper {
         ''');
         await db.execute('CREATE INDEX IF NOT EXISTS idx_health_sport_sid ON health_sport_records(sid)');
         await db.execute('CREATE INDEX IF NOT EXISTS idx_health_sport_start ON health_sport_records(start_time)');
+      } catch (_) {}
+    }
+
+    if (oldVersion < 22) {
+      try {
+        final hdmColumns = await db.rawQuery('PRAGMA table_info(health_daily_metrics)');
+        final hdmColNames = hdmColumns.map((c) => c['name'] as String).toSet();
+        if (hdmColNames.isNotEmpty && !hdmColNames.contains('standing_count')) {
+          await db.execute('ALTER TABLE health_daily_metrics ADD COLUMN standing_count INTEGER DEFAULT 0');
+        }
       } catch (_) {}
     }
   }
