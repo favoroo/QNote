@@ -374,16 +374,31 @@ description: 系统偏好与配置技能：个性化外观、AI模型分配与�
   {
     "id": "fixed_sleep",
     "name": "夜间睡眠",
-    "startTime": "23:30",
-    "endTime": "07:30",
     "isTimePoint": false,
+    "timePeriods": [
+      { "startTime": "23:30", "endTime": "07:30" }
+    ],
     "content": "睡眠",
     "isEnabled": true,
     "sortOrder": 0
+  },
+  {
+    "id": "fixed_work",
+    "name": "上班",
+    "isTimePoint": false,
+    "timePeriods": [
+      { "startTime": "08:30", "endTime": "12:00" },
+      { "startTime": "13:30", "endTime": "18:00" }
+    ],
+    "content": "日常工作",
+    "isEnabled": true,
+    "sortOrder": 1
   }
 ]
 ```
-- `isTimePoint`: `true` 为时间点事件（仅 `startTime` 生效），`false` 为时间段事件；`content` 为打卡时写入时间线的默认内容（选填）。
+- `timePeriods`: 时间段数组（支持一天内多个时段，如上午和下午分段打卡）；每一项包含 `startTime`（开始 "HH:mm"）和 `endTime`（结束 "HH:mm"）。
+- `isTimePoint`: `true` 为单时间点打卡（如早起打卡），此时 `timePeriods` 中只需提供 `startTime`，`endTime` 留空；`false` 为时间段事件。
+- `content`: 打卡时默认写入时间线的备注内容（选填）。不需要写入 `icon` 字段。
 
 ### 1.6 `/settings/profile.json`（个人画像资料）
 管理个人昵称、生日、身高、体重、生活目标：

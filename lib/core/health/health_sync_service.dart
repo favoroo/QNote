@@ -11,6 +11,7 @@ import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/models/health_daily_metrics.dart';
 import 'package:qnote_flutter/models/health_sport_record.dart';
+import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 
 final healthSyncServiceProvider = Provider<HealthSyncService>((ref) {
   final apiClient = ref.watch(miFitnessApiClientProvider);
@@ -49,6 +50,8 @@ class HealthSyncService {
   static const String keyAutoCreateTimelineCards = 'health_sync_auto_timeline';
   static const String keyLastSyncTime = 'health_sync_last_time';
   static const String keyAutoSync = 'health_sync_auto_sync';
+  static const String keyDailyStepTarget = 'health_sync_daily_step_target';
+  static const int defaultDailyStepTarget = 8000;
 
   HealthSyncService({
     required MiFitnessApiClient apiClient,
@@ -96,6 +99,18 @@ class HealthSyncService {
   Future<void> setAutoSync(bool enable) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(keyAutoSync, enable);
+  }
+
+  /// 获取每日目标步数（默认 8000 步）
+  Future<int> getDailyStepTarget() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(keyDailyStepTarget) ?? defaultDailyStepTarget;
+  }
+
+  /// 设置每日目标步数
+  Future<void> setDailyStepTarget(int target) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(keyDailyStepTarget, target);
   }
 
   /// 执行单日或多日健康同步
@@ -280,6 +295,7 @@ class HealthSyncService {
     }
 
     // 3. 构建结构化 bodyState 与 Markdown 文本
+    final stepTarget = await getDailyStepTarget();
     final distKm = (summary.distanceMeters / 1000).toStringAsFixed(2);
     final calStr = summary.calories.toStringAsFixed(0);
     final sleepHours = summary.sleepDurationMinutes ~/ 60;
@@ -287,7 +303,7 @@ class HealthSyncService {
     final sleepScoreStr = summary.sleepScore != null ? ' (得分: ${summary.sleepScore})' : '';
 
     final contentLines = <String>[];
-    contentLines.add('今日步数: ${summary.steps} 步 (目标 8000 步) | 消耗: $calStr kcal | 活动: ${summary.activeMinutes} 分钟 | 距离: $distKm km${summary.standingCount > 0 ? ' | 站立: ${summary.standingCount}次' : ''}');
+    contentLines.add('今日步数: ${summary.steps} 步 (目标 $stepTarget 步) | 消耗: $calStr kcal | 活动: ${summary.activeMinutes} 分钟 | 距离: $distKm km${summary.standingCount > 0 ? ' | 站立: ${summary.standingCount}次' : ''}');
 
     if (summary.sleepDurationMinutes > 0) {
       final quality = _mapSleepScoreToQuality(summary.sleepScore);
@@ -338,7 +354,7 @@ class HealthSyncService {
       'type': 'daily_summary',
       'date': summary.date,
       'steps': summary.steps,
-      'step_target': 8000,
+      'step_target': stepTarget,
       'distance_meters': summary.distanceMeters,
       'calories': summary.calories,
       'active_minutes': summary.activeMinutes,
@@ -391,8 +407,18 @@ class HealthSyncService {
 
     if (existingCard != null) {
       await _diaryRepo.update(record);
+      WorkspaceEventBus.instance.emit(
+        '/timeline/${summary.date}.json',
+        WorkspaceChangeType.updated,
+        record.toMap(),
+      );
     } else {
       await _diaryRepo.insert(record);
+      WorkspaceEventBus.instance.emit(
+        '/timeline/${summary.date}.json',
+        WorkspaceChangeType.created,
+        record.toMap(),
+      );
     }
     return true;
   }

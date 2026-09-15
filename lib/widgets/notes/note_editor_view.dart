@@ -2320,9 +2320,9 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
                     ),
                   ),
                   _ToolbarButton(
-                    iconWidget: QIcon(
-                      size: 18,
-                      color: theme.colorScheme.primary,
+                    iconWidget: const QAvatar(
+                      size: 20,
+                      withBackground: true,
                     ),
                     tooltip: '给小Q',
                     onPressed: _sendToQFromToolbar,

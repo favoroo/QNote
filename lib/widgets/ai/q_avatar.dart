@@ -118,27 +118,27 @@ class QAvatar extends StatelessWidget {
 
     final effectiveBg = backgroundColor ?? primary;
 
+    // 严谨对齐原图比例：在蓝色实心圆底座中，居中渲染高亮纯白机器人
     return Container(
       width: size,
       height: size,
-      padding: padding,
       decoration: BoxDecoration(
         color: effectiveBg,
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: effectiveBg.withValues(alpha: 0.28),
-            blurRadius: 4,
+            color: effectiveBg.withValues(alpha: 0.35),
+            blurRadius: 6,
             offset: const Offset(0, 1.5),
           ),
         ],
       ),
       child: Center(
         child: SizedBox(
-          width: size * 0.65,
-          height: size * 0.65,
+          width: size * 0.54,
+          height: size * 0.54,
           child: CustomPaint(
-            size: Size(size * 0.65, size * 0.65),
+            size: Size(size * 0.54, size * 0.54),
             painter: _QRobotPainter(
               bodyColor: effectiveColor,
               innerColor: effectiveEyeColor,

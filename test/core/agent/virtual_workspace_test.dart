@@ -298,7 +298,8 @@ void main() {
       expect(readShortcuts, contains('shortcut_water_1'));
     });
 
-    test('12. settings: fixed_events.json 固定作息模板管理', () async {
+    test('12. settings: fixed_events.json 固定作息模板管理（兼容多时段与 timeSlots 自拟结构）', () async {
+      // 1. 标准格式写入
       final writeEventsRes = await vfs.writeFile(
         '/settings/fixed_events.json',
         '''
@@ -320,6 +321,31 @@ void main() {
       final readEvents = await vfs.readFile('/settings/fixed_events.json');
       expect(readEvents, contains('夜间睡眠'));
       expect(readEvents, contains('23:30'));
+      expect(readEvents, contains('timePeriods'));
+
+      // 2. 模拟大模型自拟的 timeSlots 格式（上班两段时段 08:30~12:00, 13:30~18:00）
+      final writeSlotsRes = await vfs.writeFile(
+        '/settings/fixed_events.json',
+        '''
+        [
+          {
+            "name": "上班",
+            "icon": "work",
+            "timeSlots": [
+              { "start": "08:30", "end": "12:00" },
+              { "start": "13:30", "end": "18:00" }
+            ]
+          }
+        ]
+        ''',
+      );
+      expect(writeSlotsRes['status'], 'updated');
+      final readSlotsEvents = await vfs.readFile('/settings/fixed_events.json');
+      expect(readSlotsEvents, contains('上班'));
+      expect(readSlotsEvents, contains('08:30'));
+      expect(readSlotsEvents, contains('12:00'));
+      expect(readSlotsEvents, contains('13:30'));
+      expect(readSlotsEvents, contains('18:00'));
     });
 
     test('13. settings: profile.json 增量更新不丢失原有信息', () async {

@@ -29,6 +29,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
   List<HealthDailyMetrics> _metricsList = [];
   List<HealthSportRecord> _sportRecords = [];
   bool _isAuthed = false;
+  int _stepTarget = 8000; // 每日目标步数
 
   @override
   void initState() {
@@ -50,6 +51,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
     final syncService = ref.read(healthSyncServiceProvider);
 
     final authed = await syncService.isAuthorized();
+    final stepTarget = await syncService.getDailyStepTarget();
     final startStr = _formatDate(widget.startDate);
     final endStr = _formatDate(widget.endDate);
 
@@ -59,6 +61,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
     if (mounted) {
       setState(() {
         _isAuthed = authed;
+        _stepTarget = stepTarget;
         _metricsList = metrics;
         _sportRecords = sports;
         _isLoading = false;
@@ -379,7 +382,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
           barRods: [
             BarChartRodData(
               toY: m.steps.toDouble(),
-              color: m.steps >= 8000 ? Colors.green : colorScheme.primary,
+              color: m.steps >= _stepTarget ? Colors.green : colorScheme.primary,
               width: 12,
               borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
             ),
