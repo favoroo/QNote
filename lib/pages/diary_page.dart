@@ -89,6 +89,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   bool _showBatchConfirmButton = false;
   final Set<String> _batchExtractedRecordIds = {};
 
+  static String _dateKey(DateTime date) {
+    final y = date.year.toString().padLeft(4, '0');
+    final m = date.month.toString().padLeft(2, '0');
+    final d = date.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
+  }
+
   Map<String, List<DiaryRecord>> _buildRecordsByDate(List<DiaryRecord> allRecords) {
     // 缓存命中：allRecords 引用相同 + _undoRecords 版本未变
     if (identical(allRecords, _lastAllRecords) &&
@@ -101,7 +108,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       if (r.isDeleted) continue;
       final preRecord = _undoRecords[r.id];
       final displayDate = preRecord != null ? preRecord.getEffectiveDate() : r.getEffectiveDate();
-      final key = '${displayDate.year}-${displayDate.month}-${displayDate.day}';
+      final key = _dateKey(displayDate);
       recordsByDate.putIfAbsent(key, () => []).add(r);
     }
     // Sort each day's records by display time
@@ -121,7 +128,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     return recordsByDate;
   }
 
-  // 用户手动切换的展开/折叠状态，key 为 'yyyy-M-d'
+  // 用户手动切换的展开/折叠状态，key 为 'yyyy-MM-dd'
   final Map<String, bool> _dateExpandedOverrides = {};
 
   bool _isDefaultExpanded(DateTime date) {
@@ -133,21 +140,64 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   }
 
   bool _isDateExpanded(DateTime date) {
-    final key = '${date.year}-${date.month}-${date.day}';
+    final key = _dateKey(date);
     return _dateExpandedOverrides[key] ?? _isDefaultExpanded(date);
   }
 
   void _toggleDateExpanded(DateTime date) {
-    final key = '${date.year}-${date.month}-${date.day}';
+    final key = _dateKey(date);
     final current = _isDateExpanded(date);
+    final willExpand = !current;
+
+    // 如果该日期在视口上方，计算其展开/折叠对滚动高度的影响并平滑修正 offset，防止视口跳动
+    final targetDayOffset = _dateToDayOffset(date);
+    double? heightDelta;
+    if (_scrollController.hasClients) {
+      final allRecords = ref.read(diaryListProvider).valueOrNull;
+      final recordsByDate = allRecords != null ? _buildRecordsByDate(allRecords) : null;
+      final dayRecords = recordsByDate?[key] ?? [];
+      final dayContentHeight = 48 * _nodeHeight + dayRecords.length * _averageRecordExtraHeight;
+      heightDelta = willExpand ? dayContentHeight : -dayContentHeight;
+    }
+
     setState(() {
-      _dateExpandedOverrides[key] = !current;
+      _dateExpandedOverrides[key] = willExpand;
     });
     HapticFeedback.lightImpact();
+
+    // 如果展开/折叠的日期在当前滚动视口上方，做滚动补偿以保持用户当前所看的内容位置稳定
+    if (heightDelta != null && _scrollController.hasClients && targetDayOffset >= 0) {
+      // 预估该日期 Header 的 offset
+      double dateHeaderOffset = 0;
+      for (int d = 0; d < targetDayOffset; d++) {
+        final dDate = _indexToDate(d);
+        dateHeaderOffset += _dividerHeight;
+        if (_isDateExpanded(dDate)) {
+          dateHeaderOffset += 48 * _nodeHeight;
+          final dKey = _dateKey(dDate);
+          final dRecords = _cachedRecordsByDate?[dKey] ?? [];
+          dateHeaderOffset += dRecords.length * _averageRecordExtraHeight;
+        }
+      }
+
+      final currentOffset = _scrollController.offset;
+      // 只有当被操作的日期完全在当前视口上方时，才需要对 offset 进行等量平移补偿
+      if (dateHeaderOffset < currentOffset) {
+        final newOffset = (currentOffset + heightDelta).clamp(
+          0.0,
+          _scrollController.position.maxScrollExtent + (heightDelta > 0 ? heightDelta : 0.0),
+        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollController.hasClients) {
+            _scrollController.jumpTo(newOffset.clamp(0.0, _scrollController.position.maxScrollExtent));
+          }
+        });
+      }
+    }
   }
 
   void _expandDate(DateTime date) {
-    final key = '${date.year}-${date.month}-${date.day}';
+    final key = _dateKey(date);
     if (!_isDateExpanded(date)) {
       setState(() {
         _dateExpandedOverrides[key] = true;
@@ -207,7 +257,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     double offset = 0;
     for (int d = 0; d <= dayOffset; d++) {
       final date = _indexToDate(d);
-      final dateKey = '${date.year}-${date.month}-${date.day}';
+      final dateKey = _dateKey(date);
       final dayRecords = recordsByDate[dateKey] ?? [];
 
       offset += _dividerHeight;
@@ -475,8 +525,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     if (dayOffset < 0 || dayOffset >= _windowDays) {
       _ensureDateInWindow(now);
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted)
+        if (mounted) {
           _scrollToCurrentTime(smooth: smooth, recordsByDate: recordsByDate);
+        }
       });
       return;
     }
@@ -666,23 +717,27 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     super.dispose();
   }
 
+  DateTime? _lastVisibleDate;
+
   void _onScroll() {
     if (_isShiftingWindow ||
         _isProgrammaticScrolling ||
-        !_scrollController.hasClients)
+        !_scrollController.hasClients) {
       return;
+    }
 
     final offset = _scrollController.offset;
     final maxScroll = _scrollController.position.maxScrollExtent;
     final viewportHeight = _scrollController.position.viewportDimension;
 
-    // 如果 maxScroll 比 viewportHeight 还小，说明内容高度不够填满一个屏幕，根本不需要触发滑动窗口加载更多日期。
-    // 这也是防止在初始化或列表内容极少时产生滑动死循环的根本屏障。
-    if (maxScroll <= viewportHeight) return;
+    // 必须有足够的超视口可滚动内容才允许触发滑动窗口平移
+    // 当多个日期折叠后内容高度可能较小，此时严禁触发平移，避免 maxScroll 极小时产生连环 jumpTo 吸死
+    if (maxScroll <= viewportHeight * 1.5) return;
 
-    if (offset < viewportHeight * 0.5 && _windowStartDate.isBefore(_today)) {
+    // 只有在离边界小于 300px 且有明确安全余量时才触发平移
+    if (offset < 300.0 && _windowStartDate.isBefore(_today)) {
       _shiftWindowBackward();
-    } else if (offset > maxScroll - viewportHeight * 0.5) {
+    } else if (offset > maxScroll - 300.0) {
       _shiftWindowForward();
     }
 
@@ -719,7 +774,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
           final visibleDate = _indexToDate(dayOffset);
 
           final selectedDate = ref.read(selectedDateProvider);
-          if (!_isSameDay(selectedDate, visibleDate)) {
+          if (!_isSameDay(selectedDate, visibleDate) &&
+              (_lastVisibleDate == null || !_isSameDay(_lastVisibleDate!, visibleDate))) {
+            _lastVisibleDate = visibleDate;
             _isScrollingFromList = true;
             ref.read(selectedDateProvider.notifier).state = visibleDate;
             WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -742,7 +799,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       total += _dividerHeight;
       if (_isDateExpanded(date)) {
         total += 48 * _nodeHeight;
-        final dateKey = '${date.year}-${date.month}-${date.day}';
+        final dateKey = _dateKey(date);
         final dayRecords = recordsByDate?[dateKey] ?? [];
         total += dayRecords.length * _averageRecordExtraHeight;
       }
@@ -1015,6 +1072,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   final Set<String> _deletingRecordIds = {};
 
   void _handleDelete(DiaryRecord record) {
+    // 运动健康日结汇总卡片不可被删除
+    final bs = record.bodyState;
+    if (bs != null && bs['source'] == 'mi_fitness' && bs['type'] == 'daily_summary') {
+      Toast.info(context, '运动健康日结数据由系统同步管理，不支持手动删除');
+      return;
+    }
+
     HapticFeedback.heavyImpact();
     _clearUndoForRecord(record.id);
     setState(() {
@@ -1042,6 +1106,15 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   }
 
   void _handleEdit(DiaryRecord record) {
+    // 运动健康日结汇总卡片为系统只读卡片，点击/编辑统一跳转至对应日期的小米健康看板
+    final bs = record.bodyState;
+    if (bs != null && bs['source'] == 'mi_fitness' && bs['type'] == 'daily_summary') {
+      final dateStr = bs['date'] as String?;
+      final targetDate = dateStr != null ? DateTime.tryParse(dateStr) : null;
+      context.push('/settings/mi-fitness', extra: targetDate ?? record.time);
+      return;
+    }
+
     _clearUndoForRecord(record.id);
     Toast.dismiss();
     context.push('/diary/editor', extra: record);
@@ -1114,8 +1187,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       }
       Map<String, dynamic>? newBodyState = record.bodyState != null
           ? Map.from(record.bodyState!)
-          : null;
-      List<TagEntry> newTagEntries = result.tagEntries.isNotEmpty
+          : null; // ignore: prefer_final_locals
+      final List<TagEntry> newTagEntries = result.tagEntries.isNotEmpty
           ? result.tagEntries
           : record.tagEntries;
 
@@ -1960,8 +2033,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
                               if (subIndex == 0) {
                                 final isExpanded = _isDateExpanded(date);
-                                final dateKey =
-                                    '${date.year}-${date.month}-${date.day}';
+                                final dateKey = _dateKey(date);
                                 final dayRecords =
                                     recordsByDate[dateKey] ?? const [];
 
@@ -2116,8 +2188,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                                   time.minute,
                                 );
 
-                                final dateKey =
-                                    '${date.year}-${date.month}-${date.day}';
+                                final dateKey = _dateKey(date);
                                 final dayRecords =
                                     recordsByDate[dateKey] ?? const [];
                                 final recordsInInterval = dayRecords.where((r) {
@@ -2446,6 +2517,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   void _handleDragStart(LongPressStartDetails details) {
     final index = _pointToItemIndex(details.globalPosition);
     if (index != -1 && index % _itemsPerDay != 0) {
+      final dayOffset = index ~/ _itemsPerDay;
+      final date = _indexToDate(dayOffset);
+      if (!_isDateExpanded(date)) return;
+
       HapticFeedback.mediumImpact();
       setState(() {
         _dragStartIndex = index;
@@ -2460,9 +2535,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     _lastDragPosition = details.globalPosition;
     final index = _pointToItemIndex(details.globalPosition);
     if (index != -1 && index % _itemsPerDay != 0) {
-      setState(() {
-        _dragEndIndex = index;
-      });
+      final dayOffset = index ~/ _itemsPerDay;
+      final date = _indexToDate(dayOffset);
+      if (_isDateExpanded(date)) {
+        setState(() {
+          _dragEndIndex = index;
+        });
+      }
     }
   }
 
@@ -2512,8 +2591,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     ) {
       if (_lastDragPosition == null ||
           !mounted ||
-          !_scrollController.hasClients)
+          !_scrollController.hasClients) {
         return;
+      }
 
       final renderBox =
           _viewportKey.currentContext?.findRenderObject() as RenderBox?;
@@ -2551,9 +2631,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
           // 列表发生滚动后，手指下方的节点发生改变，动态更新选择范围！
           final index = _pointToItemIndex(_lastDragPosition!);
           if (index != -1 && index % _itemsPerDay != 0) {
-            setState(() {
-              _dragEndIndex = index;
-            });
+            final dayOffset = index ~/ _itemsPerDay;
+            final date = _indexToDate(dayOffset);
+            if (_isDateExpanded(date)) {
+              setState(() {
+                _dragEndIndex = index;
+              });
+            }
           }
         }
       }

@@ -10,6 +10,7 @@ import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/widgets/animated_gradient_border.dart';
 import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
+import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/widgets/side_drawer.dart';
 import 'package:qnote_flutter/widgets/debug_console.dart';
 
@@ -332,10 +333,8 @@ class _QDockButton extends ConsumerWidget {
 
     // 工作态：极光流光边框 + 脉冲光晕
     if (isWorking) {
-      return _WorkingDock(size: _size);
+      return const _WorkingDock(size: _size);
     }
-
-    final icon = panelOpen ? Icons.close_rounded : Icons.smart_toy_rounded;
 
     // /ai 激活态：primary 填充
     if (isActive) {
@@ -354,7 +353,15 @@ class _QDockButton extends ConsumerWidget {
           ],
         ),
         child: Center(
-          child: Icon(icon, color: theme.colorScheme.onPrimary, size: 22),
+          child: panelOpen
+              ? Icon(Icons.close_rounded,
+                  color: theme.colorScheme.onPrimary, size: 22)
+              : QIcon(
+                  size: 20,
+                  color: theme.colorScheme.onPrimary,
+                  screenColor: primary,
+                  eyeColor: theme.colorScheme.onPrimary,
+                ),
         ),
       );
     }
@@ -385,7 +392,9 @@ class _QDockButton extends ConsumerWidget {
         ],
       ),
       child: Center(
-        child: Icon(icon, color: primary, size: 22),
+        child: panelOpen
+            ? Icon(Icons.close_rounded, color: primary, size: 22)
+            : QIcon(size: 20, color: primary),
       ),
     );
   }

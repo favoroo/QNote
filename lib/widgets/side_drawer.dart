@@ -12,6 +12,7 @@ import 'package:qnote_flutter/pages/settings/fixed_events_page.dart';
 import 'package:qnote_flutter/pages/settings/data_sync_page.dart';
 import 'package:qnote_flutter/pages/settings/mi_fitness_settings_page.dart';
 import 'package:qnote_flutter/pages/settings/about_page.dart';
+import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 
 class SideDrawer extends ConsumerStatefulWidget {
   const SideDrawer({super.key});
@@ -117,7 +118,7 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 children: [
-                  _SectionHeader(title: '设置与管理'),
+                  const _SectionHeader(title: '设置与管理'),
                   _DrawerMenuItem(
                     icon: Icons.person_outline,
                     iconBgColor: itemBgColor,
@@ -126,14 +127,14 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
                     onTap: () => _navigateTo(context, const UserProfilePage()),
                   ),
                   _DrawerMenuItem(
-                    icon: Icons.auto_awesome_outlined,
+                    iconWidget: QIcon(size: 22, color: itemColor),
                     iconBgColor: itemBgColor,
                     iconColor: itemColor,
                     label: '小Q设置',
                     onTap: () => _navigateTo(context, const QSettingsPage()),
                   ),
                   _DrawerMenuItem(
-                    icon: Icons.smart_toy_outlined,
+                    icon: Icons.tune_rounded,
                     iconBgColor: itemBgColor,
                     iconColor: itemColor,
                     label: 'AI 配置',
@@ -177,7 +178,7 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
                   const SizedBox(height: 24),
                   const Divider(indent: 8, endIndent: 8),
                   const SizedBox(height: 16),
-                  _SectionHeader(title: '其他'),
+                  const _SectionHeader(title: '其他'),
                   _DrawerMenuItem(
                     icon: Icons.info_outline,
                     iconBgColor: aboutBgColor,
@@ -234,19 +235,21 @@ class _SectionHeader extends StatelessWidget {
 }
 
 class _DrawerMenuItem extends StatelessWidget {
-  final IconData icon;
+  final IconData? icon;
+  final Widget? iconWidget;
   final String label;
   final Color iconBgColor;
   final Color iconColor;
   final VoidCallback onTap;
 
   const _DrawerMenuItem({
-    required this.icon,
+    this.icon,
+    this.iconWidget,
     required this.label,
     required this.iconBgColor,
     required this.iconColor,
     required this.onTap,
-  });
+  }) : assert(icon != null || iconWidget != null, 'Either icon or iconWidget must be provided');
 
   @override
   Widget build(BuildContext context) {
@@ -261,7 +264,7 @@ class _DrawerMenuItem extends StatelessWidget {
             color: iconBgColor,
             shape: BoxShape.circle,
           ),
-          child: Icon(icon, color: iconColor, size: 22),
+          child: iconWidget ?? Icon(icon, color: iconColor, size: 22),
         ),
         title: Text(
           label,

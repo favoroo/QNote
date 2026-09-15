@@ -195,7 +195,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/settings/mi-fitness',
         parentNavigatorKey: rootNavigatorKey,
-        pageBuilder: (context, state) => _fadeTransitionPage(const MiFitnessSettingsPage()),
+        pageBuilder: (context, state) {
+          final initialDate = state.extra as DateTime?;
+          return _fadeTransitionPage(MiFitnessSettingsPage(initialDate: initialDate));
+        },
       ),
       GoRoute(
         path: '/settings/personalization',

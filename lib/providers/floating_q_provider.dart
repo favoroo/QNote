@@ -815,6 +815,8 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
     if (text.isEmpty) text = '（用户未附加摘录，请直接根据来源定位完整内容）';
     if (text.length > 2000) text = '${text.substring(0, 2000)}…（引用过长已截断）';
 
+    final isCursorLocation = quote.locationDesc?.contains('光标') == true;
+
     return [
       '用户引用的内容（用户通过「给小Q」主动引用，接下来的指令通常针对这段内容提问或要求修改）',
       '来源：$sourceLabel《${quote.sourceTitle}》（$idHint${path == null ? '' : '，虚拟工作区文件: $path'}）',
@@ -824,9 +826,16 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       '"""',
       text,
       '"""',
-      '请先 read_file 上述文件定位该内容（以文件实际内容为准），需要修改时用 edit_file 精确替换；若指令与引用内容无关则按通用指令处理',
+      if (isCursorLocation)
+        '注意：用户当前定位在光标处（引用文本中以【光标】标记具体插入位置），指令通常要求在此处续写、补全或插入内容。请先 read_file 定位该行与上下文，使用 edit_file 在光标位置处插入续写内容；若指令与续写无关则按常规要求处理'
+      else
+        '请先 read_file 上述文件定位该内容（以文件实际内容为准），需要修改时用 edit_file 精确替换；若指令与引用内容无关则按通用指令处理',
     ].join('\n');
   }
+
+  @visibleForTesting
+  Future<String?> quotePromptBlockForTest(QTextQuote quote) =>
+      _quotePromptBlock(quote);
 
   /// 组装外部分享内容的注入块：无应用内来源实体，直接注入文本本身，
   /// 并显式告知小Q不要尝试 read_file 定位。返回 null 表示无可注入内容

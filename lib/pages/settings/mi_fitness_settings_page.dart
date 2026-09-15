@@ -13,7 +13,9 @@ import 'package:qnote_flutter/models/health_daily_metrics.dart';
 import 'package:qnote_flutter/models/health_sport_record.dart';
 
 class MiFitnessSettingsPage extends ConsumerStatefulWidget {
-  const MiFitnessSettingsPage({super.key});
+  final DateTime? initialDate;
+
+  const MiFitnessSettingsPage({super.key, this.initialDate});
 
   @override
   ConsumerState<MiFitnessSettingsPage> createState() =>
@@ -45,8 +47,8 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
-    _selectedDate = DateTime(now.year, now.month, now.day);
+    final init = widget.initialDate ?? DateTime.now();
+    _selectedDate = DateTime(init.year, init.month, init.day);
     _loadState();
   }
 

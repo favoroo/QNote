@@ -232,8 +232,14 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         reload: _reloadFromRepository,
         onTaskStart: () => _qSuppressAutoSave = true,
         onTaskEnd: () => _qSuppressAutoSave = false,
-        // 框选状态下点悬浮球时捕获选中文本引用给小Q
-        quoteSelection: _captureSelectionQuote,
+        // 框选状态或光标聚焦时点悬浮球捕获引用给小Q
+        quoteSelection: () {
+          final seg = _focusedTextSeg;
+          if (seg != null && seg.focusNode.hasFocus) {
+            return _captureCursorOrSelectionQuote();
+          }
+          return null;
+        },
       ),
     );
   }
@@ -1637,12 +1643,87 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     );
   }
 
+  /// 捕获当前光标位置或框选内容为引用（工具栏「给小Q」按钮及悬浮球共用）。
+  /// 优先次序：
+  /// 1. 若正文段有有效选区（框选了文字），引用选中文本与行号；
+  /// 2. 若正文段有聚焦且有光标（未框选文字），提取光标所在行号及光标前后上下文语境（标记【光标】）；
+  /// 3. 若未聚焦正文段，回退为整篇笔记引用。
+  QTextQuote _captureCursorOrSelectionQuote() {
+    final seg = _focusedTextSeg;
+    final title = _titleController.text.isEmpty ? '无标题' : _titleController.text;
+
+    if (seg != null && seg.focusNode.hasFocus) {
+      final sel = seg.controller.selection;
+      final text = seg.controller.text;
+
+      // 1. 选区非空：引用选中的文本
+      if (sel.isValid && !sel.isCollapsed) {
+        final quoted = text.substring(sel.start, sel.end).trim();
+        if (quoted.isNotEmpty) {
+          final line = _estimateSelectionLine(seg, sel.start);
+          return QTextQuote(
+            source: QQuoteSource.note,
+            sourceId: widget.note.id,
+            sourceTitle: title,
+            quotedText: quoted,
+            locationDesc: '第 $line 行附近',
+          );
+        }
+      }
+
+      // 2. 光标处（未框选文字）：计算光标所在行，提取光标前后上下文并标记【光标】
+      if (sel.isValid) {
+        final offset = sel.baseOffset.clamp(0, text.length);
+        final line = _estimateSelectionLine(seg, offset);
+
+        // 提取光标前后的局部上下文，便于小Q准确定位并续写
+        final preStart = (offset - 60).clamp(0, text.length);
+        final postEnd = (offset + 60).clamp(0, text.length);
+        final pre = text.substring(preStart, offset);
+        final post = text.substring(offset, postEnd);
+
+        String contextSnippet;
+        if (text.trim().isEmpty) {
+          contextSnippet = '（第 $line 行空行光标处）';
+        } else {
+          final prePrefix = preStart > 0 ? '…' : '';
+          final postSuffix = postEnd < text.length ? '…' : '';
+          contextSnippet = '$prePrefix$pre【光标】$post$postSuffix';
+        }
+
+        return QTextQuote(
+          source: QQuoteSource.note,
+          sourceId: widget.note.id,
+          sourceTitle: title,
+          quotedText: contextSnippet,
+          locationDesc: '第 $line 行光标处',
+        );
+      }
+    }
+
+    // 3. 回退为整篇笔记引用
+    return QTextQuote(
+      source: QQuoteSource.note,
+      sourceId: widget.note.id,
+      sourceTitle: title,
+      quotedText: '',
+      locationDesc: '全文',
+    );
+  }
+
   /// 「给小Q」：把正文选中文本连同近似行号引用给悬浮小Q，
   /// 便于用户让小Q修改这段指定文本或针对它提问
   void _sendSelectionToQ() {
     final quote = _captureSelectionQuote();
     if (quote == null) return;
     // 收起键盘与选择菜单，把焦点让给小Q面板输入框（选中文本已在上面捕获）
+    FocusManager.instance.primaryFocus?.unfocus();
+    ref.read(floatingQProvider.notifier).openWithQuote(quote);
+  }
+
+  /// 底部工具栏点击「给小Q」：自动捕获选区、光标位置或全文引用并唤起小Q浮窗
+  void _sendToQFromToolbar() {
+    final quote = _captureCursorOrSelectionQuote();
     FocusManager.instance.primaryFocus?.unfocus();
     ref.read(floatingQProvider.notifier).openWithQuote(quote);
   }
@@ -2238,6 +2319,12 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
                     ),
                   ),
                   _ToolbarButton(
+                    icon: Icons.auto_awesome_rounded,
+                    color: theme.colorScheme.primary,
+                    tooltip: '给小Q',
+                    onPressed: _sendToQFromToolbar,
+                  ),
+                  _ToolbarButton(
                     icon: _isToolbarExpanded ? Icons.keyboard_arrow_down : Icons.more_horiz,
                     onPressed: () {
                       setState(() {
@@ -2266,14 +2353,26 @@ class _ToolbarButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback? onPressed;
   final VoidCallback? onLongPress;
+  final String? tooltip;
+  final Color? color;
 
-  const _ToolbarButton({required this.icon, this.onPressed, this.onLongPress});
+  const _ToolbarButton({
+    required this.icon,
+    this.onPressed,
+    this.onLongPress,
+    this.tooltip,
+    this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isEnabled = onPressed != null;
-    return Padding(
+    final iconColor = isEnabled
+        ? (color ?? theme.colorScheme.onSurface)
+        : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.38);
+
+    Widget child = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 1),
       child: Material(
         color: Colors.transparent,
@@ -2287,14 +2386,21 @@ class _ToolbarButton extends StatelessWidget {
             child: Icon(
               icon,
               size: 18,
-              color: isEnabled
-                  ? theme.colorScheme.onSurface
-                  : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.38),
+              color: iconColor,
             ),
           ),
         ),
       ),
     );
+
+    if (tooltip != null) {
+      child = Tooltip(
+        message: tooltip,
+        child: child,
+      );
+    }
+
+    return child;
   }
 }
 

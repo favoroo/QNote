@@ -12,6 +12,7 @@ import 'package:qnote_flutter/providers/todo_folder_provider.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
+import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/widgets/time_picker.dart';
 
 /// 已完成待办折叠状态本地持久化键
@@ -430,7 +431,10 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     final folders = ref.read(todoFolderListProvider).valueOrNull ?? [];
     final items = <ActionMenuItem>[
       ActionMenuItem(
-        icon: Icons.smart_toy_rounded,
+        iconWidget: QIcon(
+          size: 20,
+          color: Theme.of(context).colorScheme.primary,
+        ),
         label: '给小Q',
         onTap: () => _quoteTodoToQ(todo),
       ),
@@ -1811,7 +1815,10 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                           if (widget.todo != null) ...[
                             const SizedBox(width: 6),
                             IconButton(
-                              icon: const Icon(Icons.smart_toy_rounded, size: 20),
+                              icon: QIcon(
+                                size: 20,
+                                color: colorScheme.primary,
+                              ),
                               tooltip: '给小Q',
                               onPressed: () {
                                 Navigator.pop(context);

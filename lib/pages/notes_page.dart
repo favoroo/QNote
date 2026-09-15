@@ -12,6 +12,7 @@ import 'package:qnote_flutter/providers/note_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/folder_provider.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
+import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/widgets/search_view.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/widgets/notes/note_editor_view.dart';
@@ -896,7 +897,10 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       key: key,
       items: [
         ActionMenuItem(
-          icon: Icons.smart_toy_rounded,
+          iconWidget: QIcon(
+            size: 20,
+            color: Theme.of(context).colorScheme.primary,
+          ),
           label: '给小Q',
           onTap: () => _quoteNoteToQ(note),
         ),
