@@ -11,11 +11,8 @@ import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/providers/stats_provider.dart';
 import 'package:qnote_flutter/widgets/empty_state.dart';
 import 'package:qnote_flutter/widgets/time_range_selector.dart';
-import 'package:qnote_flutter/widgets/statistics/sleep_stats.dart';
 import 'package:qnote_flutter/widgets/statistics/diet_stats.dart';
 import 'package:qnote_flutter/widgets/statistics/finance_stats.dart';
-import 'package:qnote_flutter/widgets/statistics/mood_stats.dart';
-import 'package:qnote_flutter/widgets/statistics/activity_stats.dart';
 import 'package:qnote_flutter/widgets/statistics/daily_score_stats.dart';
 import 'package:qnote_flutter/widgets/statistics/health_stats_view.dart';
 
@@ -32,16 +29,17 @@ class _TabConfig {
 
 const _tabs = [
   _TabConfig(tab: StatTab.score, label: '评分', icon: Icons.insights),
-  _TabConfig(tab: StatTab.healthDevice, label: '体征', icon: Icons.favorite_rounded),
-  _TabConfig(tab: StatTab.sleep, label: '睡眠', icon: Icons.bedtime),
+  _TabConfig(
+    tab: StatTab.healthDevice,
+    label: '运动健康',
+    icon: Icons.favorite_rounded,
+  ),
   _TabConfig(tab: StatTab.diet, label: '饮食', icon: Icons.restaurant),
   _TabConfig(
     tab: StatTab.finance,
     label: '记账',
     icon: Icons.account_balance_wallet,
   ),
-  _TabConfig(tab: StatTab.mood, label: '健康', icon: Icons.health_and_safety),
-  _TabConfig(tab: StatTab.activity, label: '活动', icon: Icons.directions_run),
 ];
 
 class StatisticsPage extends ConsumerStatefulWidget {
@@ -81,16 +79,10 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
 
   String _getTagName(StatTab tab) {
     switch (tab) {
-      case StatTab.sleep:
-        return '睡眠';
       case StatTab.diet:
         return '饮食';
       case StatTab.finance:
         return '记账';
-      case StatTab.mood:
-        return '健康';
-      case StatTab.activity:
-        return '活动';
       default:
         return '';
     }
@@ -224,18 +216,15 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
         // 数据为空时返回 EmptyState（依赖 stats 内部 totalRecords 判断）
         final bool isEmpty;
         switch (_activeTab) {
-          case StatTab.sleep:
-            isEmpty = (stats as SleepStatistics).totalRecords == 0;
           case StatTab.diet:
             isEmpty = (stats as DietStatistics).totalMeals == 0;
           case StatTab.finance:
             isEmpty = (stats as FinanceStatistics).totalRecords == 0;
-          case StatTab.mood:
-            isEmpty = (stats as MoodStatistics).totalRecords == 0;
-          case StatTab.activity:
-            isEmpty = (stats as ActivityStatistics).totalActivities == 0;
           case StatTab.score:
           case StatTab.healthDevice:
+          case StatTab.sleep:
+          case StatTab.mood:
+          case StatTab.activity:
             isEmpty = true; // 不会执行到这里
         }
         if (isEmpty) {
@@ -247,18 +236,15 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
 
         Widget content;
         switch (_activeTab) {
-          case StatTab.sleep:
-            content = SleepStatsWidget(stats: stats as SleepStatistics);
           case StatTab.diet:
             content = DietStatsWidget(stats: stats as DietStatistics);
           case StatTab.finance:
             content = FinanceStatsWidget(stats: stats as FinanceStatistics);
-          case StatTab.mood:
-            content = MoodStatsWidget(stats: stats as MoodStatistics);
-          case StatTab.activity:
-            content = ActivityStatsWidget(stats: stats as ActivityStatistics);
           case StatTab.score:
           case StatTab.healthDevice:
+          case StatTab.sleep:
+          case StatTab.mood:
+          case StatTab.activity:
             content = const SizedBox.shrink(); // 不会执行到这里
         }
 

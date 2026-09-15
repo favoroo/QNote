@@ -88,6 +88,8 @@ class _DiaryItemState extends State<DiaryItem> {
     '饮食': Icons.restaurant,
     '活动': Icons.directions_run,
     '记账': Icons.account_balance_wallet,
+    '运动健康': Icons.favorite_rounded,
+    '健康': Icons.favorite_rounded,
   };
 
   static const _defaultIcon = Icons.description_outlined;
@@ -134,11 +136,13 @@ class _DiaryItemState extends State<DiaryItem> {
       handledKeys.addAll(['fallAsleepTime', '入睡时间']);
     } else if (entry.name == '饮食') {
       final typeVal = _getVal(bs, ['type', 'item', '种类', '类别']);
-      if (typeVal != null && typeVal.toString().isNotEmpty)
+      if (typeVal != null && typeVal.toString().isNotEmpty) {
         tags.add(typeVal.toString());
+      }
       final ratingVal = _getVal(bs, ['rating', 'health', '评价']);
-      if (ratingVal != null && ratingVal.toString().isNotEmpty)
+      if (ratingVal != null && ratingVal.toString().isNotEmpty) {
         tags.add(ratingVal.toString());
+      }
       handledKeys.addAll([
         'type',
         'item',
@@ -270,8 +274,9 @@ class _DiaryItemState extends State<DiaryItem> {
         '分类',
         '类型',
       ]);
-      if (typeVal != null && typeVal.toString().isNotEmpty)
+      if (typeVal != null && typeVal.toString().isNotEmpty) {
         tags.add(typeVal.toString());
+      }
       final amountVal = _getVal(bs, ['amount', '金额', '钱数']);
       if (amountVal != null) {
         final formatted = _formatDouble(amountVal);
@@ -535,7 +540,9 @@ class _DiaryItemState extends State<DiaryItem> {
                                     ? record.displayTag
                                     : null,
                               ),
-                              if (hasMultipleTags)
+                              if (_isHealthDailySummary)
+                                _buildHealthDailySummaryCard(theme, tagColor)
+                              else if (hasMultipleTags)
                                 _buildMultiTagSections(theme)
                               else ...[
                                 _buildTagAndFieldsRow(theme, tagColor),
@@ -549,7 +556,7 @@ class _DiaryItemState extends State<DiaryItem> {
                                     ).size.width;
                                     final maxWidth =
                                         screenWidth - 132 - _contentIndent;
-                                    final spacing = 6.0;
+                                    const spacing = 6.0;
                                     final itemWidth =
                                         ((maxWidth - spacing * 2 - 2.0) / 3)
                                             .clamp(50.0, 70.0);
@@ -1296,6 +1303,529 @@ class _DiaryItemState extends State<DiaryItem> {
       return entry.endHour == recordEndHour &&
           entry.endMinute == recordEndMinute;
     }
+  }
+
+  bool get _isHealthDailySummary {
+    final bs = record.bodyState;
+    if (bs == null) return false;
+    return bs['source'] == 'mi_fitness' && bs['type'] == 'daily_summary';
+  }
+
+  /// 专属「运动健康」高颜值日结卡片渲染
+  Widget _buildHealthDailySummaryCard(ThemeData theme, Color primaryColor) {
+    final colorScheme = theme.colorScheme;
+    final bs = record.bodyState ?? {};
+
+    final steps = (bs['steps'] as num?)?.toInt() ?? 0;
+    final stepTarget = (bs['step_target'] as num?)?.toInt() ?? 8000;
+    final calories = (bs['calories'] as num?)?.toDouble() ?? 0.0;
+    final distanceMeters = (bs['distance_meters'] as num?)?.toDouble() ?? 0.0;
+    final activeMinutes = (bs['active_minutes'] as num?)?.toInt() ?? 0;
+
+    final sleepMinutes = (bs['sleep_duration_minutes'] as num?)?.toInt() ?? 0;
+    final sleepScore = (bs['sleep_score'] as num?)?.toInt();
+    final deepSleep = (bs['deep_sleep_minutes'] as num?)?.toInt() ?? 0;
+    final lightSleep = (bs['light_sleep_minutes'] as num?)?.toInt() ?? 0;
+    final remSleep = (bs['rem_sleep_minutes'] as num?)?.toInt() ?? 0;
+    final awakeMinutes = (bs['awake_minutes'] as num?)?.toInt() ?? 0;
+    final sleepStart = bs['sleep_start_time'] as String?;
+    final sleepEnd = bs['sleep_end_time'] as String?;
+
+    final restingHr = (bs['resting_heart_rate'] as num?)?.toInt();
+    final avgSpo2 = (bs['avg_spo2'] as num?)?.toInt();
+    final avgStress = (bs['avg_stress'] as num?)?.toInt();
+
+    final sportsRaw = bs['sports'] as List<dynamic>? ?? [];
+
+    final progress = stepTarget > 0 ? (steps / stepTarget).clamp(0.0, 1.0) : 0.0;
+    final isTargetReached = steps >= stepTarget;
+
+    const brandGreen = Color(0xFF10B981);
+    const sleepPurple = Color(0xFF6366F1);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 1. 步数与核心活动卡片
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: brandGreen.withValues(alpha: 0.18),
+                width: 0.8,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text(
+                      NumberFormat('#,###').format(steps),
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.onSurface,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '步',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                      decoration: BoxDecoration(
+                        color: (isTargetReached ? brandGreen : colorScheme.primary)
+                            .withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isTargetReached ? Icons.check_circle_rounded : Icons.flag_rounded,
+                            size: 13,
+                            color: isTargetReached ? brandGreen : colorScheme.primary,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            isTargetReached
+                                ? '达标 ${(steps / stepTarget * 100).toInt()}%'
+                                : '${(steps / stepTarget * 100).toInt()}% / 目标$stepTarget',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: isTargetReached ? brandGreen : colorScheme.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 5,
+                    backgroundColor: colorScheme.outlineVariant.withValues(alpha: 0.25),
+                    valueColor: const AlwaysStoppedAnimation(brandGreen),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildMetricItem(
+                      theme,
+                      icon: Icons.local_fire_department_rounded,
+                      iconColor: const Color(0xFFF97316),
+                      value: '${calories.toStringAsFixed(0)} kcal',
+                      label: '消耗',
+                    ),
+                    _buildMetricItem(
+                      theme,
+                      icon: Icons.place_rounded,
+                      iconColor: const Color(0xFF3B82F6),
+                      value: '${(distanceMeters / 1000).toStringAsFixed(2)} km',
+                      label: '距离',
+                    ),
+                    _buildMetricItem(
+                      theme,
+                      icon: Icons.timer_outlined,
+                      iconColor: const Color(0xFFEAB308),
+                      value: '$activeMinutes 分钟',
+                      label: '活动',
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // 2. 作息睡眠卡片（若有）
+          if (sleepMinutes > 0) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.28),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: sleepPurple.withValues(alpha: 0.18),
+                  width: 0.8,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.nightlight_round, size: 16, color: sleepPurple),
+                      const SizedBox(width: 6),
+                      Text(
+                        '作息睡眠',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '${sleepMinutes ~/ 60}小时${sleepMinutes % 60}分',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: sleepPurple,
+                        ),
+                      ),
+                      if (sleepScore != null) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            color: sleepPurple.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            '$sleepScore分',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: sleepPurple,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _buildSleepStagesBar(
+                    deepMinutes: deepSleep,
+                    lightMinutes: lightSleep,
+                    remMinutes: remSleep,
+                    awakeMinutes: awakeMinutes,
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      if (deepSleep > 0)
+                        _buildSleepLegend('深睡', '$deepSleep分', const Color(0xFF6366F1)),
+                      if (lightSleep > 0)
+                        _buildSleepLegend('浅睡', '$lightSleep分', const Color(0xFFA855F7)),
+                      if (remSleep > 0)
+                        _buildSleepLegend('REM', '$remSleep分', const Color(0xFF38BDF8)),
+                      if (sleepStart != null && sleepEnd != null)
+                        Text(
+                          '$sleepStart ~ $sleepEnd',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontSize: 10,
+                            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // 3. 生理指标横排（若有心率、血氧或压力）
+          if ((restingHr != null && restingHr > 0) ||
+              (avgSpo2 != null && avgSpo2 > 0) ||
+              (avgStress != null && avgStress > 0)) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                if (restingHr != null && restingHr > 0)
+                  Expanded(
+                    child: _buildVitalsChip(
+                      theme,
+                      icon: Icons.favorite_rounded,
+                      iconColor: const Color(0xFFEF4444),
+                      label: '静息心率',
+                      value: '$restingHr bpm',
+                    ),
+                  ),
+                if (avgSpo2 != null && avgSpo2 > 0) ...[
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildVitalsChip(
+                      theme,
+                      icon: Icons.water_drop_rounded,
+                      iconColor: const Color(0xFF0EA5E9),
+                      label: '平均血氧',
+                      value: '$avgSpo2%',
+                    ),
+                  ),
+                ],
+                if (avgStress != null && avgStress > 0) ...[
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildVitalsChip(
+                      theme,
+                      icon: Icons.speed_rounded,
+                      iconColor: const Color(0xFFF97316),
+                      label: '压力指数',
+                      value: '$avgStress',
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
+
+          // 4. 今日运动记录列表（若有单次运动）
+          if (sportsRaw.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Icon(Icons.directions_run_rounded, size: 16, color: brandGreen),
+                const SizedBox(width: 4),
+                Text(
+                  '今日运动 (${sportsRaw.length}项)',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            for (final s in sportsRaw) ...[
+              _buildSportItemCard(theme, s as Map<String, dynamic>),
+              const SizedBox(height: 6),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSleepStagesBar({
+    required int deepMinutes,
+    required int lightMinutes,
+    required int remMinutes,
+    required int awakeMinutes,
+  }) {
+    final sum = (deepMinutes + lightMinutes + remMinutes + awakeMinutes).clamp(1, 99999);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(3),
+      child: SizedBox(
+        height: 6,
+        child: Row(
+          children: [
+            if (deepMinutes > 0)
+              Expanded(
+                flex: (deepMinutes * 100 ~/ sum).clamp(1, 100),
+                child: Container(color: const Color(0xFF6366F1)),
+              ),
+            if (lightMinutes > 0)
+              Expanded(
+                flex: (lightMinutes * 100 ~/ sum).clamp(1, 100),
+                child: Container(color: const Color(0xFFA855F7)),
+              ),
+            if (remMinutes > 0)
+              Expanded(
+                flex: (remMinutes * 100 ~/ sum).clamp(1, 100),
+                child: Container(color: const Color(0xFF38BDF8)),
+              ),
+            if (awakeMinutes > 0)
+              Expanded(
+                flex: (awakeMinutes * 100 ~/ sum).clamp(1, 100),
+                child: Container(color: const Color(0xFFCBD5E1)),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSleepLegend(String label, String value, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 7,
+          height: 7,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          '$label $value',
+          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w500),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMetricItem(
+    ThemeData theme, {
+    required IconData icon,
+    required Color iconColor,
+    required String value,
+    required String label,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 15, color: iconColor),
+        const SizedBox(width: 5),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              value,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVitalsChip(
+    ThemeData theme, {
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String value,
+  }) {
+    final colorScheme = theme.colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: iconColor),
+          const SizedBox(width: 5),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  value,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSportItemCard(ThemeData theme, Map<String, dynamic> sport) {
+    final colorScheme = theme.colorScheme;
+    final title = sport['title'] as String? ?? '运动';
+    final distMeters = (sport['distance_meters'] as num?)?.toDouble() ?? 0.0;
+    final durSec = (sport['duration_seconds'] as num?)?.toInt() ?? 0;
+    final cal = (sport['calories'] as num?)?.toDouble() ?? 0.0;
+    final pace = sport['avg_pace'] as String?;
+    final hr = (sport['avg_heart_rate'] ?? sport['avg_hr'] as num?)?.toInt();
+
+    IconData sportIcon = Icons.fitness_center_rounded;
+    if (title.contains('跑')) {
+      sportIcon = Icons.directions_run_rounded;
+    } else if (title.contains('骑')) {
+      sportIcon = Icons.directions_bike_rounded;
+    } else if (title.contains('游')) {
+      sportIcon = Icons.pool_rounded;
+    } else if (title.contains('走') || title.contains('徒步')) {
+      sportIcon = Icons.hiking_rounded;
+    }
+
+    final distStr = distMeters > 0 ? '${(distMeters / 1000).toStringAsFixed(2)} km' : '';
+    final durMin = durSec ~/ 60;
+    final durStr = '$durMin分钟';
+
+    final items = <String>[
+      if (distStr.isNotEmpty) distStr,
+      durStr,
+      if (cal > 0) '${cal.toStringAsFixed(0)} kcal',
+      if (pace != null && pace.isNotEmpty) '配速 $pace',
+      if (hr != null && hr > 0) '$hr bpm',
+    ];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: const Color(0xFF10B981).withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(sportIcon, size: 15, color: const Color(0xFF10B981)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  items.join(' · '),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

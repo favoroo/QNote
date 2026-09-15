@@ -9,6 +9,7 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'package:qnote_flutter/config/app_version.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/health/health_sync_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/network/sync_scheduler.dart';
 import 'package:qnote_flutter/core/network/update_service.dart';
@@ -84,6 +85,30 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
       if (webdavConfig != null && webdavConfig.autoSync) {
         SyncScheduler.instance.syncIfNeeded();
       }
+
+      // 小米运动健康启动自动同步（已授权 + 开关开启 + 距上次同步超 1 小时）
+      try {
+        final healthSyncService = ref.read(healthSyncServiceProvider);
+        final authorized = await healthSyncService.isAuthorized();
+        if (authorized) {
+          final autoSync = await healthSyncService.getAutoSync();
+          if (autoSync) {
+            final lastSync = await healthSyncService.getLastSyncTime();
+            final shouldSync = lastSync == null ||
+                DateTime.now().difference(lastSync).inHours >= 1;
+            if (shouldSync) {
+              // fire-and-forget，不阻塞启动
+              healthSyncService.syncDays(daysBack: 2);
+            }
+          }
+        }
+      } catch (e) {
+        LoggerService.instance.warning(
+          '小米运动健康自动同步失败: $e',
+          category: LogCategory.system,
+        );
+      }
+
       NotificationService.instance.startReminderCheck();
     } catch (e, stackTrace) {
       LoggerService.instance.error(

@@ -11,7 +11,6 @@ import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
-import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/date_color_mark.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
@@ -42,7 +41,6 @@ class DiaryPage extends ConsumerStatefulWidget {
 class _DiaryPageState extends ConsumerState<DiaryPage>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   static const int _itemsPerDay = 49;
-  static const double _dayHeight = 2384.0;
   static const double _dividerHeight = 80.0;
   static const double _nodeHeight = 48.0;
 
@@ -123,6 +121,40 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     return recordsByDate;
   }
 
+  // 用户手动切换的展开/折叠状态，key 为 'yyyy-M-d'
+  final Map<String, bool> _dateExpandedOverrides = {};
+
+  bool _isDefaultExpanded(DateTime date) {
+    final yesterday = _today.subtract(const Duration(days: 1));
+    final tomorrow = _today.add(const Duration(days: 1));
+    return _isSameDay(date, _today) ||
+        _isSameDay(date, yesterday) ||
+        _isSameDay(date, tomorrow);
+  }
+
+  bool _isDateExpanded(DateTime date) {
+    final key = '${date.year}-${date.month}-${date.day}';
+    return _dateExpandedOverrides[key] ?? _isDefaultExpanded(date);
+  }
+
+  void _toggleDateExpanded(DateTime date) {
+    final key = '${date.year}-${date.month}-${date.day}';
+    final current = _isDateExpanded(date);
+    setState(() {
+      _dateExpandedOverrides[key] = !current;
+    });
+    HapticFeedback.lightImpact();
+  }
+
+  void _expandDate(DateTime date) {
+    final key = '${date.year}-${date.month}-${date.day}';
+    if (!_isDateExpanded(date)) {
+      setState(() {
+        _dateExpandedOverrides[key] = true;
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -148,7 +180,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       } else if (i % _itemsPerDay == 0) {
         offset += _dividerHeight;
       } else {
-        offset += _nodeHeight;
+        final dayOffset = i ~/ _itemsPerDay;
+        final date = _indexToDate(dayOffset);
+        if (_isDateExpanded(date)) {
+          offset += _nodeHeight;
+        }
       }
     }
     return offset;
@@ -176,41 +212,27 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
       offset += _dividerHeight;
 
+      final isExpanded = _isDateExpanded(date);
       if (d < dayOffset) {
-        offset += 48 * _nodeHeight;
-        offset += dayRecords.length * _averageRecordExtraHeight;
+        if (isExpanded) {
+          offset += 48 * _nodeHeight;
+          offset += dayRecords.length * _averageRecordExtraHeight;
+        }
       } else {
-        offset += nodeIndex * _nodeHeight;
-        for (final r in dayRecords) {
-          final displayTime = r.getDisplayTime();
-          final rNodeIndex = displayTime.hour * 2 + (displayTime.minute >= 30 ? 1 : 0);
-          if (rNodeIndex < nodeIndex) {
-            offset += _averageRecordExtraHeight;
+        if (isExpanded) {
+          offset += nodeIndex * _nodeHeight;
+          for (final r in dayRecords) {
+            final displayTime = r.getDisplayTime();
+            final rNodeIndex = displayTime.hour * 2 + (displayTime.minute >= 30 ? 1 : 0);
+            if (rNodeIndex < nodeIndex) {
+              offset += _averageRecordExtraHeight;
+            }
           }
         }
       }
     }
 
     return offset;
-  }
-
-  void _performInitialScrollToCurrentTime({
-    int retryCount = 0,
-    Map<String, List<DiaryRecord>>? recordsByDate,
-  }) {
-    if (!mounted) return;
-    if (!_scrollController.hasClients) {
-      if (retryCount < 10) {
-        Future.delayed(const Duration(milliseconds: 50), () {
-          _performInitialScrollToCurrentTime(
-            retryCount: retryCount + 1,
-            recordsByDate: recordsByDate,
-          );
-        });
-      }
-      return;
-    }
-    _scrollToCurrentTime(smooth: false, recordsByDate: recordsByDate); // 初始定位不用动画
   }
 
   void _scrollToTarget({
@@ -711,13 +733,32 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     }
   }
 
+  double _calculateDaysHeight(DateTime startDate, int daysCount) {
+    double total = 0.0;
+    final allRecords = ref.read(diaryListProvider).valueOrNull;
+    final recordsByDate = allRecords != null ? _buildRecordsByDate(allRecords) : null;
+    for (int i = 0; i < daysCount; i++) {
+      final date = startDate.add(Duration(days: i));
+      total += _dividerHeight;
+      if (_isDateExpanded(date)) {
+        total += 48 * _nodeHeight;
+        final dateKey = '${date.year}-${date.month}-${date.day}';
+        final dayRecords = recordsByDate?[dateKey] ?? [];
+        total += dayRecords.length * _averageRecordExtraHeight;
+      }
+    }
+    return total;
+  }
+
   void _shiftWindowBackward() {
     if (_isShiftingWindow) return;
     _isShiftingWindow = true;
 
     final prevOffset = _scrollController.offset;
-    _windowStartDate = _windowStartDate.subtract(const Duration(days: 2));
-    _shiftTargetOffset = prevOffset + 2 * _dayHeight;
+    final newStartDate = _windowStartDate.subtract(const Duration(days: 2));
+    final shiftHeight = _calculateDaysHeight(newStartDate, 2);
+    _windowStartDate = newStartDate;
+    _shiftTargetOffset = prevOffset + shiftHeight;
 
     setState(() {});
 
@@ -739,8 +780,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     _isShiftingWindow = true;
 
     final prevOffset = _scrollController.offset;
+    final removedHeight = _calculateDaysHeight(_windowStartDate, 2);
     _windowStartDate = _windowStartDate.add(const Duration(days: 2));
-    _shiftTargetOffset = prevOffset - 2 * _dayHeight;
+    _shiftTargetOffset = prevOffset - removedHeight;
 
     setState(() {});
 
@@ -793,6 +835,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   }
 
   void _goToDate(DateTime date) {
+    _expandDate(date);
     ref.read(selectedDateProvider.notifier).state = date;
     if (_isScrollingFromList) return;
 
@@ -1899,7 +1942,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                           onLongPressMoveUpdate: _handleDragUpdate,
                           onLongPressEnd: _handleDragEnd,
                           child: ListView.builder(
-                            scrollCacheExtent: ScrollCacheExtent.pixels(1500),
+                            scrollCacheExtent: const ScrollCacheExtent.pixels(1500),
                             controller: _scrollController,
                             padding: const EdgeInsets.symmetric(
                               horizontal: 16,
@@ -1914,13 +1957,20 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                               Widget childWidget;
 
                               if (subIndex == 0) {
+                                final isExpanded = _isDateExpanded(date);
+                                final dateKey =
+                                    '${date.year}-${date.month}-${date.day}';
+                                final dayRecords =
+                                    recordsByDate[dateKey] ?? const [];
+
                                 childWidget = Container(
                                   key: ValueKey(
                                     'div_${dayOffset}_${date.millisecondsSinceEpoch}',
                                   ),
                                   height: 80.0,
+                                  color: theme.scaffoldBackgroundColor,
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
+                                    horizontal: 8,
                                   ),
                                   alignment: Alignment.center,
                                   child: Row(
@@ -1933,21 +1983,105 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                                               .withValues(alpha: 0.5),
                                         ),
                                       ),
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 16,
-                                        ),
-                                        child: Text(
-                                          _formatDividerDate(date),
-                                          style: theme.textTheme.titleSmall
-                                              ?.copyWith(
-                                                color: _isToday(date)
-                                                    ? theme.colorScheme.primary
-                                                    : theme
-                                                          .colorScheme
-                                                          .onSurfaceVariant,
-                                                fontWeight: FontWeight.bold,
+                                      InkWell(
+                                        onTap: () => _toggleDateExpanded(date),
+                                        borderRadius:
+                                            BorderRadius.circular(20),
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 8,
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(
+                                                _formatDividerDate(date),
+                                                style: theme
+                                                    .textTheme
+                                                    .titleSmall
+                                                    ?.copyWith(
+                                                      color: _isToday(date)
+                                                          ? theme
+                                                              .colorScheme
+                                                              .primary
+                                                          : theme
+                                                              .colorScheme
+                                                              .onSurfaceVariant,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
                                               ),
+                                              if (!isExpanded &&
+                                                  dayRecords.isNotEmpty) ...[
+                                                const SizedBox(width: 6),
+                                                Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                    horizontal: 6,
+                                                    vertical: 1.5,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: (_isToday(date)
+                                                            ? theme
+                                                                .colorScheme
+                                                                .primary
+                                                            : theme
+                                                                .colorScheme
+                                                                .onSurfaceVariant)
+                                                        .withValues(
+                                                          alpha: 0.12,
+                                                        ),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          10,
+                                                        ),
+                                                  ),
+                                                  child: Text(
+                                                    '${dayRecords.length}',
+                                                    style: theme
+                                                        .textTheme
+                                                        .labelSmall
+                                                        ?.copyWith(
+                                                          color: _isToday(date)
+                                                              ? theme
+                                                                  .colorScheme
+                                                                  .primary
+                                                              : theme
+                                                                  .colorScheme
+                                                                  .onSurfaceVariant,
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                          fontSize: 10,
+                                                        ),
+                                                  ),
+                                                ),
+                                              ],
+                                              const SizedBox(width: 4),
+                                              AnimatedRotation(
+                                                turns: isExpanded ? 0.0 : -0.25,
+                                                duration: const Duration(
+                                                  milliseconds: 200,
+                                                ),
+                                                curve: Curves.easeInOut,
+                                                child: Icon(
+                                                  Icons
+                                                      .keyboard_arrow_down_rounded,
+                                                  size: 18,
+                                                  color: _isToday(date)
+                                                      ? theme
+                                                          .colorScheme
+                                                          .primary
+                                                      : theme
+                                                          .colorScheme
+                                                          .onSurfaceVariant
+                                                          .withValues(
+                                                            alpha: 0.7,
+                                                          ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ),
                                       Expanded(
@@ -1961,6 +2095,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                                     ],
                                   ),
                                 );
+                              } else if (!_isDateExpanded(date)) {
+                                childWidget = const SizedBox.shrink();
                               } else {
                                 final nodeIndex = subIndex - 1;
                                 final time = TimeOfDay(

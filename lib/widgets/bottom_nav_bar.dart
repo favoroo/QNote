@@ -163,6 +163,16 @@ class BottomNavBar extends ConsumerWidget {
                         DateTime.now().millisecondsSinceEpoch;
                   }
                 : (index == 2 ? () => showDebugConsole(context) : null),
+            // 双击也跳转到当前时间，比长按更跟手
+            onDoubleTap: index == 0
+                ? () {
+                    if (!isSelected) {
+                      onTap(0);
+                    }
+                    ref.read(diaryScrollTriggerProvider.notifier).state =
+                        DateTime.now().millisecondsSinceEpoch;
+                  }
+                : null,
             child: Icon(item.icon),
           ),
           selectedIcon: GestureDetector(
@@ -173,6 +183,12 @@ class BottomNavBar extends ConsumerWidget {
                         DateTime.now().millisecondsSinceEpoch;
                   }
                 : (index == 2 ? () => showDebugConsole(context) : null),
+            onDoubleTap: index == 0
+                ? () {
+                    ref.read(diaryScrollTriggerProvider.notifier).state =
+                        DateTime.now().millisecondsSinceEpoch;
+                  }
+                : null,
             child: Icon(item.activeIcon),
           ),
           label: item.label,
