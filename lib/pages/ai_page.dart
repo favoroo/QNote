@@ -50,6 +50,14 @@ class AiPage extends ConsumerStatefulWidget {
   ConsumerState<AiPage> createState() => _AiPageState();
 }
 
+/// 会话流的可视展示包装项，携带该项在原始 session.messages 中的实际下标（供撤回/重试使用）
+class _ChatDisplayEntry {
+  final ChatMessage message;
+  final int? stateIndex;
+
+  const _ChatDisplayEntry(this.message, [this.stateIndex]);
+}
+
 class _AiPageState extends ConsumerState<AiPage> {
   final _inputController = TextEditingController();
   final _inputFocusNode = FocusNode();
@@ -290,8 +298,9 @@ class _AiPageState extends ConsumerState<AiPage> {
         if (mounted) setState(() => _activeModelId = roles!.assistant);
       } else {
         final config = await ref.read(defaultAiConfigProvider.future);
-        if (config != null && mounted)
+        if (config != null && mounted) {
           setState(() => _activeModelId = config.id);
+        }
       }
     }
   }
@@ -1175,35 +1184,86 @@ class _AiPageState extends ConsumerState<AiPage> {
   bool _isVisibleMessage(ChatMessage message) {
     if (message.role == 'user') return true;
     if (message.content.trim().isNotEmpty) return true;
-    if (message.thought != null && message.thought!.trim().isNotEmpty)
-      return true;
+    if (message.role == 'tool') return true;
     if (message.uiDetails != null) return true;
+    // 如果 assistant 正文为空且带有 toolCalls（说明是发起工具调用的中间状态帧），不作为独立顶级气泡展示
+    if (message.role == 'assistant' &&
+        message.toolCalls != null &&
+        message.toolCalls!.isNotEmpty) {
+      return false;
+    }
+    if (message.thought != null && message.thought!.trim().isNotEmpty) {
+      return true;
+    }
     return false;
   }
 
   Widget _buildChatArea(ChatSession? currentChat, ThemeData theme) {
     final stateMessages = currentChat?.messages ?? const <ChatMessage>[];
-    // 过滤掉 Agent 内部的工具调用中转消息（正文为空、只承载 tool_calls 的 assistant 消息）。
-    // 它们只为上下文协议完整而存在，渲染到会话流里只会变成永久转动的空白气泡。
-    // visibleIndexes 记录可见消息在会话态中的真实下标，供长按撤回/再次编辑定位截断点
-    final visibleIndexes = <int>[];
-    for (var i = 0; i < stateMessages.length; i++) {
-      if (_isVisibleMessage(stateMessages[i])) visibleIndexes.add(i);
+
+    // 将消息归一为可视展示项，连续的工具执行结果（≥2项）自动聚合成折叠链
+    final displayEntries = <_ChatDisplayEntry>[];
+    int i = 0;
+    while (i < stateMessages.length) {
+      final msg = stateMessages[i];
+      if (!_isVisibleMessage(msg)) {
+        i++;
+        continue;
+      }
+
+      // 判断是否可作为工具链聚合（ask_user 需保持独立交互卡片）
+      if (msg.role == 'tool' && msg.toolName != 'ask_user') {
+        final toolGroup = <ChatMessage>[msg];
+        var j = i + 1;
+        while (j < stateMessages.length) {
+          final nextMsg = stateMessages[j];
+          if (!_isVisibleMessage(nextMsg)) {
+            j++;
+            continue;
+          }
+          if (nextMsg.role == 'tool' && nextMsg.toolName != 'ask_user') {
+            toolGroup.add(nextMsg);
+            j++;
+          } else {
+            break;
+          }
+        }
+
+        if (toolGroup.length >= 2) {
+          final groupMsg = ChatMessage(
+            role: 'tool_group',
+            content: '',
+            timestamp: toolGroup.first.timestamp,
+            uiDetails: {'messages': toolGroup},
+          );
+          displayEntries.add(_ChatDisplayEntry(groupMsg));
+          i = j;
+          continue;
+        } else {
+          displayEntries.add(_ChatDisplayEntry(msg, i));
+          i++;
+          continue;
+        }
+      }
+
+      displayEntries.add(_ChatDisplayEntry(msg, i));
+      i++;
     }
-    final messages = visibleIndexes.map((i) => stateMessages[i]).toList();
 
     // If messages are empty, virtualize the assistant's greeting bubble so it's shown.
-    final displayMessages = messages.isEmpty
+    final displayItems = displayEntries.isEmpty
         ? [
-            ChatMessage(
-              role: 'assistant',
-              content:
-                  defaultSystemPrompts['assistant_greeting'] ??
-                  '你好！我是你的全能助手「小Q」。你可以直接向我提问，或者让我帮你添加待办、记录流水、修改笔记与设置等。',
-              timestamp: DateTime.now(),
+            _ChatDisplayEntry(
+              ChatMessage(
+                role: 'assistant',
+                content:
+                    defaultSystemPrompts['assistant_greeting'] ??
+                    '你好！我是你的全能助手「小Q」。你可以直接向我提问，或者让我帮你添加待办、记录流水、修改笔记与设置等。',
+                timestamp: DateTime.now(),
+              ),
             ),
           ]
-        : messages;
+        : displayEntries;
 
     final hasStreaming =
         ref.watch(
@@ -1213,12 +1273,12 @@ class _AiPageState extends ConsumerState<AiPage> {
     final showTyping =
         _isTyping &&
         !hasStreaming &&
-        messages.isNotEmpty &&
-        messages.last.role == 'user';
+        displayItems.isNotEmpty &&
+        displayItems.last.message.role == 'user';
     final showStreaming = hasStreaming;
 
     final totalCount =
-        displayMessages.length + (showTyping ? 1 : 0) + (showStreaming ? 1 : 0);
+        displayItems.length + (showTyping ? 1 : 0) + (showStreaming ? 1 : 0);
 
     bool isUserMsg(ChatMessage m) => m.role == 'user';
 
@@ -1260,14 +1320,15 @@ class _AiPageState extends ConsumerState<AiPage> {
           itemCount: totalCount,
           itemBuilder: (context, index) {
             // 隔离每条消息的重绘，流式输出时只重绘最后一条
-            if (index < displayMessages.length) {
-              final currentMsg = displayMessages[index];
+            if (index < displayItems.length) {
+              final entry = displayItems[index];
+              final currentMsg = entry.message;
               final currentIsUser = isUserMsg(currentMsg);
 
               // 1. 判断是否是同组的第一条消息（若前一条也是同一方且时间相近，则不重复显示头像）
               var isFirstInGroup = true;
               if (index > 0) {
-                final prevMsg = displayMessages[index - 1];
+                final prevMsg = displayItems[index - 1].message;
                 final prevIsUser = isUserMsg(prevMsg);
                 if (prevIsUser == currentIsUser) {
                   final prevTime = prevMsg.timestamp;
@@ -1282,8 +1343,8 @@ class _AiPageState extends ConsumerState<AiPage> {
 
               // 2. 判断是否是同组的最后一条消息（若后面还有同方连续消息/流式输出，则收缩底部间距）
               var isLastInGroup = true;
-              if (index < displayMessages.length - 1) {
-                final nextMsg = displayMessages[index + 1];
+              if (index < displayItems.length - 1) {
+                final nextMsg = displayItems[index + 1].message;
                 final nextIsUser = isUserMsg(nextMsg);
                 if (nextIsUser == currentIsUser) {
                   final nextTime = nextMsg.timestamp;
@@ -1301,7 +1362,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                 }
               }
 
-              final bubble = _ChatBubble(
+              final bubble = ChatBubble(
                 message: currentMsg,
                 isFirstInGroup: isFirstInGroup,
                 isLastInGroup: isLastInGroup,
@@ -1316,20 +1377,20 @@ class _AiPageState extends ConsumerState<AiPage> {
               // 用户消息长按弹出操作菜单（撤回本轮 / 再次编辑 / 复制）；
               // 失败气泡长按弹出重试菜单（重试本轮 / 复制错误详情）
               return RepaintBoundary(
-                child: currentIsUser && index < visibleIndexes.length
+                child: currentIsUser && entry.stateIndex != null
                     ? GestureDetector(
                         onLongPress: () => _showUserMessageActions(
-                          visibleIndexes[index],
+                          entry.stateIndex!,
                           currentMsg,
                         ),
                         child: bubble,
                       )
                     : !currentIsUser &&
                           currentMsg.isError == true &&
-                          index < visibleIndexes.length
+                          entry.stateIndex != null
                     ? GestureDetector(
                         onLongPress: () => _showErrorAssistantActions(
-                          visibleIndexes[index],
+                          entry.stateIndex!,
                           currentMsg,
                         ),
                         child: bubble,
@@ -1338,11 +1399,11 @@ class _AiPageState extends ConsumerState<AiPage> {
               );
             }
 
-            if (showTyping && index == displayMessages.length) {
+            if (showTyping && index == displayItems.length) {
               // 如果上一条已经是小Q回复，打字指示器隐藏头像并紧凑排列
               final prevIsAssistant =
-                  displayMessages.isNotEmpty &&
-                  !isUserMsg(displayMessages.last);
+                  displayItems.isNotEmpty &&
+                  !isUserMsg(displayItems.last.message);
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: _TypingBubble(
@@ -1353,8 +1414,8 @@ class _AiPageState extends ConsumerState<AiPage> {
             }
 
             // 流式气泡（含思考中状态卡）：底部增加留白，确保不紧贴输入栏
-            final lastMsg = displayMessages.isNotEmpty
-                ? displayMessages.last
+            final lastMsg = displayItems.isNotEmpty
+                ? displayItems.last.message
                 : null;
             final prevIsAssistant = lastMsg != null && !isUserMsg(lastMsg);
             return Padding(
@@ -2391,7 +2452,7 @@ class _StreamingBubble extends ConsumerWidget {
     final statusStartedAt = hasContent
         ? null
         : ref.watch(aiStreamingStartedAtProvider);
-    return _ChatBubble(
+    return ChatBubble(
       message: ChatMessage(
         role: 'assistant',
         content: streamingContent ?? '',
@@ -2405,7 +2466,7 @@ class _StreamingBubble extends ConsumerWidget {
   }
 }
 
-class _ChatBubble extends StatelessWidget {
+class ChatBubble extends StatelessWidget {
   final ChatMessage message;
 
   /// 流式占位的阶段性状态文案（非 null 即占位模式），与正文互斥展示
@@ -2423,7 +2484,7 @@ class _ChatBubble extends StatelessWidget {
   /// 按钮是否可点（Agent 执行中禁用，防止并发任务）
   final bool actionsEnabled;
 
-  const _ChatBubble({
+  const ChatBubble({
     required this.message,
     this.statusText,
     this.statusStartedAt,
@@ -2451,6 +2512,7 @@ class _ChatBubble extends StatelessWidget {
         message.content.trim().isNotEmpty ||
         (message.thought?.trim().isNotEmpty ?? false) ||
         message.role == 'tool' ||
+        message.role == 'tool_group' ||
         message.uiDetails != null;
 
     // 正文为空的助手消息属于工具调用中转（列表层已过滤），这里再兜一层；
@@ -2657,9 +2719,17 @@ class _ChatBubble extends StatelessWidget {
                             ),
                           ),
 
-                        // 工具调用或执行反馈卡片
-                        if (message.role == 'tool')
-                          _buildToolFeedbackWidget(context, message, theme)
+                        // 连续工具聚合卡片或单工具执行反馈卡片
+                        if (message.role == 'tool_group')
+                          ToolChainGroupWidget(
+                            toolMessages:
+                                (message.uiDetails?['messages']
+                                        as List<ChatMessage>?) ??
+                                    const [],
+                            theme: theme,
+                          )
+                        else if (message.role == 'tool')
+                          buildToolFeedback(context, message, theme)
                         else ...[
                           MarkdownBody(
                             data: message.content,
@@ -2741,7 +2811,7 @@ class _ChatBubble extends StatelessWidget {
   }
 
   /// 构建工具调用执行反馈与小Q确认交互卡片
-  Widget _buildToolFeedbackWidget(
+  static Widget buildToolFeedback(
     BuildContext context,
     ChatMessage message,
     ThemeData theme,
@@ -2990,9 +3060,208 @@ class _ChatBubble extends StatelessWidget {
       );
     }
 
-    // read_file 返回的文件正文过长，气泡里只显示路径摘要，不渲染正文
+    // skill 工具加载手册过长，只显示调用的技能名与章节胶囊，支持点击查看完整手册，不占主消息流空间
+    if (message.toolName == 'skill') {
+      final isError = message.isError == true;
+      final name = uiDetails?['name'] as String? ?? '';
+      final section = uiDetails?['section'] as String?;
+      final rawSkills = uiDetails?['skills'];
+      final skillsList = rawSkills is List
+          ? rawSkills.map((e) => e.toString()).toList()
+          : null;
+
+      if (isError) {
+        return Container(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: theme.colorScheme.error.withValues(alpha: 0.3),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.error_outline,
+                size: 14,
+                color: theme.colorScheme.error,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  message.content.trim().isNotEmpty
+                      ? message.content.trim()
+                      : '调用技能失败',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
+      // 查看所有可用技能列表时的紧凑条
+      if (skillsList != null) {
+        return Container(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primaryContainer.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.auto_awesome,
+                size: 14,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  '已查看可用技能列表 (共 ${skillsList.length} 个)',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
+                  ),
+                ),
+              ),
+              if (message.content.trim().isNotEmpty) ...[
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: () => _showSkillHandbookDialog(
+                    context,
+                    '可用技能列表',
+                    message.content,
+                  ),
+                  child: Text(
+                    '查看',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      }
+
+      final skillTitle = name.isEmpty ? '技能手册' : name;
+      final sectionHint =
+          (section != null && section.trim().isNotEmpty) ? ' · $section' : '';
+
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.auto_awesome,
+              size: 14,
+              color: theme.colorScheme.primary,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                '已调用技能手册 · $skillTitle$sectionHint',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            if (message.content.trim().isNotEmpty) ...[
+              const SizedBox(width: 6),
+              GestureDetector(
+                onTap: () => _showSkillHandbookDialog(
+                  context,
+                  skillTitle,
+                  message.content,
+                ),
+                child: Text(
+                  '查看',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    // read_file 返回的文件正文过长，气泡里只显示路径摘要与预览按钮，错误时展示错误卡片
     if (message.toolName == 'read_file') {
+      final isError = message.isError == true;
       final path = uiDetails?['path'] as String? ?? '';
+      if (isError) {
+        return Container(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: theme.colorScheme.error.withValues(alpha: 0.3),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.error_outline,
+                size: 14,
+                color: theme.colorScheme.error,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  message.content.trim().isNotEmpty
+                      ? message.content.trim()
+                      : (path.isNotEmpty ? '读取文件失败: $path' : '读取文件失败'),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
+      final displayPath = path.isNotEmpty ? path : '文件';
       return Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -3014,7 +3283,7 @@ class _ChatBubble extends StatelessWidget {
             const SizedBox(width: 6),
             Expanded(
               child: Text(
-                '已读取文件 $path',
+                '已读取文件 $displayPath',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -3023,9 +3292,37 @@ class _ChatBubble extends StatelessWidget {
                 ),
               ),
             ),
+            if (message.content.trim().isNotEmpty) ...[
+              const SizedBox(width: 6),
+              GestureDetector(
+                onTap: () => _showFilePreviewDialog(
+                  context,
+                  displayPath,
+                  message.content,
+                ),
+                child: Text(
+                  '预览',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       );
+    }
+
+    // list_dir 目录遍历结果折叠展示，防止几十条条目拉长屏幕
+    if (message.toolName == 'list_dir') {
+      return _DirectoryFeedbackWidget(message: message, theme: theme);
+    }
+
+    // grep 全局检索结果折叠展示
+    if (message.toolName == 'grep') {
+      return _GrepFeedbackWidget(message: message, theme: theme);
     }
 
     // fetch_url 返回的网页正文过长，气泡里只显示标题摘要，点击可打开原网页
@@ -3124,60 +3421,67 @@ class _ChatBubble extends StatelessWidget {
             ],
           ),
         ),
-        MarkdownBody(
-          data: message.content,
-          selectable: false,
-          styleSheet: MarkdownStyleSheet(
-            p: TextStyle(
-              color: theme.colorScheme.onSurface,
-              fontSize: 14,
-              height: 1.5,
-            ),
-            h1: TextStyle(
-              color: theme.colorScheme.onSurface,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              height: 1.6,
-            ),
-            h2: TextStyle(
-              color: theme.colorScheme.onSurface,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              height: 1.5,
-            ),
-            h3: TextStyle(
-              color: theme.colorScheme.onSurface,
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              height: 1.4,
-            ),
-            code: TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 13,
-              color: theme.colorScheme.primary,
-              backgroundColor: Colors.transparent,
-            ),
-            codeblockDecoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 220),
+          child: SingleChildScrollView(
+            child: MarkdownBody(
+              data: message.content,
+              selectable: false,
+              styleSheet: MarkdownStyleSheet(
+                p: TextStyle(
+                  color: theme.colorScheme.onSurface,
+                  fontSize: 14,
+                  height: 1.5,
+                ),
+                h1: TextStyle(
+                  color: theme.colorScheme.onSurface,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  height: 1.6,
+                ),
+                h2: TextStyle(
+                  color: theme.colorScheme.onSurface,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  height: 1.5,
+                ),
+                h3: TextStyle(
+                  color: theme.colorScheme.onSurface,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  height: 1.4,
+                ),
+                code: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  color: theme.colorScheme.primary,
+                  backgroundColor: Colors.transparent,
+                ),
+                codeblockDecoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: theme.colorScheme.outlineVariant.withValues(
+                      alpha: 0.5,
+                    ),
+                  ),
+                ),
+                blockquoteDecoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerLow,
+                  border: Border(
+                    left: BorderSide(color: theme.colorScheme.primary, width: 4),
+                  ),
+                  borderRadius: const BorderRadius.horizontal(
+                    right: Radius.circular(6),
+                  ),
+                ),
+                blockquotePadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                listBullet: TextStyle(color: theme.colorScheme.onSurface),
               ),
             ),
-            blockquoteDecoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerLow,
-              border: Border(
-                left: BorderSide(color: theme.colorScheme.primary, width: 4),
-              ),
-              borderRadius: const BorderRadius.horizontal(
-                right: Radius.circular(6),
-              ),
-            ),
-            blockquotePadding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 8,
-            ),
-            listBullet: TextStyle(color: theme.colorScheme.onSurface),
           ),
         ),
       ],
@@ -3223,7 +3527,7 @@ class _ChatBubble extends StatelessWidget {
     );
   }
 
-  void _showFullImageDialog(BuildContext context, String imagePath) {
+  static void _showFullImageDialog(BuildContext context, String imagePath) {
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
@@ -3248,6 +3552,629 @@ class _ChatBubble extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 技能手册查看弹窗：避免大段 Markdown 技能说明直接在主对话流刷屏
+  static void _showSkillHandbookDialog(
+    BuildContext context,
+    String skillName,
+    String content,
+  ) {
+    final theme = Theme.of(context);
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 600,
+            maxHeight: MediaQuery.of(context).size.height * 0.75,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.auto_awesome,
+                      size: 18,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '技能手册 · $skillName',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 20),
+                      onPressed: () => Navigator.pop(ctx),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+                const Divider(height: 20),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: MarkdownBody(
+                      data: content,
+                      selectable: true,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 文件内容预览弹窗：点击「预览」按钮按需查看，避免正文长篇大论挤占对话空间
+  static void _showFilePreviewDialog(
+    BuildContext context,
+    String filePath,
+    String content,
+  ) {
+    final theme = Theme.of(context);
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 600,
+            maxHeight: MediaQuery.of(context).size.height * 0.75,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.description_outlined,
+                      size: 18,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '文件预览 · $filePath',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 20),
+                      onPressed: () => Navigator.pop(ctx),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+                const Divider(height: 20),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      content,
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                        color: theme.colorScheme.onSurface,
+                        height: 1.45,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 目录列表折叠反馈组件：条目较多时默认折叠，显示前 3 项与总计，支持平滑展开和内滚动
+class _DirectoryFeedbackWidget extends StatefulWidget {
+  final ChatMessage message;
+  final ThemeData theme;
+
+  const _DirectoryFeedbackWidget({
+    required this.message,
+    required this.theme,
+  });
+
+  @override
+  State<_DirectoryFeedbackWidget> createState() =>
+      _DirectoryFeedbackWidgetState();
+}
+
+class _DirectoryFeedbackWidgetState extends State<_DirectoryFeedbackWidget> {
+  bool _isExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = widget.theme;
+    final message = widget.message;
+    final isError = message.isError == true;
+    final uiDetails = message.uiDetails;
+    final path = uiDetails?['path'] as String? ?? '';
+    final rawItems = uiDetails?['items'];
+    final items = rawItems is List
+        ? rawItems.map((e) => e.toString()).toList()
+        : null;
+
+    if (isError) {
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: theme.colorScheme.error.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, size: 14, color: theme.colorScheme.error),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                message.content.trim().isNotEmpty
+                    ? message.content.trim()
+                    : '查看目录失败',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: theme.colorScheme.error,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final totalCount = items?.length ??
+        message.content
+            .split('\n')
+            .where((l) => l.trim().isNotEmpty)
+            .length;
+    final displayList = items ??
+        message.content
+            .split('\n')
+            .where((l) => l.trim().isNotEmpty)
+            .toList();
+
+    final pathHint = path.isNotEmpty ? path : '/';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 头部胶囊：目录路径 + 条目总数 + 展开/收起按钮
+          InkWell(
+            onTap: totalCount == 0
+                ? null
+                : () => setState(() => _isExpanded = !_isExpanded),
+            borderRadius: BorderRadius.circular(10),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.folder_open_outlined,
+                    size: 15,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      totalCount == 0
+                          ? '已查看目录 $pathHint (空目录)'
+                          : '已查看目录 $pathHint (共 $totalCount 项)',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
+                      ),
+                    ),
+                  ),
+                  if (totalCount > 0) ...[
+                    const SizedBox(width: 4),
+                    AnimatedRotation(
+                      turns: _isExpanded ? 0.5 : 0,
+                      duration: AppDurations.normal,
+                      child: Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        size: 16,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          // 展开内容区：当条目数较多时提供带滚动的列表
+          if (_isExpanded && displayList.isNotEmpty) ...[
+            const Divider(height: 1),
+            Container(
+              constraints: const BoxConstraints(maxHeight: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: displayList.map((item) {
+                    final isDir = item.endsWith('/');
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(
+                        children: [
+                          Icon(
+                            isDir
+                                ? Icons.folder_outlined
+                                : Icons.insert_drive_file_outlined,
+                            size: 13,
+                            color: theme.colorScheme.primary.withValues(alpha: 0.7),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              item,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontFamily: 'monospace',
+                                color: theme.colorScheme.onSurface.withValues(
+                                  alpha: 0.8,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 全局 grep 检索折叠反馈组件：命中条目过多时折叠
+class _GrepFeedbackWidget extends StatefulWidget {
+  final ChatMessage message;
+  final ThemeData theme;
+
+  const _GrepFeedbackWidget({
+    required this.message,
+    required this.theme,
+  });
+
+  @override
+  State<_GrepFeedbackWidget> createState() => _GrepFeedbackWidgetState();
+}
+
+class _GrepFeedbackWidgetState extends State<_GrepFeedbackWidget> {
+  bool _isExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = widget.theme;
+    final message = widget.message;
+    final isError = message.isError == true;
+    final uiDetails = message.uiDetails;
+    final query = uiDetails?['query'] as String? ?? '';
+    final total = uiDetails?['total'] as int? ?? 0;
+
+    if (isError) {
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: theme.colorScheme.error.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, size: 14, color: theme.colorScheme.error),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                message.content.trim().isNotEmpty
+                    ? message.content.trim()
+                    : '搜索失败',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: theme.colorScheme.error,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final queryHint = query.isNotEmpty ? '「$query」' : '';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: total == 0
+                ? null
+                : () => setState(() => _isExpanded = !_isExpanded),
+            borderRadius: BorderRadius.circular(10),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.search_rounded,
+                    size: 15,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      total == 0
+                          ? '搜索笔记 $queryHint (未找到匹配)'
+                          : '搜索笔记 $queryHint (共 $total 条匹配)',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
+                      ),
+                    ),
+                  ),
+                  if (total > 0) ...[
+                    const SizedBox(width: 4),
+                    AnimatedRotation(
+                      turns: _isExpanded ? 0.5 : 0,
+                      duration: AppDurations.normal,
+                      child: Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        size: 16,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          if (_isExpanded && message.content.trim().isNotEmpty) ...[
+            const Divider(height: 1),
+            Container(
+              constraints: const BoxConstraints(maxHeight: 200),
+              padding: const EdgeInsets.all(10),
+              child: SingleChildScrollView(
+                child: MarkdownBody(
+                  data: message.content,
+                  selectable: true,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 连续工具调用链（多步操作）聚合折叠组件：
+/// 当 Agent 连续执行多项工具操作（如连续 read_file、list_dir 等）时，
+/// 聚合成一个「执行步骤」折叠面板，折叠态只占一行，展开后呈现紧凑步骤清单。
+class ToolChainGroupWidget extends StatefulWidget {
+  final List<ChatMessage> toolMessages;
+  final ThemeData theme;
+
+  const ToolChainGroupWidget({
+    required this.toolMessages,
+    required this.theme,
+  });
+
+  @override
+  State<ToolChainGroupWidget> createState() => _ToolChainGroupWidgetState();
+}
+
+class _ToolChainGroupWidgetState extends State<ToolChainGroupWidget> {
+  bool _isExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = widget.theme;
+    final messages = widget.toolMessages;
+    final totalCount = messages.length;
+    final hasError = messages.any((m) => m.isError == true);
+
+    // 统计工具类型分布，如「读取文件 3 个、查看目录 1 次」
+    final countsByType = <String, int>{};
+    for (final m in messages) {
+      final name = m.toolName ?? '操作';
+      countsByType[name] = (countsByType[name] ?? 0) + 1;
+    }
+
+    final summarySegments = <String>[];
+    countsByType.forEach((toolName, count) {
+      final label = AgentToolLabels.resultLabel(toolName);
+      summarySegments.add('$label $count 项');
+    });
+    final summaryText = summarySegments.join('、');
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(
+        color: hasError
+            ? theme.colorScheme.errorContainer.withValues(alpha: 0.18)
+            : theme.colorScheme.primaryContainer.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: hasError
+              ? theme.colorScheme.error.withValues(alpha: 0.3)
+              : theme.colorScheme.primary.withValues(alpha: 0.22),
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 头部总览条：点击展开/折叠全部步骤
+          InkWell(
+            onTap: () => setState(() => _isExpanded = !_isExpanded),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              child: Row(
+                children: [
+                  Icon(
+                    hasError ? Icons.error_outline : Icons.task_alt_rounded,
+                    size: 15,
+                    color: hasError
+                        ? theme.colorScheme.error
+                        : theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '已连续完成 $totalCount 步操作 · $summaryText',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: hasError
+                            ? theme.colorScheme.error
+                            : theme.colorScheme.onSurface.withValues(alpha: 0.9),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  AnimatedRotation(
+                    turns: _isExpanded ? 0.5 : 0,
+                    duration: AppDurations.normal,
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 16,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // 展开状态：逐条紧凑渲染每一个工具的专属反馈卡
+          if (_isExpanded) ...[
+            const Divider(height: 1),
+            Container(
+              constraints: const BoxConstraints(maxHeight: 280),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (int i = 0; i < messages.length; i++) ...[
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8, right: 6),
+                              child: Container(
+                                width: 16,
+                                height: 16,
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.primary.withValues(
+                                    alpha: 0.12,
+                                  ),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    '${i + 1}',
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                      color: theme.colorScheme.primary,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: ChatBubble.buildToolFeedback(
+                                context,
+                                messages[i],
+                                theme,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

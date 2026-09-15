@@ -80,6 +80,20 @@ void main() {
       );
     });
 
+    test('skill：多个可用技能时提取技能总数', () {
+      expect(
+        AgentToolLabels.resultLabel('skill', {'skills': ['todo-manager', 'note-organizer']}),
+        '调用技能 · 2 个可用技能',
+      );
+    });
+
+    test('skill：提取载入的具体技能名', () {
+      expect(
+        AgentToolLabels.resultLabel('skill', {'name': 'frontend-design'}),
+        '调用技能 · frontend-design',
+      );
+    });
+
     test('快照为空时回退纯工具文案', () {
       expect(
         AgentToolLabels.progressLabel('write_file', const {}),

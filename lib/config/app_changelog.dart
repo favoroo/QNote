@@ -14,6 +14,16 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.43',
+    date: '2026-09-16',
+    notes: [
+      '新增「屏幕时长」统计页：今日屏幕总时长、应用使用排行与近7天趋势（Android）',
+      '未授权时一键跳转系统「使用情况访问」设置页面',
+      '导航栏中央小Q按钮改为与其他导航项统一风格',
+      '优化小Q对话流中技能手册与多步工具调用的折叠展示',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.42',
     date: '2026-09-15',
     notes: [

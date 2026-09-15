@@ -53,6 +53,13 @@ class _MockTodoListNotifier extends TodoListNotifier {
       }).toList(),
     );
   }
+
+  @override
+  Future<void> deleteTodo(String id) async {
+    state = AsyncData(
+      (state.value ?? []).where((t) => t.id != id).toList(),
+    );
+  }
 }
 
 class _MockTodoFolderNotifier extends TodoFolderListNotifier {
@@ -200,5 +207,60 @@ void main() {
     // 验证弹窗关闭，且列表依然为空（没有添加空事项）
     expect(find.text('设置提醒'), findsNothing);
     expect(find.text('待办事项'), findsNothing);
+  });
+
+  testWidgets('待办事项左滑出现圆形删除按钮，点击删除按钮弹出确认对话框并可删除', (tester) async {
+    final todos = [
+      Todo(
+        id: 't-swipe-1',
+        title: '需要左滑删除的待办',
+        isCompleted: false,
+        folderId: 'folder-1',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      ),
+    ];
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          todoListProvider.overrideWith(() => _MockTodoListNotifier(todos)),
+          todoFolderListProvider.overrideWith(() => _MockTodoFolderNotifier()),
+        ],
+        child: const MaterialApp(
+          home: TodoPage(),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    // 确认待办卡片存在，删除按钮初始未露出
+    expect(find.text('需要左滑删除的待办'), findsOneWidget);
+    expect(find.byIcon(Icons.delete_outline), findsNothing);
+
+    // 在待办卡片上执行左滑手势
+    final todoCard = find.text('需要左滑删除的待办');
+    await tester.drag(todoCard, const Offset(-150, 0));
+    await tester.pumpAndSettle();
+
+    // 验证左滑后露出了红色圆形的删除按钮
+    expect(find.byIcon(Icons.delete_outline), findsOneWidget);
+
+    // 点击圆形删除按钮
+    await tester.tap(find.byIcon(Icons.delete_outline));
+    await tester.pumpAndSettle();
+
+    // 验证弹出确认删除对话框
+    expect(find.text('确认删除'), findsOneWidget);
+    expect(find.text('确定要删除「需要左滑删除的待办」吗？'), findsOneWidget);
+
+    // 点击确认删除
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+
+    // 验证待办已被删除，页面展示空状态
+    expect(find.text('需要左滑删除的待办'), findsNothing);
+    expect(find.text('暂无待办，享受此刻吧'), findsOneWidget);
   });
 }

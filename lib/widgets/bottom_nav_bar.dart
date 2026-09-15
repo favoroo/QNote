@@ -8,7 +8,6 @@ import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
-import 'package:qnote_flutter/widgets/animated_gradient_border.dart';
 import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/widgets/side_drawer.dart';
@@ -136,10 +135,10 @@ class _NavBranchTransitionState extends State<_NavBranchTransition>
   }
 }
 
-/// 自定义底部导航栏：4 个导航项 + 中央小Q停靠按钮。
+/// 自定义底部导航栏：4 个导航项 + 中央小Q导航按钮。
 ///
-/// 替代原 M3 NavigationBar（5 项含小Q tab）。小Q全页面改为中央按钮单击进入，
-/// 长按唤起悬浮快捷面板（替代原全局悬浮球）。
+/// 采用简洁无边框图标风格与其他导航项完全统一，无外部圆形边框。
+/// 中央小Q按钮单击进入 /ai 全页面，长按唤起悬浮快捷面板。
 class BottomNavBar extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
@@ -156,7 +155,7 @@ class BottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _BottomNavWithDock(
+    return _BottomNavContent(
       currentIndex: currentIndex,
       onTap: onTap,
       onMenuTap: onMenuTap,
@@ -165,13 +164,13 @@ class BottomNavBar extends StatelessWidget {
   }
 }
 
-class _BottomNavWithDock extends StatelessWidget {
+class _BottomNavContent extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
   final VoidCallback? onMenuTap;
   final VoidCallback onQTap;
 
-  const _BottomNavWithDock({
+  const _BottomNavContent({
     required this.currentIndex,
     required this.onTap,
     this.onMenuTap,
@@ -185,50 +184,44 @@ class _BottomNavWithDock extends StatelessWidget {
 
     return SafeArea(
       top: false,
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.topCenter,
-        children: [
-          // 导航栏背景 + 4 个导航项
-          Container(
-            height: 60,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surface,
-              border: Border(
-                top: BorderSide(
-                  color: theme.colorScheme.outlineVariant,
-                  width: 0.5,
-                ),
+      child: Container(
+        height: 60,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          border: Border(
+            top: BorderSide(
+              color: theme.colorScheme.outlineVariant,
+              width: 0.5,
+            ),
+          ),
+        ),
+        child: Row(
+          children: [
+            // 日记
+            Expanded(
+              child: _buildNavItem(context, theme, items, 0),
+            ),
+            // 笔记
+            Expanded(
+              child: _buildNavItem(context, theme, items, 1),
+            ),
+            // 中央小Q：与其他导航栏图标风格完全统一
+            Expanded(
+              child: _QNavButton(
+                currentIndex: currentIndex,
+                onTap: onQTap,
               ),
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _buildNavItem(context, theme, items, 0),
-                ),
-                Expanded(
-                  child: _buildNavItem(context, theme, items, 1),
-                ),
-                // 中央停靠按钮占位间隙
-                const SizedBox(width: 56),
-                Expanded(
-                  child: _buildNavItem(context, theme, items, 2),
-                ),
-                Expanded(
-                  child: _buildNavItem(context, theme, items, 3),
-                ),
-              ],
+            // 待办
+            Expanded(
+              child: _buildNavItem(context, theme, items, 2),
             ),
-          ),
-          // 中央小Q停靠按钮：内嵌导航栏居中，不凸出
-          Positioned(
-            top: 8,
-            child: _QDockButton(
-              currentIndex: currentIndex,
-              onTap: onQTap,
+            // 统计
+            Expanded(
+              child: _buildNavItem(context, theme, items, 3),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -278,21 +271,21 @@ class _BottomNavWithDock extends StatelessWidget {
   }
 }
 
-/// 中央小Q停靠按钮。
+/// 中央小Q导航按钮。
 ///
-/// 单击：面板打开时收起面板，否则进入 /ai 全页面。
-/// 长按：唤起悬浮快捷面板（有编辑器选区时带引用打开）。
-/// 工作态：极光流光边框 + 脉冲光晕（复用原悬浮球视觉）。
-class _QDockButton extends ConsumerWidget {
+/// 风格简洁，无外部圆框，与底部导航其他图标保持一致的尺寸 (24px) 与交互反馈。
+/// - 未选中：呈 onSurfaceVariant 浅灰色线条轮廓
+/// - 选中（/ai 页面）：呈 primary 主题强调色
+/// - 面板展开：呈关闭叉号图标
+/// - 工作态：展示简约的动态无限符号
+class _QNavButton extends ConsumerWidget {
   final int currentIndex;
   final VoidCallback onTap;
 
-  const _QDockButton({
+  const _QNavButton({
     required this.currentIndex,
     required this.onTap,
   });
-
-  static const double _size = 44;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -304,7 +297,7 @@ class _QDockButton extends ConsumerWidget {
     final isActive = currentIndex == 4;
 
     return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+      behavior: HitTestBehavior.translucent,
       onTap: () {
         final notifier = ref.read(floatingQProvider.notifier);
         if (ref.read(floatingQProvider).panelOpen) {
@@ -319,114 +312,52 @@ class _QDockButton extends ConsumerWidget {
         HapticFeedback.selectionClick();
         _handleLongPress(ref);
       },
-      child: _buildVisual(theme, isWorking, isActive, panelOpen),
+      child: Center(
+        child: _buildIcon(theme, isWorking, isActive, panelOpen),
+      ),
     );
   }
 
-  Widget _buildVisual(
+  Widget _buildIcon(
     ThemeData theme,
     bool isWorking,
     bool isActive,
     bool panelOpen,
   ) {
     final primary = theme.colorScheme.primary;
-
-    // 工作态：极光流光边框 + 脉冲光晕
-    if (isWorking) {
-      return const _WorkingDock(size: _size);
-    }
-
+    final inactiveColor = theme.colorScheme.onSurfaceVariant;
     final isDark = theme.brightness == Brightness.dark;
 
-    // /ai 激活态：轻量微透背景底座 + 灵动立体渐变光环与专属活动指示，区别于笨重的死黑/死紫实心球
-    if (isActive) {
-      return AnimatedContainer(
-        duration: AppDurations.fast,
-        curve: Curves.easeOutCubic,
-        width: _size,
-        height: _size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: primary.withValues(alpha: isDark ? 0.22 : 0.14),
-          border: Border.all(
-            color: primary.withValues(alpha: isDark ? 0.75 : 0.65),
-            width: 1.8,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: primary.withValues(alpha: isDark ? 0.35 : 0.20),
-              blurRadius: 10,
-              spreadRadius: 0.5,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Center(
-              child: panelOpen
-                  ? Icon(Icons.close_rounded, color: primary, size: 22)
-                  : QIcon(
-                      size: 21,
-                      color: primary,
-                      screenColor: isDark ? theme.colorScheme.surface : Colors.white,
-                      eyeColor: primary,
-                    ),
-            ),
-            // 底部专属微光活动指示胶囊（对齐 MD3 现代化导航指示器）
-            Positioned(
-              bottom: 3,
-              child: Container(
-                width: 12,
-                height: 2.5,
-                decoration: BoxDecoration(
-                  color: primary,
-                  borderRadius: BorderRadius.circular(2),
-                  boxShadow: [
-                    BoxShadow(
-                      color: primary.withValues(alpha: 0.5),
-                      blurRadius: 3,
-                      offset: const Offset(0, 0.5),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+    // 工作态：简约无限循环动画
+    if (isWorking) {
+      return MorphingInfinity(
+        size: 22,
+        strokeWidth: 1.8,
+        color: primary,
       );
     }
 
-    // 待机态：surface 背景 + primary 图标
-    return Container(
-      width: _size,
-      height: _size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: theme.colorScheme.surface,
-        border: Border.all(
-          color: primary.withValues(alpha: isDark ? 0.45 : 0.5),
-          width: 1.2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: primary.withValues(alpha: isDark ? 0.18 : 0.10),
-            blurRadius: 6,
-            offset: const Offset(0, 1.5),
-          ),
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.06),
-            blurRadius: 3,
-            offset: const Offset(0, 1),
-          ),
-        ],
-      ),
-      child: Center(
-        child: panelOpen
-            ? Icon(Icons.close_rounded, color: primary, size: 22)
-            : QIcon(size: 20, color: primary),
-      ),
+    // 悬浮面板打开态：显示关闭图标
+    if (panelOpen) {
+      return Icon(
+        Icons.close_rounded,
+        size: 24,
+        color: primary,
+      );
+    }
+
+    // 选中 / 未选中态：采用单体 QIcon，与其它导航栏图标一致尺寸 24px
+    final color = isActive ? primary : inactiveColor;
+    final screenColor = isActive
+        ? (isDark ? theme.colorScheme.surface : Colors.white)
+        : theme.colorScheme.surface;
+    final eyeColor = isActive ? primary : inactiveColor;
+
+    return QIcon(
+      size: 24,
+      color: color,
+      screenColor: screenColor,
+      eyeColor: eyeColor,
     );
   }
 
@@ -448,101 +379,3 @@ class _QDockButton extends ConsumerWidget {
   }
 }
 
-/// 工作态停靠按钮：AI 极光流光边框 + 中心脉冲。
-///
-/// 视觉逻辑从原 `_WorkingBall` 提取，尺寸适配停靠按钮。
-class _WorkingDock extends StatefulWidget {
-  final double size;
-
-  const _WorkingDock({required this.size});
-
-  @override
-  State<_WorkingDock> createState() => _WorkingDockState();
-}
-
-class _WorkingDockState extends State<_WorkingDock>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _pulse;
-
-  @override
-  void initState() {
-    super.initState();
-    _pulse = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1400),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _pulse.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final primary = theme.colorScheme.primary;
-    final isDark = theme.brightness == Brightness.dark;
-
-    return AnimatedBuilder(
-      animation: _pulse,
-      builder: (context, child) {
-        // 外圈轻度脉冲光晕，表达能量汇聚
-        final ringScale = 1.0 + _pulse.value * 0.22;
-        return Stack(
-          alignment: Alignment.center,
-          clipBehavior: Clip.none,
-          children: [
-            Transform.scale(
-              scale: ringScale,
-              child: Container(
-                width: widget.size,
-                height: widget.size,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: primary.withValues(
-                      alpha: (isDark ? 0.30 : 0.20) * (1 - _pulse.value)),
-                ),
-              ),
-            ),
-            child!,
-          ],
-        );
-      },
-      child: Container(
-        width: widget.size,
-        height: widget.size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: theme.colorScheme.surface,
-          boxShadow: [
-            BoxShadow(
-              color: primary.withValues(alpha: isDark ? 0.40 : 0.30),
-              blurRadius: 10,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: AnimatedGradientBorder(
-          isAnimating: true,
-          borderRadius: widget.size / 2,
-          strokeWidth: 2.2,
-          child: Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: primary.withValues(alpha: isDark ? 0.22 : 0.12),
-            ),
-            child: Center(
-              child: MorphingInfinity(
-                size: 22,
-                strokeWidth: 1.5,
-                color: primary,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
