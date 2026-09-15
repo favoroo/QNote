@@ -15,7 +15,6 @@ import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
-import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
@@ -1745,16 +1744,25 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                       ),
                     ] else if (entry.fields.isNotEmpty) ...[
                       Wrap(
-                        spacing: 12,
+                        spacing: 8,
                         runSpacing: 4,
                         children: entry.fields.entries
                             .where((f) => !f.key.startsWith('_'))
                             .map((f) {
-                              return Text(
-                                '${f.key}: ${f.value}',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: colorScheme.onSurfaceVariant,
-                                  fontSize: 12,
+                              final label = _formatExtraFieldLabel(f.key);
+                              final val = _formatExtraFieldValue(f.key, f.value);
+                              return Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  '$label: $val',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                    fontSize: 12,
+                                  ),
                                 ),
                               );
                             })
@@ -1769,6 +1777,50 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         ],
       ],
     );
+  }
+
+  String _formatExtraFieldLabel(String key) {
+    switch (key.toLowerCase()) {
+      case 'sub_type':
+      case 'subtype':
+        return '运动项目';
+      case 'distance_km':
+      case 'distance':
+        return '距离';
+      case 'calories':
+      case 'cal':
+        return '消耗';
+      case 'avg_hr':
+      case 'heart_rate':
+        return '平均心率';
+      case 'avg_pace':
+      case 'pace':
+        return '平均配速';
+      case 'duration':
+        return '时长';
+      default:
+        return key;
+    }
+  }
+
+  String _formatExtraFieldValue(String key, dynamic value) {
+    final vStr = value.toString();
+    switch (key.toLowerCase()) {
+      case 'distance_km':
+      case 'distance':
+        if (!vStr.contains('km')) return '${vStr}km';
+        return vStr;
+      case 'calories':
+      case 'cal':
+        if (!vStr.contains('kcal')) return '${vStr}kcal';
+        return vStr;
+      case 'avg_hr':
+      case 'heart_rate':
+        if (!vStr.contains('bpm')) return '${vStr}bpm';
+        return vStr;
+      default:
+        return vStr;
+    }
   }
 
   Widget _buildCategorySelector(

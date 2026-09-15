@@ -150,14 +150,72 @@ class _DiaryItemState extends State<DiaryItem> {
       ]);
     } else if (entry.name == '活动') {
       final typeVal = _getVal(bs, ['type', 'item', '项目', '类型']);
-      if (typeVal != null && typeVal.toString().isNotEmpty)
+      final subTypeVal = _getVal(bs, ['sub_type', 'subtype', '子类型', 'sport_type', '运动项目']);
+
+      // 优先展示具体运动项目（如 户外跑步、户外骑行），避免出现原始的 sub_type: 英文键
+      if (subTypeVal != null && subTypeVal.toString().isNotEmpty) {
+        tags.add(subTypeVal.toString());
+      } else if (typeVal != null && typeVal.toString().isNotEmpty) {
         tags.add(typeVal.toString());
+      }
+
       final durationVal = _getVal(bs, ['duration', '时长']);
       if (durationVal != null) {
         final formatted = _formatDouble(durationVal);
         if (formatted.isNotEmpty) tags.add('$formatted小时');
       }
-      handledKeys.addAll(['type', 'item', '项目', '类型', 'duration', '时长']);
+
+      final distVal = _getVal(bs, ['distance_km', 'distance', '距离']);
+      if (distVal != null && distVal.toString().isNotEmpty) {
+        final formatted = _formatDouble(distVal);
+        if (formatted.isNotEmpty) tags.add('${formatted}km');
+      }
+
+      final calVal = _getVal(bs, ['calories', 'cal', '卡路里', '消耗']);
+      if (calVal != null && calVal.toString().isNotEmpty) {
+        final formatted = _formatDouble(calVal);
+        if (formatted.isNotEmpty) tags.add('${formatted}kcal');
+      }
+
+      final hrVal = _getVal(bs, ['avg_hr', 'heart_rate', '心率', '平均心率']);
+      if (hrVal != null && hrVal.toString().isNotEmpty) {
+        final formatted = _formatDouble(hrVal);
+        if (formatted.isNotEmpty) tags.add('${formatted}bpm');
+      }
+
+      final paceVal = _getVal(bs, ['avg_pace', 'pace', '配速', '平均配速']);
+      if (paceVal != null && paceVal.toString().isNotEmpty) {
+        tags.add(paceVal.toString());
+      }
+
+      handledKeys.addAll([
+        'type',
+        'item',
+        '项目',
+        '类型',
+        'sub_type',
+        'subtype',
+        '子类型',
+        'sport_type',
+        '运动项目',
+        'duration',
+        '时长',
+        'distance_km',
+        'distance',
+        '距离',
+        'calories',
+        'cal',
+        '卡路里',
+        '消耗',
+        'avg_hr',
+        'heart_rate',
+        '心率',
+        '平均心率',
+        'avg_pace',
+        'pace',
+        '配速',
+        '平均配速',
+      ]);
     } else if (entry.name == '健康') {
       final symptomVal = _getVal(bs, ['symptom', '症状']);
       if (symptomVal != null) {
@@ -317,6 +375,16 @@ class _DiaryItemState extends State<DiaryItem> {
           'location': '地点',
           'note': '备注',
           'remark': '备注',
+          'sub_type': '项目',
+          'subtype': '项目',
+          'distance_km': '距离',
+          'distance': '距离',
+          'calories': '消耗',
+          'cal': '消耗',
+          'avg_hr': '心率',
+          'heart_rate': '心率',
+          'avg_pace': '配速',
+          'pace': '配速',
         };
         return translations[lowerKey] ?? key;
     }
@@ -336,6 +404,21 @@ class _DiaryItemState extends State<DiaryItem> {
           !valStr.contains('￥') &&
           !valStr.contains(r'$')) {
         return '$valStr元';
+      }
+    }
+    if (lowerKey == 'distance_km' || lowerKey == 'distance') {
+      if (!valStr.toLowerCase().contains('km') && !valStr.contains('公里') && !valStr.contains('米')) {
+        return '${valStr}km';
+      }
+    }
+    if (lowerKey == 'calories' || lowerKey == 'cal') {
+      if (!valStr.toLowerCase().contains('kcal') && !valStr.contains('卡')) {
+        return '${valStr}kcal';
+      }
+    }
+    if (lowerKey == 'avg_hr' || lowerKey == 'heart_rate') {
+      if (!valStr.toLowerCase().contains('bpm') && !valStr.contains('次')) {
+        return '${valStr}bpm';
       }
     }
     return valStr;
@@ -959,8 +1042,6 @@ class _DiaryItemState extends State<DiaryItem> {
     final remarkLines = <String>[];
     bool inRemarkSection = false;
 
-    final isSpecialTag = !isMultiTag && (tag == '睡眠' || tag == '记账');
-
     final keysToSkip = {
       'duration',
       'quality',
@@ -1031,18 +1112,13 @@ class _DiaryItemState extends State<DiaryItem> {
         continue;
       }
 
-      if (isSpecialTag) {
-        if (trimmedLine.contains(':') || trimmedLine.contains('：')) continue;
-        displayLines.add(trimmedLine);
-        continue;
-      }
-
       if (!trimmedLine.contains(':') && !trimmedLine.contains('：')) {
         displayLines.add(trimmedLine);
         continue;
       }
 
-      final regExp = RegExp(r'([^:：,，;；]+)([:：])\s*([^,，;；]+)([,，;；]?)');
+      // 支持逗号、分号及竖线(| / ｜)拆分多项属性与详细指标
+      final regExp = RegExp(r'([^:：,，;；|｜]+)([:：])\s*([^,，;；|｜]+)([,，;；|｜]?)');
       final matches = regExp.allMatches(trimmedLine);
 
       if (matches.isEmpty) {
@@ -1065,15 +1141,11 @@ class _DiaryItemState extends State<DiaryItem> {
         bool shouldSkip = false;
         for (final skipKey in keysToSkip) {
           if (normKey == skipKey ||
-              normKey.contains(skipKey) ||
-              skipKey.contains(normKey)) {
+              (normKey.length <= 4 && normKey.contains(skipKey))) {
             shouldSkip = true;
             break;
           }
-          if (lastPartNorm.isNotEmpty &&
-              (lastPartNorm == skipKey ||
-                  lastPartNorm.contains(skipKey) ||
-                  skipKey.contains(lastPartNorm))) {
+          if (lastPartNorm.isNotEmpty && lastPartNorm == skipKey) {
             shouldSkip = true;
             break;
           }
@@ -1093,14 +1165,12 @@ class _DiaryItemState extends State<DiaryItem> {
         final suffix = trimmedLine
             .substring(lastIndex)
             .trim()
-            .replaceAll(RegExp(r'^[，,;；]+|[，,;；]+$'), '');
+            .replaceAll(RegExp(r'^[，,;；|｜\s]+|[，,;；|｜\s]+$'), '');
         if (suffix.isNotEmpty) {
           final normSuffix = normalizeKey(suffix);
           bool suffixShouldSkip = false;
           for (final skipKey in keysToSkip) {
-            if (normSuffix == skipKey ||
-                normSuffix.contains(skipKey) ||
-                skipKey.contains(normSuffix)) {
+            if (normSuffix == skipKey) {
               suffixShouldSkip = true;
               break;
             }
@@ -1112,7 +1182,7 @@ class _DiaryItemState extends State<DiaryItem> {
       }
 
       if (remainingSegments.isNotEmpty) {
-        displayLines.add(remainingSegments.join('，'));
+        displayLines.add(remainingSegments.join(' · '));
       }
     }
 

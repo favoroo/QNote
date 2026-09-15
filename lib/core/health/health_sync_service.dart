@@ -164,6 +164,61 @@ class HealthSyncService {
     }
   }
 
+  /// 同步指定某一天的健康与运动数据（支持任意历史日期按需拉取）
+  Future<HealthSyncResult> syncDate(DateTime targetDate) async {
+    final authed = await isAuthorized();
+    if (!authed) {
+      return HealthSyncResult(
+        success: false,
+        errorMessage: '未绑定小米运动健康账号，请先授权登录',
+      );
+    }
+
+    try {
+      final autoTimeline = await getAutoCreateTimelineCards();
+      int newTimelineCardsCount = 0;
+      int newSportRecordsCount = 0;
+
+      // 1. 获取当天的指标汇总
+      final summary = await _apiClient.fetchDaySummary(targetDate);
+      await _healthRepo.upsertDailyMetrics(summary);
+
+      if (autoTimeline && summary.sleepDurationMinutes > 0) {
+        final cardCreated = await _createSleepTimelineCardIfNeeded(summary);
+        if (cardCreated) newTimelineCardsCount++;
+      }
+
+      // 2. 获取当天的运动记录
+      final startOfDay = DateTime(targetDate.year, targetDate.month, targetDate.day, 0, 0, 0);
+      final endOfDay = DateTime(targetDate.year, targetDate.month, targetDate.day, 23, 59, 59);
+      final sports = await _apiClient.fetchSportRecords(startTime: startOfDay, endTime: endOfDay);
+      for (final sport in sports) {
+        final exists = await _healthRepo.hasSportRecordBySid(sport.sid);
+        if (!exists) {
+          await _healthRepo.upsertSportRecords([sport]);
+          newSportRecordsCount++;
+          if (autoTimeline) {
+            final cardCreated = await _createSportTimelineCardIfNeeded(sport);
+            if (cardCreated) newTimelineCardsCount++;
+          }
+        }
+      }
+
+      return HealthSyncResult(
+        success: true,
+        syncedDays: 1,
+        newSportRecords: newSportRecordsCount,
+        newTimelineCards: newTimelineCardsCount,
+      );
+    } catch (e) {
+      LoggerService.instance.error('Health sync single date failed: $e');
+      return HealthSyncResult(
+        success: false,
+        errorMessage: '同步失败: $e',
+      );
+    }
+  }
+
   /// 自动生成单次运动的时间线卡片（防重）
   Future<bool> _createSportTimelineCardIfNeeded(HealthSportRecord sport) async {
     final dateRecords = await _diaryRepo.getByDate(sport.startTime);
@@ -205,9 +260,10 @@ class HealthSyncService {
             'type': '运动',
             'duration': (sport.durationSeconds / 3600).toStringAsFixed(2),
             'sub_type': sport.title,
-            'distance_km': distKm,
-            'calories': calStr,
-            'avg_hr': sport.avgHeartRate,
+            if (sport.distanceMeters > 0) 'distance_km': distKm,
+            if (sport.calories > 0) 'calories': calStr,
+            if (sport.avgHeartRate != null && sport.avgHeartRate! > 0) 'avg_hr': sport.avgHeartRate,
+            if (sport.avgPace != null && sport.avgPace! > 0) 'avg_pace': _formatPace(sport.avgPace!),
           },
           startHour: sport.startTime.hour,
           startMinute: sport.startTime.minute,

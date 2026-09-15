@@ -14,6 +14,16 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.36',
+    date: '2026-09-15',
+    notes: [
+      '时间线卡片标签优化，运动子类型与指标胶囊化展示',
+      '修复睡眠分期详情外层卡片不可见问题',
+      '小米运动健康界面极简重构，内置日期切换与体征面板',
+      '支持按需补拉历史日期健康数据',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.35',
     date: '2026-09-15',
     notes: [
