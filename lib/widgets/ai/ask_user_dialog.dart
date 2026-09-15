@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 
 /// 弹出小Q人机交互确认弹窗
 ///
@@ -111,11 +112,16 @@ class _AskUserDialogState extends State<AskUserDialog> {
                   : colorScheme.primaryContainer.withValues(alpha: 0.5),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(
-              isDestructive ? Icons.warning_amber_rounded : Icons.smart_toy_outlined,
-              size: 22,
-              color: primaryColor,
-            ),
+            child: isDestructive
+                ? Icon(
+                    Icons.warning_amber_rounded,
+                    size: 22,
+                    color: primaryColor,
+                  )
+                : QIcon(
+                    size: 22,
+                    color: primaryColor,
+                  ),
           ),
           const SizedBox(width: 12),
           Expanded(

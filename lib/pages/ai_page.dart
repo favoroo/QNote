@@ -28,6 +28,7 @@ import 'package:qnote_flutter/widgets/empty_state.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
 import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
+import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/widgets/common/loading_ring.dart';
 import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
 import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
@@ -2356,20 +2357,9 @@ class _ChatBubble extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (!isUser) ...[
-                  Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.15),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Icon(
-                        Icons.smart_toy_rounded,
-                        size: 13,
-                        color: theme.colorScheme.primary,
-                      ),
-                    ),
+                  const QAvatar(
+                    size: 24,
+                    withBackground: true,
                   ),
                   const SizedBox(width: 6),
                   Text(
@@ -3121,20 +3111,9 @@ class _TypingBubble extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Icon(
-                      Icons.smart_toy_rounded,
-                      size: 13,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
+                const QAvatar(
+                  size: 24,
+                  withBackground: true,
                 ),
                 const SizedBox(width: 6),
                 Text(

@@ -13,6 +13,7 @@ import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
 import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
+import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
 import 'package:qnote_flutter/widgets/common/loading_ring.dart';
 import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
@@ -239,9 +240,8 @@ class _FloatingQPanelState extends ConsumerState<_FloatingQPanel> {
       padding: const EdgeInsets.fromLTRB(16, 10, 4, 10),
       child: Row(
         children: [
-          Icon(Icons.smart_toy_rounded,
-              size: 18, color: theme.colorScheme.primary),
-          const SizedBox(width: 6),
+          const QAvatar(size: 18),
+          const SizedBox(width: 8),
           Expanded(
             child: Text(
               title,
@@ -764,7 +764,11 @@ class _PanelQuoteCard extends ConsumerWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  quote.quotedText.isEmpty ? '（引用完整内容）' : quote.quotedText,
+                  quote.quotedText.isEmpty
+                      ? (quote.locationDesc?.contains('光标') == true
+                          ? '（当前位于光标处，可让小Q在此续写或编辑）'
+                          : '（引用完整内容）')
+                      : quote.quotedText,
                   style: theme.textTheme.bodySmall,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,

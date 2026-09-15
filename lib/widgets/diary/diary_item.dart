@@ -4,6 +4,7 @@ import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
+import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/widgets/animated_gradient_border.dart';
 
@@ -42,6 +43,7 @@ class DiaryItem extends StatefulWidget {
 
 class _DiaryItemState extends State<DiaryItem> {
   final _actionMenuKey = GlobalKey();
+  final _cardKey = GlobalKey();
 
   DiaryRecord get record => widget.record;
   VoidCallback? get onTap => widget.onTap;
@@ -58,27 +60,33 @@ class _DiaryItemState extends State<DiaryItem> {
   /// 卡片操作菜单：more_vert 按钮与长按卡片共用；
   /// 配置了 onQuoteToQ 时追加「给小Q」引用入口
   void _showActionMenu() {
+    final anchorKey = _actionMenuKey.currentContext != null ? _actionMenuKey : _cardKey;
     ActionMenu.show(
       context: context,
-      key: _actionMenuKey,
+      key: anchorKey,
       items: [
         if (onQuoteToQ != null)
           ActionMenuItem(
-            icon: Icons.smart_toy_rounded,
+            iconWidget: QIcon(
+              size: 20,
+              color: Theme.of(context).colorScheme.primary,
+            ),
             label: '给小Q',
             onTap: () => onQuoteToQ?.call(record),
           ),
-        ActionMenuItem(
-          icon: Icons.edit,
-          label: '编辑',
-          onTap: () => onEdit?.call(record),
-        ),
-        ActionMenuItem(
-          icon: Icons.delete_outline,
-          label: '删除',
-          isDestructive: true,
-          onTap: () => onDelete?.call(record),
-        ),
+        if (!_isHealthDailySummary) ...[
+          ActionMenuItem(
+            icon: Icons.edit,
+            label: '编辑',
+            onTap: () => onEdit?.call(record),
+          ),
+          ActionMenuItem(
+            icon: Icons.delete_outline,
+            label: '删除',
+            isDestructive: true,
+            onTap: () => onDelete?.call(record),
+          ),
+        ],
       ],
     );
   }
@@ -493,7 +501,7 @@ class _DiaryItemState extends State<DiaryItem> {
             padding: const EdgeInsets.only(bottom: 16, right: 12),
             child: GestureDetector(
               onTap: onTap,
-              // 长按卡片弹出操作菜单（与 more_vert 按钮共用，含「给小Q」引用入口）
+              // 长按卡片弹出操作菜单（日结卡片仅保留「给小Q」，普通卡片含「给小Q/编辑/删除」）
               onLongPress: _showActionMenu,
               behavior: HitTestBehavior.opaque,
               child: AnimatedGradientBorder(
@@ -501,6 +509,7 @@ class _DiaryItemState extends State<DiaryItem> {
                 borderRadius: 16,
                 strokeWidth: 2,
                 child: Container(
+                  key: _cardKey,
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surface,
@@ -527,7 +536,7 @@ class _DiaryItemState extends State<DiaryItem> {
                     clipBehavior: Clip.none,
                     children: [
                       Padding(
-                        padding: const EdgeInsets.only(right: 12),
+                        padding: EdgeInsets.only(right: _isHealthDailySummary ? 0 : 12),
                         child: SingleChildScrollView(
                           physics: const NeverScrollableScrollPhysics(),
                           child: Column(
@@ -601,25 +610,27 @@ class _DiaryItemState extends State<DiaryItem> {
                           ),
                         ),
                       ),
-                      Positioned(
-                        top: 0,
-                        right: -14,
-                        child: IconButton(
-                          key: _actionMenuKey,
-                          icon: Icon(
-                            Icons.more_vert,
-                            size: 18,
-                            color: theme.colorScheme.outline,
-                          ),
-                          onPressed: _showActionMenu,
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(
-                            minWidth: 32,
-                            minHeight: 32,
+                      // 运动健康日结汇总卡片为系统生成的只读卡片，隐藏操作菜单（禁止编辑与删除）
+                      if (!_isHealthDailySummary)
+                        Positioned(
+                          top: 0,
+                          right: -14,
+                          child: IconButton(
+                            key: _actionMenuKey,
+                            icon: Icon(
+                              Icons.more_vert,
+                              size: 18,
+                              color: theme.colorScheme.outline,
+                            ),
+                            onPressed: _showActionMenu,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(
+                              minWidth: 32,
+                              minHeight: 32,
+                            ),
                           ),
                         ),
-                      ),
-                      if (onAiExtract != null)
+                      if (onAiExtract != null && !_isHealthDailySummary)
                         Positioned(
                           bottom: -22,
                           right: -24,
@@ -723,7 +734,7 @@ class _DiaryItemState extends State<DiaryItem> {
 
   Widget _buildHeader(ThemeData theme, Color primaryTagColor, {String? categoryTag}) {
     return Padding(
-      padding: const EdgeInsets.only(right: 22),
+      padding: EdgeInsets.only(right: _isHealthDailySummary ? 0 : 22),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
@@ -1240,6 +1251,10 @@ class _DiaryItemState extends State<DiaryItem> {
 
   String _formatTimeRangeWithDate() {
     final start = record.startTime ?? record.time;
+    // 小米运动健康日结汇总卡片固定在每天 23:00，仅展示时间刻度，不重复展开冗长起止
+    if (_isHealthDailySummary) {
+      return DateFormat.Hm().format(start);
+    }
     final startDateStr = DateFormat('MM-dd').format(start);
     final startStr = DateFormat.Hm().format(start);
 

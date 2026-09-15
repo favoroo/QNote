@@ -3,17 +3,19 @@ import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 
 class ActionMenuItem {
-  final IconData icon;
+  final IconData? icon;
+  final Widget? iconWidget;
   final String label;
   final VoidCallback onTap;
   final bool isDestructive;
 
   const ActionMenuItem({
-    required this.icon,
+    this.icon,
+    this.iconWidget,
     required this.label,
     required this.onTap,
     this.isDestructive = false,
-  });
+  }) : assert(icon != null || iconWidget != null, 'Either icon or iconWidget must be provided');
 }
 
 class ActionMenu {
@@ -219,7 +221,8 @@ class _ActionMenuOverlayState extends State<_ActionMenuOverlay>
                           ),
                           child: Row(
                             children: [
-                              Icon(item.icon, size: 22, color: color),
+                              item.iconWidget ??
+                                  Icon(item.icon, size: 22, color: color),
                               const SizedBox(width: 16),
                               Expanded(
                                 child: Text(

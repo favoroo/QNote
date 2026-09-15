@@ -343,6 +343,26 @@ void main() {
       expect(block, contains('长' * 2000));
       expect(block, isNot(contains('长' * 2001)));
     });
+
+    test('光标定位引用块注入续写指令提示', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(floatingQProvider.notifier);
+
+      const quote = QTextQuote(
+        source: QQuoteSource.note,
+        sourceId: 'note_123',
+        sourceTitle: '测试笔记',
+        quotedText: '前文内容【光标】后文内容',
+        locationDesc: '第 5 行光标处',
+      );
+
+      final block = await notifier.quotePromptBlockForTest(quote);
+      expect(block, isNotNull);
+      expect(block, contains('第 5 行光标处'));
+      expect(block, contains('【光标】'));
+      expect(block, contains('在光标位置处插入续写内容'));
+    });
   });
 
   group('QTargetBridge 编辑页桥接', () {
