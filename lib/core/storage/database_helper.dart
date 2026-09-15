@@ -28,7 +28,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 20,
+      version: 21,
       onConfigure: (db) async {
         // 遇到写锁时等待重试（默认立即抛 database is locked），提升并发访问健壮性
         try {
@@ -144,6 +144,66 @@ class DatabaseHelper {
       if (todoColNames.isNotEmpty && !todoColNames.contains('repeat_rule')) {
         await db.execute("ALTER TABLE todos ADD COLUMN repeat_rule TEXT DEFAULT 'none'");
       }
+    } catch (_) {}
+
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS health_daily_metrics (
+          date TEXT PRIMARY KEY,
+          steps INTEGER DEFAULT 0,
+          distance_meters REAL DEFAULT 0,
+          calories REAL DEFAULT 0,
+          active_minutes INTEGER DEFAULT 0,
+          sleep_duration_minutes INTEGER DEFAULT 0,
+          deep_sleep_minutes INTEGER DEFAULT 0,
+          light_sleep_minutes INTEGER DEFAULT 0,
+          rem_sleep_minutes INTEGER DEFAULT 0,
+          awake_minutes INTEGER DEFAULT 0,
+          sleep_start_time TEXT,
+          sleep_end_time TEXT,
+          sleep_score INTEGER,
+          avg_heart_rate INTEGER,
+          max_heart_rate INTEGER,
+          min_heart_rate INTEGER,
+          resting_heart_rate INTEGER,
+          avg_spo2 INTEGER,
+          min_spo2 INTEGER,
+          avg_stress INTEGER,
+          max_stress INTEGER,
+          heart_rate_samples_json TEXT DEFAULT '[]',
+          spo2_samples_json TEXT DEFAULT '[]',
+          stress_samples_json TEXT DEFAULT '[]',
+          sleep_stages_json TEXT DEFAULT '[]',
+          source TEXT DEFAULT 'mi_fitness',
+          updated_at TEXT NOT NULL
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS health_sport_records (
+          id TEXT PRIMARY KEY,
+          sid TEXT NOT NULL,
+          category TEXT NOT NULL,
+          title TEXT NOT NULL,
+          start_time TEXT NOT NULL,
+          end_time TEXT NOT NULL,
+          duration_seconds INTEGER DEFAULT 0,
+          distance_meters REAL DEFAULT 0,
+          calories REAL DEFAULT 0,
+          avg_pace REAL,
+          max_pace REAL,
+          avg_speed REAL,
+          avg_heart_rate INTEGER,
+          max_heart_rate INTEGER,
+          steps INTEGER,
+          avg_cadence INTEGER,
+          track_geo_json TEXT,
+          detail_json TEXT DEFAULT '{}',
+          source TEXT DEFAULT 'mi_fitness',
+          created_at TEXT NOT NULL
+        )
+      ''');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_health_sport_sid ON health_sport_records(sid)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_health_sport_start ON health_sport_records(start_time)');
     } catch (_) {}
 
     // 标记本次检查已完成，后续启动直接跳过 PRAGMA 检查
@@ -374,6 +434,63 @@ class DatabaseHelper {
       )
     ''');
 
+    await db.execute('''
+      CREATE TABLE health_daily_metrics (
+        date TEXT PRIMARY KEY,
+        steps INTEGER DEFAULT 0,
+        distance_meters REAL DEFAULT 0,
+        calories REAL DEFAULT 0,
+        active_minutes INTEGER DEFAULT 0,
+        sleep_duration_minutes INTEGER DEFAULT 0,
+        deep_sleep_minutes INTEGER DEFAULT 0,
+        light_sleep_minutes INTEGER DEFAULT 0,
+        rem_sleep_minutes INTEGER DEFAULT 0,
+        awake_minutes INTEGER DEFAULT 0,
+        sleep_start_time TEXT,
+        sleep_end_time TEXT,
+        sleep_score INTEGER,
+        avg_heart_rate INTEGER,
+        max_heart_rate INTEGER,
+        min_heart_rate INTEGER,
+        resting_heart_rate INTEGER,
+        avg_spo2 INTEGER,
+        min_spo2 INTEGER,
+        avg_stress INTEGER,
+        max_stress INTEGER,
+        heart_rate_samples_json TEXT DEFAULT '[]',
+        spo2_samples_json TEXT DEFAULT '[]',
+        stress_samples_json TEXT DEFAULT '[]',
+        sleep_stages_json TEXT DEFAULT '[]',
+        source TEXT DEFAULT 'mi_fitness',
+        updated_at TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE health_sport_records (
+        id TEXT PRIMARY KEY,
+        sid TEXT NOT NULL,
+        category TEXT NOT NULL,
+        title TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        duration_seconds INTEGER DEFAULT 0,
+        distance_meters REAL DEFAULT 0,
+        calories REAL DEFAULT 0,
+        avg_pace REAL,
+        max_pace REAL,
+        avg_speed REAL,
+        avg_heart_rate INTEGER,
+        max_heart_rate INTEGER,
+        steps INTEGER,
+        avg_cadence INTEGER,
+        track_geo_json TEXT,
+        detail_json TEXT DEFAULT '{}',
+        source TEXT DEFAULT 'mi_fitness',
+        created_at TEXT NOT NULL
+      )
+    ''');
+
     // Performance indexes
     await _createIndexes(db);
   }
@@ -401,6 +518,8 @@ class DatabaseHelper {
       'CREATE INDEX IF NOT EXISTS idx_daily_scores_date ON daily_scores(date)',
       'CREATE INDEX IF NOT EXISTS idx_body_states_timestamp ON body_states(timestamp)',
       'CREATE INDEX IF NOT EXISTS idx_fixed_event_templates_sort ON fixed_event_templates(sort_order)',
+      'CREATE INDEX IF NOT EXISTS idx_health_sport_sid ON health_sport_records(sid)',
+      'CREATE INDEX IF NOT EXISTS idx_health_sport_start ON health_sport_records(start_time)',
     ];
     for (final sql in indexes) {
       try {
@@ -620,6 +739,68 @@ class DatabaseHelper {
           SET folder_id = '$todayFolderId' 
           WHERE (folder_id IS NULL OR folder_id = '') AND (is_long_term = 0 OR is_long_term IS NULL)
         ''');
+      } catch (_) {}
+    }
+
+    if (oldVersion < 21) {
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS health_daily_metrics (
+            date TEXT PRIMARY KEY,
+            steps INTEGER DEFAULT 0,
+            distance_meters REAL DEFAULT 0,
+            calories REAL DEFAULT 0,
+            active_minutes INTEGER DEFAULT 0,
+            sleep_duration_minutes INTEGER DEFAULT 0,
+            deep_sleep_minutes INTEGER DEFAULT 0,
+            light_sleep_minutes INTEGER DEFAULT 0,
+            rem_sleep_minutes INTEGER DEFAULT 0,
+            awake_minutes INTEGER DEFAULT 0,
+            sleep_start_time TEXT,
+            sleep_end_time TEXT,
+            sleep_score INTEGER,
+            avg_heart_rate INTEGER,
+            max_heart_rate INTEGER,
+            min_heart_rate INTEGER,
+            resting_heart_rate INTEGER,
+            avg_spo2 INTEGER,
+            min_spo2 INTEGER,
+            avg_stress INTEGER,
+            max_stress INTEGER,
+            heart_rate_samples_json TEXT DEFAULT '[]',
+            spo2_samples_json TEXT DEFAULT '[]',
+            stress_samples_json TEXT DEFAULT '[]',
+            sleep_stages_json TEXT DEFAULT '[]',
+            source TEXT DEFAULT 'mi_fitness',
+            updated_at TEXT NOT NULL
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS health_sport_records (
+            id TEXT PRIMARY KEY,
+            sid TEXT NOT NULL,
+            category TEXT NOT NULL,
+            title TEXT NOT NULL,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            duration_seconds INTEGER DEFAULT 0,
+            distance_meters REAL DEFAULT 0,
+            calories REAL DEFAULT 0,
+            avg_pace REAL,
+            max_pace REAL,
+            avg_speed REAL,
+            avg_heart_rate INTEGER,
+            max_heart_rate INTEGER,
+            steps INTEGER,
+            avg_cadence INTEGER,
+            track_geo_json TEXT,
+            detail_json TEXT DEFAULT '{}',
+            source TEXT DEFAULT 'mi_fitness',
+            created_at TEXT NOT NULL
+          )
+        ''');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_health_sport_sid ON health_sport_records(sid)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_health_sport_start ON health_sport_records(start_time)');
       } catch (_) {}
     }
   }

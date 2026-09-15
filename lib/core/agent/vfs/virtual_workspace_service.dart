@@ -11,9 +11,11 @@ import 'package:qnote_flutter/core/notification/notification_service.dart';
 import 'package:qnote_flutter/core/storage/color_mark_repository.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/storage/daily_score_repository.dart';
+import 'package:qnote_flutter/core/storage/database_helper.dart';
 import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/core/storage/fixed_event_repository.dart';
 import 'package:qnote_flutter/core/storage/folder_repository.dart';
+import 'package:qnote_flutter/core/storage/health_metric_repository.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
@@ -48,6 +50,7 @@ class VirtualWorkspaceService {
   final ConfigRepository _configRepo = ConfigRepository.instance;
   final DailyScoreRepository _dailyScoreRepo = DailyScoreRepository();
   final ColorMarkRepository _colorMarkRepo = ColorMarkRepository();
+  final HealthMetricRepository _healthRepo = HealthMetricRepository(DatabaseHelper.instance);
   final SkillRegistry _skillRegistry = SkillRegistry.instance;
 
   // ==========================================
@@ -377,6 +380,7 @@ class VirtualWorkspaceService {
 - `/journal/`: 每日深度长篇日记与复盘（如 `/journal/2026-09-11.md`）。
 - `/folders/`: 分类与笔记本层级管理（`todos.json` 待办分类、`notes.json` 笔记本目录，支持增删改查与重命名）。
 - `/stats/`: 数据洞察与生活评分（`summary.json` 综合统计与完成率、`daily_scores.json` 每日AI生活评分与建议）。
+- `/health/`: 小米运动健康体征监测数据（`summary.json` 近期汇总、`YYYY-MM-DD.json` 单日步数/睡眠分期/心率曲线/血氧/压力/运动详情；撰写每日健康复盘与生活评分时可主动读取）。
 - `/chats/`: 对话会话管理（`sessions.json` 历史会话查看、标题重命名与软删除）。
 - `/settings/`: 系统偏好与个性化配置（包含 `appearance.json`、`ai.json`、`shortcuts.json`、`fixed_events.json`、`profile.json`、`weight.json`、`color_marks.json`、`webdav.json`）。
 
@@ -415,6 +419,7 @@ class VirtualWorkspaceService {
         'journal/',
         'folders/',
         'stats/',
+        'health/',
         'chats/',
         'settings/',
       ];
@@ -434,6 +439,15 @@ class VirtualWorkspaceService {
 
     if (path == '/stats' || path == '/stats/') {
       return ['summary.json', 'daily_scores.json', 'scores/'];
+    }
+
+    if (path == '/health' || path == '/health/') {
+      final recents = await _healthRepo.getRecentDailyMetrics(limit: 14);
+      final files = <String>['summary.json'];
+      for (final m in recents) {
+        files.add('${m.date}.json');
+      }
+      return files;
     }
 
     if (path == '/stats/scores' || path == '/stats/scores/') {
@@ -606,6 +620,8 @@ class VirtualWorkspaceService {
       fullContent = await _readFoldersFile(path);
     } else if (path.startsWith('/stats/')) {
       fullContent = await _readStatsFile(path);
+    } else if (path.startsWith('/health/')) {
+      fullContent = await _readHealthFile(path);
     } else if (path.startsWith('/chats/')) {
       fullContent = await _readChatsFile(path);
     } else if (path.startsWith('/settings/')) {
@@ -1033,6 +1049,97 @@ class VirtualWorkspaceService {
       return const JsonEncoder.withIndent('  ').convert(data);
     }
     throw Exception('未知的统计数据路径: $path');
+  }
+
+  Future<String> _readHealthFile(String path) async {
+    final sub = path.substring('/health/'.length).trim();
+    if (sub == 'summary.json' || sub == 'recent.json') {
+      final recents = await _healthRepo.getRecentDailyMetrics(limit: 7);
+      final recentSports = await _healthRepo.getSportRecords(limit: 10);
+      return const JsonEncoder.withIndent('  ').convert({
+        'description': '小米运动健康最近同步汇总',
+        'recent_daily_metrics': recents.map((m) => {
+          'date': m.date,
+          'steps': m.steps,
+          'calories_kcal': m.calories,
+          'sleep_duration_min': m.sleepDurationMinutes,
+          'sleep_score': m.sleepScore,
+          'avg_heart_rate': m.avgHeartRate,
+          'resting_heart_rate': m.restingHeartRate,
+          'avg_spo2': m.avgSpo2,
+          'avg_stress': m.avgStress,
+        }).toList(),
+        'recent_sports': recentSports.map((s) => {
+          'title': s.title,
+          'category': s.category,
+          'start_time': s.startTime.toIso8601String(),
+          'duration_min': s.durationSeconds ~/ 60,
+          'distance_km': (s.distanceMeters / 1000).toStringAsFixed(2),
+          'calories_kcal': s.calories,
+          'avg_pace': s.avgPace,
+          'avg_hr': s.avgHeartRate,
+        }).toList(),
+      });
+    }
+
+    final dateStr = sub.replaceAll('.json', '').replaceAll('.md', '').trim();
+    final metric = await _healthRepo.getDailyMetrics(dateStr);
+    final sports = await _healthRepo.getSportRecordsByDate(dateStr);
+
+    if (metric == null && sports.isEmpty) {
+      return const JsonEncoder.withIndent('  ').convert({
+        'date': dateStr,
+        'has_data': false,
+        'message': '该日期暂无同步的小米运动健康数据',
+      });
+    }
+
+    return const JsonEncoder.withIndent('  ').convert({
+      'date': dateStr,
+      'has_data': true,
+      if (metric != null) ...{
+        'steps': metric.steps,
+        'distance_km': (metric.distanceMeters / 1000).toStringAsFixed(2),
+        'calories_kcal': metric.calories,
+        'active_minutes': metric.activeMinutes,
+        'sleep': {
+          'duration_min': metric.sleepDurationMinutes,
+          'deep_sleep_min': metric.deepSleepMinutes,
+          'light_sleep_min': metric.lightSleepMinutes,
+          'rem_sleep_min': metric.remSleepMinutes,
+          'awake_min': metric.awakeMinutes,
+          'start_time': metric.sleepStartTime,
+          'end_time': metric.sleepEndTime,
+          'score': metric.sleepScore,
+        },
+        'heart_rate': {
+          'avg_bpm': metric.avgHeartRate,
+          'max_bpm': metric.maxHeartRate,
+          'min_bpm': metric.minHeartRate,
+          'resting_bpm': metric.restingHeartRate,
+        },
+        'spo2': {
+          'avg_percent': metric.avgSpo2,
+          'min_percent': metric.minSpo2,
+        },
+        'stress': {
+          'avg': metric.avgStress,
+          'max': metric.maxStress,
+        },
+      },
+      'sports': sports.map((s) => {
+        'title': s.title,
+        'category': s.category,
+        'start_time': s.startTime.toIso8601String(),
+        'end_time': s.endTime.toIso8601String(),
+        'duration_min': s.durationSeconds ~/ 60,
+        'distance_km': (s.distanceMeters / 1000).toStringAsFixed(2),
+        'calories_kcal': s.calories,
+        'avg_pace': s.avgPace,
+        'avg_hr': s.avgHeartRate,
+        'steps': s.steps,
+      }).toList(),
+    });
   }
 
   Future<String> _readChatsFile(String path) async {

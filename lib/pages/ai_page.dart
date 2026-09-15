@@ -33,10 +33,13 @@ import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
 import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
 import 'package:qnote_flutter/widgets/common/thought_tail_scroll_view.dart';
 import 'package:qnote_flutter/core/agent/services/agent_interaction_service.dart';
+import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
+import 'package:qnote_flutter/core/agent/services/q_text_quote.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_usage_tracker.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/widgets/ai/q_input_command_panels.dart';
+import 'package:qnote_flutter/widgets/q_text_selection_toolbar.dart';
 
 class AiPage extends ConsumerStatefulWidget {
   const AiPage({super.key});
@@ -56,6 +59,11 @@ class _AiPageState extends ConsumerState<AiPage> {
   bool _isBatchMode = false;
   List<String> _selectedSessionIds = [];
   String? _activeModelId;
+
+  // 待发送的对话引用文本（用户通过消息框选「给小Q」或点击悬浮球挂起）
+  String? _quotedChatText;
+  // 当前在聊天区域划选高亮的纯文本
+  String? _currentSelectedText;
 
   // 豆包式附件状态（图片、分享给AI的日记、笔记与待办）
   final List<String> _attachedImages = [];
@@ -80,10 +88,47 @@ class _AiPageState extends ConsumerState<AiPage> {
     WorkspaceEventBus.instance.addListener(_onSkillsChanged);
     _loadSlashSkills();
     _initActiveModelId();
+    _registerTargetBridge();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(currentChatProvider.notifier).initLastSession();
       _scrollToBottom();
     });
+  }
+
+  /// 注册到悬浮小Q桥接：小Q主对话界面内点击悬浮球时，捕获当前框选文本并引用到输入框
+  void _registerTargetBridge() {
+    QTargetBridge.instance.register(
+      'page:/ai',
+      QTargetHooks(
+        quoteSelection: () {
+          final text = _currentSelectedText?.trim();
+          if (text == null || text.isEmpty) return null;
+          return QTextQuote(
+            source: QQuoteSource.chat,
+            sourceId: '',
+            sourceTitle: '对话内容',
+            quotedText: text,
+          );
+        },
+        onApplyQuote: (quote) {
+          _applyQuote(quote.quotedText);
+        },
+        onFocusInput: () {
+          _inputFocusNode.requestFocus();
+        },
+      ),
+    );
+  }
+
+  /// 将选中的文本作为引用挂载到下方输入框上方
+  void _applyQuote(String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return;
+    setState(() {
+      _quotedChatText = trimmed;
+    });
+    _inputFocusNode.requestFocus();
+    HapticFeedback.lightImpact();
   }
 
   /// 小Q经 VFS 写入 /skills/ 时刷新斜杠命令候选（会话中新建的技能立即可用）
@@ -248,6 +293,7 @@ class _AiPageState extends ConsumerState<AiPage> {
 
   @override
   void dispose() {
+    QTargetBridge.instance.unregister('page:/ai');
     AgentInteractionService.instance.cancelPending('离开AI页面');
     WorkspaceEventBus.instance.removeListener(_onSkillsChanged);
     _inputController.removeListener(_onInputChanged);
@@ -288,12 +334,14 @@ class _AiPageState extends ConsumerState<AiPage> {
 
   Future<void> _sendMessage() async {
     final text = _inputController.text.trim();
+    final quoteToSend = _quotedChatText;
+    final hasQuote = quoteToSend != null && quoteToSend.isNotEmpty;
     final hasImages = _attachedImages.isNotEmpty;
     final hasNotes = _attachedNoteIds.isNotEmpty;
     final hasTodos = _attachedTodoIds.isNotEmpty;
     final hasJournals = _attachedJournalIds.isNotEmpty;
 
-    if (text.isEmpty && !hasImages && !hasNotes && !hasTodos && !hasJournals) {
+    if (text.isEmpty && !hasQuote && !hasImages && !hasNotes && !hasTodos && !hasJournals) {
       return;
     }
     if (_isTyping) {
@@ -310,9 +358,12 @@ class _AiPageState extends ConsumerState<AiPage> {
     // 斜杠命令解析：消息以「/技能名」开头时显式激活该技能（手册由 Provider 注入上下文）
     final skillName = _parseSlashCommand(text);
 
+    final quotePrefix = hasQuote ? '【引用对话】：\n"""\n$quoteToSend\n"""\n\n' : '';
     final content = text.isNotEmpty
-        ? text
-        : (hasImages ? '请结合图片进行分析' : '请结合我分享的内容进行分析');
+        ? '$quotePrefix$text'
+        : (hasQuote
+            ? '请分析我引用的这段对话内容：\n$quoteToSend'
+            : (hasImages ? '请结合图片进行分析' : '请结合我分享的内容进行分析'));
 
     final imagesToSend = hasImages ? List<String>.from(_attachedImages) : null;
     final notesToSend = hasNotes ? List<String>.from(_attachedNoteIds) : null;
@@ -326,6 +377,7 @@ class _AiPageState extends ConsumerState<AiPage> {
       _attachedNoteIds.clear();
       _attachedTodoIds.clear();
       _attachedJournalIds.clear();
+      _quotedChatText = null;
     });
     FocusScope.of(context).unfocus();
     setState(() => _isTyping = true);
@@ -1129,13 +1181,37 @@ class _AiPageState extends ConsumerState<AiPage> {
 
     bool isUserMsg(ChatMessage m) => m.role == 'user';
 
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTap: () {
-        // 点击聊天区域空白背景收起软键盘
-        _inputFocusNode.unfocus();
+    return SelectionArea(
+      // 追踪聊天区域当前的框选文本，供悬浮球点击与「给小Q」工具栏引用
+      onSelectionChanged: (selection) {
+        _currentSelectedText = selection?.plainText;
       },
-      child: ListView.builder(
+      contextMenuBuilder: (context, selectableRegionState) {
+        final selectedText = _currentSelectedText?.trim();
+        final hasSelection = selectedText != null && selectedText.isNotEmpty;
+        return QTextSelectionToolbar(
+          anchors: selectableRegionState.contextMenuAnchors,
+          buttonItems: [
+            ...selectableRegionState.contextMenuButtonItems
+                .where((item) => item.type != ContextMenuButtonType.custom),
+            if (hasSelection)
+              ContextMenuButtonItem(
+                label: '给小Q',
+                onPressed: () {
+                  selectableRegionState.hideToolbar();
+                  _applyQuote(selectedText);
+                },
+              ),
+          ],
+        );
+      },
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () {
+          // 点击聊天区域空白背景收起软键盘
+          _inputFocusNode.unfocus();
+        },
+        child: ListView.builder(
         controller: _scrollController,
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
@@ -1234,7 +1310,8 @@ class _AiPageState extends ConsumerState<AiPage> {
         );
       },
     ),
-  );
+  ),
+);
 }
 
   Widget _buildInputArea(
@@ -1274,6 +1351,12 @@ class _AiPageState extends ConsumerState<AiPage> {
               ],
               if (_atQuery != null) ...[
                 AtReferencePanel(onSelected: _applyAtSelection),
+                const SizedBox(height: 6),
+              ],
+
+              // 0.5 框选对话引用卡片（框选「给小Q」或点击悬浮球挂起）
+              if (_quotedChatText != null) ...[
+                _buildQuotePreviewCard(theme),
                 const SizedBox(height: 6),
               ],
 
@@ -1405,6 +1488,52 @@ class _AiPageState extends ConsumerState<AiPage> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// 引用卡片：展示框选「给小Q」或点击悬浮球引用的对话片段
+  Widget _buildQuotePreviewCard(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.format_quote_rounded,
+            size: 16,
+            color: theme.colorScheme.primary,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              '引用对话：$_quotedChatText',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          InkWell(
+            onTap: () => setState(() => _quotedChatText = null),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(2),
+              child: Icon(
+                Icons.close_rounded,
+                size: 16,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2406,7 +2535,7 @@ class _ChatBubble extends StatelessWidget {
                       else ...[
                         MarkdownBody(
                           data: message.content,
-                          selectable: true,
+                          selectable: false,
                           styleSheet: MarkdownStyleSheet(
                             p: TextStyle(
                               color: theme.colorScheme.onSurface,
@@ -2577,7 +2706,7 @@ class _ChatBubble extends StatelessWidget {
             const SizedBox(height: 8),
             MarkdownBody(
               data: question,
-              selectable: true,
+              selectable: false,
               styleSheet: MarkdownStyleSheet(
                 p: TextStyle(
                   color: theme.colorScheme.onSurface,
@@ -2829,7 +2958,7 @@ class _ChatBubble extends StatelessWidget {
         ),
         MarkdownBody(
           data: message.content,
-          selectable: true,
+          selectable: false,
           styleSheet: MarkdownStyleSheet(
             p: TextStyle(
               color: theme.colorScheme.onSurface,
@@ -3151,7 +3280,7 @@ class _ThoughtProcessViewState extends State<_ThoughtProcessView> {
                         ),
                       ),
                       child: SingleChildScrollView(
-                        child: SelectableText(
+                        child: Text(
                           widget.thought,
                           style: TextStyle(
                             fontSize: 12,

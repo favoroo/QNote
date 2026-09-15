@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qnote_flutter/config/app_version.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/pages/settings/user_profile_page.dart';
 import 'package:qnote_flutter/pages/settings/q_settings_page.dart';
@@ -9,6 +10,7 @@ import 'package:qnote_flutter/pages/settings/ai_config_page.dart';
 import 'package:qnote_flutter/pages/settings/shortcuts_page.dart';
 import 'package:qnote_flutter/pages/settings/fixed_events_page.dart';
 import 'package:qnote_flutter/pages/settings/data_sync_page.dart';
+import 'package:qnote_flutter/pages/settings/mi_fitness_settings_page.dart';
 import 'package:qnote_flutter/pages/settings/about_page.dart';
 
 class SideDrawer extends ConsumerStatefulWidget {
@@ -159,6 +161,13 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
                     onTap: () => _navigateTo(context, const DataSyncPage()),
                   ),
                   _DrawerMenuItem(
+                    icon: Icons.favorite_border_rounded,
+                    iconBgColor: itemBgColor,
+                    iconColor: itemColor,
+                    label: '小米运动健康',
+                    onTap: () => _navigateTo(context, const MiFitnessSettingsPage()),
+                  ),
+                  _DrawerMenuItem(
                     icon: Icons.palette_outlined,
                     iconBgColor: itemBgColor,
                     iconColor: itemColor,
@@ -186,7 +195,7 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
               child: Row(
                 children: [
                   Text(
-                    'Version 1.2.0',
+                    'Version ${AppVersion.version}',
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
                     ),

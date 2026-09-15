@@ -301,16 +301,16 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay>
         floatingQProvider.select((s) => s.phase == FloatingQPhase.working));
     final size = MediaQuery.sizeOf(context);
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
-    final isAiPage = _location.startsWith('/ai');
 
     return ValueListenableBuilder<int>(
       valueListenable: floatingQModalCount,
       builder: (context, modalCount, _) {
-        // /ai 页有完整小Q对话；模态弹窗（对话框/底部弹层）打开时隐藏悬浮层。
+        // 模态弹窗（对话框/底部弹层）打开时隐藏悬浮层；
+        // /ai 小Q主页面悬浮球依然常驻显示，支持框选引用与快捷聚焦输入框。
         // 改用淡出+禁点而非整层卸载：隐藏/恢复获得淡入淡出过渡，
         // 面板开着时弹出补充提问框也不再丢失输入框文本；
         // 键盘弹起仍不隐藏，改为钳制上移，杜绝 inset 异常残留导致的"永久消失"
-        final layerHidden = isAiPage || modalCount > 0;
+        final layerHidden = modalCount > 0;
 
         return IgnorePointer(
           ignoring: layerHidden,
@@ -440,6 +440,22 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay>
   void _handleBallTap() {
     final notifier = ref.read(floatingQProvider.notifier);
     final fqState = ref.read(floatingQProvider);
+    final isAiPage = _location.startsWith('/ai');
+
+    // 在小Q主对话界面（/ai）点击悬浮球：
+    // 优先将当前消息流中的框选文本引用到该页面下方的输入框；
+    // 无选区时轻触震动并聚焦下方输入框（不额外弹出重复的小Q浮动面板）
+    if (isAiPage) {
+      final quote = QTargetBridge.instance.captureQuote('page:/ai');
+      if (quote != null) {
+        QTargetBridge.instance.applyQuote('page:/ai', quote);
+        HapticFeedback.lightImpact();
+        return;
+      }
+      QTargetBridge.instance.focusInput('page:/ai');
+      HapticFeedback.selectionClick();
+      return;
+    }
 
     // 面板打开时：优先检查面板内选中文本
     if (fqState.panelOpen) {

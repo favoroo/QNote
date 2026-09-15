@@ -104,7 +104,8 @@ final statsProvider = FutureProvider.family<Object, StatsQuery>((
     case StatTab.activity:
       return compute(_calcActivityStats, args);
     case StatTab.score:
-      // score tab 不走 statsProvider，由 DailyScoreStats 内部独立处理
-      throw StateError('StatTab.score 不应调用 statsProvider');
+    case StatTab.healthDevice:
+      // score 与 healthDevice tab 不走 statsProvider，由专属组件内部独立处理
+      throw StateError('StatTab.${query.tab.name} 不应调用 statsProvider');
   }
 });

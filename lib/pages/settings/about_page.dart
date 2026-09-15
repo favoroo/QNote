@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:qnote_flutter/config/app_version.dart';
 import 'package:qnote_flutter/core/network/update_service.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
+import 'package:qnote_flutter/pages/settings/changelog_page.dart';
 import 'package:qnote_flutter/widgets/debug_console.dart';
 import 'package:qnote_flutter/widgets/update_dialog.dart';
 
@@ -187,6 +188,16 @@ class _AboutPageState extends State<AboutPage> {
                       child: Text(AppVersion.version, style: TextStyle(color: theme.hintColor, fontSize: 13)),
                     ),
                     onTap: _handleVersionTap,
+                  ),
+                  const Divider(height: 1, indent: 16, endIndent: 16),
+                  ListTile(
+                    title: const Text('更新日志', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                    trailing: Icon(Icons.chevron_right, size: 18, color: theme.hintColor),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const ChangelogPage()),
+                      );
+                    },
                   ),
                   const Divider(height: 1, indent: 16, endIndent: 16),
                   ListTile(
