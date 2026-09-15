@@ -418,24 +418,6 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: isAuthed
-                    ? colorScheme.primaryContainer
-                    : colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                Icons.favorite_rounded,
-                color: isAuthed
-                    ? colorScheme.primary
-                    : colorScheme.onSurfaceVariant,
-                size: 22,
-              ),
-            ),
-            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -475,7 +457,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(_isSyncing ? '同步中' : '立即同步'),
+                    Text(_isSyncing ? '同步中' : '同步'),
                     const SizedBox(width: 4),
                     const Icon(Icons.arrow_drop_down, size: 18),
                   ],

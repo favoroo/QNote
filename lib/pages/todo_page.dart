@@ -299,6 +299,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                 onLongPress: (globalKey) {
                   _showActionMenu(context, todo, globalKey);
                 },
+                onDelete: () => _confirmDelete(todo),
               ),
             );
           },
@@ -369,6 +370,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                 onLongPress: (globalKey) {
                   _showActionMenu(context, todo, globalKey);
                 },
+                onDelete: () => _confirmDelete(todo),
               ),
             ),
           ],
@@ -1008,6 +1010,7 @@ class _TodoItem extends StatefulWidget {
   final VoidCallback onTap;
   final VoidCallback onToggleComplete;
   final void Function(GlobalKey key) onLongPress;
+  final VoidCallback? onDelete;
 
   const _TodoItem({
     super.key,
@@ -1017,18 +1020,26 @@ class _TodoItem extends StatefulWidget {
     required this.onTap,
     required this.onToggleComplete,
     required this.onLongPress,
+    this.onDelete,
   });
 
   @override
   State<_TodoItem> createState() => _TodoItemState();
 }
 
-class _TodoItemState extends State<_TodoItem> with SingleTickerProviderStateMixin {
+class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
   final GlobalKey _cardKey = GlobalKey();
   late AnimationController _animController;
   late Animation<double> _scaleAnimation;
   late Animation<double> _heightFactor;
   late Animation<double> _opacityAnimation;
+
+  /// 控制左滑位移动画
+  late AnimationController _slideAnimController;
+  late Animation<double> _slideAnimation;
+
+  /// 最大左滑距离（露出圆形删除按钮）
+  static const double _kMaxSlideExtent = 72.0;
 
   bool _localCompleted = false;
 
@@ -1057,6 +1068,14 @@ class _TodoItemState extends State<_TodoItem> with SingleTickerProviderStateMixi
       reverseCurve: Curves.easeOut,
     );
 
+    _slideAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+    _slideAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _slideAnimController, curve: Curves.easeOutCubic),
+    );
+
     _animController.forward();
   }
 
@@ -1078,11 +1097,24 @@ class _TodoItemState extends State<_TodoItem> with SingleTickerProviderStateMixi
   @override
   void dispose() {
     _animController.dispose();
+    _slideAnimController.dispose();
     super.dispose();
+  }
+
+  void _openSlide() {
+    _slideAnimController.animateTo(1.0, curve: Curves.easeOutCubic);
+  }
+
+  void _closeSlide() {
+    _slideAnimController.animateTo(0.0, curve: Curves.easeOutCubic);
   }
 
   void _handleToggleComplete() {
     HapticFeedback.mediumImpact();
+    if (_slideAnimController.value > 0) {
+      _closeSlide();
+      return;
+    }
     if (widget.todo.isCompleted) {
       widget.onToggleComplete();
       return;
@@ -1112,174 +1144,275 @@ class _TodoItemState extends State<_TodoItem> with SingleTickerProviderStateMixi
         opacity: _opacityAnimation,
         child: ScaleTransition(
           scale: _scaleAnimation,
-          child: Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? colorScheme.surfaceContainer
-                  : colorScheme.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.25 : 0.4),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: colorScheme.shadow.withValues(alpha: 0.02),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              child: Row(
-                children: [
-                  if (widget.isDraggable)
-                    ReorderableDragStartListener(
-                      index: widget.index,
-                      child: Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: Icon(
-                          Icons.drag_indicator,
-                          size: 18,
-                          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.25),
-                        ),
-                      ),
-                    ),
-                  // 小米风格圆角方形复选框
-                  GestureDetector(
-                    onTap: _handleToggleComplete,
-                    behavior: HitTestBehavior.opaque,
-                    child: AnimatedContainer(
-                      duration: AppDurations.medium,
-                      curve: Curves.easeInOut,
-                      width: 20,
-                      height: 20,
-                      margin: const EdgeInsets.only(right: 10),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(5),
-                        border: Border.all(
-                          color: isDone
-                              ? (isDark ? Colors.white30 : colorScheme.outline.withValues(alpha: 0.4))
-                              : colorScheme.outline.withValues(alpha: 0.5),
-                          width: 1.8,
-                        ),
-                        color: isDone
-                            ? (isDark ? Colors.white24 : colorScheme.primary.withValues(alpha: 0.15))
-                            : Colors.transparent,
-                      ),
-                      child: isDone
-                          ? TweenAnimationBuilder<double>(
-                              tween: Tween(begin: 0.0, end: 1.0),
-                              duration: AppDurations.medium,
-                              curve: Curves.elasticOut,
-                              builder: (context, value, child) {
-                                return Transform.scale(
-                                  scale: value,
-                                  child: child,
-                                );
-                              },
-                              child: Icon(
-                                Icons.check,
-                                size: 14,
-                                color: isDark ? Colors.white70 : colorScheme.primary,
+          child: AnimatedBuilder(
+            animation: _slideAnimation,
+            builder: (context, child) {
+              final slideProgress = _slideAnimation.value;
+              final currentOffset = -_kMaxSlideExtent * slideProgress;
+              final isSlidOpen = slideProgress > 0.01;
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.centerRight,
+                  children: [
+                    // 右侧暴露的圆形删除按钮背景层
+                    if (isSlidOpen)
+                      Positioned(
+                        right: 8,
+                        child: Opacity(
+                          opacity: (slideProgress * 1.5).clamp(0.0, 1.0),
+                          child: Transform.scale(
+                            scale: (0.5 + 0.5 * slideProgress).clamp(0.5, 1.0),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: () {
+                                  HapticFeedback.mediumImpact();
+                                  _closeSlide();
+                                  widget.onDelete?.call();
+                                },
+                                customBorder: const CircleBorder(),
+                                child: Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFE54B3C),
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Color(0x33E54B3C),
+                                        blurRadius: 8,
+                                        offset: Offset(0, 3),
+                                      ),
+                                    ],
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: const Icon(
+                                    Icons.delete_outline,
+                                    color: Colors.white,
+                                    size: 24,
+                                  ),
+                                ),
                               ),
-                            )
-                          : null,
-                    ),
-                  ),
-                  // 待办标题与辅助状态（点击卡片唤出底部小窗编辑，长按弹出操作菜单）
-                  Expanded(
-                    child: GestureDetector(
-                      key: _cardKey,
-                      behavior: HitTestBehavior.opaque,
-                      onTap: widget.onTap,
-                      onLongPress: () => widget.onLongPress(_cardKey),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            todo.title.isEmpty ? '待办事项' : todo.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontWeight: isDone ? FontWeight.normal : FontWeight.w600,
-                              fontSize: 15.5,
-                              decoration: isDone ? TextDecoration.lineThrough : TextDecoration.none,
-                              color: isDone
-                                  ? colorScheme.onSurfaceVariant.withValues(alpha: 0.5)
-                                  : colorScheme.onSurface,
                             ),
                           ),
-                          if (todo.isRecurring || todo.reminderTime != null || todo.description.isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Row(
+                        ),
+                      ),
+                    // 前景待办卡片主体（响应左滑拖动）
+                    GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onHorizontalDragUpdate: (details) {
+                        final deltaProgress = -details.primaryDelta! / _kMaxSlideExtent;
+                        final newProgress = (_slideAnimController.value + deltaProgress).clamp(0.0, 1.0);
+                        _slideAnimController.value = newProgress;
+                      },
+                      onHorizontalDragEnd: (details) {
+                        final velocity = details.primaryVelocity ?? 0.0;
+                        if (velocity < -300) {
+                          // 快速左滑：直接展开
+                          _openSlide();
+                        } else if (velocity > 300) {
+                          // 快速右滑：直接收起
+                          _closeSlide();
+                        } else {
+                          // 根据当前拖拽位置阈值决定吸附
+                          if (_slideAnimController.value >= 0.4) {
+                            _openSlide();
+                          } else {
+                            _closeSlide();
+                          }
+                        }
+                      },
+                      child: Transform.translate(
+                        offset: Offset(currentOffset, 0),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? colorScheme.surfaceContainer
+                                : colorScheme.surfaceContainerLow,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.25 : 0.4),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: colorScheme.shadow.withValues(alpha: 0.02),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            child: Row(
                               children: [
-                                if (todo.isRecurring) ...[
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                                    margin: const EdgeInsets.only(right: 6),
-                                    decoration: BoxDecoration(
-                                      color: colorScheme.primary.withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.repeat, size: 11, color: colorScheme.primary),
-                                        const SizedBox(width: 3),
-                                        Text(
-                                          todo.repeatRuleLabel,
-                                          style: TextStyle(
-                                            fontSize: 10.5,
-                                            fontWeight: FontWeight.bold,
-                                            color: colorScheme.primary,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                                if (todo.reminderTime != null) ...[
-                                  Icon(
-                                    Icons.alarm,
-                                    size: 12,
-                                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-                                  ),
-                                  const SizedBox(width: 3),
-                                  Text(
-                                    todo.reminderTime!,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                ],
-                                if (todo.description.isNotEmpty)
-                                  Expanded(
-                                    child: Text(
-                                      todo.description,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.bodySmall?.copyWith(
-                                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-                                        fontSize: 11,
+                                if (widget.isDraggable)
+                                  ReorderableDragStartListener(
+                                    index: widget.index,
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(right: 8),
+                                      child: Icon(
+                                        Icons.drag_indicator,
+                                        size: 18,
+                                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.25),
                                       ),
                                     ),
                                   ),
+                                // 小米风格圆角方形复选框
+                                GestureDetector(
+                                  onTap: _handleToggleComplete,
+                                  behavior: HitTestBehavior.opaque,
+                                  child: AnimatedContainer(
+                                    duration: AppDurations.medium,
+                                    curve: Curves.easeInOut,
+                                    width: 20,
+                                    height: 20,
+                                    margin: const EdgeInsets.only(right: 10),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(5),
+                                      border: Border.all(
+                                        color: isDone
+                                            ? (isDark ? Colors.white30 : colorScheme.outline.withValues(alpha: 0.4))
+                                            : colorScheme.outline.withValues(alpha: 0.5),
+                                        width: 1.8,
+                                      ),
+                                      color: isDone
+                                          ? (isDark ? Colors.white24 : colorScheme.primary.withValues(alpha: 0.15))
+                                          : Colors.transparent,
+                                    ),
+                                    child: isDone
+                                        ? TweenAnimationBuilder<double>(
+                                            tween: Tween(begin: 0.0, end: 1.0),
+                                            duration: AppDurations.medium,
+                                            curve: Curves.elasticOut,
+                                            builder: (context, value, child) {
+                                              return Transform.scale(
+                                                scale: value,
+                                                child: child,
+                                              );
+                                            },
+                                            child: Icon(
+                                              Icons.check,
+                                              size: 14,
+                                              color: isDark ? Colors.white70 : colorScheme.primary,
+                                            ),
+                                          )
+                                        : null,
+                                  ),
+                                ),
+                                // 待办标题与辅助状态（点击卡片唤出底部小窗编辑，长按弹出操作菜单）
+                                Expanded(
+                                  child: GestureDetector(
+                                    key: _cardKey,
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: () {
+                                      if (isSlidOpen) {
+                                        _closeSlide();
+                                      } else {
+                                        widget.onTap();
+                                      }
+                                    },
+                                    onLongPress: () {
+                                      if (isSlidOpen) {
+                                        _closeSlide();
+                                      } else {
+                                        widget.onLongPress(_cardKey);
+                                      }
+                                    },
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          todo.title.isEmpty ? '待办事项' : todo.title,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontWeight: isDone ? FontWeight.normal : FontWeight.w600,
+                                            fontSize: 15.5,
+                                            decoration: isDone ? TextDecoration.lineThrough : TextDecoration.none,
+                                            color: isDone
+                                                ? colorScheme.onSurfaceVariant.withValues(alpha: 0.5)
+                                                : colorScheme.onSurface,
+                                          ),
+                                        ),
+                                        if (todo.isRecurring || todo.reminderTime != null || todo.description.isNotEmpty) ...[
+                                          const SizedBox(height: 4),
+                                          Row(
+                                            children: [
+                                              if (todo.isRecurring) ...[
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                                  margin: const EdgeInsets.only(right: 6),
+                                                  decoration: BoxDecoration(
+                                                    color: colorScheme.primary.withValues(alpha: 0.1),
+                                                    borderRadius: BorderRadius.circular(4),
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      Icon(Icons.repeat, size: 11, color: colorScheme.primary),
+                                                      const SizedBox(width: 3),
+                                                      Text(
+                                                        todo.repeatRuleLabel,
+                                                        style: TextStyle(
+                                                          fontSize: 10.5,
+                                                          fontWeight: FontWeight.bold,
+                                                          color: colorScheme.primary,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                              if (todo.reminderTime != null) ...[
+                                                Icon(
+                                                  Icons.alarm,
+                                                  size: 12,
+                                                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                                ),
+                                                const SizedBox(width: 3),
+                                                Text(
+                                                  todo.reminderTime!,
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 6),
+                                              ],
+                                              if (todo.description.isNotEmpty)
+                                                Expanded(
+                                                  child: Text(
+                                                    todo.description,
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: theme.textTheme.bodySmall?.copyWith(
+                                                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                                      fontSize: 11,
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ),
                               ],
                             ),
-                          ],
-                        ],
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
+                  ],
+                ),
+              );
+            },
           ),
         ),
       ),

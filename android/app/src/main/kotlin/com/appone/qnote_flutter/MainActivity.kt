@@ -15,11 +15,13 @@ class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.appone.qnote_flutter/widgets"
     private val INSTALLER_CHANNEL = "com.appone.qnote_flutter/installer"
     private val SHARE_CHANNEL = "com.appone.qnote_flutter/share"
+    private val USAGE_STATS_CHANNEL = "com.appone.qnote_flutter/usage_stats"
     private var pendingRoute: String? = null
     private var pendingSharedText: String? = null
     private var pendingSharedImages: ArrayList<String>? = null
     private var methodChannel: MethodChannel? = null
     private var shareChannel: MethodChannel? = null
+    private var usageStatsHelper: UsageStatsHelper? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -219,6 +221,75 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     } catch (e: Exception) {
                         result.error("INSTALL_FAILED", e.localizedMessage, null)
+                    }
+                }
+                else -> {
+                    result.notImplemented()
+                }
+            }
+        }
+
+        // 屏幕与应用使用时长统计通道
+        val helper = UsageStatsHelper(this)
+        usageStatsHelper = helper
+        val usageChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, USAGE_STATS_CHANNEL)
+        usageChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "hasPermission" -> {
+                    result.success(helper.hasUsagePermission())
+                }
+                "requestPermission" -> {
+                    helper.openUsageSettings()
+                    result.success(true)
+                }
+                "getTodayUsage" -> {
+                    try {
+                        val limit = call.argument<Int>("limit") ?: 30
+                        val calendar = java.util.Calendar.getInstance().apply {
+                            set(java.util.Calendar.HOUR_OF_DAY, 0)
+                            set(java.util.Calendar.MINUTE, 0)
+                            set(java.util.Calendar.SECOND, 0)
+                            set(java.util.Calendar.MILLISECOND, 0)
+                        }
+                        val startTime = calendar.timeInMillis
+                        val endTime = System.currentTimeMillis()
+
+                        val appList = helper.getUsageStats(startTime, endTime, limit)
+                        val totalTime = helper.calculateTotalScreenTime(startTime, endTime)
+
+                        // 获取昨天全天时长以计算对比差值
+                        val yesterdayCal = java.util.Calendar.getInstance().apply {
+                            add(java.util.Calendar.DAY_OF_YEAR, -1)
+                            set(java.util.Calendar.HOUR_OF_DAY, 0)
+                            set(java.util.Calendar.MINUTE, 0)
+                            set(java.util.Calendar.SECOND, 0)
+                            set(java.util.Calendar.MILLISECOND, 0)
+                        }
+                        val yesterdayStart = yesterdayCal.timeInMillis
+                        yesterdayCal.set(java.util.Calendar.HOUR_OF_DAY, 23)
+                        yesterdayCal.set(java.util.Calendar.MINUTE, 59)
+                        yesterdayCal.set(java.util.Calendar.SECOND, 59)
+                        yesterdayCal.set(java.util.Calendar.MILLISECOND, 999)
+                        val yesterdayEnd = yesterdayCal.timeInMillis
+                        val yesterdayTotalTime = helper.calculateTotalScreenTime(yesterdayStart, yesterdayEnd)
+
+                        result.success(
+                            mapOf(
+                                "totalTime" to totalTime,
+                                "yesterdayTotalTime" to yesterdayTotalTime,
+                                "appList" to appList
+                            )
+                        )
+                    } catch (e: Exception) {
+                        result.error("USAGE_QUERY_FAILED", e.localizedMessage, null)
+                    }
+                }
+                "getWeeklyScreenTime" -> {
+                    try {
+                        val weeklyList = helper.getWeeklyScreenTime()
+                        result.success(weeklyList)
+                    } catch (e: Exception) {
+                        result.error("WEEKLY_QUERY_FAILED", e.localizedMessage, null)
                     }
                 }
                 else -> {

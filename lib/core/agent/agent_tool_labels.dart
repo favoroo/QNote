@@ -161,6 +161,8 @@ abstract final class AgentToolLabels {
       case 'web_search':
         return _stringOf(data, const ['query']);
       case 'skill':
+        final skills = data['skills'];
+        if (skills is List) return '${skills.length} 个可用技能';
         return _stringOf(data, const ['name', 'skill']);
       case 'fetch_url':
         final url = _stringOf(data, const ['url']);

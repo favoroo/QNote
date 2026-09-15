@@ -15,6 +15,7 @@ import 'package:qnote_flutter/widgets/statistics/diet_stats.dart';
 import 'package:qnote_flutter/widgets/statistics/finance_stats.dart';
 import 'package:qnote_flutter/widgets/statistics/daily_score_stats.dart';
 import 'package:qnote_flutter/widgets/statistics/health_stats_view.dart';
+import 'package:qnote_flutter/widgets/statistics/screen_usage_stats_view.dart';
 
 class _TabConfig {
   final StatTab tab;
@@ -33,6 +34,11 @@ const _tabs = [
     tab: StatTab.healthDevice,
     label: '运动健康',
     icon: Icons.favorite_rounded,
+  ),
+  _TabConfig(
+    tab: StatTab.screenTime,
+    label: '屏幕时长',
+    icon: Icons.hourglass_top_rounded,
   ),
   _TabConfig(tab: StatTab.diet, label: '饮食', icon: Icons.restaurant),
   _TabConfig(
@@ -152,7 +158,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
             activeTab: _activeTab,
             onTabChanged: _onTabChanged,
           ),
-          if (_activeTab != StatTab.score)
+          if (_activeTab != StatTab.score && _activeTab != StatTab.screenTime)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
               child: Stack(
@@ -201,6 +207,10 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
         endDate: endDate,
       );
     }
+    // screenTime tab 呈现手机屏幕使用时长与应用排行榜（复刻系统健康使用手机）
+    if (_activeTab == StatTab.screenTime) {
+      return const ScreenUsageStatsView();
+    }
 
     final query = StatsQuery(
       start: startDate,
@@ -222,6 +232,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
             isEmpty = (stats as FinanceStatistics).totalRecords == 0;
           case StatTab.score:
           case StatTab.healthDevice:
+          case StatTab.screenTime:
           case StatTab.sleep:
           case StatTab.mood:
           case StatTab.activity:
@@ -242,6 +253,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
             content = FinanceStatsWidget(stats: stats as FinanceStatistics);
           case StatTab.score:
           case StatTab.healthDevice:
+          case StatTab.screenTime:
           case StatTab.sleep:
           case StatTab.mood:
           case StatTab.activity:

@@ -1,7 +1,7 @@
 import 'package:qnote_flutter/models/diary_record.dart';
 
 /// 统计页 tab 类型，提到此处避免 stats_provider ↔ statistics_page 循环依赖
-enum StatTab { score, healthDevice, sleep, diet, finance, mood, activity }
+enum StatTab { score, healthDevice, screenTime, sleep, diet, finance, mood, activity }
 
 class SleepDailyData {
   final String date;
@@ -577,8 +577,9 @@ ActivityStatistics calculateActivityStats(
     if (type == null) {
       // 同时匹配 '类型：' 和 '项目：'，兼容不同内容格式
       final typeMatch = RegExp(r'(?:类型|项目)[：:]\s*([^ \n，,]+)').firstMatch(r.content);
-      if (typeMatch != null)
+      if (typeMatch != null) {
         type = _resolveActivityItem(typeMatch.group(1)!.trim());
+      }
     }
     type ??= '其他';
 

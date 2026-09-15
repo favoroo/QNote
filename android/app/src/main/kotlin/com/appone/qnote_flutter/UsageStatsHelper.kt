@@ -1,0 +1,262 @@
+package com.appone.qnote_flutter
+
+import android.app.AppOpsManager
+import android.app.usage.UsageStats
+import android.app.usage.UsageStatsManager
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.AdaptiveIconDrawable
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
+import android.os.Build
+import android.os.Process
+import android.provider.Settings
+import java.io.ByteArrayOutputStream
+import java.util.Calendar
+
+class UsageStatsHelper(private val context: Context) {
+
+    private val usageStatsManager =
+        context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
+    private val packageManager: PackageManager = context.packageManager
+    private val iconCache = mutableMapOf<String, ByteArray?>()
+
+    /**
+     * 检查用户是否已授予使用情况访问权限
+     */
+    fun hasUsagePermission(): Boolean {
+        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager ?: return false
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            appOps.unsafeCheckOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                context.packageName
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            appOps.checkOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                context.packageName
+            )
+        }
+        return mode == AppOpsManager.MODE_ALLOWED
+    }
+
+    /**
+     * 跳转至系统使用情况访问设置页
+     */
+    fun openUsageSettings() {
+        val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+    }
+
+    /**
+     * 获取指定时间范围内的各 App 使用数据列表
+     * @param startTime 毫秒时间戳
+     * @param endTime 毫秒时间戳
+     * @param limit 返回最多前 N 个应用（按使用时长倒序）
+     */
+    fun getUsageStats(startTime: Long, endTime: Long, limit: Int = 30): List<Map<String, Any?>> {
+        val manager = usageStatsManager ?: return emptyList()
+        val statsList = manager.queryUsageStats(
+            UsageStatsManager.INTERVAL_DAILY,
+            startTime,
+            endTime
+        ) ?: return emptyList()
+
+        // 桌面/Launcher 包名获取（避免将其错误归入普通应用占用）
+        val homePackages = getLauncherPackages()
+
+        // 聚合相同包名的前台使用时长
+        val aggregated = mutableMapOf<String, Long>()
+        val lastUsedMap = mutableMapOf<String, Long>()
+
+        for (stats in statsList) {
+            val pkg = stats.packageName
+            if (pkg.isNullOrBlank() || pkg == "android" || homePackages.contains(pkg)) {
+                continue
+            }
+            val time = stats.totalTimeInForeground
+            if (time > 0) {
+                aggregated[pkg] = (aggregated[pkg] ?: 0L) + time
+                val last = stats.lastTimeUsed
+                if (last > (lastUsedMap[pkg] ?: 0L)) {
+                    lastUsedMap[pkg] = last
+                }
+            }
+        }
+
+        // 排序并筛选出时长 > 10 秒的应用
+        val sortedList = aggregated.filter { it.value >= 10_000L }
+            .toList()
+            .sortedByDescending { it.second }
+            .take(limit)
+
+        val result = mutableListOf<Map<String, Any?>>()
+        for ((pkg, duration) in sortedList) {
+            val appName = getAppLabel(pkg)
+            val iconBytes = getAppIconBytes(pkg)
+            result.add(
+                mapOf(
+                    "packageName" to pkg,
+                    "appName" to appName,
+                    "totalTimeInForeground" to duration,
+                    "lastTimeUsed" to (lastUsedMap[pkg] ?: 0L),
+                    "icon" to iconBytes
+                )
+            )
+        }
+        return result
+    }
+
+    /**
+     * 获取最近 7 天的每日屏幕总使用时长（按天统计，供柱状图展示）
+     */
+    fun getWeeklyScreenTime(): List<Map<String, Any>> {
+        val result = mutableListOf<Map<String, Any>>()
+        val calendar = Calendar.getInstance()
+        
+        // 归一化到今天 23:59:59.999
+        calendar.set(Calendar.HOUR_OF_DAY, 23)
+        calendar.set(Calendar.MINUTE, 59)
+        calendar.set(Calendar.SECOND, 59)
+        calendar.set(Calendar.MILLISECOND, 999)
+
+        // 倒推 7 天（从 6 天前到今天）
+        for (i in 6 downTo 0) {
+            val dayCal = Calendar.getInstance().apply {
+                timeInMillis = calendar.timeInMillis
+                add(Calendar.DAY_OF_YEAR, -i)
+            }
+            
+            dayCal.set(Calendar.HOUR_OF_DAY, 0)
+            dayCal.set(Calendar.MINUTE, 0)
+            dayCal.set(Calendar.SECOND, 0)
+            dayCal.set(Calendar.MILLISECOND, 0)
+            val dayStart = dayCal.timeInMillis
+
+            dayCal.set(Calendar.HOUR_OF_DAY, 23)
+            dayCal.set(Calendar.MINUTE, 59)
+            dayCal.set(Calendar.SECOND, 59)
+            dayCal.set(Calendar.MILLISECOND, 999)
+            val dayEnd = if (i == 0) System.currentTimeMillis() else dayCal.timeInMillis
+
+            val dayTotal = calculateTotalScreenTime(dayStart, dayEnd)
+            result.add(
+                mapOf(
+                    "date" to dayStart,
+                    "totalTime" to dayTotal,
+                    "dayOfWeek" to dayCal.get(Calendar.DAY_OF_WEEK),
+                    "isToday" to (i == 0)
+                )
+            )
+        }
+        return result
+    }
+
+    /**
+     * 计算特定时间段内的屏幕总时长（毫秒）
+     */
+    fun calculateTotalScreenTime(startTime: Long, endTime: Long): Long {
+        val manager = usageStatsManager ?: return 0L
+        val statsList = manager.queryUsageStats(
+            UsageStatsManager.INTERVAL_DAILY,
+            startTime,
+            endTime
+        ) ?: return 0L
+
+        val homePackages = getLauncherPackages()
+        var total = 0L
+        val maxAppTimeMap = mutableMapOf<String, Long>()
+
+        for (stats in statsList) {
+            val pkg = stats.packageName ?: continue
+            if (pkg == "android" || homePackages.contains(pkg)) continue
+            val time = stats.totalTimeInForeground
+            if (time > 0) {
+                // 部分系统单日会有多段区间拆分，按包名累加
+                maxAppTimeMap[pkg] = (maxAppTimeMap[pkg] ?: 0L) + time
+            }
+        }
+        for ((_, time) in maxAppTimeMap) {
+            total += time
+        }
+        return total
+    }
+
+    /**
+     * 获取桌面 Launcher 的包名列表
+     */
+    private fun getLauncherPackages(): Set<String> {
+        val intent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+        }
+        val resolveInfoList = packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+        return resolveInfoList.mapNotNull { it.activityInfo?.packageName }.toSet()
+    }
+
+    /**
+     * 根据包名获取应用可读名称
+     */
+    private fun getAppLabel(packageName: String): String {
+        return try {
+            val appInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.getApplicationInfo(packageName, PackageManager.ApplicationInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getApplicationInfo(packageName, 0)
+            }
+            packageManager.getApplicationLabel(appInfo).toString()
+        } catch (_: Exception) {
+            packageName.substringAfterLast('.')
+        }
+    }
+
+    /**
+     * 根据包名获取应用图标并转为 PNG 字节流（带内存缓存与尺寸压缩）
+     */
+    private fun getAppIconBytes(packageName: String): ByteArray? {
+        if (iconCache.containsKey(packageName)) {
+            return iconCache[packageName]
+        }
+        return try {
+            val drawable = packageManager.getApplicationIcon(packageName)
+            val bitmap = drawableToBitmap(drawable)
+            val stream = ByteArrayOutputStream()
+            bitmap.compress(Bitmap.CompressFormat.PNG, 85, stream)
+            val bytes = stream.toByteArray()
+            iconCache[packageName] = bytes
+            bytes
+        } catch (_: Exception) {
+            iconCache[packageName] = null
+            null
+        }
+    }
+
+    /**
+     * Drawable 转 Bitmap (适应 AdaptiveIconDrawable 与常规 Drawable，控制在 96x96 px 以内节省开销)
+     */
+    private fun drawableToBitmap(drawable: Drawable): Bitmap {
+        val targetSize = 96
+        if (drawable is BitmapDrawable && drawable.bitmap != null) {
+            val orig = drawable.bitmap
+            if (orig.width <= targetSize && orig.height <= targetSize) {
+                return orig
+            }
+            return Bitmap.createScaledBitmap(orig, targetSize, targetSize, true)
+        }
+
+        val bitmap = Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.draw(canvas)
+        return bitmap
+    }
+}
