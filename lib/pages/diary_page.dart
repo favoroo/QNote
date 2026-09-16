@@ -29,7 +29,7 @@ import 'package:qnote_flutter/widgets/diary/diary_input_bar.dart';
 import 'package:qnote_flutter/widgets/diary/journal_editor_view.dart';
 import 'package:qnote_flutter/widgets/diary/custom_date_picker.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
-import 'package:qnote_flutter/widgets/animated_gradient_border.dart';
+import 'package:qnote_flutter/widgets/common/loading_ring.dart';
 
 class DiaryPage extends ConsumerStatefulWidget {
   const DiaryPage({super.key});
@@ -1610,68 +1610,63 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   }
 
   /// Build the smart extract floating action button
+  ///
+  /// 工作中态与小Q发送按钮保持一致：极淡描边底 + 细缺口圆环 + 圆心停止方块，
+  /// 尺寸固定 44，点击即中止当前批量提取
   Widget _buildSmartExtractFAB(ThemeData theme) {
     if (_showBatchConfirmButton) return const SizedBox.shrink();
+
+    final isDark = theme.brightness == Brightness.dark;
+    final primary = theme.colorScheme.primary;
+
     return GestureDetector(
       key: _smartExtractFabKey,
       onTap: _handleSmartExtractTap,
       onLongPress: _handleSmartExtractLongPress,
-      child: AnimatedGradientBorder(
-        isAnimating: _isBatchExtracting,
-        borderRadius: 26, // For width 52, radius is 26
-        strokeWidth: 2,
-        child: AnimatedContainer(
-          duration: AppDurations.medium,
-          curve: Curves.easeOutCubic,
-          width: _isBatchExtracting ? 52 : 44,
-          height: _isBatchExtracting ? 52 : 44,
-          decoration: BoxDecoration(
-            color: _isBatchExtracting
-                ? theme.colorScheme.surface
-                : theme.colorScheme.primary,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: _isBatchExtracting
-                    ? theme.colorScheme.primary.withValues(alpha: 0.25)
-                    : theme.colorScheme.shadow.withValues(alpha: 0.06),
-                blurRadius: _isBatchExtracting ? 12 : 6,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: _isBatchExtracting
-              ? Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    SizedBox(
-                      width: 36,
-                      height: 36,
-                      child: CircularProgressIndicator(
-                        value: _batchExtractTotal > 0
-                            ? _batchExtractCompleted / _batchExtractTotal
-                            : null,
-                        strokeWidth: 2.5,
-                        color: theme.colorScheme.primary,
-                        backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
-                      ),
-                    ),
-                    Text(
-                      '$_batchExtractCompleted',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
+      child: AnimatedContainer(
+        duration: AppDurations.medium,
+        curve: Curves.easeOutCubic,
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: _isBatchExtracting
+              ? primary.withValues(alpha: isDark ? 0.14 : 0.08)
+              : primary,
+          shape: BoxShape.circle,
+          border: _isBatchExtracting
+              ? Border.all(
+                  color: primary.withValues(alpha: isDark ? 0.22 : 0.14),
+                  width: 0.8,
                 )
-              : Icon(
-                  Icons.auto_fix_high,
-                  size: 20,
-                  color: theme.colorScheme.onPrimary,
-                ),
+              : null,
+          boxShadow: [
+            BoxShadow(
+              color: theme.colorScheme.shadow.withValues(alpha: 0.06),
+              blurRadius: 6,
+              offset: const Offset(0, 3),
+            ),
+          ],
         ),
+        child: _isBatchExtracting
+            ? Stack(
+                alignment: Alignment.center,
+                children: [
+                  LoadingRing(size: 32, strokeWidth: 1.3, color: primary),
+                  Container(
+                    width: 9.5,
+                    height: 9.5,
+                    decoration: BoxDecoration(
+                      color: primary,
+                      borderRadius: BorderRadius.circular(2.0),
+                    ),
+                  ),
+                ],
+              )
+            : Icon(
+                Icons.auto_fix_high,
+                size: 20,
+                color: theme.colorScheme.onPrimary,
+              ),
       ),
     );
   }

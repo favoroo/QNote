@@ -14,6 +14,15 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.50',
+    date: '2026-09-18',
+    notes: [
+      '修复 AI 分析偶发解析失败：部分模型输出 JSON 中含未转义换行符导致崩溃，现已自动修复后重试',
+      '时间线「智能提取」悬浮按钮工作中态改为与小Q发送按钮一致的细圆环 + 停止方块样式，点击即可中止批量提取',
+      '运动健康日结卡片指标区改为数值 + 小单位精致排版，数值自动缩放防溢出，窄屏不再挤压',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.49',
     date: '2026-09-17',
     notes: [

@@ -1533,36 +1533,47 @@ class _DiaryItemState extends State<DiaryItem> {
                 ),
                 const SizedBox(height: 10),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildMetricItem(
-                      theme,
-                      icon: Icons.local_fire_department_rounded,
-                      iconColor: const Color(0xFFF97316),
-                      value: '${calories.toStringAsFixed(0)} kcal',
-                      label: '消耗',
+                    Expanded(
+                      child: _buildMetricItem(
+                        theme,
+                        icon: Icons.local_fire_department_rounded,
+                        iconColor: const Color(0xFFF97316),
+                        value: calories.toStringAsFixed(0),
+                        unit: 'kcal',
+                        label: '消耗',
+                      ),
                     ),
-                    _buildMetricItem(
-                      theme,
-                      icon: Icons.place_rounded,
-                      iconColor: const Color(0xFF3B82F6),
-                      value: '${(distanceMeters / 1000).toStringAsFixed(2)} km',
-                      label: '距离',
+                    Expanded(
+                      child: _buildMetricItem(
+                        theme,
+                        icon: Icons.place_rounded,
+                        iconColor: const Color(0xFF3B82F6),
+                        value: (distanceMeters / 1000).toStringAsFixed(2),
+                        unit: 'km',
+                        label: '距离',
+                      ),
                     ),
-                    _buildMetricItem(
-                      theme,
-                      icon: Icons.timer_outlined,
-                      iconColor: const Color(0xFFEAB308),
-                      value: '$activeMinutes 分钟',
-                      label: '活动',
+                    Expanded(
+                      child: _buildMetricItem(
+                        theme,
+                        icon: Icons.timer_outlined,
+                        iconColor: const Color(0xFFEAB308),
+                        value: '$activeMinutes',
+                        unit: '分钟',
+                        label: '活动',
+                      ),
                     ),
                     if (standingCount > 0)
-                      _buildMetricItem(
-                        theme,
-                        icon: Icons.accessibility_new_rounded,
-                        iconColor: const Color(0xFF8B5CF6),
-                        value: '$standingCount 次',
-                        label: '站立',
+                      Expanded(
+                        child: _buildMetricItem(
+                          theme,
+                          icon: Icons.accessibility_new_rounded,
+                          iconColor: const Color(0xFF8B5CF6),
+                          value: '$standingCount',
+                          unit: '次',
+                          label: '站立',
+                        ),
                       ),
                   ],
                 ),
@@ -1921,28 +1932,58 @@ class _DiaryItemState extends State<DiaryItem> {
     required IconData icon,
     required Color iconColor,
     required String value,
+    String? unit,
     required String label,
   }) {
-    return Row(
+    final colorScheme = theme.colorScheme;
+    return Column(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Icon(icon, size: 15, color: iconColor),
-        const SizedBox(width: 5),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              value,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                value,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12.5,
+                  color: colorScheme.onSurface,
+                  letterSpacing: -0.2,
+                ),
               ),
-            ),
+              if (unit != null) ...[
+                const SizedBox(width: 1.5),
+                Text(
+                  unit,
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w500,
+                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 2),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 11.5, color: iconColor),
+            const SizedBox(width: 2.5),
             Text(
               label,
               style: TextStyle(
                 fontSize: 10,
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                fontWeight: FontWeight.w500,
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
               ),
             ),
           ],

@@ -1635,10 +1635,15 @@ class AiService {
         'AI响应标准JSON解析失败，尝试提取JSON子串。原始内容:\n$content',
         level: LogLevel.warning,
       );
+      // 部分模型（如 Gemini）输出的 JSON 字符串值中含未转义的原始换行符，
+      // 严格解析会抛 "Control character in string"，先修复再重试
+      try {
+        return jsonDecode(_sanitizeJsonControlChars(stripped));
+      } catch (_) {}
       try {
         final extracted = _extractJsonString(content);
         if (extracted != null) {
-          return jsonDecode(extracted);
+          return jsonDecode(_sanitizeJsonControlChars(extracted));
         }
       } catch (innerError) {
         LoggerService.instance.logAI(
@@ -1648,6 +1653,62 @@ class AiService {
       }
       rethrow;
     }
+  }
+
+  /// 修复 JSON 字符串字面量中未转义的控制字符。
+  ///
+  /// 按字符扫描并跟踪是否位于字符串内部（正确处理 `\"` 转义与中文引号不受影响），
+  /// 将字符串值中的裸控制字符（换行、回车、制表符及其他 <0x20 字符）替换为
+  /// 合法的转义序列，字符串外的格式缩进保持原样。
+  String _sanitizeJsonControlChars(String json) {
+    final buffer = StringBuffer();
+    var inString = false;
+    var i = 0;
+    while (i < json.length) {
+      final ch = json[i];
+      if (!inString) {
+        if (ch == '"') inString = true;
+        buffer.write(ch);
+        i++;
+        continue;
+      }
+      // 字符串内部：保留已有转义序列（如 \" \\ \n），跳过被转义的字符
+      if (ch == '\\') {
+        buffer.write(ch);
+        if (i + 1 < json.length) {
+          buffer.write(json[i + 1]);
+          i += 2;
+        } else {
+          i++;
+        }
+        continue;
+      }
+      if (ch == '"') {
+        inString = false;
+        buffer.write(ch);
+        i++;
+        continue;
+      }
+      final code = ch.codeUnitAt(0);
+      if (code >= 0x20) {
+        buffer.write(ch);
+        i++;
+        continue;
+      }
+      // 裸控制字符 → 合法转义序列
+      switch (ch) {
+        case '\n':
+          buffer.write(r'\n');
+        case '\r':
+          buffer.write(r'\r');
+        case '\t':
+          buffer.write(r'\t');
+        default:
+          buffer.write('\\u${code.toRadixString(16).padLeft(4, '0')}');
+      }
+      i++;
+    }
+    return buffer.toString();
   }
 
   /// 从含中文推理文本中提取 JSON 子串。
