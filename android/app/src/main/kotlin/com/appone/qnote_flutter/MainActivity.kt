@@ -284,6 +284,69 @@ class MainActivity : FlutterActivity() {
                         result.error("USAGE_QUERY_FAILED", e.localizedMessage, null)
                     }
                 }
+                "getUsageForDate" -> {
+                    try {
+                        val dateMillis = call.argument<Long>("dateMillis") ?: System.currentTimeMillis()
+                        val limit = call.argument<Int>("limit") ?: 10
+                        val includeIcons = call.argument<Boolean>("includeIcons") ?: false
+
+                        val targetCal = java.util.Calendar.getInstance().apply {
+                            timeInMillis = dateMillis
+                            set(java.util.Calendar.HOUR_OF_DAY, 0)
+                            set(java.util.Calendar.MINUTE, 0)
+                            set(java.util.Calendar.SECOND, 0)
+                            set(java.util.Calendar.MILLISECOND, 0)
+                        }
+                        val startTime = targetCal.timeInMillis
+
+                        // 判断是否为今天
+                        val todayCal = java.util.Calendar.getInstance().apply {
+                            set(java.util.Calendar.HOUR_OF_DAY, 0)
+                            set(java.util.Calendar.MINUTE, 0)
+                            set(java.util.Calendar.SECOND, 0)
+                            set(java.util.Calendar.MILLISECOND, 0)
+                        }
+                        val isToday = (startTime == todayCal.timeInMillis)
+                        val now = System.currentTimeMillis()
+                        val endTime = if (isToday) {
+                            now
+                        } else {
+                            targetCal.clone().let {
+                                val c = it as java.util.Calendar
+                                c.set(java.util.Calendar.HOUR_OF_DAY, 23)
+                                c.set(java.util.Calendar.MINUTE, 59)
+                                c.set(java.util.Calendar.SECOND, 59)
+                                c.set(java.util.Calendar.MILLISECOND, 999)
+                                c.timeInMillis
+                            }
+                        }
+
+                        val appList = helper.getUsageStats(startTime, endTime, limit, includeIcons)
+                        val totalTime = helper.calculateTotalScreenTime(startTime, endTime)
+
+                        // 获取前一天的屏幕总时长
+                        val prevCal = (targetCal.clone() as java.util.Calendar).apply {
+                            add(java.util.Calendar.DAY_OF_YEAR, -1)
+                        }
+                        val prevStart = prevCal.timeInMillis
+                        prevCal.set(java.util.Calendar.HOUR_OF_DAY, 23)
+                        prevCal.set(java.util.Calendar.MINUTE, 59)
+                        prevCal.set(java.util.Calendar.SECOND, 59)
+                        prevCal.set(java.util.Calendar.MILLISECOND, 999)
+                        val prevEnd = prevCal.timeInMillis
+                        val prevTotalTime = helper.calculateTotalScreenTime(prevStart, prevEnd)
+
+                        result.success(
+                            mapOf(
+                                "totalTime" to totalTime,
+                                "yesterdayTotalTime" to prevTotalTime,
+                                "appList" to appList
+                            )
+                        )
+                    } catch (e: Exception) {
+                        result.error("DATE_USAGE_QUERY_FAILED", e.localizedMessage, null)
+                    }
+                }
                 "getWeeklyScreenTime" -> {
                     try {
                         val weeklyList = helper.getWeeklyScreenTime()

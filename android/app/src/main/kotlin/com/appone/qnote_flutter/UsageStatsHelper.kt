@@ -62,8 +62,14 @@ class UsageStatsHelper(private val context: Context) {
      * @param startTime 毫秒时间戳
      * @param endTime 毫秒时间戳
      * @param limit 返回最多前 N 个应用（按使用时长倒序）
+     * @param includeIcons 是否获取应用图标字节（列表或卡片若无需图标可设为 false 以大幅减轻 IPC 负担）
      */
-    fun getUsageStats(startTime: Long, endTime: Long, limit: Int = 30): List<Map<String, Any?>> {
+    fun getUsageStats(
+        startTime: Long,
+        endTime: Long,
+        limit: Int = 30,
+        includeIcons: Boolean = true
+    ): List<Map<String, Any?>> {
         val manager = usageStatsManager ?: return emptyList()
         val statsList = manager.queryUsageStats(
             UsageStatsManager.INTERVAL_DAILY,
@@ -102,7 +108,7 @@ class UsageStatsHelper(private val context: Context) {
         val result = mutableListOf<Map<String, Any?>>()
         for ((pkg, duration) in sortedList) {
             val appName = getAppLabel(pkg)
-            val iconBytes = getAppIconBytes(pkg)
+            val iconBytes = if (includeIcons) getAppIconBytes(pkg) else null
             result.add(
                 mapOf(
                     "packageName" to pkg,

@@ -121,6 +121,41 @@ class QPageContext {
         _ => false,
       };
 
+  /// 悬浮弹窗无历史消息时的场景引导提示语
+  String get emptyPromptHint => switch (type) {
+        QContextType.diaryList =>
+          '让小Q处理时间线事件，例如"把刚才的午餐改为轻食沙拉"、"记一条下午3点开会"或"总结今天的时间线"。',
+        QContextType.diaryDetail =>
+          '让小Q修改当前流水事件，例如"润色这篇记录并补充感受"或"将时间改为15:30"。',
+        QContextType.journal =>
+          '让小Q协助整理与撰写日记，例如"总结今天的经历并提炼心得"或"润色今日日记"。',
+        QContextType.todoList =>
+          '让小Q协助管理待办，例如"添加明天上午10点提交周报的待办"或"把买菜标记为高优先级"。',
+        QContextType.noteDetail =>
+          '让小Q处理当前笔记的内容，例如"优化这篇笔记的表达"或"为笔记梳理核心要点"。',
+        QContextType.notesList =>
+          '让小Q管理笔记库，例如"查找关于学习计划的笔记"或"根据今日想法新建一篇笔记"。',
+        QContextType.statistics =>
+          '让小Q分析你的生活与健康数据，例如"总结我这周的作息和习惯"或"评估今天的生活评分"。',
+        QContextType.search =>
+          '让小Q协助检索信息，例如"查找上个月关于运动和健康的所有记录"。',
+        QContextType.aiPage || QContextType.other =>
+          '让小Q协助你处理日常事务，例如"总结我今天的时间线与待办"或直接向小Q提问。',
+      };
+
+  /// 悬浮弹窗底部输入框针对当前界面的占位文案
+  String get inputHintText => switch (type) {
+        QContextType.diaryList => '告诉小Q要记录或修改什么事件…',
+        QContextType.diaryDetail => '告诉小Q要如何修改这条事件…',
+        QContextType.journal => '告诉小Q要如何整理日记…',
+        QContextType.todoList => '告诉小Q要添加或调整什么待办…',
+        QContextType.noteDetail => '告诉小Q要如何优化或编辑这篇笔记…',
+        QContextType.notesList => '告诉小Q要查找或新建什么笔记…',
+        QContextType.statistics => '向小Q咨询数据分析或生活建议…',
+        QContextType.search => '告诉小Q要寻找什么内容…',
+        QContextType.aiPage || QContextType.other => '告诉小Q要做什么…',
+      };
+
   /// 组装注入 system 尾部的页面上下文说明块，让小Q知道用户在哪个界面、
   /// 要操作哪个文件。返回 null 表示无需注入（无目标内容的通用页面）
   Future<String?> toPromptBlock() async {

@@ -11,17 +11,20 @@ import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/models/health_daily_metrics.dart';
 import 'package:qnote_flutter/models/health_sport_record.dart';
+import 'package:qnote_flutter/core/health/screen_usage_service.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 
 final healthSyncServiceProvider = Provider<HealthSyncService>((ref) {
   final apiClient = ref.watch(miFitnessApiClientProvider);
   final healthRepo = ref.watch(healthMetricRepositoryProvider);
   final authService = ref.watch(miFitnessAuthServiceProvider);
+  final screenUsageService = ref.watch(screenUsageServiceProvider);
   return HealthSyncService(
     apiClient: apiClient,
     healthRepo: healthRepo,
     authService: authService,
     diaryRepo: DiaryRepository(),
+    screenUsageService: screenUsageService,
   );
 });
 
@@ -46,6 +49,7 @@ class HealthSyncService {
   final HealthMetricRepository _healthRepo;
   final MiFitnessAuthService _authService;
   final DiaryRepository _diaryRepo;
+  final ScreenUsageService? _screenUsageService;
 
   static const String keyLastSyncTime = 'health_sync_last_time';
   static const String keyAutoSync = 'health_sync_auto_sync';
@@ -57,10 +61,12 @@ class HealthSyncService {
     required HealthMetricRepository healthRepo,
     required MiFitnessAuthService authService,
     required DiaryRepository diaryRepo,
+    ScreenUsageService? screenUsageService,
   })  : _apiClient = apiClient,
         _healthRepo = healthRepo,
         _authService = authService,
-        _diaryRepo = diaryRepo;
+        _diaryRepo = diaryRepo,
+        _screenUsageService = screenUsageService;
 
   /// 检查是否配置并授权成功
   Future<bool> isAuthorized() async {
@@ -332,6 +338,35 @@ class HealthSyncService {
       }
     }
 
+    // 屏幕使用时长统计数据（若 Android 设备且已授权使用情况访问）
+    int? screenTimeMs;
+    int? screenYesterdayTimeMs;
+    List<Map<String, dynamic>>? screenTopApps;
+    String? screenFormattedTime;
+
+    if (_screenUsageService != null && _screenUsageService.isSupported) {
+      try {
+        final hasUsageAuth = await _screenUsageService.hasPermission();
+        if (hasUsageAuth) {
+          final usageInfo = await _screenUsageService.getUsageForDate(date, limit: 5);
+          if (usageInfo != null && usageInfo.totalTimeMs > 0) {
+            screenTimeMs = usageInfo.totalTimeMs;
+            screenYesterdayTimeMs = usageInfo.yesterdayTotalTimeMs;
+            screenFormattedTime = usageInfo.formattedTotalTime;
+            screenTopApps = usageInfo.appList.take(4).map((a) => {
+              'package': a.packageName,
+              'name': a.appName,
+              'duration_ms': a.totalTimeInForegroundMs,
+              'formatted': a.formattedDuration,
+            }).toList();
+            contentLines.add('屏幕使用: $screenFormattedTime (${usageInfo.diffDescription})');
+          }
+        }
+      } catch (e) {
+        LoggerService.instance.warning('Sync timeline card fetch screen usage error: $e');
+      }
+    }
+
     final sportsData = sports.map((s) => {
       'sid': s.sid,
       'title': s.title,
@@ -367,6 +402,9 @@ class HealthSyncService {
       'avg_spo2': summary.avgSpo2,
       'avg_stress': summary.avgStress,
       'sports': sportsData,
+      if (screenTimeMs != null) 'screen_time_ms': screenTimeMs,
+      if (screenYesterdayTimeMs != null) 'screen_yesterday_time_ms': screenYesterdayTimeMs,
+      if (screenTopApps != null) 'screen_top_apps': screenTopApps,
     };
 
     final record = DiaryRecord(
@@ -386,6 +424,7 @@ class HealthSyncService {
             '消耗': '${calStr}kcal',
             if (summary.standingCount > 0) '站立': '${summary.standingCount}次',
             if (summary.sleepDurationMinutes > 0) '睡眠': '$sleepHours小时$sleepMins分',
+            if (screenFormattedTime != null) '屏幕': screenFormattedTime,
             if (sports.isNotEmpty) '运动项': '${sports.length}项',
           },
           startHour: 23,

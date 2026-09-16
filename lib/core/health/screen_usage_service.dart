@@ -56,6 +56,30 @@ class ScreenUsageService {
     }
   }
 
+  /// 获取指定日期的屏幕总时长与各应用使用情况
+  Future<TodayScreenUsage?> getUsageForDate(
+    DateTime date, {
+    int limit = 10,
+    bool includeIcons = false,
+  }) async {
+    if (!isSupported) return null;
+    try {
+      final res = await _channel.invokeMapMethod<dynamic, dynamic>(
+        'getUsageForDate',
+        {
+          'dateMillis': date.millisecondsSinceEpoch,
+          'limit': limit,
+          'includeIcons': includeIcons,
+        },
+      );
+      if (res == null) return null;
+      return TodayScreenUsage.fromMap(res);
+    } catch (e, stack) {
+      LoggerService.instance.error('ScreenUsageService.getUsageForDate failed: $e', stackTrace: stack);
+      return null;
+    }
+  }
+
   /// 获取最近 7 天的每日屏幕使用总时长
   Future<List<DailyScreenTime>> getWeeklyScreenTime() async {
     if (!isSupported) return [];

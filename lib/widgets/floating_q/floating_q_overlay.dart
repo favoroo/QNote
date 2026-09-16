@@ -407,12 +407,24 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
     }
 
     if (children.isEmpty) {
+      final externalShareMode = ref.watch(
+        floatingQProvider.select((s) => s.externalShareMode),
+      );
+      final effectiveContext = ref.watch(
+        floatingQProvider.select((s) => s.effectiveContext),
+      );
+      final emptyPrompt = externalShareMode
+          ? '让小Q处理外部导入的内容，例如"将这段文字整理并保存为笔记"或"提炼核心信息"。'
+          : (effectiveContext?.emptyPromptHint ??
+              QPageContext.fallback.emptyPromptHint);
+
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
         child: Text(
-          '让小Q处理当前页面的内容，例如"优化这篇笔记的表达"。',
+          emptyPrompt,
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
+            height: 1.4,
           ),
         ),
       );
@@ -985,6 +997,16 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
     final isWorking = ref.watch(
       floatingQProvider.select((s) => s.phase == FloatingQPhase.working),
     );
+    final externalShareMode = ref.watch(
+      floatingQProvider.select((s) => s.externalShareMode),
+    );
+    final effectiveContext = ref.watch(
+      floatingQProvider.select((s) => s.effectiveContext),
+    );
+    final inputHint = externalShareMode
+        ? '告诉小Q如何处理这段内容…'
+        : (effectiveContext?.inputHintText ??
+            QPageContext.fallback.inputHintText);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
@@ -1051,7 +1073,7 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
                     textInputAction: TextInputAction.newline,
                     style: theme.textTheme.bodyMedium,
                     decoration: InputDecoration(
-                      hintText: '告诉小Q要做什么…',
+                      hintText: inputHint,
                       hintStyle: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant.withValues(
                           alpha: 0.5,

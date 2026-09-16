@@ -183,6 +183,7 @@ class _ToastWidgetState extends State<_ToastWidget>
                         color: Colors.white,
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
+                        decoration: TextDecoration.none,
                       ),
                       overflow: TextOverflow.ellipsis,
                       maxLines: 2,

@@ -14,6 +14,16 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.46',
+    date: '2026-09-16',
+    notes: [
+      '日记时间线 23:00 运动健康日结卡片新增手机屏幕使用时间展示（总时长、较昨日对比、Top应用）',
+      '新增「屏幕使用时间」独立页面与侧边栏入口，支持手动刷新数据',
+      '小Q新增屏幕使用数据读取能力，可查看今日时长、应用排行与近7天趋势',
+      '修复 Toast 通知文字下划线等视觉细节问题',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.45',
     date: '2026-09-16',
     notes: [
