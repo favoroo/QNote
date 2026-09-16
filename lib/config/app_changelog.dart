@@ -14,6 +14,16 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.45',
+    date: '2026-09-16',
+    notes: [
+      '小米健康睡眠时间改为「昨晚 ~ 今早」展示，跨午夜睡眠归属到醒来当天',
+      '日记时间线窗口扩至 60 天，滑动平移更顺滑不易卡死',
+      '用户资料页体重管理收敛为极简体重记录，单位切换改为单击换单位',
+      '小米健康设置页同步按钮改为同步当前选中日期并显示上次同步时间',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.44',
     date: '2026-09-16',
     notes: [

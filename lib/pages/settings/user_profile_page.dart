@@ -107,19 +107,6 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     _setWeightUnit(_weightUnit == 'kg' ? '斤' : 'kg');
   }
 
-  void _focusWeightInput() {
-    _weightInputFocusNode.requestFocus();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          140,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOutCubic,
-        );
-      }
-    });
-  }
-
   @override
   void dispose() {
     _scrollController.dispose();
@@ -383,7 +370,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                 _buildDivider(theme),
                 _buildBirthdayAndAgeRow(theme),
                 _buildDivider(theme),
-                _buildHeightAndWeightRow(theme),
+                _buildHeightRow(theme),
               ],
             ),
             const SizedBox(height: 14),
@@ -501,49 +488,18 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                     filled: false,
                   ),
                 ),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 4,
-                  children: [
-                    _buildMicroTag(
-                      theme,
-                      _gender == 'male'
-                          ? '男 ♂'
-                          : _gender == 'female'
-                              ? '女 ♀'
-                              : '性别未设',
-                    ),
-                    if (_calculateAge() > 0)
-                      _buildMicroTag(theme, '${_calculateAge()} 岁'),
-                    if (_heightController.text.isNotEmpty)
-                      _buildMicroTag(theme, '${_heightController.text} cm'),
-                    if (_latestWeightInKg != null)
-                      _buildMicroTag(theme, _displayLatestWeight),
-                  ],
+                const SizedBox(height: 4),
+                Text(
+                  '完善个人档案，便于小Q提供定制化建议',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                    fontSize: 11,
+                  ),
                 ),
               ],
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildMicroTag(ThemeData theme, String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 11,
-          color: theme.colorScheme.onSurfaceVariant,
-          fontWeight: FontWeight.w500,
-        ),
       ),
     );
   }
@@ -609,7 +565,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
       child: Row(
         children: [
           Text(
-            '生理性别',
+            '性别',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -767,94 +723,43 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     );
   }
 
-  /// 身高与当前体重行
-  Widget _buildHeightAndWeightRow(ThemeData theme) {
+  /// 身高单行
+  Widget _buildHeightRow(ThemeData theme) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
       child: Row(
         children: [
           Text(
-            '基本体征',
+            '身高',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
           const Spacer(),
-          // 身高
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '身高 ',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+          SizedBox(
+            width: 56,
+            child: TextField(
+              controller: _heightController,
+              keyboardType: TextInputType.number,
+              textAlign: TextAlign.right,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
               ),
-              SizedBox(
-                width: 44,
-                child: TextField(
-                  controller: _heightController,
-                  keyboardType: TextInputType.number,
-                  textAlign: TextAlign.right,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                  decoration: const InputDecoration(
-                    hintText: '--',
-                    isDense: true,
-                    contentPadding: EdgeInsets.symmetric(vertical: 4),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    filled: false,
-                  ),
-                ),
+              decoration: const InputDecoration(
+                hintText: '--',
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(vertical: 4),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                filled: false,
               ),
-              Text(
-                ' cm',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
+            ),
           ),
-          const SizedBox(width: 14),
-          Container(
-            width: 1,
-            height: 16,
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-          ),
-          const SizedBox(width: 14),
-          // 最新体重快捷跳转
-          InkWell(
-            onTap: _focusWeightInput,
-            borderRadius: BorderRadius.circular(6),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '体重 ',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  Text(
-                    _displayLatestWeight,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 2),
-                  Icon(
-                    Icons.edit_note_rounded,
-                    size: 16,
-                    color: theme.colorScheme.primary,
-                  ),
-                ],
-              ),
+          Text(
+            ' cm',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
         ],
@@ -886,12 +791,22 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                 Icon(Icons.monitor_weight_outlined, size: 16, color: theme.colorScheme.primary),
                 const SizedBox(width: 8),
                 Text(
-                  '体重管理',
+                  '体重记录',
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.bold,
                     fontSize: 13,
                   ),
                 ),
+                if (_latestWeightInKg != null) ...[
+                  const SizedBox(width: 10),
+                  Text(
+                    '当前 $_displayLatestWeight',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                    ),
+                  ),
+                ],
                 const Spacer(),
                 // 斤 / kg 单位微切换
                 _buildUnitToggle(theme),
@@ -906,7 +821,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          _showWeightHistory ? '收起' : '趋势/历史',
+                          _showWeightHistory ? '收起' : '历史',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -1096,52 +1011,39 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   }
 
   Widget _buildUnitToggle(ThemeData theme) {
-    final isJin = _weightUnit == '斤';
-    return Container(
-      height: 24,
-      padding: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _buildUnitOption(theme, '斤', isJin),
-          _buildUnitOption(theme, 'kg', !isJin),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildUnitOption(ThemeData theme, String unit, bool isSelected) {
-    return GestureDetector(
-      onTap: () => _setWeightUnit(unit),
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+    return InkWell(
+      onTap: _toggleWeightUnit,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        height: 24,
+        padding: const EdgeInsets.symmetric(horizontal: 7),
         decoration: BoxDecoration(
-          color: isSelected ? theme.colorScheme.surface : Colors.transparent,
-          borderRadius: BorderRadius.circular(4),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 2,
-                    offset: const Offset(0, 1),
-                  ),
-                ]
-              : null,
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          unit,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-            color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.25),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: theme.colorScheme.primary.withValues(alpha: 0.3),
+            width: 0.8,
           ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(
+              _weightUnit,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: theme.colorScheme.primary,
+              ),
+            ),
+            const SizedBox(width: 3),
+            Icon(
+              Icons.swap_horiz_rounded,
+              size: 13,
+              color: theme.colorScheme.primary.withValues(alpha: 0.8),
+            ),
+          ],
         ),
       ),
     );
@@ -1241,7 +1143,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   Widget _buildAdditionalInfoCard(ThemeData theme) {
     return _buildSectionCard(
       theme,
-      title: '备注与拓展信息',
+      title: '其他信息',
       icon: Icons.notes_rounded,
       trailing: InkWell(
         onTap: _showAddCustomFieldDialog,

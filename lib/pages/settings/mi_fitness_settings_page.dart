@@ -261,6 +261,10 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
       if (res.success) {
         Toast.success(context, '已同步 ${_formatDateLabel(_selectedDate)} 数据');
         await _loadDateData(_selectedDate);
+        final lastSync = await syncService.getLastSyncTime();
+        if (mounted) {
+          setState(() => _lastSyncTime = lastSync);
+        }
       } else {
         Toast.error(context, res.errorMessage ?? '同步失败');
       }
@@ -351,8 +355,8 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                   )
                 : IconButton(
                     icon: const Icon(Icons.sync_rounded),
-                    tooltip: '同步最近 7 天',
-                    onPressed: () => _handleSyncNow(daysBack: 7),
+                    tooltip: '同步当前日期数据',
+                    onPressed: _handleSyncSelectedDate,
                   ),
         ],
       ),

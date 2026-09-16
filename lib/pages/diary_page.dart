@@ -46,8 +46,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
   late DateTime _today;
   late DateTime _windowStartDate;
-  final int _windowDays = 30;
-  static const int _shiftDays = 5;
+  final int _windowDays = 60;
+  static const int _shiftDays = 15;
   int _lastShiftTimestamp = 0;
   late ScrollController _scrollController;
   final GlobalKey _viewportKey = GlobalKey();
@@ -176,7 +176,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     WidgetsBinding.instance.addObserver(this);
     final now = DateTime.now();
     _today = DateTime(now.year, now.month, now.day);
-    _windowStartDate = _today.subtract(const Duration(days: 14));
+    _windowStartDate = _today.subtract(const Duration(days: 30));
     _hasPerformedInitialScroll = false;
     _itemContexts.clear();
     _itemHeights.clear();
@@ -655,7 +655,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       if (!_isSameDay(_today, todayNow)) {
         setState(() {
           _today = todayNow;
-          _windowStartDate = _today.subtract(const Duration(days: 14));
+          _windowStartDate = _today.subtract(const Duration(days: 30));
         });
         final allRecords = ref.read(diaryListProvider).valueOrNull;
         final recordsByDate = allRecords != null ? _buildRecordsByDate(allRecords) : null;
@@ -696,14 +696,14 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     final maxScroll = _scrollController.position.maxScrollExtent;
 
     final nowMs = DateTime.now().millisecondsSinceEpoch;
-    // 冷却期保护：平移完成后至少等待 300ms，防止高频震荡
-    final canShift = nowMs - _lastShiftTimestamp >= 300;
+    // 冷却期保护：平移完成后至少等待 200ms，防止高频震荡
+    final canShift = nowMs - _lastShiftTimestamp >= 200;
 
     // 允许双向自由滑动平移窗口（最早 -365 天，最晚 +365 天）
-    // 动态 edgeBuffer：取 maxScroll 的 20%，clamp 在 [100.0, 400.0] 之间，
-    // 保证顶部触发区与底部触发区之间永远有至少 60% 的死区隔离，数学上绝对不可能同时触发或死锁
-    final edgeBuffer = (maxScroll * 0.2).clamp(100.0, 400.0);
-    if (canShift && maxScroll > edgeBuffer * 2.5) {
+    // 动态 edgeBuffer：设为 200~600px，在平移步长为 15 天（至少 1200px）的大缓冲支持下，
+    // 平移后新 offset 永远距离触发线有数百至上千像素的安全距离，彻底杜绝触顶与死锁卡顿
+    final edgeBuffer = (maxScroll * 0.15).clamp(200.0, 600.0);
+    if (canShift && maxScroll > edgeBuffer * 2.2) {
       final earliestDate = _today.subtract(const Duration(days: 365));
       final latestDate = _today.add(const Duration(days: 365));
 
@@ -871,11 +871,12 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   }
 
   void _goToDate(DateTime date, {bool expand = true}) {
+    if (_isScrollingFromList) return;
+
     if (expand) {
       _expandDate(date);
     }
     ref.read(selectedDateProvider.notifier).state = date;
-    if (_isScrollingFromList) return;
 
     final dayOffset = _dateToDayOffset(date);
 
@@ -905,8 +906,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     final target = DateTime(date.year, date.month, date.day);
     final diff = target.difference(_today).inDays;
 
-    // 将目标日期尽量居中放置在 30 天窗口的中部（第 14 天）
-    final newStartDiff = (diff - 14).clamp(-365, 365 - _windowDays);
+    // 将目标日期尽量居中放置在 60 天窗口的中部（第 30 天）
+    final newStartDiff = (diff - 30).clamp(-365, 365 - _windowDays);
 
     _windowStartDate = _today.add(Duration(days: newStartDiff));
     _itemContexts.clear();
@@ -1794,7 +1795,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   @override
   Widget build(BuildContext context) {
     ref.listen<DateTime>(selectedDateProvider, (previous, next) {
-      if (!_isProgrammaticScrolling) {
+      if (!_isProgrammaticScrolling && !_isScrollingFromList) {
         _goToDate(next);
       }
     });
