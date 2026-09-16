@@ -313,6 +313,11 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                               score: score.dimensionScores['health'] ?? 0,
                               color: Colors.redAccent,
                             ),
+                            _DimensionScoreBar(
+                              name: '屏幕',
+                              score: score.dimensionScores['screen'] ?? 0,
+                              color: Colors.teal,
+                            ),
                           ],
                         ),
                       ),

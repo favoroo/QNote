@@ -116,14 +116,20 @@ class MiFitnessApiClient {
     // 睡眠查询窗口扩展到前一天 12:00，确保能捞到跨午夜睡眠（前晚入睡→当天醒来）
     final sleepQueryStart = startOfDay.subtract(const Duration(hours: 12));
 
-    // 并行拉取各维度的指标
+    // 并行拉取各维度的指标（站立优先使用小米云端标准 key: valid_stand，兼容旧 key: standing）
     final results = await Future.wait([
       fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'steps').catchError((e) => <Map<String, dynamic>>[]),
       fetchFitnessData(startTime: sleepQueryStart, endTime: endOfDay, key: 'sleep').catchError((e) => <Map<String, dynamic>>[]),
       fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'heart_rate').catchError((e) => <Map<String, dynamic>>[]),
       fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'spo2').catchError((e) => <Map<String, dynamic>>[]),
       fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'stress').catchError((e) => <Map<String, dynamic>>[]),
-      fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'standing').catchError((e) => <Map<String, dynamic>>[]),
+      fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'valid_stand')
+          .catchError((e) => <Map<String, dynamic>>[])
+          .then((res) async {
+            if (res.isNotEmpty) return res;
+            return fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'standing')
+                .catchError((e) => <Map<String, dynamic>>[]);
+          }),
     ]);
 
     final stepsData = results[0];
@@ -292,34 +298,65 @@ class MiFitnessApiClient {
     }
     final avgStress = stressSamples.isNotEmpty ? (stressSum ~/ stressSamples.length) : null;
 
-    // 6. 站立次数解析
+    // 6. 站立次数解析（valid_stand: 优先找日结汇总 daily_report / count 汇总，其次按小时区间去重统计）
     int totalStanding = 0;
+    int? dailyReportStanding;
+    final standingHourSet = <int>{};
+
     for (final item in standingData) {
       try {
         final valStr = item['value'] as String? ?? '{}';
         final valJson = json.decode(valStr) as Map<String, dynamic>;
-        // 兼容多种可能字段名
-        final standVal = valJson['standing_count'] ??
+        final tag = item['tag'] as String? ?? '';
+        final standVal = valJson['count'] ??
+            valJson['standing_count'] ??
             valJson['stand_count'] ??
-            valJson['count'] ??
             valJson['standing'] ??
             valJson['stand'];
-        if (standVal is num) {
-          totalStanding += standVal.toInt();
+
+        // 若直接带有 daily_report 标签，这是官方日总结聚合值
+        if (tag == 'daily_report' && standVal is num) {
+          dailyReportStanding = standVal.toInt();
+        }
+
+        // 若单项 count > 1，通常也是日聚合汇总值
+        if (standVal is num && standVal.toInt() > 1 && dailyReportStanding == null) {
+          dailyReportStanding = standVal.toInt();
+        }
+
+        // 收集小时区间
+        final timeSec = (item['time'] as num?)?.toInt() ?? 0;
+        final isStanding = (standVal is num && standVal.toInt() >= 1) ||
+            valJson['has_stand'] == true ||
+            valJson['has_stand'] == 1;
+
+        if (timeSec > 0 && isStanding) {
+          final dt = DateTime.fromMillisecondsSinceEpoch(timeSec * 1000);
+          standingHourSet.add(dt.hour);
         }
       } catch (_) {}
     }
-    // 若按分钟采样且字段为 has_stand，则统计达标时段数
-    if (totalStanding == 0 && standingData.isNotEmpty) {
-      totalStanding = standingData.where((item) {
+
+    if (dailyReportStanding != null && dailyReportStanding > 0) {
+      totalStanding = dailyReportStanding;
+    } else if (standingHourSet.isNotEmpty) {
+      totalStanding = standingHourSet.length;
+    } else {
+      // 兜底：若以上方式皆未匹配，则累加数值
+      for (final item in standingData) {
         try {
           final valStr = item['value'] as String? ?? '{}';
           final valJson = json.decode(valStr) as Map<String, dynamic>;
-          return valJson['has_stand'] == true || valJson['has_stand'] == 1;
-        } catch (_) {
-          return false;
-        }
-      }).length;
+          final standVal = valJson['count'] ??
+              valJson['standing_count'] ??
+              valJson['stand_count'] ??
+              valJson['standing'] ??
+              valJson['stand'];
+          if (standVal is num) {
+            totalStanding += standVal.toInt();
+          }
+        } catch (_) {}
+      }
     }
 
     return HealthDailyMetrics(

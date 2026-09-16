@@ -3037,6 +3037,7 @@ class VirtualWorkspaceService {
     dimensionScores.putIfAbsent('diet', () => totalScore);
     dimensionScores.putIfAbsent('activity', () => totalScore);
     dimensionScores.putIfAbsent('health', () => totalScore);
+    dimensionScores.putIfAbsent('screen', () => totalScore);
 
     // 总结与建议
     final summary = (decoded['summary'] ?? '').toString().trim();

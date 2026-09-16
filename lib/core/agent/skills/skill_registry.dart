@@ -489,7 +489,8 @@ description: 数据洞察与生活评分分析技能：调阅待办完成率、�
       "sleep": 88,
       "diet": 82,
       "activity": 85,
-      "health": 90
+      "health": 90,
+      "screen": 75
     },
     "summary": "作息规律，晨间运动充足，今日整体状态饱满健康。",
     "suggestions": "晚餐偏晚，建议尽量在 19:30 前完成用餐。",
@@ -498,14 +499,15 @@ description: 数据洞察与生活评分分析技能：调阅待办完成率、�
   ```
 
 ## 2. 评分维度（dimensionScores 键名）
-- `sleep` 睡眠：时长 7-9 小时满分，质量良好加分，熬夜扣分
+- `sleep` 睡眠：时长 7-9 小时满分，质量良好加分，熬夜扣分；参考小米睡眠时长/深浅REM/得分
 - `diet` 饮食：健康饮食加分，不健康扣分，暴饮暴食/过于放纵大幅扣分
-- `activity` 活动：运动/学习/工作加分，久坐/无活动扣分
-- `health` 健康：按时用药、补水、休息等健康管理行为加分
+- `activity` 活动：运动/学习/工作加分，久坐/无活动扣分；参考小米步数/活跃分钟/站立次数/单次运动
+- `health` 健康：按时用药、补水、休息等健康管理行为加分；参考心率/血氧/压力等客观体征
+- `screen` 屏幕：屏幕使用时间越短越好，适度使用加分，过度沉迷大幅扣分；参考屏幕总时长与Top应用
 - 评分规则：基础分 60 加减分；总分与各维度分范围均为 0~100；症状本身（头痛、感冒等非人为可控因素）不扣分，但忽视健康、不及时处理会扣分。
 
 ## 3. 评分与修改指南
-- **给当天评分**：先读取 `/timeline/YYYY-MM-DD.md` 提取全天打卡与流水；根据饮食、睡眠、运动和工作情况综合评出总分与维度分，调用 `write_file(path: "/stats/scores/YYYY-MM-DD.json", content: ...)` 写入。写入后应用内的环形分值与图表会自动热刷新。
+- **给当天评分**：先读取 `/timeline/YYYY-MM-DD.md` 提取全天打卡与流水，再读取 `/health/YYYY-MM-DD.json` 小米运动健康客观数据与 `/stats/screen_time.json` 屏幕使用时间作为评分依据；综合评出总分与各维度分（含 sleep/diet/activity/health/screen 五维），调用 `write_file(path: "/stats/scores/YYYY-MM-DD.json", content: ...)` 写入。写入后应用内的环形分值与图表会自动热刷新。
 - **微调分数或评语**：用户要求修改某项分数或重新生成评语时，使用 `edit_file` 精准替换对应键值，或用 `write_file` 覆写更新。
 - **重置评分**：调用 `delete_file(path: "/stats/scores/YYYY-MM-DD.json")` 删除该天评分记录。
 

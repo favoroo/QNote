@@ -14,6 +14,15 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.47',
+    date: '2026-09-16',
+    notes: [
+      '小米健康站立次数改用官方标准接口与日结数据去重统计，解析更准确',
+      '日记与小米健康设置页的睡眠卡片布局优化，入睡/醒来时间与评分不再挤压',
+      '每日生活评分接入小米健康客观数据与屏幕使用时间，AI 评估更贴合实际',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.46',
     date: '2026-09-16',
     notes: [

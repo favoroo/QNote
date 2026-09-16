@@ -780,7 +780,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 头部：图标 + 标题 + 作息时间 + 睡眠时长 + 评分
+            // 头部：图标 + 标题 + 睡眠时长 + 评分
             Row(
               children: [
                 Container(
@@ -802,36 +802,29 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                if (hasTimeRange) ...[
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      '$startStr ~ $endStr',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontSize: 11,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                ],
                 const Spacer(),
                 if (sleepMins > 0) ...[
-                  Text(
-                    '${sleepMins ~/ 60}小时${sleepMins % 60}分',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: sleepPurple,
+                  Flexible(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            '${sleepMins ~/ 60}小时${sleepMins % 60}分',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: sleepPurple,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (sleepScore != null && sleepScore > 0) ...[
+                          const SizedBox(width: 6),
+                          _buildSleepScoreBadge(sleepScore),
+                        ],
+                      ],
                     ),
                   ),
-                  if (sleepScore != null && sleepScore > 0) ...[
-                    const SizedBox(width: 6),
-                    _buildSleepScoreBadge(sleepScore),
-                  ],
                 ] else
                   Text(
                     '未检测到',
@@ -844,6 +837,49 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
 
             if (sleepMins > 0) ...[
               const SizedBox(height: 14),
+              // 入睡与醒来作息起止时间（对齐比例条两端）
+              if (hasTimeRange) ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.bedtime_outlined,
+                          size: 13,
+                          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '入睡 $startStr',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.wb_sunny_outlined,
+                          size: 13,
+                          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '醒来 $endStr',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+              ],
               // 睡眠分期比例条
               ClipRRect(
                 borderRadius: BorderRadius.circular(5),

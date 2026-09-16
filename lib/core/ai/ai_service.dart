@@ -11,6 +11,9 @@ import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/models/daily_score.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
+import 'package:qnote_flutter/models/health_daily_metrics.dart';
+import 'package:qnote_flutter/models/health_sport_record.dart';
+import 'package:qnote_flutter/models/screen_usage_info.dart';
 import 'package:uuid/uuid.dart';
 
 class NoUsefulInfoException implements Exception {
@@ -1891,10 +1894,91 @@ class AiService {
     }
   }
 
+  /// 将小米运动健康日汇总 + 单次运动记录拼接为 AI 可读文本
+  String _buildHealthDataText(
+    HealthDailyMetrics? m,
+    List<HealthSportRecord> sports,
+  ) {
+    if (m == null) {
+      return '当日暂无小米运动健康数据';
+    }
+
+    final lines = <String>[];
+    lines.add('- 日期: ${m.date}');
+    lines.add('- 步数: ${m.steps} 步');
+    lines.add('- 距离: ${(m.distanceMeters / 1000).toStringAsFixed(2)} km');
+    lines.add('- 消耗: ${m.calories.toStringAsFixed(0)} kcal');
+    lines.add('- 活跃分钟: ${m.activeMinutes} 分钟');
+    if (m.standingCount > 0) {
+      lines.add('- 站立次数: ${m.standingCount} 次');
+    }
+
+    if (m.sleepDurationMinutes > 0) {
+      final sleepH = m.sleepDurationMinutes ~/ 60;
+      final sleepM = m.sleepDurationMinutes % 60;
+      final sleepScoreStr = m.sleepScore != null ? ' (得分: ${m.sleepScore})' : '';
+      lines.add('- 睡眠时长: $sleepH小时$sleepM分$sleepScoreStr');
+      lines.add('  - 深睡: ${m.deepSleepMinutes}分 | 浅睡: ${m.lightSleepMinutes}分 | REM: ${m.remSleepMinutes}分 | 清醒: ${m.awakeMinutes}分');
+      final startHm = HealthDailyMetrics.sleepTimeToHHmm(m.sleepStartTime);
+      final endHm = HealthDailyMetrics.sleepTimeToHHmm(m.sleepEndTime);
+      if (startHm != null && endHm != null) {
+        lines.add('  - 入睡: $startHm | 醒来: $endHm');
+      }
+    }
+
+    if (m.restingHeartRate != null && m.restingHeartRate! > 0) {
+      lines.add('- 静息心率: ${m.restingHeartRate} bpm');
+    }
+    if (m.avgHeartRate != null && m.avgHeartRate! > 0) {
+      lines.add('- 平均心率: ${m.avgHeartRate} bpm');
+    }
+    if (m.avgSpo2 != null && m.avgSpo2! > 0) {
+      lines.add('- 平均血氧: ${m.avgSpo2}%');
+    }
+    if (m.avgStress != null && m.avgStress! > 0) {
+      lines.add('- 平均压力: ${m.avgStress}');
+    }
+
+    if (sports.isNotEmpty) {
+      lines.add('- 单次运动记录:');
+      for (final s in sports) {
+        final durMin = s.durationSeconds ~/ 60;
+        lines.add('  - ${s.title} (${s.category}): ${durMin}分钟, ${(s.distanceMeters / 1000).toStringAsFixed(2)}km, ${s.calories}kcal${s.avgHeartRate != null ? ', 均心率${s.avgHeartRate}' : ''}');
+      }
+    }
+
+    return lines.join('\n');
+  }
+
+  /// 将屏幕使用时间拼接为 AI 可读文本
+  String _buildScreenDataText(TodayScreenUsage? usage) {
+    if (usage == null) {
+      return '当前设备不支持屏幕使用时间统计或未授权';
+    }
+
+    final lines = <String>[];
+    lines.add('- 屏幕总时长: ${usage.formattedTotalTime} (${usage.totalMinutes}分钟)');
+    lines.add('- ${usage.diffDescription}');
+
+    final topApps = usage.appList.take(5).toList();
+    if (topApps.isNotEmpty) {
+      lines.add('- Top应用:');
+      for (final app in topApps) {
+        final name = app.appName.isEmpty ? app.packageName : app.appName;
+        lines.add('  - $name: ${app.formattedDuration}');
+      }
+    }
+
+    return lines.join('\n');
+  }
+
   Future<DailyScore> analyzeDailyScore({
     required List<DiaryRecord> records,
     required DateTime date,
     String? userInfo,
+    HealthDailyMetrics? healthMetrics,
+    List<HealthSportRecord> sportRecords = const [],
+    TodayScreenUsage? screenUsage,
   }) async {
     if (_config == null) throw Exception('AI config not set');
 
@@ -1922,8 +2006,13 @@ class AiService {
       recordsStr.writeln();
     }
 
+    // 拼接小米运动健康客观数据
+    final healthStr = _buildHealthDataText(healthMetrics, sportRecords);
+    // 拼接屏幕使用时间数据
+    final screenStr = _buildScreenDataText(screenUsage);
+
     final systemPrompt = defaultSystemPrompts['daily_score_system'] ?? '';
-    final userPrompt = '请根据上述规则和以下数据进行评分与分析。\n\n[当日记录]\n${recordsStr.toString()}\n\n[用户信息]\n${userInfo ?? "无"}';
+    final userPrompt = '请根据上述规则和以下数据进行评分与分析。\n\n[当日记录]\n${recordsStr.toString()}\n\n[健康数据]\n$healthStr\n\n[屏幕使用时间]\n$screenStr\n\n[用户信息]\n${userInfo ?? "无"}';
 
     dynamic requestBody;
     final String endpoint = _generateContentEndpoint;

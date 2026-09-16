@@ -5,6 +5,8 @@ import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/storage/daily_score_repository.dart';
 import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
+import 'package:qnote_flutter/core/storage/health_metric_repository.dart';
+import 'package:qnote_flutter/core/health/screen_usage_service.dart';
 import 'package:qnote_flutter/models/daily_score.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
@@ -75,6 +77,15 @@ class DailyScoreNotifier extends AsyncNotifier<DailyScore?> {
       userInfo = jsonEncode(profileMap);
     }
 
+    // 拉取当日小米运动健康数据与屏幕使用时间，作为评分客观依据
+    final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    final healthRepo = ref.read(healthMetricRepositoryProvider);
+    final healthMetrics = await healthRepo.getDailyMetrics(dateStr);
+    final sportRecords = await healthRepo.getSportRecordsByDate(dateStr);
+
+    final screenUsageService = ref.read(screenUsageServiceProvider);
+    final screenUsage = await screenUsageService.getUsageForDate(date);
+
     final aiService = ref.read(aiServiceProvider);
     final config = await AiRoleService.instance.getEffectiveConfigForRole('assistant');
     final settings = await AiRoleService.instance.getSettingsForRole('assistant');
@@ -88,6 +99,9 @@ class DailyScoreNotifier extends AsyncNotifier<DailyScore?> {
       records: records,
       date: date,
       userInfo: userInfo,
+      healthMetrics: healthMetrics,
+      sportRecords: sportRecords,
+      screenUsage: screenUsage,
     );
 
     await _repository.insert(score);

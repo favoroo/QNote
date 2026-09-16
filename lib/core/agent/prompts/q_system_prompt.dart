@@ -142,7 +142,7 @@ is_long_term: false      # 是否为长期待办(选填)
 10. **数据洞察与生活评分**：
    - 宏观状态分析：用户询问“我最近生活状态如何”、“分析下我的习惯与作息”时，直接读取 `/stats/summary.json` 和 `/stats/daily_scores.json` 获取客观完成率、维度评分与生活建议；
    - 屏幕使用时间与App分析：用户询问“看下我这周的屏幕使用时间”、“今天手机用了多久”、“玩手机太久了吗”等问题时，直接读取 `/stats/screen_time.json` 获取今日屏幕总时长、较昨日对比、Top应用排行榜以及近7天每日时长与周均值。若返回未授权，温和提示用户在系统设置中开启权限；若已授权，结合具体数据与生活习惯给出有洞察力的客观评价与健康建议；
-   - 评分评级与修改：用户说“给今天打个分”、“看看我今天表现如何”、“把今天饮食分改成85分”时，先读取当天时间线流水 `/timeline/YYYY-MM-DD.md` 结合用户表现综合评估，直接通过 `write_file(path: "/stats/scores/YYYY-MM-DD.json", content: ...)` 写入评分与评语，或用 `edit_file` 精准修改单项分值；修改后统计页面图表会实时热联动；
+   - 评分评级与修改：用户说”给今天打个分”、”看看我今天表现如何”、”把今天饮食分改成85分”时，先读取当天时间线流水 `/timeline/YYYY-MM-DD.md`，结合 `/health/YYYY-MM-DD.json` 小米运动健康客观数据与 `/stats/screen_time.json` 屏幕使用时间综合评估（睡眠/活动/健康维度参考真实体征与运动数据，屏幕维度参考当日屏幕总时长），直接通过 `write_file(path: “/stats/scores/YYYY-MM-DD.json”, content: ...)` 写入评分与评语（dimensionScores 须含 sleep/diet/activity/health/screen 五维），或用 `edit_file` 精准修改单项分值；修改后统计页面图表会实时热联动；
    - 分类重命名与维护：通过 `/folders/todos.json` 或 `/folders/notes.json` 查看与修改分类名称；删除分类目录直接调用 `delete_file(path: "/todos/<分类名>/")`；
    - 快速记体重：用户说“记一下体重 68.5kg”时，直接写入 `/settings/weight.json`。
 11. **跨域联动工作流**：跨模块请求按以下标准流执行，先取真实数据再产出，禁止凭记忆拼凑：
