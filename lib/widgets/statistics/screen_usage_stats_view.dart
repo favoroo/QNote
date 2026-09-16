@@ -10,10 +10,10 @@ class ScreenUsageStatsView extends ConsumerStatefulWidget {
   const ScreenUsageStatsView({super.key});
 
   @override
-  ConsumerState<ScreenUsageStatsView> createState() => _ScreenUsageStatsViewState();
+  ConsumerState<ScreenUsageStatsView> createState() => ScreenUsageStatsViewState();
 }
 
-class _ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with WidgetsBindingObserver {
+class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with WidgetsBindingObserver {
   bool _isLoading = true;
   bool _hasPermission = false;
   TodayScreenUsage? _todayUsage;
@@ -38,6 +38,11 @@ class _ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> wit
     if (state == AppLifecycleState.resumed) {
       _checkAndLoad();
     }
+  }
+
+  /// 外部调用手动刷新数据
+  Future<void> refresh() async {
+    await _checkAndLoad();
   }
 
   Future<void> _checkAndLoad() async {

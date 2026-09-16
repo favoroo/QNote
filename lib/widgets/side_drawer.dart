@@ -11,6 +11,7 @@ import 'package:qnote_flutter/pages/settings/shortcuts_page.dart';
 import 'package:qnote_flutter/pages/settings/fixed_events_page.dart';
 import 'package:qnote_flutter/pages/settings/data_sync_page.dart';
 import 'package:qnote_flutter/pages/settings/mi_fitness_settings_page.dart';
+import 'package:qnote_flutter/pages/settings/screen_usage_page.dart';
 import 'package:qnote_flutter/pages/settings/about_page.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 
@@ -170,6 +171,13 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
                     iconColor: itemColor,
                     label: '小米运动健康',
                     onTap: () => _navigateTo(context, const MiFitnessSettingsPage()),
+                  ),
+                  _DrawerMenuItem(
+                    icon: Icons.hourglass_bottom_rounded,
+                    iconBgColor: itemBgColor,
+                    iconColor: itemColor,
+                    label: '屏幕使用时间',
+                    onTap: () => _navigateTo(context, const ScreenUsagePage()),
                   ),
                   _DrawerMenuItem(
                     icon: Icons.palette_outlined,

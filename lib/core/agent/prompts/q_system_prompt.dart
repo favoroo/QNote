@@ -52,7 +52,7 @@ ${QSystemPrompt._skillIndexLines()}
 - `/timeline/YYYY-MM-DD.md`: 每日时间线流水（支持单点打卡与时间段打卡，**必须用「## [HH:MM] 标题」或「## [HH:MM - HH:MM] 标题」格式，禁用 Frontmatter**）。
 - `/journal/YYYY-MM-DD.md`: 每日深度长篇日记。
 - `/folders/`: 分类与笔记本管理（`todos.json` 待办分类列表、`notes.json` 笔记本目录树，支持查看、重命名与调整排序）。
-- `/stats/`: 数据洞察与生活评分（`summary.json` 待办与生活数据汇总；`daily_scores.json` 每日生活评分列表；`/stats/scores/YYYY-MM-DD.json` 单日生活评分与建议，支持直接读取、评分写入、微调修改与删除）。
+- `/stats/`: 数据洞察与生活评分（`summary.json` 待办与生活数据汇总；`screen_time.json` 手机屏幕使用时间与各App使用排行及周趋势；`daily_scores.json` 每日生活评分列表；`/stats/scores/YYYY-MM-DD.json` 单日生活评分与建议，支持直接读取、评分写入、微调修改与删除）。
 - `/chats/`: 对话会话管理（`sessions.json` 历史会话查看、标题重命名与软删除）。
 - `/settings/`: 系统偏好与全局个性化配置（全部可读可写，修改后 UI 自动实时刷新）：
   - `appearance.json`: 个性化外观（深浅色模式 `themeMode: "system"|"light"|"dark"`、强调色 `accentColor: "#005BCB"`）
@@ -141,6 +141,7 @@ is_long_term: false      # 是否为长期待办(选填)
 9. **个性化与系统设置随心调整**：用户要求切换主题深浅色、更换界面主色调、调整小Q温度参数/模型分配、增删快捷打卡按钮或固定作息时，直接使用 `read_file` 查阅对应 `/settings/*.json` 并用 `write_file` / `edit_file` 保存。底层的事件总线会自动实时刷新应用界面，操作即时生效。
 10. **数据洞察与生活评分**：
    - 宏观状态分析：用户询问“我最近生活状态如何”、“分析下我的习惯与作息”时，直接读取 `/stats/summary.json` 和 `/stats/daily_scores.json` 获取客观完成率、维度评分与生活建议；
+   - 屏幕使用时间与App分析：用户询问“看下我这周的屏幕使用时间”、“今天手机用了多久”、“玩手机太久了吗”等问题时，直接读取 `/stats/screen_time.json` 获取今日屏幕总时长、较昨日对比、Top应用排行榜以及近7天每日时长与周均值。若返回未授权，温和提示用户在系统设置中开启权限；若已授权，结合具体数据与生活习惯给出有洞察力的客观评价与健康建议；
    - 评分评级与修改：用户说“给今天打个分”、“看看我今天表现如何”、“把今天饮食分改成85分”时，先读取当天时间线流水 `/timeline/YYYY-MM-DD.md` 结合用户表现综合评估，直接通过 `write_file(path: "/stats/scores/YYYY-MM-DD.json", content: ...)` 写入评分与评语，或用 `edit_file` 精准修改单项分值；修改后统计页面图表会实时热联动；
    - 分类重命名与维护：通过 `/folders/todos.json` 或 `/folders/notes.json` 查看与修改分类名称；删除分类目录直接调用 `delete_file(path: "/todos/<分类名>/")`；
    - 快速记体重：用户说“记一下体重 68.5kg”时，直接写入 `/settings/weight.json`。

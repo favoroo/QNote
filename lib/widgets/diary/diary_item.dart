@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:qnote_flutter/core/health/screen_usage_service.dart';
 import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
+import 'package:qnote_flutter/models/screen_usage_info.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
@@ -56,6 +59,53 @@ class _DiaryItemState extends State<DiaryItem> {
   VoidCallback? get onUndo => widget.onUndo;
   bool get isUndoable => widget.isUndoable;
   Animation<double>? get undoAnimation => widget.undoAnimation;
+
+  /// 当日屏幕使用时间（仅在日结卡片无持久化屏幕时长时异步获取并补全展示）
+  TodayScreenUsage? _liveScreenUsage;
+  bool _hasFetchedLiveScreenUsage = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAndFetchLiveScreenUsage();
+  }
+
+  @override
+  void didUpdateWidget(covariant DiaryItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.record.id != widget.record.id ||
+        oldWidget.record.bodyState?['screen_time_ms'] != widget.record.bodyState?['screen_time_ms']) {
+      _hasFetchedLiveScreenUsage = false;
+      _checkAndFetchLiveScreenUsage();
+    }
+  }
+
+  void _checkAndFetchLiveScreenUsage() {
+    if (!_isHealthDailySummary) return;
+    final bs = record.bodyState;
+    if (bs != null && bs['screen_time_ms'] != null) {
+      return; // 已持久化屏幕使用时间，无需现查
+    }
+    if (_hasFetchedLiveScreenUsage) return;
+    _hasFetchedLiveScreenUsage = true;
+
+    final service = ScreenUsageService();
+    if (!service.isSupported) return;
+
+    final dateStr = bs?['date'] as String?;
+    final cardDate = dateStr != null ? DateTime.tryParse(dateStr) : record.time;
+    final targetDate = cardDate ?? record.time;
+
+    service.hasPermission().then((authed) {
+      if (!authed || !mounted) return;
+      service.getUsageForDate(targetDate, limit: 5).then((usage) {
+        if (!mounted || usage == null || usage.totalTimeMs <= 0) return;
+        setState(() {
+          _liveScreenUsage = usage;
+        });
+      }).catchError((_) {});
+    }).catchError((_) {});
+  }
 
   /// 卡片操作菜单：more_vert 按钮与长按卡片共用；
   /// 配置了 onQuoteToQ 时追加「给小Q」引用入口
@@ -1377,6 +1427,54 @@ class _DiaryItemState extends State<DiaryItem> {
 
     const brandGreen = Color(0xFF10B981);
     const sleepPurple = Color(0xFF6366F1);
+    const screenBlue = Color(0xFF0284C7);
+
+    // 屏幕使用时长（优先使用持久化数据，若无则使用当日异步检测补全数据）
+    final screenMs = (bs['screen_time_ms'] as num?)?.toInt() ?? _liveScreenUsage?.totalTimeMs ?? 0;
+    final screenYesterdayMs = (bs['screen_yesterday_time_ms'] as num?)?.toInt() ?? _liveScreenUsage?.yesterdayTotalTimeMs;
+    final screenTopAppsRaw = bs['screen_top_apps'] as List<dynamic>?;
+    final List<Map<String, dynamic>> topApps = [];
+    if (screenTopAppsRaw != null && screenTopAppsRaw.isNotEmpty) {
+      for (final a in screenTopAppsRaw) {
+        if (a is Map) {
+          topApps.add(Map<String, dynamic>.from(a));
+        }
+      }
+    } else if (_liveScreenUsage != null && _liveScreenUsage!.appList.isNotEmpty) {
+      for (final a in _liveScreenUsage!.appList.take(4)) {
+        topApps.add({
+          'name': a.appName,
+          'package': a.packageName,
+          'formatted': a.formattedDuration,
+        });
+      }
+    }
+
+    final screenMins = screenMs ~/ 60000;
+    final screenHours = screenMins ~/ 60;
+    final screenRemMins = screenMins % 60;
+    final String screenTimeDisplay;
+    if (screenMins < 1) {
+      screenTimeDisplay = '${(screenMs / 1000).round()}秒';
+    } else if (screenHours > 0) {
+      screenTimeDisplay = screenRemMins > 0 ? '$screenHours小时$screenRemMins分' : '$screenHours小时';
+    } else {
+      screenTimeDisplay = '$screenMins分钟';
+    }
+
+    String? screenDiffDesc;
+    if (screenYesterdayMs != null && screenYesterdayMs > 0 && screenMs > 0) {
+      final diffMs = screenMs - screenYesterdayMs;
+      final diffMins = (diffMs.abs()) ~/ 60000;
+      if (diffMins == 0) {
+        screenDiffDesc = '与昨日持平';
+      } else {
+        final dH = diffMins ~/ 60;
+        final dM = diffMins % 60;
+        final tStr = dH > 0 ? '$dH小时$dM分' : '$dM分';
+        screenDiffDesc = diffMs > 0 ? '较昨日+$tStr' : '较昨日-$tStr';
+      }
+    }
 
     return Padding(
       padding: const EdgeInsets.only(top: 8, bottom: 4),
@@ -1561,20 +1659,25 @@ class _DiaryItemState extends State<DiaryItem> {
                   ),
                   const SizedBox(height: 8),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       if (deepSleep > 0)
                         _buildSleepLegend('深睡', '$deepSleep分', const Color(0xFF6366F1)),
+                      if (deepSleep > 0) const SizedBox(width: 10),
                       if (lightSleep > 0)
                         _buildSleepLegend('浅睡', '$lightSleep分', const Color(0xFFA855F7)),
+                      if (lightSleep > 0) const SizedBox(width: 10),
                       if (remSleep > 0)
                         _buildSleepLegend('REM', '$remSleep分', const Color(0xFF38BDF8)),
+                      const Spacer(),
                       if (sleepTimeDisplay != null)
-                        Text(
-                          sleepTimeDisplay,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontSize: 10,
-                            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                        Flexible(
+                          child: Text(
+                            sleepTimeDisplay,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontSize: 10,
+                              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                     ],
@@ -1584,7 +1687,124 @@ class _DiaryItemState extends State<DiaryItem> {
             ),
           ],
 
-          // 3. 生理指标横排（若有心率、血氧或压力）
+          // 3. 屏幕使用时间卡片（若有数据或当日已获取）
+          if (screenMs > 0) ...[
+            const SizedBox(height: 10),
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  // 点击直接跳转至统计页的屏幕时长完整看板
+                  context.push('/statistics');
+                },
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.28),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: screenBlue.withValues(alpha: 0.18),
+                      width: 0.8,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.phone_android_rounded, size: 16, color: screenBlue),
+                          const SizedBox(width: 6),
+                          Text(
+                            '屏幕使用',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          if (screenDiffDesc != null) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: screenBlue.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                screenDiffDesc,
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: screenBlue,
+                                ),
+                              ),
+                            ),
+                          ],
+                          const Spacer(),
+                          Text(
+                            screenTimeDisplay,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: screenBlue,
+                            ),
+                          ),
+                          const SizedBox(width: 2),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            size: 16,
+                            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                          ),
+                        ],
+                      ),
+                      if (topApps.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            for (final app in topApps)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        app['name'] as String? ?? '应用',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w500,
+                                          color: colorScheme.onSurface,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      app['formatted'] as String? ?? '',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: screenBlue.withValues(alpha: 0.9),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+
+          // 4. 生理指标横排（若有心率、血氧或压力）
           if ((restingHr != null && restingHr > 0) ||
               (avgSpo2 != null && avgSpo2 > 0) ||
               (avgStress != null && avgStress > 0)) ...[
@@ -1629,7 +1849,7 @@ class _DiaryItemState extends State<DiaryItem> {
             ),
           ],
 
-          // 4. 今日运动记录列表（若有单次运动）
+          // 5. 今日运动记录列表（若有单次运动）
           if (sportsRaw.isNotEmpty) ...[
             const SizedBox(height: 12),
             Row(

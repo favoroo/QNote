@@ -135,4 +135,30 @@ void main() {
       expect(a.hashCode, b.hashCode);
     });
   });
+
+  group('QPageContext 动态提示词与输入占位', () {
+    test('时间线列表返回时间线事件提示', () {
+      final ctx = QPageContext.fromLocation('/diary');
+      expect(ctx.emptyPromptHint, contains('时间线事件'));
+      expect(ctx.inputHintText, contains('记录或修改什么事件'));
+    });
+
+    test('待办列表页面返回待办专属提示', () {
+      final ctx = QPageContext.fromLocation('/todo');
+      expect(ctx.emptyPromptHint, contains('管理待办'));
+      expect(ctx.inputHintText, contains('添加或调整什么待办'));
+    });
+
+    test('笔记详情页面返回笔记优化提示', () {
+      const ctx = QPageContext(
+        type: QContextType.noteDetail,
+        targetId: 'note-1',
+        targetTitle: '周报',
+        signature: 'note:note-1',
+        displayLabel: '笔记《周报》',
+      );
+      expect(ctx.emptyPromptHint, contains('优化这篇笔记的表达'));
+      expect(ctx.inputHintText, contains('如何优化或编辑这篇笔记'));
+    });
+  });
 }

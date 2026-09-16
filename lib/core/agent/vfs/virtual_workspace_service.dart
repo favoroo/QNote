@@ -8,6 +8,7 @@ import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
 import 'package:qnote_flutter/core/ai/free_model_service.dart';
+import 'package:qnote_flutter/core/health/screen_usage_service.dart';
 import 'package:qnote_flutter/core/notification/notification_service.dart';
 import 'package:qnote_flutter/core/storage/color_mark_repository.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
@@ -54,6 +55,7 @@ class VirtualWorkspaceService {
   final HealthMetricRepository _healthRepo = HealthMetricRepository(
     DatabaseHelper.instance,
   );
+  final ScreenUsageService _screenUsageService = ScreenUsageService();
   final SkillRegistry _skillRegistry = SkillRegistry.instance;
 
   // ==========================================
@@ -463,7 +465,7 @@ class VirtualWorkspaceService {
     }
 
     if (path == '/stats' || path == '/stats/') {
-      return ['summary.json', 'daily_scores.json', 'scores/'];
+      return ['summary.json', 'screen_time.json', 'daily_scores.json', 'scores/'];
     }
 
     if (path == '/health' || path == '/health/') {
@@ -1156,6 +1158,82 @@ class VirtualWorkspaceService {
           'averageMood': avgMood,
           'categoryDistribution': categoryCounts,
         },
+      };
+      return const JsonEncoder.withIndent('  ').convert(data);
+    } else if (name == 'screen_time.json') {
+      if (!_screenUsageService.isSupported) {
+        return const JsonEncoder.withIndent('  ').convert({
+          'supported': false,
+          'hasPermission': false,
+          'message': '当前运行平台不支持屏幕使用时长统计（该功能仅在 Android 设备上通过 UsageStatsManager 提供）。',
+        });
+      }
+      final hasPerm = await _screenUsageService.hasPermission();
+      if (!hasPerm) {
+        return const JsonEncoder.withIndent('  ').convert({
+          'supported': true,
+          'hasPermission': false,
+          'message': '手机尚未授予“有权查看使用情况的应用”权限。请引导用户在手机系统设置或 QNote 统计页开启权限后再次查看。',
+        });
+      }
+
+      final todayUsage = await _screenUsageService.getTodayUsage(limit: 20);
+      final weeklyList = await _screenUsageService.getWeeklyScreenTime();
+
+      int totalWeeklyMinutes = 0;
+      for (final item in weeklyList) {
+        totalWeeklyMinutes += item.minutes;
+      }
+      final weeklyAvgMinutes = weeklyList.isNotEmpty ? (totalWeeklyMinutes / weeklyList.length).round() : 0;
+      final weeklyAvgHours = weeklyAvgMinutes ~/ 60;
+      final weeklyAvgMins = weeklyAvgMinutes % 60;
+      final weeklyAvgText = weeklyAvgHours > 0 ? '$weeklyAvgHours小时$weeklyAvgMins分钟' : '$weeklyAvgMins分钟';
+
+      final todayData = todayUsage != null
+          ? {
+              'date': _formatDate(DateTime.now()),
+              'totalMinutes': todayUsage.totalMinutes,
+              'formattedTotalTime': todayUsage.formattedTotalTime,
+              'yesterdayTotalMinutes': todayUsage.yesterdayTotalTimeMs ~/ 60000,
+              'diffWithYesterdayMs': todayUsage.diffWithYesterdayMs,
+              'diffDescription': todayUsage.diffDescription,
+              'appCount': todayUsage.appList.length,
+              'topApps': todayUsage.appList
+                  .map(
+                    (app) => {
+                      'appName': app.appName.isEmpty ? app.packageName : app.appName,
+                      'packageName': app.packageName,
+                      'minutes': app.minutes,
+                      'formattedDuration': app.formattedDuration,
+                      'lastTimeUsed': app.lastTimeUsedMs > 0
+                          ? DateTime.fromMillisecondsSinceEpoch(app.lastTimeUsedMs).toIso8601String()
+                          : null,
+                    },
+                  )
+                  .toList(),
+            }
+          : null;
+
+      final weeklyData = weeklyList
+          .map(
+            (item) => {
+              'date': _formatDate(item.date),
+              'dayLabel': item.dayLabel,
+              'totalMinutes': item.minutes,
+              'hours': double.parse(item.hours.toStringAsFixed(1)),
+              'isToday': item.isToday,
+            },
+          )
+          .toList();
+
+      final data = {
+        'supported': true,
+        'hasPermission': true,
+        'today': todayData,
+        'weekly': weeklyData,
+        'totalWeeklyMinutes': totalWeeklyMinutes,
+        'weeklyAverageMinutes': weeklyAvgMinutes,
+        'weeklyFormattedAverage': weeklyAvgText,
       };
       return const JsonEncoder.withIndent('  ').convert(data);
     } else if (name == 'daily_scores.json') {
