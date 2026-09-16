@@ -113,10 +113,13 @@ class MiFitnessApiClient {
     final endOfDay = DateTime(date.year, date.month, date.day, 23, 59, 59);
     final dateStr = '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
+    // 睡眠查询窗口扩展到前一天 12:00，确保能捞到跨午夜睡眠（前晚入睡→当天醒来）
+    final sleepQueryStart = startOfDay.subtract(const Duration(hours: 12));
+
     // 并行拉取各维度的指标
     final results = await Future.wait([
       fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'steps').catchError((e) => <Map<String, dynamic>>[]),
-      fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'sleep').catchError((e) => <Map<String, dynamic>>[]),
+      fetchFitnessData(startTime: sleepQueryStart, endTime: endOfDay, key: 'sleep').catchError((e) => <Map<String, dynamic>>[]),
       fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'heart_rate').catchError((e) => <Map<String, dynamic>>[]),
       fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'spo2').catchError((e) => <Map<String, dynamic>>[]),
       fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'stress').catchError((e) => <Map<String, dynamic>>[]),
@@ -155,7 +158,7 @@ class MiFitnessApiClient {
     }
     totalSteps = minuteStepMap.values.fold(0, (sum, val) => sum + val);
 
-    // 2. 睡眠解析
+    // 2. 睡眠解析（只保留醒来日 = 目标日期的睡眠记录）
     int sleepDuration = 0;
     int deepSleep = 0;
     int lightSleep = 0;
@@ -173,13 +176,24 @@ class MiFitnessApiClient {
 
         final bedtime = valJson['bedtime'];
         final wakeup = valJson['wake_up_time'] ?? valJson['wake_time'];
+
+        // 解析完整时间戳，用于判断醒来日是否匹配目标日期
+        DateTime? wakeDt;
+        if (wakeup != null) {
+          wakeDt = DateTime.fromMillisecondsSinceEpoch((wakeup as num).toInt() * 1000);
+        }
+        // 只保留醒来日 = 目标日期的睡眠（跨午夜睡眠归属到醒来当天）
+        if (wakeDt != null &&
+            (wakeDt.year != date.year || wakeDt.month != date.month || wakeDt.day != date.day)) {
+          continue;
+        }
+
         if (bedtime != null) {
           final bt = DateTime.fromMillisecondsSinceEpoch((bedtime as num).toInt() * 1000);
-          sleepStartStr = '${bt.hour.toString().padLeft(2, '0')}:${bt.minute.toString().padLeft(2, '0')}';
+          sleepStartStr = bt.toIso8601String();
         }
-        if (wakeup != null) {
-          final wt = DateTime.fromMillisecondsSinceEpoch((wakeup as num).toInt() * 1000);
-          sleepEndStr = '${wt.hour.toString().padLeft(2, '0')}:${wt.minute.toString().padLeft(2, '0')}';
+        if (wakeDt != null) {
+          sleepEndStr = wakeDt.toIso8601String();
         }
 
         sleepDuration = (valJson['duration'] as num?)?.toInt() ?? sleepDuration;

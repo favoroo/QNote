@@ -1344,8 +1344,27 @@ class _DiaryItemState extends State<DiaryItem> {
     final lightSleep = (bs['light_sleep_minutes'] as num?)?.toInt() ?? 0;
     final remSleep = (bs['rem_sleep_minutes'] as num?)?.toInt() ?? 0;
     final awakeMinutes = (bs['awake_minutes'] as num?)?.toInt() ?? 0;
-    final sleepStart = bs['sleep_start_time'] as String?;
-    final sleepEnd = bs['sleep_end_time'] as String?;
+    final sleepStartRaw = bs['sleep_start_time'] as String?;
+    final sleepEndRaw = bs['sleep_end_time'] as String?;
+    // 解析完整 ISO8601 时间戳，兼容旧数据 HH:mm 格式
+    final sleepStartDt = sleepStartRaw != null ? DateTime.tryParse(sleepStartRaw) : null;
+    final sleepEndDt = sleepEndRaw != null ? DateTime.tryParse(sleepEndRaw) : null;
+    String? fmtHm(DateTime dt) =>
+        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    // 跨午夜睡眠展示「昨晚 HH:mm ~ 今早 HH:mm」，同天/旧数据展示「HH:mm ~ HH:mm」
+    final String? sleepTimeDisplay;
+    if (sleepStartDt != null && sleepEndDt != null) {
+      final crossMidnight = sleepStartDt.day != sleepEndDt.day ||
+          sleepStartDt.month != sleepEndDt.month ||
+          sleepStartDt.year != sleepEndDt.year;
+      sleepTimeDisplay = crossMidnight
+          ? '昨晚 ${fmtHm(sleepStartDt)} ~ 今早 ${fmtHm(sleepEndDt)}'
+          : '${fmtHm(sleepStartDt)} ~ ${fmtHm(sleepEndDt)}';
+    } else {
+      sleepTimeDisplay = (sleepStartRaw != null && sleepEndRaw != null)
+          ? '$sleepStartRaw ~ $sleepEndRaw'
+          : null;
+    }
 
     final restingHr = (bs['resting_heart_rate'] as num?)?.toInt();
     final avgSpo2 = (bs['avg_spo2'] as num?)?.toInt();
@@ -1550,9 +1569,9 @@ class _DiaryItemState extends State<DiaryItem> {
                         _buildSleepLegend('浅睡', '$lightSleep分', const Color(0xFFA855F7)),
                       if (remSleep > 0)
                         _buildSleepLegend('REM', '$remSleep分', const Color(0xFF38BDF8)),
-                      if (sleepStart != null && sleepEnd != null)
+                      if (sleepTimeDisplay != null)
                         Text(
-                          '$sleepStart ~ $sleepEnd',
+                          sleepTimeDisplay,
                           style: theme.textTheme.bodySmall?.copyWith(
                             fontSize: 10,
                             color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),

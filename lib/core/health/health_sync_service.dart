@@ -227,6 +227,10 @@ class HealthSyncService {
         if (cardCreatedOrUpdated) newTimelineCardsCount++;
       }
 
+      // 记录最新同步时间
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(keyLastSyncTime, DateTime.now().toIso8601String());
+
       return HealthSyncResult(
         success: true,
         syncedDays: 1,

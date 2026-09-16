@@ -15,9 +15,21 @@ class HealthDailyMetrics {
   final int lightSleepMinutes;
   final int remSleepMinutes;
   final int awakeMinutes;
-  final String? sleepStartTime; // ISO8601 或 HH:mm
+  final String? sleepStartTime; // 完整 ISO8601 时间戳（兼容旧数据 HH:mm）
   final String? sleepEndTime;
   final int? sleepScore;
+
+  /// 睡眠起始 DateTime（从 sleepStartTime 解析，解析失败返回 null）
+  DateTime? get sleepStartDateTime {
+    if (sleepStartTime == null) return null;
+    return DateTime.tryParse(sleepStartTime!);
+  }
+
+  /// 睡眠结束 DateTime（从 sleepEndTime 解析，解析失败返回 null）
+  DateTime? get sleepEndDateTime {
+    if (sleepEndTime == null) return null;
+    return DateTime.tryParse(sleepEndTime!);
+  }
 
   // 生理指标
   final int? avgHeartRate;
@@ -195,6 +207,16 @@ class HealthDailyMetrics {
       source: source ?? this.source,
       updatedAt: updatedAt ?? this.updatedAt,
     );
+  }
+
+  /// 从完整时间戳提取 HH:mm 展示文本（兼容旧数据 HH:mm 格式）
+  static String? sleepTimeToHHmm(String? timeStr) {
+    if (timeStr == null) return null;
+    final dt = DateTime.tryParse(timeStr);
+    if (dt != null) {
+      return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    }
+    return timeStr;
   }
 
   /// 辅助解析心率采样点列表
