@@ -29,7 +29,7 @@ class _TabConfig {
 }
 
 const _tabs = [
-  _TabConfig(tab: StatTab.score, label: '评分', icon: Icons.insights),
+  _TabConfig(tab: StatTab.score, label: '评分', icon: Icons.insights_rounded),
   _TabConfig(
     tab: StatTab.healthDevice,
     label: '运动健康',
@@ -40,11 +40,11 @@ const _tabs = [
     label: '屏幕时长',
     icon: Icons.hourglass_top_rounded,
   ),
-  _TabConfig(tab: StatTab.diet, label: '饮食', icon: Icons.restaurant),
+  _TabConfig(tab: StatTab.diet, label: '饮食', icon: Icons.restaurant_rounded),
   _TabConfig(
     tab: StatTab.finance,
     label: '记账',
-    icon: Icons.account_balance_wallet,
+    icon: Icons.account_balance_wallet_rounded,
   ),
 ];
 
@@ -270,7 +270,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
   }
 }
 
-class _TabSwitcher extends StatelessWidget {
+class _TabSwitcher extends StatefulWidget {
   final List<_TabConfig> tabs;
   final StatTab activeTab;
   final ValueChanged<StatTab> onTabChanged;
@@ -282,61 +282,148 @@ class _TabSwitcher extends StatelessWidget {
   });
 
   @override
+  State<_TabSwitcher> createState() => _TabSwitcherState();
+}
+
+class _TabSwitcherState extends State<_TabSwitcher> {
+  final ScrollController _scrollController = ScrollController();
+  final Map<StatTab, GlobalKey> _tabKeys = {};
+
+  @override
+  void initState() {
+    super.initState();
+    for (final tab in widget.tabs) {
+      _tabKeys[tab.tab] = GlobalKey();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _TabSwitcher oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.activeTab != widget.activeTab) {
+      _scrollToActiveTab();
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToActiveTab() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final key = _tabKeys[widget.activeTab];
+      if (key?.currentContext != null) {
+        Scrollable.ensureVisible(
+          key!.currentContext!,
+          duration: AppDurations.normal,
+          curve: AppCurves.emphasized,
+          alignment: 0.5,
+        );
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
+        color: colorScheme.surface,
         border: Border(
           bottom: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.1),
+            color: colorScheme.outlineVariant.withValues(alpha: 0.2),
             width: 0.5,
           ),
         ),
       ),
-      child: Row(
-        children: [
-          for (var i = 0; i < tabs.length; i++) ...[
-            if (i > 0) const SizedBox(width: 8),
-            Expanded(child: _buildTabChip(context, tabs[i])),
+      child: SingleChildScrollView(
+        controller: _scrollController,
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < widget.tabs.length; i++) ...[
+              if (i > 0) const SizedBox(width: 8),
+              _buildTabChip(context, widget.tabs[i]),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
 
-  /// 单个分类按钮：整块区域可点，高度 42 满足移动端触控尺寸。
+  /// 单个分类胶囊按钮：图文排版、平滑过渡、触感反馈、永不换行截断
   Widget _buildTabChip(BuildContext context, _TabConfig config) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isActive = config.tab == activeTab;
+    final isActive = config.tab == widget.activeTab;
 
     return GestureDetector(
+      key: _tabKeys[config.tab],
       behavior: HitTestBehavior.opaque,
       onTap: () {
         HapticFeedback.selectionClick();
-        onTabChanged(config.tab);
+        widget.onTabChanged(config.tab);
       },
       child: AnimatedContainer(
         duration: AppDurations.normal,
         curve: Curves.easeInOut,
-        height: 42,
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: isActive
               ? colorScheme.primary
-              : colorScheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          config.label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
+              : colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(19),
+          border: Border.all(
             color: isActive
-                ? colorScheme.onPrimary
-                : colorScheme.onSurfaceVariant,
+                ? colorScheme.primary
+                : colorScheme.outlineVariant.withValues(alpha: 0.45),
+            width: 1,
           ),
+          boxShadow: isActive
+              ? [
+                  BoxShadow(
+                    color: colorScheme.primary.withValues(alpha: 0.25),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(
+              config.icon,
+              size: 15,
+              color: isActive
+                  ? colorScheme.onPrimary
+                  : colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+            ),
+            const SizedBox(width: 5),
+            Text(
+              config.label,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.visible,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
+                letterSpacing: 0.2,
+                color: isActive
+                    ? colorScheme.onPrimary
+                    : colorScheme.onSurfaceVariant.withValues(alpha: 0.9),
+              ),
+            ),
+          ],
         ),
       ),
     );

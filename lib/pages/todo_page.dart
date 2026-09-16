@@ -649,17 +649,17 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     final folders = ref.read(todoFolderListProvider).valueOrNull ?? [];
     final items = <ActionMenuItem>[
       ActionMenuItem(
-        icon: Icons.checklist_outlined,
-        label: '批量管理',
-        onTap: () => _enterSelectionMode(todo.id),
-      ),
-      ActionMenuItem(
         iconWidget: QIcon(
           size: 20,
           color: Theme.of(context).colorScheme.primary,
         ),
         label: '给小Q',
         onTap: () => _quoteTodoToQ(todo),
+      ),
+      ActionMenuItem(
+        icon: Icons.checklist_outlined,
+        label: '批量管理',
+        onTap: () => _enterSelectionMode(todo.id),
       ),
       ActionMenuItem(
         icon: Icons.repeat,

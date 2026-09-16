@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:qnote_flutter/core/health/screen_usage_service.dart';
@@ -45,7 +46,6 @@ class DiaryItem extends StatefulWidget {
 }
 
 class _DiaryItemState extends State<DiaryItem> {
-  final _actionMenuKey = GlobalKey();
   final _cardKey = GlobalKey();
 
   DiaryRecord get record => widget.record;
@@ -107,13 +107,13 @@ class _DiaryItemState extends State<DiaryItem> {
     }).catchError((_) {});
   }
 
-  /// 卡片操作菜单：more_vert 按钮与长按卡片共用；
+  /// 卡片操作菜单：通过长按卡片触发；
   /// 配置了 onQuoteToQ 时追加「给小Q」引用入口
   void _showActionMenu() {
-    final anchorKey = _actionMenuKey.currentContext != null ? _actionMenuKey : _cardKey;
+    HapticFeedback.lightImpact();
     ActionMenu.show(
       context: context,
-      key: anchorKey,
+      key: _cardKey,
       items: [
         if (onQuoteToQ != null)
           ActionMenuItem(
@@ -585,101 +585,78 @@ class _DiaryItemState extends State<DiaryItem> {
                   child: Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      Padding(
-                        padding: EdgeInsets.only(right: _isHealthDailySummary ? 0 : 12),
-                        child: SingleChildScrollView(
-                          physics: const NeverScrollableScrollPhysics(),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildHeader(
-                                theme,
-                                tagColor,
-                                categoryTag: !hasMultipleTags && record.displayTag.isNotEmpty
-                                    ? record.displayTag
-                                    : null,
-                              ),
-                              if (_isHealthDailySummary)
-                                _buildHealthDailySummaryCard(theme, tagColor)
-                              else if (hasMultipleTags)
-                                _buildMultiTagSections(theme)
-                              else ...[
-                                _buildTagAndFieldsRow(theme, tagColor),
-                                _buildSingleTagContent(theme, tagColor),
-                              ],
-                              if (record.photos.isNotEmpty)
-                                Builder(
-                                  builder: (context) {
-                                    final screenWidth = MediaQuery.of(
-                                      context,
-                                    ).size.width;
-                                    final maxWidth =
-                                        screenWidth - 132 - _contentIndent;
-                                    const spacing = 6.0;
-                                    final itemWidth =
-                                        ((maxWidth - spacing * 2 - 2.0) / 3)
-                                            .clamp(50.0, 70.0);
-                                    return Padding(
-                                      padding: const EdgeInsets.only(
-                                        left: _contentIndent,
-                                        top: 4,
-                                      ),
-                                      child: Wrap(
-                                        spacing: spacing,
-                                        runSpacing: spacing,
-                                        children: record.photos.asMap().entries.map((entry) {
-                                          final index = entry.key;
-                                          final photo = entry.value;
-                                          return GestureDetector(
-                                            behavior: HitTestBehavior.opaque,
-                                            onTap: () {
-                                              Navigator.of(context).push(
-                                                MaterialPageRoute(
-                                                  builder: (_) => FullScreenImageGallery(
-                                                    images: record.photos,
-                                                    initialIndex: index,
-                                                  ),
-                                                ),
-                                              );
-                                            },
-                                            child: UnifiedImage(
-                                              imagePath: photo,
-                                              width: itemWidth,
-                                              height: itemWidth,
-                                              borderRadius: BorderRadius.circular(
-                                                8,
-                                              ),
-                                            ),
-                                          );
-                                        }).toList(),
-                                      ),
-                                    );
-                                  },
-                                ),
+                      SingleChildScrollView(
+                        physics: const NeverScrollableScrollPhysics(),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildHeader(
+                              theme,
+                              tagColor,
+                              categoryTag: !hasMultipleTags && record.displayTag.isNotEmpty
+                                  ? record.displayTag
+                                  : null,
+                            ),
+                            if (_isHealthDailySummary)
+                              _buildHealthDailySummaryCard(theme, tagColor)
+                            else if (hasMultipleTags)
+                              _buildMultiTagSections(theme)
+                            else ...[
+                              _buildTagAndFieldsRow(theme, tagColor),
+                              _buildSingleTagContent(theme, tagColor),
                             ],
-                          ),
+                            if (record.photos.isNotEmpty)
+                              Builder(
+                                builder: (context) {
+                                  final screenWidth = MediaQuery.of(
+                                    context,
+                                  ).size.width;
+                                  final maxWidth =
+                                      screenWidth - 132 - _contentIndent;
+                                  const spacing = 6.0;
+                                  final itemWidth =
+                                      ((maxWidth - spacing * 2 - 2.0) / 3)
+                                          .clamp(50.0, 70.0);
+                                  return Padding(
+                                    padding: const EdgeInsets.only(
+                                      left: _contentIndent,
+                                      top: 4,
+                                    ),
+                                    child: Wrap(
+                                      spacing: spacing,
+                                      runSpacing: spacing,
+                                      children: record.photos.asMap().entries.map((entry) {
+                                        final index = entry.key;
+                                        final photo = entry.value;
+                                        return GestureDetector(
+                                          behavior: HitTestBehavior.opaque,
+                                          onTap: () {
+                                            Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                builder: (_) => FullScreenImageGallery(
+                                                  images: record.photos,
+                                                  initialIndex: index,
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                          child: UnifiedImage(
+                                            imagePath: photo,
+                                            width: itemWidth,
+                                            height: itemWidth,
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                          ),
+                                        );
+                                      }).toList(),
+                                    ),
+                                  );
+                                },
+                              ),
+                          ],
                         ),
                       ),
-                      // 运动健康日结汇总卡片为系统生成的只读卡片，隐藏操作菜单（禁止编辑与删除）
-                      if (!_isHealthDailySummary)
-                        Positioned(
-                          top: 0,
-                          right: -14,
-                          child: IconButton(
-                            key: _actionMenuKey,
-                            icon: Icon(
-                              Icons.more_vert,
-                              size: 18,
-                              color: theme.colorScheme.outline,
-                            ),
-                            onPressed: _showActionMenu,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(
-                              minWidth: 32,
-                              minHeight: 32,
-                            ),
-                          ),
-                        ),
                       if (onAiExtract != null && !_isHealthDailySummary)
                         Positioned(
                           bottom: -22,
@@ -783,12 +760,10 @@ class _DiaryItemState extends State<DiaryItem> {
   }
 
   Widget _buildHeader(ThemeData theme, Color primaryTagColor, {String? categoryTag}) {
-    return Padding(
-      padding: EdgeInsets.only(right: _isHealthDailySummary ? 0 : 22),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        child: Row(
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             // 时间胶囊
@@ -844,8 +819,7 @@ class _DiaryItemState extends State<DiaryItem> {
             ],
           ],
         ),
-      ),
-    );
+      );
   }
 
   Widget _buildTagAndFieldsRow(ThemeData theme, Color primaryTagColor) {

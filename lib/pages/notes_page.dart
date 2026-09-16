@@ -33,6 +33,9 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   bool _isConfirming = false;
   Timer? _confirmTimer;
 
+  /// 当前正在被拖拽的项（用于优雅展示底部「移至根目录」靶区等全局联动）
+  FlattenedItem? _activeDraggingItem;
+
   // _flattenTree 结果缓存：folders/notes 引用未变时直接返回缓存，
   // 避免每次 rebuild（拖拽 hover、选择模式切换等）重算整棵树
   List<Folder>? _lastFolders;
@@ -477,14 +480,22 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       final folder = draggedItem.folder!;
       if (folder.parentId != destParentId) {
         await ref.read(folderListProvider.notifier).updateFolder(
-          folder.copyWith(parentId: destParentId, updatedAt: now),
+          folder.copyWith(
+            parentId: destParentId,
+            clearParentId: destParentId == null,
+            updatedAt: now,
+          ),
         );
       }
     } else {
       final note = draggedItem.note!;
       if (note.folderId != destParentId) {
         await ref.read(noteListProvider.notifier).updateNote(
-          note.copyWith(folderId: destParentId, updatedAt: now),
+          note.copyWith(
+            folderId: destParentId,
+            clearFolderId: destParentId == null,
+            updatedAt: now,
+          ),
         );
       }
     }
@@ -647,107 +658,146 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     final flattenedItems = _getFlattenedItems(folders, notes);
     final theme = Theme.of(context);
 
-    return DragTarget<FlattenedItem>(
-      onWillAcceptWithDetails: (details) {
-        return details.data.parentId != null;
-      },
-      onAcceptWithDetails: (details) async {
-        final now = DateTime.now();
-        final draggedItem = details.data;
-        if (draggedItem.isFolder) {
-          final folder = folders.firstWhere((f) => f.id == draggedItem.id);
-          await ref.read(folderListProvider.notifier).updateFolder(
-            folder.copyWith(parentId: null, updatedAt: now),
-          );
-        } else {
-          final note = notes.firstWhere((n) => n.id == draggedItem.id);
-          await ref.read(noteListProvider.notifier).updateNote(
-            note.copyWith(folderId: null, updatedAt: now),
-          );
-        }
-      },
-      builder: (context, candidateData, rejectedData) {
-        final isHoveringRoot = candidateData.isNotEmpty;
+    return Stack(
+      children: [
+        ListView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(bottom: 140),
+          itemCount: flattenedItems.length,
+          itemBuilder: (context, index) {
+            final item = flattenedItems[index];
+            return _FlattenedTile(
+              key: ValueKey('${item.isFolder ? 'folder' : 'note'}_${item.id}'),
+              item: item,
+              index: index,
+              isSelectionMode: _isSelectionMode,
+              isSelected: item.isFolder
+                  ? _selectedFolderIds.contains(item.id)
+                  : _selectedNoteIds.contains(item.id),
+              onToggleSelection: () {
+                setState(() {
+                  if (item.isFolder) {
+                    if (_selectedFolderIds.contains(item.id)) {
+                      _selectedFolderIds.remove(item.id);
+                    } else {
+                      _selectedFolderIds.add(item.id);
+                    }
+                  } else {
+                    if (_selectedNoteIds.contains(item.id)) {
+                      _selectedNoteIds.remove(item.id);
+                    } else {
+                      _selectedNoteIds.add(item.id);
+                    }
+                  }
+                  if (_selectedNoteIds.isEmpty && _selectedFolderIds.isEmpty) {
+                    _isSelectionMode = false;
+                  }
+                });
+              },
+              onEditNote: _editNote,
+              onShowNoteMenu: _showNoteMenu,
+              onToggleFolder: _toggleFolder,
+              onShowFolderMenu: _showFolderMenu,
+              onCreateNote: _createNote,
+              onCreateFolder: _showCreateFolderDialog,
+              onDragStarted: (dragged) {
+                setState(() => _activeDraggingItem = dragged);
+              },
+              onDragEnded: () {
+                if (mounted) setState(() => _activeDraggingItem = null);
+              },
+              onDrop: _handleDrop,
+            );
+          },
+        ),
 
-        return Stack(
-          children: [
-            ListView.builder(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.only(bottom: 120),
-              itemCount: flattenedItems.length,
-              itemBuilder: (context, index) {
-                final item = flattenedItems[index];
-                return _FlattenedTile(
-                  key: ValueKey('${item.isFolder ? 'folder' : 'note'}_${item.id}'),
-                  item: item,
-                  index: index,
-                  isSelectionMode: _isSelectionMode,
-                  isSelected: item.isFolder
-                      ? _selectedFolderIds.contains(item.id)
-                      : _selectedNoteIds.contains(item.id),
-                  onToggleSelection: () {
-                    setState(() {
-                      if (item.isFolder) {
-                        if (_selectedFolderIds.contains(item.id)) {
-                          _selectedFolderIds.remove(item.id);
-                        } else {
-                          _selectedFolderIds.add(item.id);
-                        }
-                      } else {
-                        if (_selectedNoteIds.contains(item.id)) {
-                          _selectedNoteIds.remove(item.id);
-                        } else {
-                          _selectedNoteIds.add(item.id);
-                        }
-                      }
-                      if (_selectedNoteIds.isEmpty && _selectedFolderIds.isEmpty) {
-                        _isSelectionMode = false;
-                      }
-                    });
-                  },
-                  onEditNote: _editNote,
-                  onShowNoteMenu: _showNoteMenu,
-                  onToggleFolder: _toggleFolder,
-                  onShowFolderMenu: _showFolderMenu,
-                  onCreateNote: _createNote,
-                  onCreateFolder: _showCreateFolderDialog,
-                  onDrop: _handleDrop,
+        // 仅当拖动项是有父级的子项时，悬浮呼出底部「移至根目录」靶区
+        if (_activeDraggingItem != null && _activeDraggingItem!.parentId != null)
+          Positioned(
+            left: 20,
+            right: 20,
+            bottom: 24,
+            child: DragTarget<FlattenedItem>(
+              onWillAcceptWithDetails: (details) {
+                return details.data.parentId != null;
+              },
+              onAcceptWithDetails: (details) async {
+                final draggedItem = details.data;
+                HapticFeedback.mediumImpact();
+                if (draggedItem.isFolder) {
+                  await ref.read(folderListProvider.notifier).moveFolderToParent(
+                    draggedItem.id,
+                    null,
+                  );
+                } else {
+                  await ref.read(noteListProvider.notifier).moveNoteToFolder(
+                    draggedItem.id,
+                    null,
+                  );
+                }
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('已将 "${draggedItem.isFolder ? draggedItem.folder!.name : draggedItem.note!.title}" 移至根目录'),
+                      behavior: SnackBarBehavior.floating,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
+              },
+              builder: (context, candidateData, rejectedData) {
+                final isHovering = candidateData.isNotEmpty;
+                return AnimatedContainer(
+                  duration: AppDurations.fast,
+                  curve: AppCurves.standard,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: isHovering
+                        ? theme.colorScheme.primaryContainer
+                        : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.96),
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(
+                      color: isHovering
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.outlineVariant,
+                      width: isHovering ? 2.0 : 1.2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isHovering ? 0.2 : 0.12),
+                        blurRadius: isHovering ? 16 : 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.drive_file_move_outlined,
+                        size: isHovering ? 24 : 20,
+                        color: isHovering
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        isHovering ? '松手移至根目录' : '拖动至此处移至根目录',
+                        style: TextStyle(
+                          color: isHovering
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.onSurfaceVariant,
+                          fontWeight: isHovering ? FontWeight.bold : FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ],
+                  ),
                 );
               },
             ),
-            if (isHoveringRoot)
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.5),
-                        width: 2,
-                      ),
-                      color: theme.colorScheme.primary.withValues(alpha: 0.05),
-                    ),
-                    child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primaryContainer,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          '释放以移至根目录',
-                          style: TextStyle(
-                            color: theme.colorScheme.onPrimaryContainer,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        );
-      },
+          ),
+      ],
     );
   }
 
@@ -1067,6 +1117,8 @@ class _FlattenedTile extends ConsumerStatefulWidget {
   final void Function(Folder, GlobalKey) onShowFolderMenu;
   final void Function(String?) onCreateNote;
   final void Function(String?) onCreateFolder;
+  final void Function(FlattenedItem) onDragStarted;
+  final VoidCallback onDragEnded;
   final Future<void> Function({
     required FlattenedItem draggedItem,
     required FlattenedItem targetItem,
@@ -1086,6 +1138,8 @@ class _FlattenedTile extends ConsumerStatefulWidget {
     required this.onShowFolderMenu,
     required this.onCreateNote,
     required this.onCreateFolder,
+    required this.onDragStarted,
+    required this.onDragEnded,
     required this.onDrop,
   });
 
@@ -1105,14 +1159,54 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
     return dragged.id != widget.item.id;
   }
 
-  void _setHoverPosition(String? position) {
-    if (_hoverPosition != position) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          setState(() {
-            _hoverPosition = position;
-          });
-        }
+  void _updateHoverFromOffset(Offset localOffset, double totalHeight, FlattenedItem dragged) {
+    if (totalHeight <= 0) return;
+    final isFolder = widget.item.isFolder;
+
+    // 检查文件夹是否不能拖入自身子级
+    bool canDropInside = isFolder;
+    if (canDropInside && dragged.isFolder) {
+      final allFolders = ref.read(folderListProvider).value ?? [];
+      if (_checkIsDescendant(widget.item.id, dragged.id, allFolders)) {
+        canDropInside = false;
+      }
+    }
+
+    String? newPos;
+    if (canDropInside) {
+      // 文件夹：上下各 22% 为插入前后，中间 56% 宽容区为移入文件夹
+      final topThreshold = totalHeight * 0.22;
+      final bottomThreshold = totalHeight * 0.78;
+      if (localOffset.dy < topThreshold) {
+        newPos = 'before';
+      } else if (localOffset.dy > bottomThreshold) {
+        newPos = 'after';
+      } else {
+        newPos = 'inside';
+      }
+    } else {
+      // 笔记或无法移入的文件夹：平分上下两半
+      if (localOffset.dy < totalHeight * 0.5) {
+        newPos = 'before';
+      } else {
+        newPos = 'after';
+      }
+    }
+
+    if (_hoverPosition != newPos) {
+      if (newPos == 'inside') {
+        HapticFeedback.selectionClick();
+      }
+      setState(() {
+        _hoverPosition = newPos;
+      });
+    }
+  }
+
+  void _clearHoverPosition() {
+    if (_hoverPosition != null) {
+      setState(() {
+        _hoverPosition = null;
       });
     }
   }
@@ -1234,15 +1328,19 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
       },
       onDragStarted: () {
         HapticFeedback.lightImpact();
+        widget.onDragStarted(widget.item);
         setState(() => _isDragging = true);
       },
       onDragEnd: (_) {
+        widget.onDragEnded();
         if (mounted) setState(() => _isDragging = false);
       },
       onDraggableCanceled: (_, offset) {
+        widget.onDragEnded();
         if (mounted) setState(() => _isDragging = false);
       },
       onDragCompleted: () {
+        widget.onDragEnded();
         if (mounted) setState(() => _isDragging = false);
       },
       feedback: Material(
@@ -1429,81 +1527,36 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
             ),
           ),
 
+        // 单一全覆盖 DragTarget：实时监听手势在 Item 内的精确局部坐标
+        // 告别多层细碎切分与判定抖动
         Positioned.fill(
-          child: Column(
-            children: [
-              Expanded(
-                flex: 1,
-                child: DragTarget<FlattenedItem>(
-                  onWillAcceptWithDetails: (details) {
-                    if (!_acceptsDrop(details.data)) return false;
-                    _setHoverPosition('before');
-                    return true;
-                  },
-                  onLeave: (data) => _setHoverPosition(null),
-                  onAcceptWithDetails: (details) {
-                    _setHoverPosition(null);
-                    widget.onDrop(
-                      draggedItem: details.data,
-                      targetItem: widget.item,
-                      dropPosition: 'before',
-                    );
-                  },
-                  builder: (context, candidateData, rejectedData) => const SizedBox.expand(),
-                ),
-              ),
-
-              if (isFolder)
-                Expanded(
-                  flex: 2,
-                  child: DragTarget<FlattenedItem>(
-                    onWillAcceptWithDetails: (details) {
-                      if (!_acceptsDrop(details.data)) return false;
-                      if (details.data.isFolder) {
-                        final allFolders = ref.read(folderListProvider).value ?? [];
-                        if (_checkIsDescendant(widget.item.id, details.data.id, allFolders)) {
-                          return false;
-                        }
-                      }
-                      _setHoverPosition('inside');
-                      return true;
-                    },
-                    onLeave: (data) => _setHoverPosition(null),
-                    onAcceptWithDetails: (details) {
-                      _setHoverPosition(null);
-                      widget.onDrop(
-                        draggedItem: details.data,
-                        targetItem: widget.item,
-                        dropPosition: 'inside',
-                      );
-                    },
-                    builder: (context, candidateData, rejectedData) => const SizedBox.expand(),
-                  ),
-                )
-              else
-                const SizedBox.shrink(),
-
-              Expanded(
-                flex: 1,
-                child: DragTarget<FlattenedItem>(
-                  onWillAcceptWithDetails: (details) {
-                    if (!_acceptsDrop(details.data)) return false;
-                    _setHoverPosition('after');
-                    return true;
-                  },
-                  onLeave: (data) => _setHoverPosition(null),
-                  onAcceptWithDetails: (details) {
-                    _setHoverPosition(null);
-                    widget.onDrop(
-                      draggedItem: details.data,
-                      targetItem: widget.item,
-                      dropPosition: 'after',
-                    );
-                  },
-                  builder: (context, candidateData, rejectedData) => const SizedBox.expand(),
-                ),
-              ),
-            ],
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return DragTarget<FlattenedItem>(
+                onWillAcceptWithDetails: (details) {
+                  return _acceptsDrop(details.data);
+                },
+                onMove: (details) {
+                  final renderBox = context.findRenderObject() as RenderBox?;
+                  if (renderBox != null) {
+                    final localOffset = renderBox.globalToLocal(details.offset);
+                    _updateHoverFromOffset(localOffset, constraints.maxHeight, details.data);
+                  }
+                },
+                onLeave: (data) => _clearHoverPosition(),
+                onAcceptWithDetails: (details) {
+                  final position = _hoverPosition ?? 'after';
+                  _clearHoverPosition();
+                  HapticFeedback.lightImpact();
+                  widget.onDrop(
+                    draggedItem: details.data,
+                    targetItem: widget.item,
+                    dropPosition: position,
+                  );
+                },
+                builder: (context, candidateData, rejectedData) => const SizedBox.expand(),
+              );
+            },
           ),
         ),
       ],

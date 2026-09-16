@@ -103,17 +103,6 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
     });
   }
 
-  void _toggleTag(String tag) {
-    setState(() {
-      if (_selectedTags.contains(tag)) {
-        _selectedTags.remove(tag);
-      } else {
-        _selectedTags.add(tag);
-      }
-    });
-    _applyFilters();
-  }
-
   void _pickDateRange() async {
     final result = await showDialog<DateTimeRange>(
       context: context,
@@ -138,43 +127,182 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
     _applyFilters();
   }
 
-  /// 快捷选择今天
-  void _selectToday() {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+  void _clearAllFilters() {
     setState(() {
-      _dateRange = DateTimeRange(
-        start: today,
-        end: today,
-      );
+      _dateRange = null;
+      _selectedTags.clear();
     });
     _applyFilters();
   }
 
-  /// 快捷选择本周（周一到今天）
-  void _selectThisWeek() {
-    final now = DateTime.now();
-    // weekday: 1=周一 ... 7=周日
-    final monday = now.subtract(Duration(days: now.weekday - 1));
-    setState(() {
-      _dateRange = DateTimeRange(
-        start: DateTime(monday.year, monday.month, monday.day),
-        end: DateTime(now.year, now.month, now.day),
-      );
-    });
-    _applyFilters();
-  }
+  void _showTagFilterBottomSheet() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final tempSelectedTags = List<String>.from(_selectedTags);
 
-  /// 快捷选择本月（本月1号到今天）
-  void _selectThisMonth() {
-    final now = DateTime.now();
-    setState(() {
-      _dateRange = DateTimeRange(
-        start: DateTime(now.year, now.month, 1),
-        end: DateTime(now.year, now.month, now.day),
-      );
-    });
-    _applyFilters();
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Container(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+              decoration: BoxDecoration(
+                color: colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: SafeArea(
+                top: false,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 36,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '按标签筛选',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (tempSelectedTags.isNotEmpty)
+                          GestureDetector(
+                            onTap: () {
+                              setSheetState(() {
+                                tempSelectedTags.clear();
+                              });
+                            },
+                            child: Text(
+                              '清空已选',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: colorScheme.primary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    if (_allTags.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        child: Center(
+                          child: Text(
+                            '暂无可选标签',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxHeight: MediaQuery.of(context).size.height * 0.45,
+                        ),
+                        child: SingleChildScrollView(
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 10,
+                            children: _allTags.map((tag) {
+                              final isSelected = tempSelectedTags.contains(tag);
+                              final tagColor = _tagColor(tag);
+                              return FilterChip(
+                                label: Text(tag),
+                                selected: isSelected,
+                                onSelected: (selected) {
+                                  setSheetState(() {
+                                    if (selected) {
+                                      tempSelectedTags.add(tag);
+                                    } else {
+                                      tempSelectedTags.remove(tag);
+                                    }
+                                  });
+                                },
+                                selectedColor: tagColor.withValues(alpha: 0.18),
+                                checkmarkColor: tagColor,
+                                labelStyle: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                  color: isSelected ? tagColor : colorScheme.onSurface,
+                                ),
+                                side: BorderSide(
+                                  color: isSelected
+                                      ? tagColor.withValues(alpha: 0.6)
+                                      : colorScheme.outlineVariant.withValues(alpha: 0.4),
+                                  width: 1,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.of(ctx).pop(),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                            child: const Text('取消'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: () {
+                              setState(() {
+                                _selectedTags.clear();
+                                _selectedTags.addAll(tempSelectedTags);
+                              });
+                              _applyFilters();
+                              Navigator.of(ctx).pop();
+                            },
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                            child: Text(
+                              tempSelectedTags.isEmpty
+                                  ? '全部展示'
+                                  : '确定 (${tempSelectedTags.length})',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   void _toggleSelect(String id) {
@@ -545,6 +673,224 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
     );
   }
 
+  /// 运动健康日结紧凑看板
+  Widget _buildHealthSummaryContent(ThemeData theme, DiaryRecord record, ColorScheme colorScheme) {
+    final bs = record.bodyState ?? {};
+    final steps = (bs['steps'] as num?)?.toInt() ?? 0;
+    final stepTarget = (bs['step_target'] as num?)?.toInt() ?? 8000;
+    final calories = (bs['calories'] as num?)?.toDouble() ?? 0.0;
+    final distanceMeters = (bs['distance_meters'] as num?)?.toDouble() ?? 0.0;
+    final activeMinutes = (bs['active_minutes'] as num?)?.toInt() ?? 0;
+    final sleepMinutes = (bs['sleep_duration_minutes'] as num?)?.toInt() ?? 0;
+    final sleepScore = (bs['sleep_score'] as num?)?.toInt();
+    final avgSpo2 = (bs['avg_spo2'] as num?)?.toInt();
+    final avgStress = (bs['avg_stress'] as num?)?.toInt();
+    final screenMs = (bs['screen_time_ms'] as num?)?.toInt() ?? 0;
+
+    final progress = stepTarget > 0 ? (steps / stepTarget).clamp(0.0, 1.0) : 0.0;
+    final isTargetReached = steps >= stepTarget;
+    const brandGreen = Color(0xFF10B981);
+    const sleepPurple = Color(0xFF6366F1);
+    const activityOrange = Color(0xFFF97316);
+
+    // 格式化屏幕时长
+    String? screenStr;
+    if (screenMs > 0) {
+      final sMins = screenMs ~/ 60000;
+      final sH = sMins ~/ 60;
+      final sRem = sMins % 60;
+      screenStr = sH > 0 ? (sRem > 0 ? '$sH小时$sRem分' : '$sH小时') : '$sMins分';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 步数与消耗行
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: brandGreen.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: brandGreen.withValues(alpha: 0.15),
+                width: 0.8,
+              ),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.directions_walk_rounded, size: 16, color: brandGreen),
+                    const SizedBox(width: 4),
+                    Text(
+                      NumberFormat('#,###').format(steps),
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.onSurface,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    Text(
+                      ' 步',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 11,
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: (isTargetReached ? brandGreen : colorScheme.primary).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        isTargetReached ? '已达标' : '目标 $stepTarget',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: isTargetReached ? brandGreen : colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 3.5,
+                    backgroundColor: colorScheme.outlineVariant.withValues(alpha: 0.2),
+                    valueColor: const AlwaysStoppedAnimation(brandGreen),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '🔥 ${calories.toStringAsFixed(0)} kcal',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: activityOrange,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      '⏱ $activeMinutes 分钟',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: const Color(0xFFD97706),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      '📍 ${(distanceMeters / 1000).toStringAsFixed(2)} km',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: const Color(0xFF2563EB),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // 睡眠与生理体征次级标签行
+          if (sleepMinutes > 0 || avgSpo2 != null || screenStr != null) ...[
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                if (sleepMinutes > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: sleepPurple.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.nightlight_round, size: 10, color: sleepPurple),
+                        const SizedBox(width: 3),
+                        Text(
+                          '${sleepMinutes ~/ 60}h${sleepMinutes % 60}m${sleepScore != null ? ' · $sleepScore分' : ''}',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: sleepPurple,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (avgSpo2 != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFDC2626).withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '血氧 $avgSpo2%',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFDC2626),
+                      ),
+                    ),
+                  ),
+                if (avgStress != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF8B5CF6).withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '压力 $avgStress',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF8B5CF6),
+                      ),
+                    ),
+                  ),
+                if (screenStr != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0284C7).withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.phone_android_rounded, size: 10, color: Color(0xFF0284C7)),
+                        const SizedBox(width: 3),
+                        Text(
+                          '屏幕 $screenStr',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF0284C7),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   void _openRecordDetails(DiaryRecord record) {
     showModalBottomSheet(
       context: context,
@@ -620,157 +966,204 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
     );
   }
 
+  bool _isHealthDailySummary(DiaryRecord record) {
+    final bs = record.bodyState ?? {};
+    return (bs['source'] == 'mi_fitness' && bs['type'] == 'daily_summary') ||
+        (record.tags.contains('运动健康') && bs.containsKey('steps'));
+  }
+
   Widget _buildFilterCard(ThemeData theme, ColorScheme colorScheme) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.filter_list, size: 16, color: colorScheme.primary),
-                const SizedBox(width: 6),
-                Text(
-                  '筛选条件',
-                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            _buildDateFilter(theme, colorScheme),
-            const SizedBox(height: 10),
-            _buildTagFilter(theme, colorScheme),
-          ],
+    final hasActiveFilter = _dateRange != null || _selectedTags.isNotEmpty;
+
+    String dateLabel = '全部日期';
+    if (_dateRange != null) {
+      final start = _dateRange!.start;
+      final end = _dateRange!.end;
+      final isSameDay = start.year == end.year && start.month == end.month && start.day == end.day;
+      if (isSameDay) {
+        final now = DateTime.now();
+        if (start.year == now.year && start.month == now.month && start.day == now.day) {
+          dateLabel = '今天';
+        } else {
+          dateLabel = DateFormat('MM-dd').format(start);
+        }
+      } else {
+        dateLabel = '${DateFormat('MM-dd').format(start)} ~ ${DateFormat('MM-dd').format(end)}';
+      }
+    }
+
+    final String tagLabel;
+    if (_selectedTags.isEmpty) {
+      tagLabel = '全部标签';
+    } else if (_selectedTags.length == 1) {
+      tagLabel = _selectedTags.first;
+    } else {
+      tagLabel = '已选${_selectedTags.length}类';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.25),
         ),
       ),
-    );
-  }
-
-  Widget _buildDateFilter(ThemeData theme, ColorScheme colorScheme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '日期区间范围',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 6),
-        InkWell(
-          onTap: _pickDateRange,
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+      child: Row(
+        children: [
+          // 1. 日期筛选胶囊
+          Expanded(
+            child: InkWell(
+              onTap: _pickDateRange,
               borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  _dateRange != null
-                      ? DateFormat('yyyy-MM-dd').format(_dateRange!.start) !=
-                              DateFormat('yyyy-MM-dd').format(_dateRange!.end)
-                          ? '${DateFormat('yyyy-MM-dd').format(_dateRange!.start)} 至 ${DateFormat('yyyy-MM-dd').format(_dateRange!.end)}'
-                          : DateFormat('yyyy-MM-dd').format(_dateRange!.start)
-                      : '未选择日期',
-                  style: theme.textTheme.bodyMedium,
-                ),
-                Icon(Icons.calendar_today, size: 16, color: colorScheme.onSurfaceVariant),
-              ],
-            ),
-          ),
-        ),
-        // 快捷选择按钮
-        Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Wrap(
-            spacing: 8,
-            children: [
-              ActionChip(
-                label: const Text('今天'),
-                onPressed: _selectToday,
-                avatar: Icon(Icons.today, size: 16, color: colorScheme.primary),
-              ),
-              ActionChip(
-                label: const Text('本周'),
-                onPressed: _selectThisWeek,
-                avatar: Icon(Icons.date_range, size: 16, color: colorScheme.primary),
-              ),
-              ActionChip(
-                label: const Text('本月'),
-                onPressed: _selectThisMonth,
-                avatar: Icon(Icons.calendar_month, size: 16, color: colorScheme.primary),
-              ),
-            ],
-          ),
-        ),
-        if (_dateRange != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: GestureDetector(
-              onTap: _clearDateRange,
-              child: Text(
-                '清除日期',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.primary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildTagFilter(ThemeData theme, ColorScheme colorScheme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '标签来源选择 (多选)',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 6),
-        SizedBox(
-          width: double.infinity,
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _allTags.map((tag) {
-              final isSelected = _selectedTags.contains(tag);
-              return GestureDetector(
-                onTap: () => _toggleTag(tag),
-                child: Chip(
-                  label: Text(tag),
-                  labelStyle: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: isSelected ? colorScheme.onPrimary : colorScheme.onSurface,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                decoration: BoxDecoration(
+                  color: _dateRange != null
+                      ? colorScheme.primary.withValues(alpha: 0.1)
+                      : colorScheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _dateRange != null
+                        ? colorScheme.primary.withValues(alpha: 0.4)
+                        : colorScheme.outlineVariant.withValues(alpha: 0.3),
                   ),
-                  backgroundColor: isSelected ? colorScheme.primary : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                  side: isSelected ? BorderSide.none : BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.3)),
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-              );
-            }).toList(),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.calendar_today_rounded,
+                      size: 14,
+                      color: _dateRange != null ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        dateLabel,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: _dateRange != null ? FontWeight.bold : FontWeight.w500,
+                          color: _dateRange != null ? colorScheme.primary : colorScheme.onSurface,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (_dateRange != null)
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _clearDateRange,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 4),
+                          child: Icon(
+                            Icons.close_rounded,
+                            size: 14,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                      )
+                    else
+                      Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        size: 16,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                  ],
+                ),
+              ),
+            ),
           ),
-        ),
-        if (_allTags.isEmpty)
-          Text(
-            '暂无标签',
-            style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
+          const SizedBox(width: 8),
+
+          // 2. 标签多选胶囊（点击呼出二级抽屉）
+          Expanded(
+            child: InkWell(
+              onTap: _showTagFilterBottomSheet,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                decoration: BoxDecoration(
+                  color: _selectedTags.isNotEmpty
+                      ? colorScheme.primary.withValues(alpha: 0.1)
+                      : colorScheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _selectedTags.isNotEmpty
+                        ? colorScheme.primary.withValues(alpha: 0.4)
+                        : colorScheme.outlineVariant.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.filter_alt_outlined,
+                      size: 14,
+                      color: _selectedTags.isNotEmpty ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        tagLabel,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: _selectedTags.isNotEmpty ? FontWeight.bold : FontWeight.w500,
+                          color: _selectedTags.isNotEmpty ? colorScheme.primary : colorScheme.onSurface,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (_selectedTags.isNotEmpty)
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          setState(() {
+                            _selectedTags.clear();
+                          });
+                          _applyFilters();
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 4),
+                          child: Icon(
+                            Icons.close_rounded,
+                            size: 14,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                      )
+                    else
+                      Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        size: 16,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                  ],
+                ),
+              ),
+            ),
           ),
-      ],
+
+          // 3. 一键重置（当有任意过滤条件激活时显示）
+          if (hasActiveFilter) ...[
+            const SizedBox(width: 6),
+            InkWell(
+              onTap: _clearAllFilters,
+              borderRadius: BorderRadius.circular(10),
+              child: Padding(
+                padding: const EdgeInsets.all(6),
+                child: Icon(
+                  Icons.refresh_rounded,
+                  size: 18,
+                  color: colorScheme.primary,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -834,6 +1227,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
             padding: const EdgeInsets.only(bottom: 8),
             child: GestureDetector(
               onTap: () => _toggleSelect(record.id),
+              onLongPress: () => _openRecordDetails(record),
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -870,35 +1264,67 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.access_time, size: 12, color: tagColor),
+                                    Icon(
+                                      _isHealthDailySummary(record)
+                                          ? Icons.favorite_rounded
+                                          : Icons.access_time,
+                                      size: 12,
+                                      color: _isHealthDailySummary(record)
+                                          ? const Color(0xFF10B981)
+                                          : tagColor,
+                                    ),
                                     const SizedBox(width: 4),
                                     Text(
                                       _formatTimeRange(record),
                                       style: theme.textTheme.labelSmall?.copyWith(
                                         fontWeight: FontWeight.bold,
-                                        color: tagColor,
+                                        color: _isHealthDailySummary(record)
+                                            ? const Color(0xFF10B981)
+                                            : tagColor,
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
+                              if (_isHealthDailySummary(record)) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text(
+                                    '系统同步',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF10B981),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
-                          _buildTagAndFieldsRow(theme, record, colorScheme),
-                          const SizedBox(height: 6),
-                          Padding(
-                            padding: const EdgeInsets.only(left: 6),
-                            child: Text(
-                              record.content.isNotEmpty ? record.content : '无备注内容',
-                              maxLines: 8,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: record.content.isNotEmpty
-                                    ? colorScheme.onSurface
-                                    : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                          if (_isHealthDailySummary(record))
+                            _buildHealthSummaryContent(theme, record, colorScheme)
+                          else ...[
+                            _buildTagAndFieldsRow(theme, record, colorScheme),
+                            const SizedBox(height: 6),
+                            Padding(
+                              padding: const EdgeInsets.only(left: 6),
+                              child: Text(
+                                record.content.isNotEmpty ? record.content : '无备注内容',
+                                maxLines: 8,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: record.content.isNotEmpty
+                                      ? colorScheme.onSurface
+                                      : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                                ),
                               ),
                             ),
-                          ),
+                          ],
                           if (record.photos.isNotEmpty) ...[
                             const SizedBox(height: 8),
                             Padding(
@@ -1341,7 +1767,7 @@ class _RecordDetailSheetState extends State<_RecordDetailSheet> {
           // Body State fields (if any)
           if (fields.isNotEmpty) ...[
             Text(
-              '记录数据',
+              _isHealthDailySummary(record) ? '健康看板数据' : '记录数据',
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: colorScheme.onSurfaceVariant,
@@ -1365,19 +1791,40 @@ class _RecordDetailSheetState extends State<_RecordDetailSheet> {
                   if (entry.value == null || entry.value.toString().isEmpty) {
                     return const SizedBox.shrink();
                   }
+                  final key = entry.key;
+                  if (key.startsWith('_') || key == 'source' || key == 'type') {
+                    return const SizedBox.shrink();
+                  }
+                  String label = key;
+                  String val = entry.value.toString();
+                  if (key == 'steps') label = '步数';
+                  if (key == 'step_target') label = '目标步数';
+                  if (key == 'calories') label = '卡路里';
+                  if (key == 'distance_meters') label = '距离(米)';
+                  if (key == 'active_minutes') label = '有效活动';
+                  if (key == 'sleep_duration_minutes') label = '睡眠时长(分)';
+                  if (key == 'sleep_score') label = '睡眠得分';
+                  if (key == 'avg_spo2') label = '平均血氧';
+                  if (key == 'avg_stress') label = '平均压力';
+                  if (key == 'screen_time_ms') {
+                    label = '屏幕时长';
+                    final sMins = (entry.value as num).toInt() ~/ 60000;
+                    val = '${sMins ~/ 60}小时${sMins % 60}分';
+                  }
+
                   return Row(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${entry.key}：',
+                        '$label：',
                         style: theme.textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.bold,
                           color: colorScheme.onSurface,
                         ),
                       ),
                       Text(
-                        entry.value.toString(),
+                        val,
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: colorScheme.onSurfaceVariant,
                         ),
@@ -1493,4 +1940,10 @@ class _RecordDetailSheetState extends State<_RecordDetailSheet> {
 
   IconData _tagIcon(String displayTag) => _tagIcons[displayTag] ?? _defaultIcon;
   Color _tagColor(String displayTag) => _tagColors[displayTag] ?? _defaultColor;
+
+  bool _isHealthDailySummary(DiaryRecord record) {
+    final bs = record.bodyState ?? {};
+    return (bs['source'] == 'mi_fitness' && bs['type'] == 'daily_summary') ||
+        (record.tags.contains('运动健康') && bs.containsKey('steps'));
+  }
 }

@@ -37,7 +37,9 @@ class UpdateCheckResult {
   const UpdateCheckResult._(this.status, {this.updateInfo, this.errorMessage});
 
   /// 已是最新版本。
-  static const UpdateCheckResult upToDate = UpdateCheckResult._(UpdateCheckStatus.upToDate);
+  static const UpdateCheckResult upToDate = UpdateCheckResult._(
+    UpdateCheckStatus.upToDate,
+  );
 
   /// 发现新版本。
   factory UpdateCheckResult.available(UpdateInfo info) =>
@@ -144,7 +146,10 @@ class UpdateService {
   /// 记录本次检查更新的时间戳。
   Future<void> recordCheckTime() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_kLastCheckTimeKey, DateTime.now().millisecondsSinceEpoch);
+    await prefs.setInt(
+      _kLastCheckTimeKey,
+      DateTime.now().millisecondsSinceEpoch,
+    );
   }
 
   /// 判断当前冷启动是否应当触发静默更新检查。
@@ -165,11 +170,52 @@ class UpdateService {
     return diff.inHours >= 24;
   }
 
-  final Dio _dio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 5),
-    receiveTimeout: const Duration(seconds: 5),
-    headers: <String, String>{'Accept': 'application/vnd.github+json'},
-  ));
+  final Dio _dio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 5),
+      receiveTimeout: const Duration(seconds: 5),
+      headers: <String, String>{'Accept': 'application/vnd.github+json'},
+    ),
+  );
+
+  /// 单次请求 Release 接口，返回 200 且 body 为 Map 时解析，否则返回 null。
+  Future<Map<String, dynamic>?> _fetchReleaseJson(String endpoint) async {
+    try {
+      final response = await _dio.get<dynamic>(endpoint);
+      if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
+        return response.data as Map<String, dynamic>;
+      }
+    } on DioException catch (e) {
+      LoggerService.instance.warning(
+        '更新接口 ($endpoint) 访问失败: ${e.message}',
+        category: LogCategory.network,
+      );
+    } catch (e) {
+      LoggerService.instance.warning(
+        '更新接口 ($endpoint) 异常: $e',
+        category: LogCategory.network,
+      );
+    }
+    return null;
+  }
+
+  /// 从 Release JSON 的 assets 中提取第一个 .apk 附件的下载地址与体积。
+  static ({String url, int size})? extractApkAsset(
+    Map<String, dynamic> releaseData,
+  ) {
+    final assets = releaseData['assets'];
+    if (assets is! List) return null;
+    for (final item in assets) {
+      if (item is! Map<String, dynamic>) continue;
+      final name = item['name']?.toString() ?? '';
+      if (!name.toLowerCase().endsWith('.apk')) continue;
+      final url = item['browser_download_url']?.toString();
+      if (url == null || url.isEmpty) continue;
+      final size = item['size'];
+      return (url: url, size: size is int ? size : 0);
+    }
+    return null;
+  }
 
   /// 检查是否存在新版本。
   ///
@@ -191,7 +237,8 @@ class UpdateService {
     for (final endpoint in candidateEndpoints) {
       try {
         final response = await _dio.get<dynamic>(endpoint);
-        if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
+        if (response.statusCode == 200 &&
+            response.data is Map<String, dynamic>) {
           releaseData = response.data as Map<String, dynamic>;
           break;
         }
@@ -229,23 +276,46 @@ class UpdateService {
         return UpdateCheckResult.upToDate;
       }
 
-      // 优先寻找 APK 附件
+      // 优先从首选源的 assets 中寻找 APK 附件
       String? rawApkUrl;
       int? apkSize;
-      final assets = releaseData['assets'];
-      if (assets is List) {
-        for (final item in assets) {
-          if (item is! Map<String, dynamic>) continue;
-          final name = item['name']?.toString() ?? '';
-          if (!name.toLowerCase().endsWith('.apk')) continue;
-          rawApkUrl = item['browser_download_url']?.toString();
-          final size = item['size'];
-          if (size is int) apkSize = size;
-          break;
-        }
+      final primaryApk = extractApkAsset(releaseData);
+      if (primaryApk != null) {
+        rawApkUrl = primaryApk.url;
+        apkSize = primaryApk.size > 0 ? primaryApk.size : null;
       }
 
       final releaseUrl = releaseData['html_url']?.toString() ?? '';
+
+      // 首选源没有 APK 附件时，向另一端补查同 Tag 的 Release assets
+      if (rawApkUrl == null || rawApkUrl.isEmpty) {
+        final isGiteeSource = releaseUrl.contains('gitee.com');
+        // Gitee 源 → 补查 GitHub tags 接口；GitHub 源 → 补查 Gitee tags 接口
+        final String fallbackBase = isGiteeSource
+            ? 'https://api.github.com/repos/$kRepoOwner/$kRepoName/releases/tags/$tagName'
+            : 'https://gitee.com/api/v5/repos/$kGiteeOwner/$kGiteeRepo/releases/tags/$tagName';
+        // GitHub 官方接口失败时再依次尝试国内加速镜像
+        final fallbackEndpoints = <String>[
+          fallbackBase,
+          ...kGithubProxies.map((proxy) => '$proxy$fallbackBase'),
+        ];
+        for (final ep in fallbackEndpoints) {
+          final fallbackData = await _fetchReleaseJson(ep);
+          if (fallbackData != null) {
+            final apk = extractApkAsset(fallbackData);
+            if (apk != null) {
+              rawApkUrl = apk.url;
+              apkSize = apk.size > 0 ? apk.size : null;
+              LoggerService.instance.info(
+                '补查到另一端 APK 附件: $rawApkUrl',
+                category: LogCategory.network,
+              );
+              break;
+            }
+          }
+        }
+      }
+
       final hasApk = rawApkUrl != null && rawApkUrl.isNotEmpty;
 
       // 构建下载候选列表：Gitee 国内高速直链排在最前，其次 GitHub 国内加速代理镜像，最后兜底 GitHub 直连
@@ -275,18 +345,20 @@ class UpdateService {
         candidateDownloadUrls.add(releaseUrl);
       }
 
-      return UpdateCheckResult.available(UpdateInfo(
-        version: normalizeVersion(tagName),
-        tagName: tagName,
-        releaseName: releaseData['name']?.toString() ?? tagName,
-        releaseNotes: releaseData['body']?.toString() ?? '',
-        downloadUrl: candidateDownloadUrls.first,
-        originalDownloadUrl: rawApkUrl ?? releaseUrl,
-        candidateDownloadUrls: candidateDownloadUrls,
-        releaseUrl: releaseUrl,
-        fileSize: apkSize,
-        hasApk: hasApk,
-      ));
+      return UpdateCheckResult.available(
+        UpdateInfo(
+          version: normalizeVersion(tagName),
+          tagName: tagName,
+          releaseName: releaseData['name']?.toString() ?? tagName,
+          releaseNotes: releaseData['body']?.toString() ?? '',
+          downloadUrl: candidateDownloadUrls.first,
+          originalDownloadUrl: rawApkUrl ?? releaseUrl,
+          candidateDownloadUrls: candidateDownloadUrls,
+          releaseUrl: releaseUrl,
+          fileSize: apkSize,
+          hasApk: hasApk,
+        ),
+      );
     } catch (e, stackTrace) {
       LoggerService.instance.error(
         '解析更新数据异常: $e',
@@ -308,7 +380,8 @@ class UpdateService {
   Future<String> downloadApk({
     required List<String> candidateUrls,
     required void Function(int received, int total) onProgress,
-    void Function(int received, int total, double speedBytesPerSec)? onProgressWithSpeed,
+    void Function(int received, int total, double speedBytesPerSec)?
+    onProgressWithSpeed,
     int concurrency = 3,
     CancelToken? cancelToken,
   }) async {

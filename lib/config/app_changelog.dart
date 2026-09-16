@@ -14,6 +14,16 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.49',
+    date: '2026-09-17',
+    notes: [
+      '时间线批量管理筛选区紧凑化改造，标签筛选改为底部弹窗多选，运动健康记录展示结构化指标看板',
+      '笔记拖拽到根目录操作更稳定清晰，卡片长按查看详情与触感反馈',
+      '固定事件每日去重：同一天已添加过的固定事件不可再次添加，避免重复记录',
+      '数据统计页分类切换栏美化与自动居中，运动健康与屏幕时长等标签不再换行',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.48',
     date: '2026-09-17',
     notes: [

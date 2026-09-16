@@ -591,10 +591,49 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     _updateActiveDraft(tagEntries: currentEntries);
   }
 
+  /// 判断指定固定事件模板在目标日期是否已经添加过（当天已存在对应日记记录）
+  bool _isFixedEventAddedOnDate(
+    FixedEventTemplate template,
+    DateTime date,
+    List<DiaryRecord> records,
+  ) {
+    final targetDate = DateTime(date.year, date.month, date.day);
+    return records.any((r) {
+      if (r.isDeleted) return false;
+      if (!r.belongsToDate(targetDate)) return false;
+
+      // 1. 优先比对 bodyState 中的固定事件元数据
+      final fixedId = r.bodyState?['fixed_event_id'] as String?;
+      if (fixedId != null && fixedId.isNotEmpty) {
+        return fixedId == template.id;
+      }
+      final fixedName = r.bodyState?['fixed_event_name'] as String?;
+      if (fixedName != null && fixedName.isNotEmpty) {
+        return fixedName == template.name;
+      }
+
+      // 2. 兼容历史/现有记录：通过 title 或 displayTag 比对
+      return r.title == template.name || r.displayTag == template.name;
+    });
+  }
+
   /// 选择固定事件模板，自动填充时间、内容和标签（含字段值）
-  /// 支持多选：再次点击已选中模板则取消；多个模板的备注换行拼接显示
+  /// 支持多选：再次点击已选中模板则取消；多个模板的备注换行拼接显示；同一天已添加过的事件不可再次添加
   void _selectFixedEvent(FixedEventTemplate template) {
     final isDeselecting = _selectedFixedEventIds.contains(template.id);
+    final selectedDate = ref.read(selectedDateProvider);
+    final allRecords = ref.read(diaryListProvider).valueOrNull ?? [];
+
+    // 若今日已添加该固定事件，拦截选中并给予提示
+    if (!isDeselecting && _isFixedEventAddedOnDate(template, selectedDate, allRecords)) {
+      if (_selectedFixedEventIds.contains(template.id)) {
+        setState(() {
+          _selectedFixedEventIds.remove(template.id);
+        });
+      }
+      Toast.info(context, '「${template.name}」今日已添加，每天仅需记录一次');
+      return;
+    }
 
     setState(() {
       if (isDeselecting) {
@@ -1628,14 +1667,40 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       final allTemplates = ref.read(fixedEventListProvider).valueOrNull ?? [];
       final selectedTemplates = allTemplates.where((t) => _selectedFixedEventIds.contains(t.id)).toList();
 
-      final defaultMergedText = selectedTemplates
+      // 防重复提交校验：同一天内同一个固定事件只能添加一次
+      final allRecords = ref.read(diaryListProvider).valueOrNull ?? [];
+      final templatesToAdd = <FixedEventTemplate>[];
+      final alreadyAddedTemplates = <FixedEventTemplate>[];
+
+      for (final t in selectedTemplates) {
+        if (_isFixedEventAddedOnDate(t, selectedDate, allRecords)) {
+          alreadyAddedTemplates.add(t);
+        } else {
+          templatesToAdd.add(t);
+        }
+      }
+
+      if (alreadyAddedTemplates.isNotEmpty) {
+        final names = alreadyAddedTemplates.map((t) => '「${t.name}」').join('、');
+        if (templatesToAdd.isEmpty) {
+          Toast.warning(context, '$names 今日已添加，无需重复添加');
+          setState(() {
+            _selectedFixedEventIds.clear();
+          });
+          return;
+        } else {
+          Toast.info(context, '$names 今日已添加，已自动跳过');
+        }
+      }
+
+      final defaultMergedText = templatesToAdd
           .map((t) => t.effectiveContent)
           .where((c) => c.isNotEmpty)
           .join('\n');
       final isUserCustomizedText = draft.inputText.isNotEmpty &&
           draft.inputText.trim() != defaultMergedText.trim();
 
-      for (final template in selectedTemplates) {
+      for (final template in templatesToAdd) {
         // 找到与该模板关联的标签在草稿中的 entries
         final templateTagEntries = <TagEntry>[];
         for (final entry in draft.tagEntries) {
@@ -1784,10 +1849,13 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                   .toList()
               : <String>[];
 
-          Map<String, dynamic>? recordBodyState;
+          Map<String, dynamic> recordBodyState = {};
           if (syncedTagEntries.isNotEmpty) {
             recordBodyState = Map<String, dynamic>.from(syncedTagEntries.first.fields);
           }
+          // 标记固定事件模板元信息，方便精准识别与排重
+          recordBodyState['fixed_event_id'] = template.id;
+          recordBodyState['fixed_event_name'] = template.name;
 
           final record = DiaryRecord(
             id: const Uuid().v4(),
@@ -2121,6 +2189,33 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     }
 
     final selectedDate = ref.watch(selectedDateProvider);
+    ref.listen<DateTime>(selectedDateProvider, (previous, next) {
+      if (previous != null &&
+          (previous.year != next.year ||
+              previous.month != next.month ||
+              previous.day != next.day)) {
+        if (_selectedFixedEventIds.isNotEmpty) {
+          final allRecords = ref.read(diaryListProvider).valueOrNull ?? [];
+          final allTemplates = ref.read(fixedEventListProvider).valueOrNull ?? [];
+          final toRemove = <String>[];
+          for (final id in _selectedFixedEventIds) {
+            final template = allTemplates.where((t) => t.id == id).firstOrNull;
+            if (template != null && _isFixedEventAddedOnDate(template, next, allRecords)) {
+              toRemove.add(id);
+            }
+          }
+          if (toRemove.isNotEmpty) {
+            setState(() {
+              _selectedFixedEventIds.removeWhere((id) => toRemove.contains(id));
+            });
+            _applyFixedEventsSelection(
+              allTemplates,
+              List<TagEntry>.from(_activeDraft.tagEntries),
+            );
+          }
+        }
+      }
+    });
     ref.listen<TimelineTimeSelectEvent?>(diaryInputTimeProvider, (
       previous,
       next,
@@ -2267,6 +2362,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     DateTime selectedDate,
   ) {
     final fixedEvents = ref.watch(fixedEventListProvider);
+    final allRecords = ref.watch(diaryListProvider).valueOrNull ?? [];
     return SafeArea(
       top: false,
       bottom: false,
@@ -2275,7 +2371,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         children: [
           const SizedBox(height: 6),
           Flexible(child: _buildFormFieldsArea(theme)),
-          _buildFixedEventRow(theme, fixedEvents),
+          _buildFixedEventRow(theme, fixedEvents, selectedDate, allRecords),
           _buildShortcutRow(theme, shortcuts),
           _buildTimeAndImageRow(theme, selectedDate),
           if (_activeDraft.selectedPhotos.isNotEmpty) _buildPhotoPreview(theme),
@@ -2376,7 +2472,12 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
   }
 
   /// 构建固定事件按钮行
-  Widget _buildFixedEventRow(ThemeData theme, AsyncValue<List<FixedEventTemplate>> fixedEvents) {
+  Widget _buildFixedEventRow(
+    ThemeData theme,
+    AsyncValue<List<FixedEventTemplate>> fixedEvents,
+    DateTime selectedDate,
+    List<DiaryRecord> allRecords,
+  ) {
     return fixedEvents.when(
       data: (templates) {
         if (templates.isEmpty) return const SizedBox.shrink();
@@ -2389,7 +2490,8 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: templates.map((template) {
-                      final isSelected = _selectedFixedEventIds.contains(template.id);
+                      final isAddedToday = _isFixedEventAddedOnDate(template, selectedDate, allRecords);
+                      final isSelected = _selectedFixedEventIds.contains(template.id) && !isAddedToday;
                       return Padding(
                         padding: const EdgeInsets.only(right: 6),
                         child: GestureDetector(
@@ -2401,12 +2503,16 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                             decoration: BoxDecoration(
                               color: isSelected
                                   ? theme.colorScheme.primary
-                                  : Colors.transparent,
+                                  : isAddedToday
+                                      ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35)
+                                      : Colors.transparent,
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
                                 color: isSelected
                                     ? Colors.transparent
-                                    : theme.colorScheme.outlineVariant,
+                                    : isAddedToday
+                                        ? theme.colorScheme.outlineVariant.withValues(alpha: 0.3)
+                                        : theme.colorScheme.outlineVariant,
                                 width: 1,
                               ),
                             ),
@@ -2414,11 +2520,17 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
-                                  isSelected ? Icons.check_circle : Icons.schedule,
+                                  isSelected
+                                      ? Icons.check_circle
+                                      : isAddedToday
+                                          ? Icons.check_circle_outlined
+                                          : Icons.schedule,
                                   size: 12,
                                   color: isSelected
                                       ? theme.colorScheme.onPrimary
-                                      : theme.colorScheme.onSurface,
+                                      : isAddedToday
+                                          ? theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
+                                          : theme.colorScheme.onSurface,
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
@@ -2427,9 +2539,22 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                                     fontWeight: FontWeight.w600,
                                     color: isSelected
                                         ? theme.colorScheme.onPrimary
-                                        : theme.colorScheme.onSurface,
+                                        : isAddedToday
+                                            ? theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
+                                            : theme.colorScheme.onSurface,
                                   ),
                                 ),
+                                if (isAddedToday) ...[
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    '已添加',
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.normal,
+                                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.55),
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                           ),
