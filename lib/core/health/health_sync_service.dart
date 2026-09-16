@@ -402,9 +402,9 @@ class HealthSyncService {
       'avg_spo2': summary.avgSpo2,
       'avg_stress': summary.avgStress,
       'sports': sportsData,
-      if (screenTimeMs != null) 'screen_time_ms': screenTimeMs,
-      if (screenYesterdayTimeMs != null) 'screen_yesterday_time_ms': screenYesterdayTimeMs,
-      if (screenTopApps != null) 'screen_top_apps': screenTopApps,
+      ...?screenTimeMs != null ? {'screen_time_ms': screenTimeMs} : null,
+      ...?screenYesterdayTimeMs != null ? {'screen_yesterday_time_ms': screenYesterdayTimeMs} : null,
+      ...?screenTopApps != null ? {'screen_top_apps': screenTopApps} : null,
     };
 
     final record = DiaryRecord(
@@ -424,7 +424,7 @@ class HealthSyncService {
             '消耗': '${calStr}kcal',
             if (summary.standingCount > 0) '站立': '${summary.standingCount}次',
             if (summary.sleepDurationMinutes > 0) '睡眠': '$sleepHours小时$sleepMins分',
-            if (screenFormattedTime != null) '屏幕': screenFormattedTime,
+            ...?screenFormattedTime != null ? {'屏幕': screenFormattedTime} : null,
             if (sports.isNotEmpty) '运动项': '${sports.length}项',
           },
           startHour: 23,

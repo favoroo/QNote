@@ -145,6 +145,23 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     WidgetUtils.updateHomeWidgets();
   }
 
+  /// 批量删除待办
+  Future<void> deleteTodos(List<String> ids) async {
+    if (ids.isEmpty) return;
+    final repo = ref.read(todoRepositoryProvider);
+    await repo.batchSoftDelete(ids);
+    for (final id in ids) {
+      await NotificationService.instance.cancelNotification(id.hashCode);
+    }
+    final idSet = ids.toSet();
+    state = AsyncData(
+      (state.valueOrNull ?? []).where((t) => !idSet.contains(t.id)).toList(),
+    );
+    ref.invalidate(completedTodoListProvider);
+    ref.invalidate(upcomingRemindersProvider);
+    WidgetUtils.updateHomeWidgets();
+  }
+
   /// 根据周期规则推算下一个周期的日期
   static DateTime calculateNextRecurringDate(DateTime baseDate, String repeatRule) {
     switch (repeatRule) {

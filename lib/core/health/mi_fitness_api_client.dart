@@ -107,6 +107,26 @@ class MiFitnessApiClient {
     return [];
   }
 
+  /// 容灾拉取站立/活动数据（依次尝试 valid_stand, stand, standing, activity）
+  Future<List<Map<String, dynamic>>> _fetchStandingData({
+    required DateTime startTime,
+    required DateTime endTime,
+  }) async {
+    const candidateKeys = ['valid_stand', 'stand', 'standing', 'activity'];
+    for (final key in candidateKeys) {
+      try {
+        final list = await fetchFitnessData(startTime: startTime, endTime: endTime, key: key);
+        if (list.isNotEmpty) {
+          LoggerService.instance.info('MiFitness standing data fetched successfully with key: $key, count: ${list.length}');
+          return list;
+        }
+      } catch (e) {
+        LoggerService.instance.warning('MiFitness fetchFitnessData failed for key $key: $e');
+      }
+    }
+    return [];
+  }
+
   /// 获取指定单日的完整健康汇总指标
   Future<HealthDailyMetrics> fetchDaySummary(DateTime date) async {
     final startOfDay = DateTime(date.year, date.month, date.day, 0, 0, 0);
@@ -116,20 +136,14 @@ class MiFitnessApiClient {
     // 睡眠查询窗口扩展到前一天 12:00，确保能捞到跨午夜睡眠（前晚入睡→当天醒来）
     final sleepQueryStart = startOfDay.subtract(const Duration(hours: 12));
 
-    // 并行拉取各维度的指标（站立优先使用小米云端标准 key: valid_stand，兼容旧 key: standing）
+    // 并行拉取各维度的指标（站立优先使用多候选 Key 容灾拉取）
     final results = await Future.wait([
       fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'steps').catchError((e) => <Map<String, dynamic>>[]),
       fetchFitnessData(startTime: sleepQueryStart, endTime: endOfDay, key: 'sleep').catchError((e) => <Map<String, dynamic>>[]),
       fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'heart_rate').catchError((e) => <Map<String, dynamic>>[]),
       fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'spo2').catchError((e) => <Map<String, dynamic>>[]),
       fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'stress').catchError((e) => <Map<String, dynamic>>[]),
-      fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'valid_stand')
-          .catchError((e) => <Map<String, dynamic>>[])
-          .then((res) async {
-            if (res.isNotEmpty) return res;
-            return fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'standing')
-                .catchError((e) => <Map<String, dynamic>>[]);
-          }),
+      _fetchStandingData(startTime: startOfDay, endTime: endOfDay).catchError((e) => <Map<String, dynamic>>[]),
     ]);
 
     final stepsData = results[0];
@@ -298,66 +312,8 @@ class MiFitnessApiClient {
     }
     final avgStress = stressSamples.isNotEmpty ? (stressSum ~/ stressSamples.length) : null;
 
-    // 6. 站立次数解析（valid_stand: 优先找日结汇总 daily_report / count 汇总，其次按小时区间去重统计）
-    int totalStanding = 0;
-    int? dailyReportStanding;
-    final standingHourSet = <int>{};
-
-    for (final item in standingData) {
-      try {
-        final valStr = item['value'] as String? ?? '{}';
-        final valJson = json.decode(valStr) as Map<String, dynamic>;
-        final tag = item['tag'] as String? ?? '';
-        final standVal = valJson['count'] ??
-            valJson['standing_count'] ??
-            valJson['stand_count'] ??
-            valJson['standing'] ??
-            valJson['stand'];
-
-        // 若直接带有 daily_report 标签，这是官方日总结聚合值
-        if (tag == 'daily_report' && standVal is num) {
-          dailyReportStanding = standVal.toInt();
-        }
-
-        // 若单项 count > 1，通常也是日聚合汇总值
-        if (standVal is num && standVal.toInt() > 1 && dailyReportStanding == null) {
-          dailyReportStanding = standVal.toInt();
-        }
-
-        // 收集小时区间
-        final timeSec = (item['time'] as num?)?.toInt() ?? 0;
-        final isStanding = (standVal is num && standVal.toInt() >= 1) ||
-            valJson['has_stand'] == true ||
-            valJson['has_stand'] == 1;
-
-        if (timeSec > 0 && isStanding) {
-          final dt = DateTime.fromMillisecondsSinceEpoch(timeSec * 1000);
-          standingHourSet.add(dt.hour);
-        }
-      } catch (_) {}
-    }
-
-    if (dailyReportStanding != null && dailyReportStanding > 0) {
-      totalStanding = dailyReportStanding;
-    } else if (standingHourSet.isNotEmpty) {
-      totalStanding = standingHourSet.length;
-    } else {
-      // 兜底：若以上方式皆未匹配，则累加数值
-      for (final item in standingData) {
-        try {
-          final valStr = item['value'] as String? ?? '{}';
-          final valJson = json.decode(valStr) as Map<String, dynamic>;
-          final standVal = valJson['count'] ??
-              valJson['standing_count'] ??
-              valJson['stand_count'] ??
-              valJson['standing'] ??
-              valJson['stand'];
-          if (standVal is num) {
-            totalStanding += standVal.toInt();
-          }
-        } catch (_) {}
-      }
-    }
+    // 6. 站立次数解析（支持多协议兼容、非标准结构与小时区间去重）
+    final totalStanding = parseStandingCount(standingData, date);
 
     return HealthDailyMetrics(
       date: dateStr,
@@ -498,5 +454,148 @@ class MiFitnessApiClient {
       default:
         return '日常运动';
     }
+  }
+
+  /// 解析站立/活动次数（支持多协议兼容、非标准 value 结构与小时事件打点去重）
+  static int parseStandingCount(List<Map<String, dynamic>> standingData, DateTime date) {
+    int totalStanding = 0;
+    int? dailyReportStanding;
+    final standingHourSet = <int>{};
+
+    for (final item in standingData) {
+      try {
+        // 1. 时间戳提取：支持 time, update_time, start_time, timestamp，兼容秒(10位)与毫秒(13位)
+        final rawTs = (item['time'] ?? item['update_time'] ?? item['start_time'] ?? item['timestamp']) as num?;
+        int timeSec = rawTs?.toInt() ?? 0;
+        if (timeSec > 10000000000) {
+          timeSec ~/= 1000;
+        }
+
+        // 2. 标签提取
+        final tag = item['tag']?.toString() ?? '';
+
+        // 3. 解析 value 结构（支持 Map, num, bool, 字符串形式）
+        num? standVal;
+        bool? explicitHasStand;
+        final rawValue = item['value'];
+
+        if (rawValue is num) {
+          standVal = rawValue;
+        } else if (rawValue is bool) {
+          explicitHasStand = rawValue;
+        } else if (rawValue is Map) {
+          standVal = _extractStandNum(rawValue);
+          explicitHasStand = _extractHasStandBool(rawValue);
+        } else if (rawValue is String) {
+          final trimmed = rawValue.trim();
+          if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+            try {
+              final decoded = json.decode(trimmed);
+              if (decoded is Map) {
+                standVal = _extractStandNum(decoded);
+                explicitHasStand = _extractHasStandBool(decoded);
+              }
+            } catch (_) {}
+          } else {
+            // 纯数字或布尔文本，如 "1", "12", "true", "false"
+            final parsedNum = num.tryParse(trimmed);
+            if (parsedNum != null) {
+              standVal = parsedNum;
+            } else if (trimmed.toLowerCase() == 'true') {
+              explicitHasStand = true;
+            } else if (trimmed.toLowerCase() == 'false') {
+              explicitHasStand = false;
+            }
+          }
+        }
+
+        // 4. 若带有 daily_report 标签，此为官方聚合日汇总
+        if (tag == 'daily_report' && standVal != null && standVal > 0) {
+          dailyReportStanding = standVal.toInt();
+        }
+
+        // 5. 若单项 count > 1 且未有日结汇总，通常也是已聚合的日汇总值
+        if (standVal != null && standVal.toInt() > 1 && dailyReportStanding == null) {
+          dailyReportStanding = standVal.toInt();
+        }
+
+        // 6. 有效站立事件打点认定：
+        // 凡出现在 valid_stand / stand / standing 中的记录，本身即代表该时段发生了有效活动/站立，
+        // 除非该记录显式标记为 0、无站立或 false
+        final isExplicitlyInactive = (standVal != null && standVal <= 0) || (explicitHasStand == false);
+        final isStandingEvent = !isExplicitlyInactive;
+
+        if (timeSec > 0 && isStandingEvent) {
+          final dt = DateTime.fromMillisecondsSinceEpoch(timeSec * 1000);
+          if (dt.year == date.year && dt.month == date.month && dt.day == date.day) {
+            standingHourSet.add(dt.hour);
+          }
+        }
+      } catch (e) {
+        LoggerService.instance.warning('Failed to parse standing item: $e');
+      }
+    }
+
+    if (dailyReportStanding != null && dailyReportStanding > 0) {
+      totalStanding = dailyReportStanding;
+    } else if (standingHourSet.isNotEmpty) {
+      totalStanding = standingHourSet.length;
+    } else {
+      // 兜底：若以上皆为0，检查是否有有效记录总数
+      totalStanding = standingData.where((item) {
+        final val = item['value'];
+        if (val is num) return val > 0;
+        if (val is bool) return val;
+        if (val is String) {
+          final trimmed = val.trim();
+          if (trimmed == '0' || trimmed.toLowerCase() == 'false') return false;
+        }
+        return true;
+      }).length;
+    }
+
+    LoggerService.instance.info(
+      'MiFitness standing parsed: total=$totalStanding, hours=${standingHourSet.toList()}, '
+      'dailyReport=$dailyReportStanding, rawItems=${standingData.length}',
+    );
+
+    return totalStanding;
+  }
+
+  static num? _extractStandNum(Map<dynamic, dynamic> map) {
+    const keys = [
+      'count',
+      'standing_count',
+      'stand_count',
+      'standing',
+      'stand',
+      'value',
+      'val',
+      'effective_stand',
+      'activity_count',
+    ];
+    for (final k in keys) {
+      final v = map[k];
+      if (v is num) return v;
+      if (v is String) {
+        final parsed = num.tryParse(v);
+        if (parsed != null) return parsed;
+      }
+    }
+    return null;
+  }
+
+  static bool? _extractHasStandBool(Map<dynamic, dynamic> map) {
+    const keys = ['has_stand', 'is_stand', 'is_valid', 'status', 'effective'];
+    for (final k in keys) {
+      final v = map[k];
+      if (v is bool) return v;
+      if (v is num) return v > 0;
+      if (v is String) {
+        if (v.toLowerCase() == 'true' || v == '1') return true;
+        if (v.toLowerCase() == 'false' || v == '0') return false;
+      }
+    }
+    return null;
   }
 }

@@ -326,7 +326,7 @@ class _TabSwitcher extends StatelessWidget {
           color: isActive
               ? colorScheme.primary
               : colorScheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
           config.label,

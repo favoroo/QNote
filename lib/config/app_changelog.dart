@@ -14,6 +14,15 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.48',
+    date: '2026-09-17',
+    notes: [
+      '待办支持批量选择、批量删除与底部批量操作栏，删除操作增加防误触确认',
+      '笔记列表拖拽排序交互优化，拖拽过程中的目标提示更清晰稳定',
+      '小米健康站立/活动数据解析增加多接口容灾与非标准数据兼容',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.47',
     date: '2026-09-16',
     notes: [

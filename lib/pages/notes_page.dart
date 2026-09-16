@@ -532,7 +532,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           .where((n) => n.folderId == destParentId && n.isPinned && n.id != draggedItem.id)
           .toList();
 
-      int targetIndex = siblingPinnedNotes.indexWhere((n) => n.id == targetItem.id);
+      final targetIndex = siblingPinnedNotes.indexWhere((n) => n.id == targetItem.id);
       if (targetIndex == -1) {
         siblingPinnedNotes.add(allNotes.firstWhere((n) => n.id == draggedItem.id));
       } else {
@@ -570,7 +570,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
         }
       });
 
-      int targetIndex = siblings.indexWhere((item) {
+      final targetIndex = siblings.indexWhere((item) {
         if (item is Folder) return item.id == targetItem.id;
         if (item is Note) return item.id == targetItem.id;
         return false;
@@ -622,7 +622,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       return Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          EmptyStateWidget(icon: Icons.note_outlined, message: '暂无笔记'),
+          const EmptyStateWidget(icon: Icons.note_outlined, message: '暂无笔记'),
           const SizedBox(height: 8),
           Row(
             mainAxisSize: MainAxisSize.min,
@@ -1094,7 +1094,8 @@ class _FlattenedTile extends ConsumerStatefulWidget {
 }
 
 class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
-  final _menuKey = GlobalKey();
+  final _tileKey = GlobalKey();
+  bool _isDragging = false;
   String? _hoverPosition; // 'before' | 'inside' | 'after' | null
 
   /// 日记体系节点不作为拖拽目标；日记节点自身不可拖出（双保险）
@@ -1219,6 +1220,85 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
     );
   }
 
+  /// 右侧拖动手柄：按住手柄滑动即刻开启拖拽，不再占用整行长按
+  Widget _buildDragHandle(ThemeData theme, bool isFolder) {
+    return Draggable<FlattenedItem>(
+      data: widget.item,
+      dragAnchorStrategy: (draggable, context, position) {
+        final screenWidth = MediaQuery.of(context).size.width;
+        final feedbackWidth = screenWidth - 32;
+        // 手指按在右侧手柄上（距屏幕右边缘约 28px），
+        // 对应 feedback 卡片右侧边缘内约 20px 处，
+        // 使得拖拽时 feedback 整体水平位置与屏幕两侧边距（16px）保持完美重合居中
+        return Offset(feedbackWidth - 20, 24);
+      },
+      onDragStarted: () {
+        HapticFeedback.lightImpact();
+        setState(() => _isDragging = true);
+      },
+      onDragEnd: (_) {
+        if (mounted) setState(() => _isDragging = false);
+      },
+      onDraggableCanceled: (_, offset) {
+        if (mounted) setState(() => _isDragging = false);
+      },
+      onDragCompleted: () {
+        if (mounted) setState(() => _isDragging = false);
+      },
+      feedback: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: MediaQuery.of(context).size.width - 32,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.95),
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.18),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isFolder ? Icons.folder : Icons.description,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  isFolder ? widget.item.folder!.name : widget.item.note!.title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      child: SizedBox(
+        width: 32,
+        height: 32,
+        child: Center(
+          child: Icon(
+            Icons.drag_indicator,
+            size: 18,
+            color: theme.colorScheme.onSurfaceVariant.withValues(
+              alpha: 0.35,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1232,144 +1312,95 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
             ? () => widget.onToggleFolder(widget.item.folder!)
             : () => widget.onEditNote(widget.item.note!));
 
-    final Widget tileContent = Container(
-      padding: EdgeInsets.only(
-        left: 12.0 + widget.item.depth * 16.0,
-        right: 12,
-        top: isFolder ? 6 : 4,
-        bottom: isFolder ? 6 : 4,
-      ),
-      color: _hoverPosition == 'inside'
-          ? theme.colorScheme.primaryContainer.withValues(alpha: 0.25)
-          : Colors.transparent,
-      child: Row(
-        children: [
-          // 日记体系节点不参与批量选择，不渲染复选框
-          if (widget.isSelectionMode && !isJournal)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: SizedBox(
-                width: 24,
-                height: 24,
-                child: Checkbox(
-                  value: widget.isSelected,
-                  onChanged: (_) => widget.onToggleSelection(),
-                  activeColor: theme.colorScheme.primary,
+    final Widget tileContent = Opacity(
+      opacity: _isDragging ? 0.35 : 1.0,
+      child: Container(
+        key: _tileKey,
+        padding: EdgeInsets.only(
+          left: 12.0 + widget.item.depth * 16.0,
+          right: 12,
+          top: isFolder ? 6 : 4,
+          bottom: isFolder ? 6 : 4,
+        ),
+        color: _hoverPosition == 'inside'
+            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.25)
+            : Colors.transparent,
+        child: Row(
+          children: [
+            // 日记体系节点不参与批量选择，不渲染复选框
+            if (widget.isSelectionMode && !isJournal)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: Checkbox(
+                    value: widget.isSelected,
+                    onChanged: (_) => widget.onToggleSelection(),
+                    activeColor: theme.colorScheme.primary,
+                  ),
                 ),
               ),
-            ),
 
-          // 展开箭头已并入前置图标（图标容器右下角徽标），此处统一留 16px，
-          // 使同层级文件夹与笔记的左边界对齐
-          const SizedBox(width: 16),
+            // 展开箭头已并入前置图标（图标容器右下角徽标），此处统一留 16px，
+            // 使同层级文件夹与笔记的左边界对齐
+            const SizedBox(width: 16),
 
-          Expanded(
-            child: GestureDetector(
-              onTap: onItemTap,
-              behavior: HitTestBehavior.opaque,
-              child: Row(
-                children: [
-                  _buildLeadingIconBox(theme, isFolder, isJournal),
-                  const SizedBox(width: 12),
-                  if (!isFolder && widget.item.isPinned) ...[
-                    Icon(
-                      Icons.push_pin,
-                      size: 14,
-                      color: theme.colorScheme.primary,
-                    ),
-                    const SizedBox(width: 4),
-                  ],
-                  Expanded(
-                    child: Text(
-                      isFolder ? widget.item.folder!.name : widget.item.note!.title,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: isFolder ? FontWeight.bold : FontWeight.w500,
-                        letterSpacing: 0.2,
-                        color: isJournal ? theme.colorScheme.tertiary : null,
+            Expanded(
+              child: GestureDetector(
+                onTap: onItemTap,
+                onLongPress: () {
+                  if (widget.isSelectionMode || isJournal) return;
+                  HapticFeedback.lightImpact();
+                  if (isFolder) {
+                    widget.onShowFolderMenu(widget.item.folder!, _tileKey);
+                  } else {
+                    widget.onShowNoteMenu(widget.item.note!, _tileKey);
+                  }
+                },
+                behavior: HitTestBehavior.opaque,
+                child: Row(
+                  children: [
+                    _buildLeadingIconBox(theme, isFolder, isJournal),
+                    const SizedBox(width: 12),
+                    if (!isFolder && widget.item.isPinned) ...[
+                      Icon(
+                        Icons.push_pin,
+                        size: 14,
+                        color: theme.colorScheme.primary,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      const SizedBox(width: 4),
+                    ],
+                    Expanded(
+                      child: Text(
+                        isFolder ? widget.item.folder!.name : widget.item.note!.title,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: isFolder ? FontWeight.bold : FontWeight.w500,
+                          letterSpacing: 0.2,
+                          color: isJournal ? theme.colorScheme.tertiary : null,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // 日记体系节点为系统管理结构，不提供操作菜单
-          if (!widget.isSelectionMode && !isJournal) ...[
-            const SizedBox(width: 4),
-            SizedBox(
-              key: _menuKey,
-              width: 32,
-              height: 32,
-              child: IconButton(
-                padding: EdgeInsets.zero,
-                iconSize: 20,
-                icon: Icon(
-                  Icons.more_vert,
-                  color: theme.colorScheme.onSurfaceVariant.withValues(
-                    alpha: 0.5,
-                  ),
+                  ],
                 ),
-                onPressed: () => isFolder
-                    ? widget.onShowFolderMenu(widget.item.folder!, _menuKey)
-                    : widget.onShowNoteMenu(widget.item.note!, _menuKey),
               ),
             ),
+
+            // 日记体系节点为系统管理结构，不提供拖动手柄与操作菜单
+            if (!widget.isSelectionMode && !isJournal) ...[
+              const SizedBox(width: 4),
+              _buildDragHandle(theme, isFolder),
+            ],
           ],
-        ],
-      ),
-    );
-
-    // 长按触发拖动排序；选择模式下禁用拖动；日记体系节点不可拖动
-    final Widget tileWithDraggable = LongPressDraggable<FlattenedItem>(
-      data: widget.item,
-      maxSimultaneousDrags: (widget.isSelectionMode || isJournal) ? 0 : 1,
-      feedback: Material(
-        color: Colors.transparent,
-        child: Container(
-          width: MediaQuery.of(context).size.width - 32,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.9),
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.15),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                isFolder ? Icons.folder : Icons.description,
-                color: theme.colorScheme.primary,
-              ),
-              const SizedBox(width: 12),
-              Text(
-                isFolder ? widget.item.folder!.name : widget.item.note!.title,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
         ),
       ),
-      childWhenDragging: Opacity(
-        opacity: 0.4,
-        child: tileContent,
-      ),
-      child: tileContent,
     );
 
     return Stack(
       children: [
-        tileWithDraggable,
+        tileContent,
 
         if (_hoverPosition == 'before')
           Positioned(

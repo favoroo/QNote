@@ -144,6 +144,38 @@ class TodoRepository {
     );
   }
 
+  /// 批量软删除待办事项（使用事务保证原子性并写入同步日志）
+  Future<void> batchSoftDelete(List<String> ids) async {
+    if (ids.isEmpty) return;
+    final db = await _dbHelper.database;
+    final nowStr = DateTime.now().toIso8601String();
+    final now = DateTime.parse(nowStr);
+
+    await db.transaction((txn) async {
+      for (final id in ids) {
+        final existing = await getById(id);
+        if (existing == null) continue;
+
+        await txn.update(
+          'todos',
+          {'is_deleted': 1, 'updated_at': nowStr},
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+        final updated = existing.copyWith(
+          isDeleted: true,
+          updatedAt: now,
+        );
+        await _syncLog.logChange(
+          tableName: 'todos',
+          recordId: id,
+          operation: 'update',
+          data: updated.toMap(),
+        );
+      }
+    });
+  }
+
   Future<void> hardDelete(String id) async {
     final db = await _dbHelper.database;
     await db.delete('todos', where: 'id = ?', whereArgs: [id]);
