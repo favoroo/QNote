@@ -165,6 +165,10 @@ class BottomNavBar extends StatelessWidget {
 }
 
 class _BottomNavContent extends StatelessWidget {
+  /// 底部导航栏内容区域主体高度（不含系统底部安全区/全面屏手势条）。
+  /// 设为 66.0，适度提升单手操作触控热区与上下留白呼吸感。
+  static const double _navBarContentHeight = 66.0;
+
   final int currentIndex;
   final ValueChanged<int> onTap;
   final VoidCallback? onMenuTap;
@@ -185,7 +189,7 @@ class _BottomNavContent extends StatelessWidget {
     return SafeArea(
       top: false,
       child: Container(
-        height: 60,
+        height: _navBarContentHeight,
         decoration: BoxDecoration(
           color: theme.colorScheme.surface,
           border: Border(

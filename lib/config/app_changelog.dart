@@ -14,6 +14,15 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.51',
+    date: '2026-09-18',
+    notes: [
+      '时间线滑动稳定性重大升级：扩充窗口缓冲至 120 天并优化滚动检测，彻底解决滑动折叠日期时的偶发跳变与回弹',
+      '主界面底部导航栏高度适度提升至 66px，优化单手操作触控区域与整体排版呼吸感',
+      '小Q对话与悬浮Q面板中的常用提示词药丸按钮增加下边距，告别与输入框贴合及边框重叠问题',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.50',
     date: '2026-09-18',
     notes: [

@@ -1055,7 +1055,7 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
               ),
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [

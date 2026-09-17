@@ -46,8 +46,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
   late DateTime _today;
   late DateTime _windowStartDate;
-  final int _windowDays = 60;
-  static const int _shiftDays = 15;
+  final int _windowDays = 120;
+  static const int _shiftDays = 30;
   int _lastShiftTimestamp = 0;
   late ScrollController _scrollController;
   final GlobalKey _viewportKey = GlobalKey();
@@ -176,7 +176,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     WidgetsBinding.instance.addObserver(this);
     final now = DateTime.now();
     _today = DateTime(now.year, now.month, now.day);
-    _windowStartDate = _today.subtract(const Duration(days: 30));
+    _windowStartDate = _today.subtract(const Duration(days: 60));
     _hasPerformedInitialScroll = false;
     _itemContexts.clear();
     _itemHeights.clear();
@@ -655,7 +655,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       if (!_isSameDay(_today, todayNow)) {
         setState(() {
           _today = todayNow;
-          _windowStartDate = _today.subtract(const Duration(days: 30));
+          _windowStartDate = _today.subtract(const Duration(days: 60));
         });
         final allRecords = ref.read(diaryListProvider).valueOrNull;
         final recordsByDate = allRecords != null ? _buildRecordsByDate(allRecords) : null;
@@ -700,10 +700,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     final canShift = nowMs - _lastShiftTimestamp >= 200;
 
     // 允许双向自由滑动平移窗口（最早 -365 天，最晚 +365 天）
-    // 动态 edgeBuffer：设为 200~600px，在平移步长为 15 天（至少 1200px）的大缓冲支持下，
-    // 平移后新 offset 永远距离触发线有数百至上千像素的安全距离，彻底杜绝触顶与死锁卡顿
-    final edgeBuffer = (maxScroll * 0.15).clamp(200.0, 600.0);
-    if (canShift && maxScroll > edgeBuffer * 2.2) {
+    // 在 120 天超宽窗口支持下，固定使用 300px 的边缘安全触发线，平移步长为 30 天（至少 2400px），
+    // 平移后新 offset 永远距离触发线有超过 2000px 的安全跑道，彻底杜绝触顶震荡
+    const edgeBuffer = 300.0;
+    if (canShift && maxScroll > edgeBuffer * 2.5) {
       final earliestDate = _today.subtract(const Duration(days: 365));
       final latestDate = _today.add(const Duration(days: 365));
 
@@ -727,6 +727,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
             .dy;
 
         int? centerIndex;
+        double minDistanceAboveCenter = double.infinity;
+        int? closestHeaderIndexAbove;
+
         // Convert to list to avoid ConcurrentModificationError during iteration
         final entries = _itemContexts.entries.toList();
         for (final entry in entries) {
@@ -740,11 +743,21 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
               centerIndex = entry.key;
               break;
             }
+            // 针对折叠日期（48个slot高度为0），若中心刚好落在槽位缝隙中，
+            // 记录中心线上方最近的分割栏或有效节点作为兜底可视天数
+            if (itemTop <= centerYOnScreen) {
+              final distance = centerYOnScreen - itemTop;
+              if (distance < minDistanceAboveCenter) {
+                minDistanceAboveCenter = distance;
+                closestHeaderIndexAbove = entry.key;
+              }
+            }
           }
         }
 
-        if (centerIndex != null) {
-          final dayOffset = centerIndex ~/ _itemsPerDay;
+        final targetIndex = centerIndex ?? closestHeaderIndexAbove;
+        if (targetIndex != null) {
+          final dayOffset = targetIndex ~/ _itemsPerDay;
           final visibleDate = _indexToDate(dayOffset);
 
           final selectedDate = ref.read(selectedDateProvider);
@@ -790,6 +803,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     final shiftHeight = _calculateDaysHeight(newStartDate, _shiftDays);
     _windowStartDate = newStartDate;
     _shiftTargetOffset = prevOffset + shiftHeight;
+    _itemContexts.clear();
+    _itemHeights.clear();
 
     setState(() {});
 
@@ -817,6 +832,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     final removedHeight = _calculateDaysHeight(_windowStartDate, _shiftDays);
     _windowStartDate = _windowStartDate.add(const Duration(days: _shiftDays));
     _shiftTargetOffset = prevOffset - removedHeight;
+    _itemContexts.clear();
+    _itemHeights.clear();
 
     setState(() {});
 
@@ -906,8 +923,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     final target = DateTime(date.year, date.month, date.day);
     final diff = target.difference(_today).inDays;
 
-    // 将目标日期尽量居中放置在 60 天窗口的中部（第 30 天）
-    final newStartDiff = (diff - 30).clamp(-365, 365 - _windowDays);
+    // 将目标日期尽量居中放置在 120 天窗口的中部（第 60 天）
+    final newStartDiff = (diff - 60).clamp(-365, 365 - _windowDays);
 
     _windowStartDate = _today.add(Duration(days: newStartDiff));
     _itemContexts.clear();
@@ -1789,12 +1806,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<DateTime>(selectedDateProvider, (previous, next) {
-      if (!_isProgrammaticScrolling && !_isScrollingFromList) {
-        _goToDate(next);
-      }
-    });
-
     ref.listen<int>(diaryScrollTriggerProvider, (previous, next) {
       if (next != 0) {
         final allRecords = ref.read(diaryListProvider).valueOrNull;
