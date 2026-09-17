@@ -14,6 +14,15 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.57',
+    date: '2026-09-17',
+    notes: [
+      '修复数据统计记账板块收入/支出金额恒为 0 的问题：AI 提取规范化阶段现保留 _category 收支方向字段，历史数据缺失时按类型字段回退推断',
+      '修复数据统计饮食等短内容 tab 顶部大片空白：改为撑满顶部对齐布局，切换动画不再上下跳动',
+      '小Q 头像双眼几何优化：尺寸随液晶屏等比放大，细线稿与实心风格共用同一内缩比例，全局形象更统一',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.56',
     date: '2026-09-18',
     notes: [

@@ -55,6 +55,10 @@ Map<String, dynamic> normalizeExtractedFields(Map<String, dynamic> rawFields, Sh
     for (final cat in shortcut.categories!) {
       validFieldIds.addAll(cat.fields.map((f) => f.id));
     }
+    // 带 categories 的标签（如记账）依赖 _category 区分收支方向，
+    // Schema 提示中已要求 AI 输出该字段，这里必须视为有效字段予以保留，
+    // 否则会被当作无效私有字段丢弃，导致统计页无法判定收入/支出
+    validFieldIds.add('_category');
   }
 
   // 常见同义词/别名映射表 (当 AI 提取的 key 不在有效字段中，但别名在时进行映射)

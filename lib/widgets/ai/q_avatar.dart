@@ -26,9 +26,6 @@ class QIcon extends StatelessWidget {
   /// 更显臃肿；整体收缩后四周留出约 1.9px @24px 的呼吸边距。
   static const double _contentScale = 0.85;
 
-  /// 小尺寸实心风格的机身边框内缩量（母版为 44.0）。
-  static const double _solidFrameInset = 34.0;
-
   final double size;
   final Color? color;
   final Color? screenColor;
@@ -67,7 +64,6 @@ class QIcon extends StatelessWidget {
           innerColor: effectiveEyeColor,
           screenColor: effectiveScreenColor,
           style: filled ? QRobotStyle.solid : QRobotStyle.outlined,
-          frameInset: _solidFrameInset,
           contentScale: _contentScale,
         ),
       ),
@@ -79,6 +75,7 @@ class QIcon extends StatelessWidget {
 ///
 /// 严格依据小Q专属机器人视觉几何规范（天线圆球+天线杆、圆角头盔、内衬环形外框、数码屏幕与双胶囊眼睛）绘制。
 /// 可自适应任意尺寸（小至 14px 图标，大至 80px+ 头像），支持自定义主色（机器人机身）与副色（内衬/眼睛）。
+/// 线条粗细与 [QIcon] 选中态共用同一内缩比例，保证全局小Q形象一致。
 class QAvatar extends StatelessWidget {
   /// 图标/头像尺寸（宽和高相同）
   final double size;
@@ -194,10 +191,12 @@ class QAvatar extends StatelessWidget {
 /// - 天线圆球：cx=101.5, cy=15.5, r=16.5
 /// - 天线立杆：left=95.0, top=30.0, right=108.0, bottom=59.0
 /// - 外层头盔：Rect(0, 58, 203, 205), radius=38.0
-/// - 内衬环框（挖空）：Rect(29, 86, 175, 177), radius=8.0
-/// - 内部液晶屏：Rect(44, 101, 159, 162), radius=3.0
-/// - 左眼：Rect(65, 119, 81, 144), radius=8.0
-/// - 右眼：Rect(122, 119, 138, 144), radius=8.0
+/// - 内衬环框 / 液晶屏：按内缩量排布（母版 44.0，默认已收窄至 34.0，二者按比例跟随）
+/// - 双眼：由液晶屏宽度按母版比例派生（母版屏幕宽 115 内排布 16x25、双眼中距 57），
+///   垂直居中于机身；屏幕放大时宽高同倍率放大，造型不变形且小尺寸下仍可辨
+///
+/// 注：`QAvatar` 带背景时机器人仅占容器的 54%（24px 容器 → 机器人 12.96px），
+/// 眼睛若沿用固定母版尺寸会细到约 1.0x1.6px，故改为随屏幕联动。
 ///
 /// [QRobotStyle.outlined] 线稿模式改用「描边线宽」建模：
 /// - 描边宽度 20.0（经 [contentScale] 收缩后约 2.0px @24px，对齐 Material 图标）
@@ -225,15 +224,33 @@ class _QRobotPainter extends CustomPainter {
   /// 母版图形几何中心（用于 [contentScale] 收缩的基准点）
   static const Offset _masterCenter = Offset(101.5, 102.75);
 
+  /// 实心模式机身边框内缩量（母版坐标系），决定机器人「线条」的视觉粗细。
+  ///
+  /// 母版原稿为 44.0；收窄至 34.0 后线条视觉重量贴近 Material 图标，
+  /// 导航栏选中态与各处 [QAvatar] 头像共用同一比例，保持全局形象一致。
+  static const double _solidFrameInset = 34.0;
+
+  /// 双眼几何相对「液晶屏」的比例基准。
+  ///
+  /// 母版 44.0 内缩时屏幕宽 115，其中排布 16x25 的双眼、双眼中距 57；三个比例由此换算。
+  /// 屏幕随 [_solidFrameInset] 收窄而放大时，双眼按屏幕宽度的缩放系数**等比**放大
+  /// （宽高同倍率，故胶囊造型恒定不变形）——否则 24px 头像下双眼仅约 1.0x1.6px，细到不可辨。
+  static const double _masterScreenWidth = 203.0 - 44.0 * 2;
+  static const double _eyeWidthRatio = 16.0 / _masterScreenWidth;
+  static const double _eyeGapRatio = 57.0 / _masterScreenWidth;
+
+  /// 双眼高宽比（母版造型：竖长胶囊 25/16）。
+  ///
+  /// 高度由宽度乘此比例派生，而非各轴独立缩放，避免屏幕纵向放大更多时眼睛被拉长变形。
+  static const double _eyeAspect = 25.0 / 16.0;
+
+  /// 双眼垂直中心：机身 y 轴 58~205 的中心，恰好也是液晶屏的垂直中心。
+  static const double _eyeCenterY = 131.5;
+
   final Color bodyColor;
   final Color innerColor;
   final Color screenColor;
   final QRobotStyle style;
-
-  /// 机身外壳到内部液晶屏的内缩量（母版坐标系）。
-  ///
-  /// 母版为 44.0；小尺寸图标可传更小的值以减轻线条厚度。
-  final double frameInset;
 
   /// 内容整体收缩比例（以 [_masterCenter] 为基准），1.0 表示铺满母版画布。
   final double contentScale;
@@ -243,7 +260,6 @@ class _QRobotPainter extends CustomPainter {
     required this.innerColor,
     required this.screenColor,
     this.style = QRobotStyle.solid,
-    this.frameInset = 44.0,
     this.contentScale = 1.0,
   });
 
@@ -290,9 +306,11 @@ class _QRobotPainter extends CustomPainter {
       ..style = PaintingStyle.fill;
 
     // 内衬环框保持母版比例（29 / 44 ≈ 0.66）
-    final innerInset = frameInset * 0.66;
+    const innerInset = _solidFrameInset * 0.66;
     // 同心圆角：内层圆角随边框收窄而增大，避免出现生硬直角
-    final screenRadius = math.max(3.0, 38.0 - frameInset);
+    final screenRadius = math.max(3.0, 38.0 - _solidFrameInset);
+    // 液晶屏宽度（机身宽 203 四边内缩 _solidFrameInset），双眼比例以此为基准
+    const screenWidth = 203.0 - _solidFrameInset * 2;
 
     // 1. 天线圆球
     canvas.drawCircle(const Offset(101.5, 15.5), 16.5, bodyPaint);
@@ -315,7 +333,7 @@ class _QRobotPainter extends CustomPainter {
     // 4. 内衬高亮环框（浅色或背景色）
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromLTRB(
+        const Rect.fromLTRB(
           innerInset,
           58.0 + innerInset,
           203.0 - innerInset,
@@ -329,11 +347,11 @@ class _QRobotPainter extends CustomPainter {
     // 5. 内部液晶屏
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromLTRB(
-          frameInset,
-          58.0 + frameInset,
-          203.0 - frameInset,
-          205.0 - frameInset,
+        const Rect.fromLTRB(
+          _solidFrameInset,
+          58.0 + _solidFrameInset,
+          203.0 - _solidFrameInset,
+          205.0 - _solidFrameInset,
         ),
         Radius.circular(screenRadius),
       ),
@@ -341,20 +359,24 @@ class _QRobotPainter extends CustomPainter {
     );
 
     // 6. 双眼（浅色圆角垂直胶囊）
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        const Rect.fromLTRB(65.0, 119.0, 81.0, 144.0),
-        const Radius.circular(8.0),
-      ),
-      innerPaint,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        const Rect.fromLTRB(122.0, 119.0, 138.0, 144.0),
-        const Radius.circular(8.0),
-      ),
-      innerPaint,
-    );
+    //    尺寸由屏幕宽度按母版比例派生，屏幕放大时眼睛同步等比放大且造型不变形；
+    //    垂直居中于机身，圆角取半宽使其保持胶囊形。
+    const eyeWidth = screenWidth * _eyeWidthRatio;
+    const eyeHeight = eyeWidth * _eyeAspect;
+    const eyeGap = screenWidth * _eyeGapRatio;
+    for (final dx in <double>[-eyeGap / 2, eyeGap / 2]) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: Offset(101.5 + dx, _eyeCenterY),
+            width: eyeWidth,
+            height: eyeHeight,
+          ),
+          const Radius.circular(eyeWidth / 2),
+        ),
+        innerPaint,
+      );
+    }
   }
 
   /// 线稿轮廓：仅描边机身边框并填充天线与双眼，线条轻盈
@@ -420,7 +442,6 @@ class _QRobotPainter extends CustomPainter {
         oldDelegate.innerColor != innerColor ||
         oldDelegate.screenColor != screenColor ||
         oldDelegate.style != style ||
-        oldDelegate.frameInset != frameInset ||
         oldDelegate.contentScale != contentScale;
   }
 }

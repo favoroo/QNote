@@ -323,6 +323,17 @@ FinanceStatistics calculateFinanceStats(
           if (catStr == 'expense' || catStr == '支出') isExpense = true;
           if (catStr == 'income' || catStr == '收入') isIncome = true;
         }
+        // _category 缺失时（历史数据在提取规范化阶段被丢弃），按类型字段回退推断，
+        // 与时间线卡片 diary_item.dart 的判定逻辑保持一致
+        if (isExpense == null && isIncome == null) {
+          final hasExpenseType = _getValFromMap(fields, ['type', '支出类型']) != null;
+          final hasIncomeType = _getValFromMap(fields, ['incomeType', '收入类型']) != null;
+          if (hasExpenseType) {
+            isExpense = true;
+          } else if (hasIncomeType) {
+            isIncome = true;
+          }
+        }
         final rawType = _getValFromMap(fields, ['type', '支出类型']);
         if (rawType != null) expenseType = rawType.toString();
         final rawIncomeType = _getValFromMap(fields, ['incomeType', '收入类型']);

@@ -181,6 +181,19 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
               duration: AppDurations.medium,
               switchInCurve: AppCurves.emphasized,
               switchOutCurve: AppCurves.exit,
+              // 默认 layoutBuilder 为 center 对齐且约束 loose，内容较短的 tab
+              // （如饮食）会收缩高度后整体垂直居中，顶部留出大片空白；
+              // 改为撑满 + 顶部对齐，短内容贴顶显示，loading 圈仍居中
+              layoutBuilder: (currentChild, previousChildren) {
+                return Stack(
+                  alignment: Alignment.topCenter,
+                  fit: StackFit.expand,
+                  children: [
+                    ...previousChildren,
+                    ?currentChild,
+                  ],
+                );
+              },
               child: KeyedSubtree(
                 key: ValueKey('${_activeTab.name}_${_timeRange.name}'),
                 child: _buildContent(startDate, endDate),
