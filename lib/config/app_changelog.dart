@@ -14,6 +14,16 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.52',
+    date: '2026-09-18',
+    notes: [
+      '底部导航栏任意按钮（日记/笔记/小Q/待办/统计）长按均可呼出小Q悬浮弹窗，弹窗从长按的按钮位置向上展开',
+      '连续点击待办按钮 5 次即可呼出日志控制台，方便排查问题',
+      '修复重新打开 App 后时间线定位偏移、未对准当前时间的问题',
+      '固定事件关联标签改为必选，无标签时引导先创建，避免时间线记录缺少分类',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.51',
     date: '2026-09-18',
     notes: [

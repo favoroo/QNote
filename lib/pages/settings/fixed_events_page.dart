@@ -526,9 +526,11 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                         ),
                         const SizedBox(height: 16),
 
-                        // 关联标签（可选）
+                        // 关联标签（必选）：固定事件必须绑定至少一个标签，
+                        // 否则日记录入时无法生成带分类的记录，小Q 经由 VFS
+                        // 写入固定事件时也被要求填写该字段。
                         Text(
-                          '关联标签（可选）',
+                          '关联标签（必选）',
                           style: Theme.of(context).textTheme.labelSmall,
                         ),
                         const SizedBox(height: 6),
@@ -536,10 +538,12 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 4),
                             child: Text(
-                              '暂无可用标签，请先在"快捷按钮管理"中创建',
+                              '暂无可用标签，请先在"快捷按钮管理"中创建后再添加固定事件',
                               style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(
-                                    color: Theme.of(context).disabledColor,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.error,
                                   ),
                             ),
                           )
@@ -755,6 +759,19 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                               onPressed: () async {
                                 if (nameCtl.text.isEmpty) {
                                   Toast.warning(context, '请输入事件名称');
+                                  return;
+                                }
+                                // 关联标签必填：无任何可用标签时引导用户先创建，
+                                // 有可用标签时必须至少选择一个。
+                                if (selectedTagIds.isEmpty) {
+                                  if (shortcuts.isEmpty) {
+                                    Toast.warning(
+                                      context,
+                                      '请先在"快捷按钮管理"中创建标签后再添加固定事件',
+                                    );
+                                  } else {
+                                    Toast.warning(context, '请至少选择一个关联标签');
+                                  }
                                   return;
                                 }
                                 final now = DateTime.now();

@@ -88,6 +88,8 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
     // 这里只关心面板开关，避免整条悬浮层（含面板输入框）被高频重建，
     // 否则 Web 端中文输入法组合态会被反复打断（删字复活、光标错乱）
     final panelOpen = ref.watch(floatingQProvider.select((s) => s.panelOpen));
+    final anchorAlignment =
+        ref.watch(floatingQProvider.select((s) => s.anchorAlignment));
     final size = MediaQuery.sizeOf(context);
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
 
@@ -133,8 +135,8 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
                     transitionBuilder: (child, animation) => FadeTransition(
                       opacity: animation,
                       child: ScaleTransition(
-                        // 以面板底边中心为锚点缩放：视觉上从底部向上展开
-                        alignment: Alignment.bottomCenter,
+                        // 以触发按钮的底边锚点缩放：视觉上从长按的按钮位置向上展开
+                        alignment: anchorAlignment,
                         scale: Tween<double>(
                           begin: 0.88,
                           end: 1,

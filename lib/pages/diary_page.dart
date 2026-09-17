@@ -205,7 +205,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     return offset;
   }
 
-  static const double _averageRecordExtraHeight = 80.0;
+  static const double _averageRecordExtraHeight = 130.0;
 
   double _estimateOffsetForTimeWithRecords(
     DateTime targetTime,
@@ -219,7 +219,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     final dayOffset = _dateToDayOffset(targetDate);
     final nodeIndex = targetTime.hour * 2 + (targetTime.minute >= 30 ? 1 : 0);
 
-    double offset = 0;
+    // 考虑 ListView.builder vertical padding top = 12.0
+    double offset = 12.0;
     for (int d = 0; d <= dayOffset; d++) {
       final date = _indexToDate(d);
       final dateKey = _dateKey(date);
@@ -243,6 +244,12 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
               offset += _averageRecordExtraHeight;
             }
           }
+          // 当天非整点专用指示节点 _CurrentTimeNode (48px) 与自身半高补偿
+          if (_isToday(date) && !(targetTime.minute == 0 || targetTime.minute == 30)) {
+            offset += 24.0;
+          }
+          // 对准当前节点中心
+          offset += _nodeHeight * 0.5;
         }
       }
     }
@@ -282,7 +289,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     }
 
     double estimatedOffset;
-    if (attempts == 0 && recordsByDate != null && targetTime != null) {
+    if (recordsByDate != null && targetTime != null) {
       estimatedOffset = _estimateOffsetForTimeWithRecords(
         targetTime,
         recordsByDate,
@@ -1836,21 +1843,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Future.delayed(const Duration(milliseconds: 50), () {
           if (!mounted || !_scrollController.hasClients) return;
-
-          final now = DateTime.now();
-          final viewportHeight = _scrollController.position.viewportDimension;
-          final estimatedOffset = _estimateOffsetForTimeWithRecords(now, recordsByDate);
-          final targetOffset = (estimatedOffset - viewportHeight * 0.5).clamp(
-            0.0,
-            _scrollController.position.maxScrollExtent,
-          );
-          _isProgrammaticScrolling = true;
-          _scrollController.jumpTo(targetOffset);
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              _finishProgrammaticScroll();
-            }
-          });
+          // 复用 _scrollToCurrentTime 双阶段定位（预跳跃 + RenderBox物理像素校准），保证与双击底部栏完全一致且绝对居中
+          _scrollToCurrentTime(smooth: false, recordsByDate: recordsByDate);
         });
       });
     }

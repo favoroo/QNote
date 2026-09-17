@@ -164,10 +164,14 @@ class BottomNavBar extends StatelessWidget {
   }
 }
 
-class _BottomNavContent extends StatelessWidget {
+class _BottomNavContent extends ConsumerWidget {
   /// 底部导航栏内容区域主体高度（不含系统底部安全区/全面屏手势条）。
   /// 设为 66.0，适度提升单手操作触控热区与上下留白呼吸感。
   static const double _navBarContentHeight = 66.0;
+
+  /// 待办导航项连击计数与时间戳，连击 5 次触发日志控制台
+  static int _todoTapCount = 0;
+  static DateTime? _lastTodoTapTime;
 
   final int currentIndex;
   final ValueChanged<int> onTap;
@@ -181,8 +185,44 @@ class _BottomNavContent extends StatelessWidget {
     required this.onQTap,
   });
 
+  /// 长按唤起悬浮快捷面板：有编辑器选区时带引用打开，并按按钮位置设定弹出锚点
+  static void _handleQuickQTrigger(
+    WidgetRef ref, {
+    required Alignment anchorAlignment,
+  }) {
+    final notifier = ref.read(floatingQProvider.notifier);
+    final fqState = ref.read(floatingQProvider);
+
+    // 检查编辑器选区
+    final signature = fqState.effectiveContext?.signature;
+    final quote = QTargetBridge.instance.captureQuote(signature);
+    if (quote == null) {
+      notifier.openPanel(anchorAlignment: anchorAlignment);
+    } else {
+      // 收起键盘与选择菜单，把焦点让给面板输入框
+      FocusManager.instance.primaryFocus?.unfocus();
+      notifier.openWithQuote(quote, anchorAlignment: anchorAlignment);
+    }
+  }
+
+  /// 计算底部各导航按钮在屏幕水平方向的相对锚点，使弹窗从被长按的按钮位置向上生长展开
+  static Alignment _navItemAlignment(int index) {
+    switch (index) {
+      case 0: // 日记
+        return const Alignment(-0.8, 1.0);
+      case 1: // 笔记
+        return const Alignment(-0.4, 1.0);
+      case 2: // 待办
+        return const Alignment(0.4, 1.0);
+      case 3: // 统计
+        return const Alignment(0.8, 1.0);
+      default:
+        return Alignment.bottomCenter;
+    }
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final items = navigationItems;
 
@@ -203,11 +243,11 @@ class _BottomNavContent extends StatelessWidget {
           children: [
             // 日记
             Expanded(
-              child: _buildNavItem(context, theme, items, 0),
+              child: _buildNavItem(context, ref, theme, items, 0),
             ),
             // 笔记
             Expanded(
-              child: _buildNavItem(context, theme, items, 1),
+              child: _buildNavItem(context, ref, theme, items, 1),
             ),
             // 中央小Q：与其他导航栏图标风格完全统一
             Expanded(
@@ -218,11 +258,11 @@ class _BottomNavContent extends StatelessWidget {
             ),
             // 待办
             Expanded(
-              child: _buildNavItem(context, theme, items, 2),
+              child: _buildNavItem(context, ref, theme, items, 2),
             ),
             // 统计
             Expanded(
-              child: _buildNavItem(context, theme, items, 3),
+              child: _buildNavItem(context, ref, theme, items, 3),
             ),
           ],
         ),
@@ -232,6 +272,7 @@ class _BottomNavContent extends StatelessWidget {
 
   Widget _buildNavItem(
     BuildContext context,
+    WidgetRef ref,
     ThemeData theme,
     List<NavigationItem> items,
     int index,
@@ -244,16 +285,32 @@ class _BottomNavContent extends StatelessWidget {
       onTap: () {
         HapticFeedback.selectionClick();
         onTap(index);
+
+        // 待办按钮（index == 2）连点 5 次触发日志控制台（间隔小于 800ms 视为连击）
+        if (index == 2) {
+          final now = DateTime.now();
+          if (_lastTodoTapTime != null &&
+              now.difference(_lastTodoTapTime!) > const Duration(milliseconds: 800)) {
+            _todoTapCount = 0;
+          }
+          _lastTodoTapTime = now;
+          _todoTapCount++;
+          if (_todoTapCount >= 5) {
+            _todoTapCount = 0;
+            _lastTodoTapTime = null;
+            showDebugConsole(context);
+          }
+        } else {
+          _todoTapCount = 0;
+          _lastTodoTapTime = null;
+        }
       },
-      // index 0：长按/双击跳转到当前时间
-      onLongPress: index == 0
-          ? () {
-              if (!isSelected) onTap(0);
-              ProviderScope.containerOf(context, listen: false)
-                  .read(diaryScrollTriggerProvider.notifier)
-                  .state = DateTime.now().millisecondsSinceEpoch;
-            }
-          : (index == 2 ? () => showDebugConsole(context) : null),
+      // 长按底部栏任意按钮均在当前位置触发小Q悬浮弹窗
+      onLongPress: () {
+        HapticFeedback.selectionClick();
+        _handleQuickQTrigger(ref, anchorAlignment: _navItemAlignment(index));
+      },
+      // index 0：双击跳转到当前时间
       onDoubleTap: index == 0
           ? () {
               if (!isSelected) onTap(0);
@@ -314,7 +371,10 @@ class _QNavButton extends ConsumerWidget {
       },
       onLongPress: () {
         HapticFeedback.selectionClick();
-        _handleLongPress(ref);
+        _BottomNavContent._handleQuickQTrigger(
+          ref,
+          anchorAlignment: const Alignment(0.0, 1.0),
+        );
       },
       child: Center(
         child: _buildIcon(theme, isWorking, isActive, panelOpen),
@@ -363,23 +423,6 @@ class _QNavButton extends ConsumerWidget {
       screenColor: screenColor,
       eyeColor: eyeColor,
     );
-  }
-
-  /// 长按唤起悬浮快捷面板：有编辑器选区时带引用打开
-  void _handleLongPress(WidgetRef ref) {
-    final notifier = ref.read(floatingQProvider.notifier);
-    final fqState = ref.read(floatingQProvider);
-
-    // 检查编辑器选区
-    final signature = fqState.effectiveContext?.signature;
-    final quote = QTargetBridge.instance.captureQuote(signature);
-    if (quote == null) {
-      notifier.openPanel();
-    } else {
-      // 收起键盘与选择菜单，把焦点让给面板输入框
-      FocusManager.instance.primaryFocus?.unfocus();
-      notifier.openWithQuote(quote);
-    }
   }
 }
 

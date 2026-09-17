@@ -196,11 +196,15 @@ class FloatingQState {
     this.externalShareMode = false,
     this.pendingImages,
     this.attachedImages = const [],
+    this.anchorAlignment = Alignment.bottomCenter,
   });
 
   /// 生效上下文：编辑页覆盖栈顶优先，否则取基础上下文
   QPageContext? get effectiveContext =>
       overlayStack.isNotEmpty ? overlayStack.last : baseContext;
+
+  /// 悬浮面板弹出的锚点对齐方式（默认底边居中 Alignment.bottomCenter）
+  final Alignment anchorAlignment;
 
   FloatingQState copyWith({
     QPageContext? baseContext,
@@ -220,6 +224,7 @@ class FloatingQState {
     bool? externalShareMode,
     List<String>? pendingImages,
     List<String>? attachedImages,
+    Alignment? anchorAlignment,
     bool clearSignature = false,
     bool clearStatusText = false,
     bool clearStreamingThought = false,
@@ -257,6 +262,7 @@ class FloatingQState {
       attachedImages: clearAttachedImages
           ? const []
           : (attachedImages ?? this.attachedImages),
+      anchorAlignment: anchorAlignment ?? this.anchorAlignment,
     );
   }
 }
@@ -345,8 +351,12 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
   // ==========================================
 
   /// 手动点开面板：回到页面上下文模式（外部分享模式仅在分享唤起时生效）
-  void openPanel() =>
-      state = state.copyWith(panelOpen: true, externalShareMode: false);
+  void openPanel({Alignment anchorAlignment = Alignment.bottomCenter}) =>
+      state = state.copyWith(
+        panelOpen: true,
+        externalShareMode: false,
+        anchorAlignment: anchorAlignment,
+      );
 
   void closePanel() => state = state.copyWith(panelOpen: false);
 
@@ -355,10 +365,15 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
   /// 小Q工作中同样允许挂起（send 在 working 期是 no-op，引用保留待发），
   /// 引用在发送时一次性消费，期间可在面板引用卡片上移除。
   /// 外部内容（第三方分享/划词）唤起时进入外部模式：不展示也不注入页面位置
-  void openWithQuote(QTextQuote quote) => state = state.copyWith(
+  void openWithQuote(
+    QTextQuote quote, {
+    Alignment anchorAlignment = Alignment.bottomCenter,
+  }) =>
+      state = state.copyWith(
         pendingQuote: quote,
         panelOpen: true,
         externalShareMode: quote.source == QQuoteSource.external,
+        anchorAlignment: anchorAlignment,
       );
 
   /// 移除挂起的引用（引用卡片 × 按钮）

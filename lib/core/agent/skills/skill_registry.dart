@@ -379,6 +379,7 @@ description: 系统偏好与配置技能：个性化外观、AI模型分配与�
       { "startTime": "23:30", "endTime": "07:30" }
     ],
     "content": "睡眠",
+    "tags": ["shortcut_sleep"],
     "isEnabled": true,
     "sortOrder": 0
   },
@@ -391,6 +392,7 @@ description: 系统偏好与配置技能：个性化外观、AI模型分配与�
       { "startTime": "13:30", "endTime": "18:00" }
     ],
     "content": "日常工作",
+    "tags": ["shortcut_work"],
     "isEnabled": true,
     "sortOrder": 1
   }
@@ -399,6 +401,7 @@ description: 系统偏好与配置技能：个性化外观、AI模型分配与�
 - `timePeriods`: 时间段数组（支持一天内多个时段，如上午和下午分段打卡）；每一项包含 `startTime`（开始 "HH:mm"）和 `endTime`（结束 "HH:mm"）。
 - `isTimePoint`: `true` 为单时间点打卡（如早起打卡），此时 `timePeriods` 中只需提供 `startTime`，`endTime` 留空；`false` 为时间段事件。
 - `content`: 打卡时默认写入时间线的备注内容（选填）。不需要写入 `icon` 字段。
+- `tags`: **必填**，关联标签 ID 数组。每个固定事件必须绑定至少一个快捷标签 ID，否则该事件在日记录入时无法生成带分类的记录。标签 ID 取自 `/settings/shortcuts.json` 中各快捷按钮的 `id` 字段（可通过读取该文件查询可用标签）。新增固定事件时务必填写；编辑现有事件时若未提供 `tags`，将沿用该事件原有标签。
 
 ### 1.6 `/settings/profile.json`（个人画像资料）
 管理个人昵称、生日、身高、体重、生活目标：
