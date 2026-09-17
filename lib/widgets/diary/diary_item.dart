@@ -760,66 +760,76 @@ class _DiaryItemState extends State<DiaryItem> {
   }
 
   Widget _buildHeader(ThemeData theme, Color primaryTagColor, {String? categoryTag}) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      physics: const BouncingScrollPhysics(),
-      child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // 时间胶囊
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-              decoration: BoxDecoration(
-                color: primaryTagColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.access_time_filled,
-                    size: 13,
-                    color: primaryTagColor,
+    final hasCategory = categoryTag != null && categoryTag.isNotEmpty;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // 时间行保留横向滚动能力：窄屏下长时间文案可滑动，且不会压到右侧种类标签
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 时间胶囊
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                  decoration: BoxDecoration(
+                    color: primaryTagColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  const SizedBox(width: 4),
-                  Text(
-                    _formatTimeRangeWithDate(),
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: primaryTagColor,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.access_time_filled,
+                        size: 13,
+                        color: primaryTagColor,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _formatTimeRangeWithDate(),
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: primaryTagColor,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        // 种类标签固定在卡片右上角，与左上角时间形成左右呼应的视觉锚点。
+        // 多标签卡片内部各分段已自带实心标签（_buildTagEntryPills），故此处不重复展示。
+        if (hasCategory) ...[
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+            decoration: BoxDecoration(
+              color: primaryTagColor,
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: [
+                BoxShadow(
+                  color: primaryTagColor.withValues(alpha: 0.22),
+                  blurRadius: 4,
+                  offset: const Offset(0, 1.5),
+                ),
+              ],
+            ),
+            child: Text(
+              categoryTag,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
               ),
             ),
-            // 种类标签（并列在时间右侧，单行不换行）
-            if (categoryTag != null && categoryTag.isNotEmpty) ...[
-              const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-                decoration: BoxDecoration(
-                  color: primaryTagColor,
-                  borderRadius: BorderRadius.circular(8),
-                  boxShadow: [
-                    BoxShadow(
-                      color: primaryTagColor.withValues(alpha: 0.22),
-                      blurRadius: 4,
-                      offset: const Offset(0, 1.5),
-                    ),
-                  ],
-                ),
-                child: Text(
-                  categoryTag,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      );
+          ),
+        ],
+      ],
+    );
   }
 
   Widget _buildTagAndFieldsRow(ThemeData theme, Color primaryTagColor) {
@@ -829,7 +839,7 @@ class _DiaryItemState extends State<DiaryItem> {
       for (final entry in record.tagEntries) {
         final color = _tagColor(entry.name);
 
-        // 仅添加属性字段胶囊（种类标签已在卡片头部第一行并列展示，单标签模式下无需在此重复显示）
+        // 仅添加属性字段胶囊（种类标签已固定展示在卡片右上角，单标签模式下无需在此重复显示）
         final additionalTags = _buildAdditionalTags(entry);
         for (final tagText in additionalTags) {
           rowItems.add(

@@ -189,6 +189,13 @@ class ChatSessionListNotifier extends AsyncNotifier<List<ChatSession>> {
   }
 
   Future<ChatSession> createSession({String? aiConfigId}) async {
+    // 复用已有空白会话（标题仍为默认且最多只有一条问候语）：
+    // 避免连点「新建对话」堆积多个空会话，列表按 updatedAt 倒序，取最近一个
+    for (final existing in state.valueOrNull ?? const <ChatSession>[]) {
+      if (existing.title == '新对话' && existing.messages.length <= 1) {
+        return existing;
+      }
+    }
     final repo = ConfigRepository.instance;
     final now = DateTime.now();
     final greeting = defaultSystemPrompts['assistant_greeting'] ?? '';

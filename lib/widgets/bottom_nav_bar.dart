@@ -410,7 +410,7 @@ class _QNavButton extends ConsumerWidget {
       );
     }
 
-    // 选中 / 未选中态：采用单体 QIcon，与其它导航栏图标一致尺寸 24px
+    // 未选中走细线稿轮廓（线条重量与其余 Material 图标一致），选中走实心填充
     final color = isActive ? primary : inactiveColor;
     final screenColor = isActive
         ? (isDark ? theme.colorScheme.surface : Colors.white)
@@ -422,6 +422,8 @@ class _QNavButton extends ConsumerWidget {
       color: color,
       screenColor: screenColor,
       eyeColor: eyeColor,
+      // 未选中：细线稿；选中：实心填充，匹配其余图标 outlined/filled 的语义
+      filled: isActive,
     );
   }
 }

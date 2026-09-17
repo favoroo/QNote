@@ -71,6 +71,17 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     _confirmTimer?.cancel();
   }
 
+  /// 进入批量选择模式（右上角「批量管理」入口，与待办页保持一致的手感）
+  void _enterSelectionMode() {
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _isSelectionMode = true;
+      _selectedNoteIds.clear();
+      _selectedFolderIds.clear();
+      _isConfirming = false;
+    });
+  }
+
   void _handleBatchDelete() async {
     if (_selectedNoteIds.isEmpty && _selectedFolderIds.isEmpty) return;
 
@@ -186,7 +197,15 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                 ),
               ),
             )
-          else
+          else ...[
+            IconButton(
+              icon: Icon(
+                Icons.checklist_outlined,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              tooltip: '批量管理',
+              onPressed: _enterSelectionMode,
+            ),
             IconButton(
               icon: const Icon(Icons.search),
               tooltip: '搜索',
@@ -196,6 +215,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                 ).push(MaterialPageRoute(builder: (_) => const SearchView()));
               },
             ),
+          ],
         ],
       ),
       body: noteListAsync.when(

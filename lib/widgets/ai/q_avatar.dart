@@ -1,13 +1,45 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+
+/// 小Q 机器人绘制风格。
+enum QRobotStyle {
+  /// 实心填充：机身外壳 + 内衬环框 + 液晶屏 + 双眼，层次饱满。
+  /// 适合头像、大尺寸展示与强调态。
+  solid,
+
+  /// 线稿描边：仅机身轮廓、天线与双眼，无内部填充。
+  /// 线条轻盈，视觉重量与 Material 24px 图标（约 2px 描边）对齐，
+  /// 适合小尺寸图标与未选中态。
+  outlined,
+}
 
 /// 小Q 专属单体图标（轻量无圆形底座）。
 ///
 /// 适用于导航栏、操作菜单（ActionMenu）、对话框头部的 Icon 场景。
+/// 默认采用细线稿轮廓，线条视觉重量与同尺寸的 Material 图标保持一致；
+/// 需要更强辨识度时（如导航栏选中态）传 [filled] 切换为实心填充风格。
 class QIcon extends StatelessWidget {
+  /// 小尺寸图标的内容收缩比例。
+  ///
+  /// 母版图形上下顶满画布（天线球几乎贴到顶边），直接渲染会比 Material 图标
+  /// 更显臃肿；整体收缩后四周留出约 1.9px @24px 的呼吸边距。
+  static const double _contentScale = 0.85;
+
+  /// 小尺寸实心风格的机身边框内缩量（母版为 44.0）。
+  static const double _solidFrameInset = 34.0;
+
   final double size;
   final Color? color;
   final Color? screenColor;
   final Color? eyeColor;
+
+  /// 是否使用实心填充风格（[QRobotStyle.solid]）。
+  ///
+  /// - `false`（默认）：细线稿轮廓，线条厚度约 2px @24px，与导航栏其余
+  ///   Material 图标（`Icons.book_outlined` 等）视觉重量一致
+  /// - `true`：实心机器人，适合导航栏选中态等需要强辨识度的场景
+  final bool filled;
 
   const QIcon({
     super.key,
@@ -15,6 +47,7 @@ class QIcon extends StatelessWidget {
     this.color,
     this.screenColor,
     this.eyeColor,
+    this.filled = false,
   });
 
   @override
@@ -33,6 +66,9 @@ class QIcon extends StatelessWidget {
           bodyColor: effectiveColor,
           innerColor: effectiveEyeColor,
           screenColor: effectiveScreenColor,
+          style: filled ? QRobotStyle.solid : QRobotStyle.outlined,
+          frameInset: _solidFrameInset,
+          contentScale: _contentScale,
         ),
       ),
     );
@@ -162,15 +198,53 @@ class QAvatar extends StatelessWidget {
 /// - 内部液晶屏：Rect(44, 101, 159, 162), radius=3.0
 /// - 左眼：Rect(65, 119, 81, 144), radius=8.0
 /// - 右眼：Rect(122, 119, 138, 144), radius=8.0
+///
+/// [QRobotStyle.outlined] 线稿模式改用「描边线宽」建模：
+/// - 描边宽度 20.0（经 [contentScale] 收缩后约 2.0px @24px，对齐 Material 图标）
+/// - 机身轮廓路径按线宽内缩一半，保证外缘仍与母版对齐
+/// - 天线球与双眼为实心填充，尺寸与线宽协调（球直径≈1.55 倍线宽）
 class _QRobotPainter extends CustomPainter {
+  /// 线稿模式的描边宽度（母版坐标系）
+  static const double _outlinedStroke = 20.0;
+
+  /// 线稿模式天线球半径
+  static const double _outlinedBallRadius = 15.5;
+
+  /// 线稿模式天线球圆心
+  static const Offset _outlinedBallCenter = Offset(101.5, 16.0);
+
+  /// 线稿模式双眼胶囊宽度（与线宽一致）
+  static const double _outlinedEyeWidth = 20.0;
+
+  /// 线稿模式双眼胶囊高度
+  static const double _outlinedEyeHeight = 30.0;
+
+  /// 线稿模式双眼中心间距
+  static const double _outlinedEyeGap = 62.0;
+
+  /// 母版图形几何中心（用于 [contentScale] 收缩的基准点）
+  static const Offset _masterCenter = Offset(101.5, 102.75);
+
   final Color bodyColor;
   final Color innerColor;
   final Color screenColor;
+  final QRobotStyle style;
+
+  /// 机身外壳到内部液晶屏的内缩量（母版坐标系）。
+  ///
+  /// 母版为 44.0；小尺寸图标可传更小的值以减轻线条厚度。
+  final double frameInset;
+
+  /// 内容整体收缩比例（以 [_masterCenter] 为基准），1.0 表示铺满母版画布。
+  final double contentScale;
 
   const _QRobotPainter({
     required this.bodyColor,
     required this.innerColor,
     required this.screenColor,
+    this.style = QRobotStyle.solid,
+    this.frameInset = 44.0,
+    this.contentScale = 1.0,
   });
 
   @override
@@ -182,6 +256,24 @@ class _QRobotPainter extends CustomPainter {
     canvas.save();
     canvas.scale(scale, scale * (size.height / size.width));
 
+    if (contentScale != 1.0) {
+      // 以图形几何中心为基准整体收缩，四周留出与 Material 图标一致的呼吸边距
+      canvas.translate(_masterCenter.dx, _masterCenter.dy);
+      canvas.scale(contentScale, contentScale);
+      canvas.translate(-_masterCenter.dx, -_masterCenter.dy);
+    }
+
+    if (style == QRobotStyle.outlined) {
+      _paintOutlined(canvas);
+    } else {
+      _paintSolid(canvas);
+    }
+
+    canvas.restore();
+  }
+
+  /// 实心填充：机身外壳 → 内衬环框 → 液晶屏 → 双眼，逐层挖空形成层次
+  void _paintSolid(Canvas canvas) {
     final bodyPaint = Paint()
       ..color = bodyColor
       ..isAntiAlias = true
@@ -196,6 +288,11 @@ class _QRobotPainter extends CustomPainter {
       ..color = screenColor
       ..isAntiAlias = true
       ..style = PaintingStyle.fill;
+
+    // 内衬环框保持母版比例（29 / 44 ≈ 0.66）
+    final innerInset = frameInset * 0.66;
+    // 同心圆角：内层圆角随边框收窄而增大，避免出现生硬直角
+    final screenRadius = math.max(3.0, 38.0 - frameInset);
 
     // 1. 天线圆球
     canvas.drawCircle(const Offset(101.5, 15.5), 16.5, bodyPaint);
@@ -218,7 +315,12 @@ class _QRobotPainter extends CustomPainter {
     // 4. 内衬高亮环框（浅色或背景色）
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        const Rect.fromLTRB(29.0, 86.0, 174.0, 177.0),
+        Rect.fromLTRB(
+          innerInset,
+          58.0 + innerInset,
+          203.0 - innerInset,
+          205.0 - innerInset,
+        ),
         const Radius.circular(8.0),
       ),
       innerPaint,
@@ -227,8 +329,13 @@ class _QRobotPainter extends CustomPainter {
     // 5. 内部液晶屏
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        const Rect.fromLTRB(44.0, 101.0, 159.0, 162.0),
-        const Radius.circular(3.0),
+        Rect.fromLTRB(
+          frameInset,
+          58.0 + frameInset,
+          203.0 - frameInset,
+          205.0 - frameInset,
+        ),
+        Radius.circular(screenRadius),
       ),
       screenPaint,
     );
@@ -248,14 +355,72 @@ class _QRobotPainter extends CustomPainter {
       ),
       innerPaint,
     );
+  }
 
-    canvas.restore();
+  /// 线稿轮廓：仅描边机身边框并填充天线与双眼，线条轻盈
+  void _paintOutlined(Canvas canvas) {
+    final fillPaint = Paint()
+      ..color = bodyColor
+      ..isAntiAlias = true
+      ..style = PaintingStyle.fill;
+
+    final strokePaint = Paint()
+      ..color = bodyColor
+      ..isAntiAlias = true
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _outlinedStroke
+      ..strokeJoin = StrokeJoin.round;
+
+    const half = _outlinedStroke / 2;
+
+    // 1. 天线圆球（实心圆点）
+    canvas.drawCircle(_outlinedBallCenter, _outlinedBallRadius, fillPaint);
+
+    // 2. 天线立杆：宽度与描边一致，自球心垂直落入机身顶边
+    canvas.drawRect(
+      Rect.fromLTRB(
+        101.5 - half,
+        _outlinedBallCenter.dy,
+        101.5 + half,
+        58.0 + half,
+      ),
+      fillPaint,
+    );
+
+    // 3. 机身轮廓：路径按线宽内缩一半，使描边外缘与母版机身边缘对齐
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        const Rect.fromLTRB(0.0, 58.0, 203.0, 205.0).inflate(-half),
+        const Radius.circular(38.0 - half),
+      ),
+      strokePaint,
+    );
+
+    // 4. 双眼：竖向胶囊，垂直居中于机身
+    const eyeCenter = Offset(101.5, 131.5);
+    for (final dx in <double>[-_outlinedEyeGap / 2, _outlinedEyeGap / 2]) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTRB(
+            eyeCenter.dx + dx - _outlinedEyeWidth / 2,
+            eyeCenter.dy - _outlinedEyeHeight / 2,
+            eyeCenter.dx + dx + _outlinedEyeWidth / 2,
+            eyeCenter.dy + _outlinedEyeHeight / 2,
+          ),
+          const Radius.circular(_outlinedEyeWidth / 2),
+        ),
+        fillPaint,
+      );
+    }
   }
 
   @override
   bool shouldRepaint(covariant _QRobotPainter oldDelegate) {
     return oldDelegate.bodyColor != bodyColor ||
         oldDelegate.innerColor != innerColor ||
-        oldDelegate.screenColor != screenColor;
+        oldDelegate.screenColor != screenColor ||
+        oldDelegate.style != style ||
+        oldDelegate.frameInset != frameInset ||
+        oldDelegate.contentScale != contentScale;
   }
 }

@@ -1539,51 +1539,49 @@ class _AiPageState extends ConsumerState<AiPage> {
                         ),
                       ),
                     ),
-                    const Spacer(),
-                    // 模型选择按钮（与长按发送按钮共用同一弹窗入口）
-                    Flexible(
-                      child: GestureDetector(
-                        onTap: _openModelSelector,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.surfaceContainerHighest
-                                .withValues(alpha: 0.5),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.smart_toy_outlined,
-                                size: 15,
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: Text(
-                                  // 按钮上仅展示裸模型名，不带「内置」前缀
-                                  (assistantModelDisplayName(
-                                            _activeModelId,
-                                            aiConfigsAsync.valueOrNull ??
-                                                const <AiConfig>[],
-                                          ) ??
-                                          '选择模型')
-                                      .replaceFirst(
-                                        RegExp('^内置\\s*'),
-                                        '',
-                                      ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: theme.colorScheme.onSurfaceVariant,
+                    const SizedBox(width: 8),
+                    // 模型选择按钮（与长按发送按钮共用同一弹窗入口）：
+                    // Expanded+右对齐保证按钮始终贴右边距，长模型名自动截断
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: GestureDetector(
+                          onTap: _openModelSelector,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surfaceContainerHighest
+                                  .withValues(alpha: 0.5),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    // 按钮上仅展示裸模型名，不带「内置」前缀
+                                    (assistantModelDisplayName(
+                                              _activeModelId,
+                                              aiConfigsAsync.valueOrNull ??
+                                                  const <AiConfig>[],
+                                            ) ??
+                                            '选择模型')
+                                        .replaceFirst(
+                                          RegExp('^内置\\s*'),
+                                          '',
+                                        ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
