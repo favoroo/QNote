@@ -14,6 +14,15 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.55',
+    date: '2026-09-18',
+    notes: [
+      '小Q 默认问候语精简为「嗨，你好」',
+      '小Q 顶部导航栏新增快捷「新建对话」按钮',
+      '小Q 输入栏上方新增直观的模型选择入口，方便快速切换小Q使用的AI模型',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.54',
     date: '2026-09-18',
     notes: [

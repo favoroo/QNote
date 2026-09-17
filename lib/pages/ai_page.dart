@@ -1150,6 +1150,18 @@ class _AiPageState extends ConsumerState<AiPage> {
         title: const Text('小Q'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.add_comment_outlined),
+            tooltip: '新建对话',
+            onPressed: () async {
+              // 先收起键盘，避免新会话打开后键盘自动弹出
+              FocusManager.instance.primaryFocus?.unfocus();
+              final session = await ref
+                  .read(chatSessionListProvider.notifier)
+                  .createSession();
+              ref.read(currentChatProvider.notifier).setSession(session);
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.history),
             onPressed: () {
               // 先取消输入框焦点，防止关闭抽屉后键盘自动弹出
@@ -1257,8 +1269,7 @@ class _AiPageState extends ConsumerState<AiPage> {
               ChatMessage(
                 role: 'assistant',
                 content:
-                    defaultSystemPrompts['assistant_greeting'] ??
-                    '你好！我是你的全能助手「小Q」。你可以直接向我提问，或者让我帮你添加待办、记录流水、修改笔记与设置等。',
+                    defaultSystemPrompts['assistant_greeting'] ?? '嗨，你好',
                 timestamp: DateTime.now(),
               ),
             ),
@@ -1485,48 +1496,99 @@ class _AiPageState extends ConsumerState<AiPage> {
                 const SizedBox(height: 6),
               ],
 
-              // 1.5 常用提示词按钮（点击弹出列表，选中即覆盖输入框）
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: GestureDetector(
-                    onTap: () => showQuickPromptDialog(context, ref, (text) {
-                      _inputController.text = text;
-                      _inputController.selection = TextSelection.fromPosition(
-                        TextPosition(offset: text.length),
-                      );
-                      _inputFocusNode.requestFocus();
-                    }),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surfaceContainerHighest
-                            .withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.bolt_rounded,
-                            size: 15,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '常用提示词',
-                            style: theme.textTheme.bodySmall?.copyWith(
+              // 1.5 输入栏上方功能行：左侧常用提示词，右侧模型选择按钮
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    // 常用提示词按钮（点击弹出列表，选中即覆盖输入框）
+                    GestureDetector(
+                      onTap: () => showQuickPromptDialog(context, ref, (text) {
+                        _inputController.text = text;
+                        _inputController.selection = TextSelection.fromPosition(
+                          TextPosition(offset: text.length),
+                        );
+                        _inputFocusNode.requestFocus();
+                      }),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceContainerHighest
+                              .withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.bolt_rounded,
+                              size: 15,
                               color: theme.colorScheme.onSurfaceVariant,
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 4),
+                            Text(
+                              '常用提示词',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
+                    const Spacer(),
+                    // 模型选择按钮（与长按发送按钮共用同一弹窗入口）
+                    Flexible(
+                      child: GestureDetector(
+                        onTap: _openModelSelector,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerHighest
+                                .withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.smart_toy_outlined,
+                                size: 15,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  // 按钮上仅展示裸模型名，不带「内置」前缀
+                                  (assistantModelDisplayName(
+                                            _activeModelId,
+                                            aiConfigsAsync.valueOrNull ??
+                                                const <AiConfig>[],
+                                          ) ??
+                                          '选择模型')
+                                      .replaceFirst(
+                                        RegExp('^内置\\s*'),
+                                        '',
+                                      ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
 
