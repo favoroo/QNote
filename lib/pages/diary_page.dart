@@ -20,6 +20,7 @@ import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
+import 'package:qnote_flutter/core/utils/widget_utils.dart';
 import 'package:qnote_flutter/providers/journal_provider.dart';
 import 'package:qnote_flutter/widgets/diary/ai_extract_helper.dart';
 import 'package:qnote_flutter/widgets/search_view.dart';
@@ -1263,7 +1264,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
         _createUndoController(record.id);
       }
 
-      await ref.read(diaryListProvider.notifier).updateDiary(updated);
+      await ref.read(diaryListProvider.notifier).updateDiary(
+        updated,
+        updateWidgets: !_isBatchExtracting,
+      );
       if (mounted && !_isBatchExtracting) {
         Toast.success(context, '优化完成');
       }
@@ -1274,7 +1278,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     }
 
     _cancelToken = null;
-    if (mounted) {
+    if (mounted && !_isBatchExtracting) {
       setState(() => _extractingRecordId = null);
     }
   }
@@ -1479,25 +1483,54 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
         continue;
       }
 
-      // Scroll to the record being extracted
-      _scrollToTime(currentRecord.time, smooth: true);
+      // 智能视口检测：若目标记录已在可视范围内且日期已展开，避免无谓滚动与长时间停顿
+      bool needScroll = true;
+      if (_scrollController.hasClients) {
+        final allCurrentRecords = ref.read(diaryListProvider).valueOrNull ?? [];
+        final recordsByDate = _buildRecordsByDate(allCurrentRecords);
+        final targetDate = DateTime(
+          currentRecord.time.year,
+          currentRecord.time.month,
+          currentRecord.time.day,
+        );
+        final isExpanded = _isDateExpanded(targetDate);
+        if (isExpanded) {
+          final estimatedOffset = _estimateOffsetForTimeWithRecords(
+            currentRecord.time,
+            recordsByDate,
+          );
+          final scrollOffset = _scrollController.offset;
+          final viewportHeight = _scrollController.position.viewportDimension;
+          // 预留上下安全边距（顶部导航与底部输入栏区域）
+          if (estimatedOffset >= scrollOffset + 40 &&
+              estimatedOffset <= scrollOffset + viewportHeight - 140) {
+            needScroll = false;
+          }
+        }
+      }
 
-      // Small delay to let scroll animation settle
-      await Future.delayed(const Duration(milliseconds: 500));
-      if (!mounted || _batchExtractCancelled) break;
+      if (needScroll) {
+        // Scroll to the record being extracted
+        _scrollToTime(currentRecord.time, smooth: true);
+
+        // 轻量等待滚动动画沉降
+        await Future.delayed(const Duration(milliseconds: 180));
+        if (!mounted || _batchExtractCancelled) break;
+      }
 
       // Extract
       await _handleAiExtract(currentRecord);
 
       if (mounted) {
         setState(() {
+          _extractingRecordId = null;
           _batchExtractCompleted = i + 1;
         });
       }
 
-      // Pause for a few seconds to let user review the extraction result before moving on
+      // 缩短停顿时间至 800ms：既保留让用户清晰看到卡片状态变更的视觉反馈，又避免冗长拖沓
       if (i < untaggedRecords.length - 1 && !_batchExtractCancelled) {
-        await Future.delayed(const Duration(seconds: 3));
+        await Future.delayed(const Duration(milliseconds: 800));
       }
     }
 
@@ -1519,6 +1552,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
         Toast.success(context, '批量提取完成（$_batchExtractTotal 条）');
       }
     }
+
+    // 批量提取流程整体结束后，统一触发一次原生桌面小组件数据刷新
+    WidgetUtils.updateHomeWidgets();
   }
 
   /// Long press on smart extract button to select model

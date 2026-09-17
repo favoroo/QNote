@@ -132,7 +132,7 @@ class DiaryListNotifier extends AsyncNotifier<List<DiaryRecord>> {
     return record;
   }
 
-  Future<void> updateDiary(DiaryRecord record) async {
+  Future<void> updateDiary(DiaryRecord record, {bool updateWidgets = true}) async {
     final repo = ref.read(diaryRepositoryProvider);
     await repo.update(record);
     // 内存替换目标项
@@ -141,7 +141,9 @@ class DiaryListNotifier extends AsyncNotifier<List<DiaryRecord>> {
           .map((r) => r.id == record.id ? record : r)
           .toList(),
     );
-    WidgetUtils.updateHomeWidgets();
+    if (updateWidgets) {
+      WidgetUtils.updateHomeWidgets();
+    }
   }
 
   Future<void> deleteDiary(String id) async {

@@ -14,6 +14,14 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.53',
+    date: '2026-09-18',
+    notes: [
+      '时间线批量智能提取体验大幅提速：记录已在屏幕内时跳过无谓滚动，条与条之间的停顿由 3 秒缩短至 0.8 秒，整批完成更快',
+      '批量提取期间不再逐条刷新桌面小组件，改为整批结束后统一刷新一次，消除中途卡顿',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.52',
     date: '2026-09-18',
     notes: [
