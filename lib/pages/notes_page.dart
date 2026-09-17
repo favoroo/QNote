@@ -439,6 +439,20 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       }
     }
 
+    // 空文件夹展开时插入"空"占位行，避免看起来像点击无响应
+    if (result.isEmpty && parentId != null) {
+      return [
+        FlattenedItem(
+          id: 'empty_placeholder_$parentId',
+          isFolder: false,
+          depth: depth,
+          parentId: parentId,
+          isPinned: false,
+          isEmptyPlaceholder: true,
+        ),
+      ];
+    }
+
     return result;
   }
 
@@ -1093,6 +1107,9 @@ class FlattenedItem {
   /// 此类节点不可拖拽、不可删除、不可作为拖拽目标
   final bool isJournal;
 
+  /// 空文件夹展开时的"空"占位行，仅作视觉提示，无交互
+  final bool isEmptyPlaceholder;
+
   FlattenedItem({
     required this.id,
     required this.isFolder,
@@ -1102,6 +1119,7 @@ class FlattenedItem {
     this.parentId,
     required this.isPinned,
     this.isJournal = false,
+    this.isEmptyPlaceholder = false,
   });
 }
 
@@ -1402,6 +1420,29 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
     final theme = Theme.of(context);
     final isFolder = widget.item.isFolder;
     final isJournal = widget.item.isJournal;
+
+    // 空文件夹展开占位：仅显示"空"提示，文字与子级内容对齐，无交互
+    if (widget.item.isEmptyPlaceholder) {
+      return Padding(
+        padding: EdgeInsets.only(
+          // 12 + depth*16 为行左缘，+60 对齐子级图标后的文字起点
+          left: 12.0 + widget.item.depth * 16.0 + 60,
+          right: 12,
+          top: 2,
+          bottom: 6,
+        ),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            '空',
+            style: TextStyle(
+              fontSize: 12,
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+            ),
+          ),
+        ),
+      );
+    }
 
     // 统一点击事件：文件夹触发展开/收起，笔记打开编辑，多选模式切换选中
     final VoidCallback? onItemTap = widget.isSelectionMode

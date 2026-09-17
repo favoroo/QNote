@@ -2562,7 +2562,7 @@ class ChatBubble extends StatelessWidget {
                     ),
                   ] else ...[
                     Text(
-                      '您的提问',
+                      'You',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w500,

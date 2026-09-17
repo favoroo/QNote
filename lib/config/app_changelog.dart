@@ -14,6 +14,16 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.54',
+    date: '2026-09-18',
+    notes: [
+      '小Q 支持修改小米运动健康每日目标步数与启动自动同步开关，修改后页面实时生效',
+      '个人信息页自定义字段输入体验优化，支持自适应扩展与滚动查看多行内容',
+      '个人信息页体重记录头部视觉优化，当前体重突出显示，单位与切换按钮融合',
+      '笔记列表空文件夹展开后显示淡色"空"提示，避免空状态误认为卡顿',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.53',
     date: '2026-09-18',
     notes: [

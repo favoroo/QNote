@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
+import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/core/health/mi_fitness_auth_service.dart';
 import 'package:qnote_flutter/core/health/health_sync_service.dart';
 import 'package:qnote_flutter/core/storage/health_metric_repository.dart';
@@ -50,12 +51,36 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
     final init = widget.initialDate ?? DateTime.now();
     _selectedDate = DateTime(init.year, init.month, init.day);
     _loadState();
+    // 监听小Q 对 /settings/health.json 的修改，实时刷新目标步数与自动同步开关
+    WorkspaceEventBus.instance.addListener(_onWorkspaceChange);
   }
 
   @override
   void dispose() {
+    WorkspaceEventBus.instance.removeListener(_onWorkspaceChange);
     _progressNotifier.dispose();
     super.dispose();
+  }
+
+  /// 小Q 修改 health.json 后轻量刷新头部设置项，不触发整页 loading
+  void _onWorkspaceChange(WorkspaceChangeEvent event) {
+    if (event.path != '/settings/health.json' ||
+        event.changeType != WorkspaceChangeType.updated) {
+      return;
+    }
+    _reloadPreferences();
+  }
+
+  Future<void> _reloadPreferences() async {
+    final syncService = ref.read(healthSyncServiceProvider);
+    final autoSync = await syncService.getAutoSync();
+    final stepTarget = await syncService.getDailyStepTarget();
+    if (mounted) {
+      setState(() {
+        _autoSync = autoSync;
+        _stepTarget = stepTarget;
+      });
+    }
   }
 
   Future<void> _loadState() async {
@@ -365,35 +390,35 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
           : ListView(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               children: [
-                // 1. 账号连接状态卡片（极简）
-                _buildAccountStatusCard(context, isAuthed),
-                const SizedBox(height: 12),
-
-                // 2. 日期切换导航栏
+                // 1. 日期切换导航栏
                 _buildDateNavBar(context),
                 const SizedBox(height: 12),
 
-                // 3. 步数与活力主卡片
+                // 2. 步数与活力主卡片
                 _buildStepsCard(context),
                 const SizedBox(height: 12),
 
-                // 4. 深度作息睡眠卡片（含比例条、阶段明细、作息区间与评分徽标）
+                // 3. 深度作息睡眠卡片（含比例条、阶段明细、作息区间与评分徽标）
                 _buildSleepCard(context),
                 const SizedBox(height: 12),
 
-                // 5. 心率健康深度指标卡片（静息心率、均值与极值范围、状态评估）
+                // 4. 心率健康深度指标卡片（静息心率、均值与极值范围、状态评估）
                 _buildHeartRateCard(context),
                 const SizedBox(height: 12),
 
-                // 6. 血氧饱和度与全天压力双联状态卡片
+                // 5. 血氧饱和度与全天压力双联状态卡片
                 _buildSpo2AndStressRow(context),
                 const SizedBox(height: 12),
 
-                // 7. 单次运动记录列表
+                // 6. 单次运动记录列表
                 if (_selectedSports.isNotEmpty) ...[
                   _buildSportRecordsSection(context),
                   const SizedBox(height: 12),
                 ],
+
+                // 7. 账号连接状态卡片（放在运动健康数据之后）
+                _buildAccountStatusCard(context, isAuthed),
+                const SizedBox(height: 12),
 
                 // 8. 基础设置（自动沉淀开关）
                 _buildPreferencesCard(context, isAuthed),

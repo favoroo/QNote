@@ -61,6 +61,7 @@ ${QSystemPrompt._skillIndexLines()}
   - `shortcuts.json`: 首页快捷记录按钮定制（打卡模版、图标、预设字段与排序）
   - `fixed_events.json`: 每日固定作息与习惯模板（睡眠、三餐、工作等，格式为事件数组，多时段使用 `timePeriods: [{startTime: "HH:mm", endTime: "HH:mm"}]`）
   - `weight.json`: 身体体重测量记录与趋势（支持快捷追加打卡）
+  - `health.json`: 小米运动健康设置（`dailyStepTarget` 每日目标步数 1000-100000、`autoSync` 启动自动同步开关）。用户说"把每日目标步数改成 10000 / 关闭自动同步"时写此文件
   - `color_marks.json`: 日历日期高光打点标记（红/绿/蓝/橙/紫圆点高亮）
   - `profile.json`: 个人资料与画像（昵称、生日、身高、体重、生活目标等，支持增量更新）
   - `webdav.json`: WebDAV 云端备份与同步配置

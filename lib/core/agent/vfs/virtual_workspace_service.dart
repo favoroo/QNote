@@ -8,6 +8,7 @@ import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
 import 'package:qnote_flutter/core/ai/free_model_service.dart';
+import 'package:qnote_flutter/core/health/health_sync_service.dart';
 import 'package:qnote_flutter/core/health/screen_usage_service.dart';
 import 'package:qnote_flutter/core/notification/notification_service.dart';
 import 'package:qnote_flutter/core/storage/color_mark_repository.dart';
@@ -88,6 +89,7 @@ class VirtualWorkspaceService {
     'fixed_events.json',
     'profile.json',
     'weight.json',
+    'health.json',
     'color_marks.json',
     'webdav.json',
   ];
@@ -898,6 +900,18 @@ class VirtualWorkspaceService {
         'accentColor': colorHex,
         'description':
             'themeMode 可选: "system" | "light" | "dark"；accentColor 为 16 进制颜色（如 #005BCB 经典蓝、#C5E803 荧光黄绿、#E91E8C 玫瑰粉红、#00E676 春天亮绿）',
+      };
+      return const JsonEncoder.withIndent('  ').convert(data);
+    } else if (name == 'health.json') {
+      final prefs = await SharedPreferences.getInstance();
+      final stepTarget = prefs.getInt(HealthSyncService.keyDailyStepTarget) ??
+          HealthSyncService.defaultDailyStepTarget;
+      final autoSync = prefs.getBool(HealthSyncService.keyAutoSync) ?? true;
+      final data = {
+        'dailyStepTarget': stepTarget,
+        'autoSync': autoSync,
+        'description':
+            'dailyStepTarget 为小米运动健康每日目标步数（1000-100000 的正整数）；autoSync 为启动时是否自动同步小米运动健康。修改后小米健康设置页与统计页生效。',
       };
       return const JsonEncoder.withIndent('  ').convert(data);
     } else if (name == 'ai.json') {
@@ -2382,6 +2396,40 @@ class VirtualWorkspaceService {
       final updatedData = {
         'themeMode': _themeModeToString(ThemeMode.values[currentThemeIndex]),
         'accentColor': _colorToHex(Color(currentColorVal)),
+      };
+      WorkspaceEventBus.instance.emit(
+        path,
+        WorkspaceChangeType.updated,
+        updatedData,
+      );
+      return {'status': 'updated', 'path': path, 'data': updatedData};
+    }
+
+    if (name == 'health.json') {
+      if (decoded is! Map<String, dynamic>) {
+        throw Exception('health.json 必须是 JSON 对象');
+      }
+      final prefs = await SharedPreferences.getInstance();
+      if (decoded.containsKey('dailyStepTarget')) {
+        final target = decoded['dailyStepTarget'];
+        final parsed = target is num ? target.toInt() : int.tryParse('$target');
+        if (parsed == null || parsed < 1000 || parsed > 100000) {
+          throw Exception('dailyStepTarget 必须为 1000-100000 之间的整数步');
+        }
+        await prefs.setInt(HealthSyncService.keyDailyStepTarget, parsed);
+      }
+      if (decoded.containsKey('autoSync')) {
+        if (decoded['autoSync'] is! bool) {
+          throw Exception('autoSync 必须为布尔值 true/false');
+        }
+        await prefs.setBool(HealthSyncService.keyAutoSync, decoded['autoSync'] as bool);
+      }
+      final currentTarget = prefs.getInt(HealthSyncService.keyDailyStepTarget) ??
+          HealthSyncService.defaultDailyStepTarget;
+      final currentAutoSync = prefs.getBool(HealthSyncService.keyAutoSync) ?? true;
+      final updatedData = {
+        'dailyStepTarget': currentTarget,
+        'autoSync': currentAutoSync,
       };
       WorkspaceEventBus.instance.emit(
         path,

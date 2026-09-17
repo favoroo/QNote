@@ -204,7 +204,8 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     final w = _latestWeightInKg;
     if (w == null) return '--';
     final val = _weightUnit == '斤' ? w * 2.0 : w;
-    return '${val.toStringAsFixed(1)} $_weightUnit';
+    // 单位由头部单位切换按钮统一展示，这里只返回数值，避免出现两个单位
+    return val.toStringAsFixed(1);
   }
 
   // 计算 BMI: kg / (m * m)
@@ -800,10 +801,20 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                 if (_latestWeightInKg != null) ...[
                   const SizedBox(width: 10),
                   Text(
-                    '当前 $_displayLatestWeight',
+                    '当前',
                     style: TextStyle(
                       fontSize: 11,
                       color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  // 数值加大加粗，突出当前体重
+                  Text(
+                    _displayLatestWeight,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.onSurface,
                     ),
                   ),
                 ],
@@ -1013,17 +1024,14 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   Widget _buildUnitToggle(ThemeData theme) {
     return InkWell(
       onTap: _toggleWeightUnit,
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(8),
       child: Container(
         height: 24,
-        padding: const EdgeInsets.symmetric(horizontal: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        // 中性底色胶囊，与录入条背景一致，不与主色按钮抢视觉
         decoration: BoxDecoration(
-          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.25),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(
-            color: theme.colorScheme.primary.withValues(alpha: 0.3),
-            width: 0.8,
-          ),
+          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1033,15 +1041,15 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
               _weightUnit,
               style: TextStyle(
                 fontSize: 11,
-                fontWeight: FontWeight.bold,
-                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w600,
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(width: 3),
             Icon(
               Icons.swap_horiz_rounded,
               size: 13,
-              color: theme.colorScheme.primary.withValues(alpha: 0.8),
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
             ),
           ],
         ),
@@ -1266,9 +1274,9 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                   padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
                   child: TextField(
                     controller: _customFieldControllers[key],
-                    maxLines: 2,
-                    minLines: 1,
-                    style: theme.textTheme.bodyMedium?.copyWith(fontSize: 13),
+                    maxLines: 6,
+                    minLines: 2,
+                    style: theme.textTheme.bodyMedium?.copyWith(height: 1.35, fontSize: 13),
                     decoration: InputDecoration(
                       hintText: '请输入$key',
                       hintStyle: TextStyle(
