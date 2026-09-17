@@ -1,7 +1,7 @@
 name: qnote_flutter
 description: "QNote - A personal knowledge management app"
 publish_to: 'none'
-version: 0.1.57+58
+version: 0.1.58+2058
 
 environment:
   sdk: ^3.11.5

@@ -14,6 +14,16 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.58',
+    date: '2026-09-17',
+    notes: [
+      '修复 Android 覆盖安装报错（无法降级安装）的问题：升级内部构建版本号 versionCode 保证平滑更新',
+      '修复数据统计记账板块收入/支出金额恒为 0 的问题',
+      '修复数据统计饮食等短内容 tab 顶部大片空白问题',
+      '小Q 头像双眼几何优化，全局视觉更统一',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.57',
     date: '2026-09-17',
     notes: [
