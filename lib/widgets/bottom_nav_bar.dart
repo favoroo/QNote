@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -336,10 +339,10 @@ class _BottomNavContent extends ConsumerWidget {
 ///
 /// 风格简洁，无外部圆框，与底部导航其他图标保持一致的尺寸 (24px) 与交互反馈。
 /// - 未选中：呈 onSurfaceVariant 浅灰色线条轮廓
-/// - 选中（/ai 页面）：呈 primary 主题强调色
+/// - 选中（/ai 页面）：呈 primary 主题强调色，并带有灵动的眨眼动效（3~6秒间隔触发单眨/连眨）
 /// - 面板展开：呈关闭叉号图标
 /// - 工作态：展示简约的动态无限符号
-class _QNavButton extends ConsumerWidget {
+class _QNavButton extends ConsumerStatefulWidget {
   final int currentIndex;
   final VoidCallback onTap;
 
@@ -349,13 +352,137 @@ class _QNavButton extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_QNavButton> createState() => _QNavButtonState();
+}
+
+class _QNavButtonState extends ConsumerState<_QNavButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _blinkController;
+  late final Animation<double> _eyeOpennessAnimation;
+  Timer? _blinkTimer;
+  final math.Random _random = math.Random();
+
+  @override
+  void initState() {
+    super.initState();
+    _blinkController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    );
+
+    // 0.0 -> 0.45: 快速闭眼 (1.0 -> 0.0)
+    // 0.45 -> 0.55: 极短闭合维持
+    // 0.55 -> 1.0: 弹润回睁 (0.0 -> 1.0)
+    _eyeOpennessAnimation = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.0, end: 0.0).chain(
+          CurveTween(curve: Curves.easeInQuad),
+        ),
+        weight: 45,
+      ),
+      TweenSequenceItem(
+        tween: ConstantTween<double>(0.0),
+        weight: 10,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.0, end: 1.0).chain(
+          CurveTween(curve: Curves.easeOutBack),
+        ),
+        weight: 45,
+      ),
+    ]).animate(_blinkController);
+
+    if (widget.currentIndex == 4) {
+      _startBlinkingLoop(immediateFirstBlink: true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _QNavButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final wasActive = oldWidget.currentIndex == 4;
+    final isNowActive = widget.currentIndex == 4;
+
+    if (!wasActive && isNowActive) {
+      // 刚切到小Q页面：立即眨眼一次并开启周期循环
+      _startBlinkingLoop(immediateFirstBlink: true);
+    } else if (wasActive && !isNowActive) {
+      // 切离小Q页面：停止循环并确保眼睛复位完全睁开
+      _stopBlinkingLoop();
+    }
+  }
+
+  void _startBlinkingLoop({bool immediateFirstBlink = false}) {
+    _blinkTimer?.cancel();
+    if (immediateFirstBlink) {
+      // 延时 350ms，配合页面切换完成产生轻微延迟交互感
+      _blinkTimer = Timer(const Duration(milliseconds: 350), () {
+        if (!mounted || widget.currentIndex != 4) return;
+        _performBlinkSequence();
+      });
+    } else {
+      _scheduleNextBlink();
+    }
+  }
+
+  void _stopBlinkingLoop() {
+    _blinkTimer?.cancel();
+    _blinkTimer = null;
+    if (_blinkController.isAnimating) {
+      _blinkController.stop();
+    }
+    _blinkController.value = 0.0;
+  }
+
+  void _scheduleNextBlink() {
+    _blinkTimer?.cancel();
+    if (!mounted || widget.currentIndex != 4) return;
+
+    // 3.0 ~ 5.5 秒随机间隔，节奏自然拟人
+    final delayMillis = 3000 + _random.nextInt(2500);
+    _blinkTimer = Timer(Duration(milliseconds: delayMillis), () {
+      if (!mounted || widget.currentIndex != 4) return;
+      _performBlinkSequence();
+    });
+  }
+
+  void _performBlinkSequence() {
+    if (!mounted || widget.currentIndex != 4) return;
+
+    _blinkController.forward(from: 0.0).then((_) {
+      if (!mounted || widget.currentIndex != 4) return;
+
+      // 约 25% 概率连眨一次，更显生动好奇
+      final shouldDoubleBlink = _random.nextDouble() < 0.25;
+      if (shouldDoubleBlink) {
+        _blinkTimer = Timer(const Duration(milliseconds: 140), () {
+          if (!mounted || widget.currentIndex != 4) return;
+          _blinkController.forward(from: 0.0).then((_) {
+            if (!mounted || widget.currentIndex != 4) return;
+            _scheduleNextBlink();
+          });
+        });
+      } else {
+        _scheduleNextBlink();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _blinkTimer?.cancel();
+    _blinkController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final phase = ref.watch(floatingQProvider.select((s) => s.phase));
     final panelOpen = ref.watch(floatingQProvider.select((s) => s.panelOpen));
     final isWorking = phase == FloatingQPhase.working;
     // /ai 分支激活态（index 4）
-    final isActive = currentIndex == 4;
+    final isActive = widget.currentIndex == 4;
 
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
@@ -366,7 +493,7 @@ class _QNavButton extends ConsumerWidget {
           notifier.closePanel();
         } else {
           HapticFeedback.selectionClick();
-          onTap();
+          widget.onTap();
         }
       },
       onLongPress: () {
@@ -417,13 +544,19 @@ class _QNavButton extends ConsumerWidget {
         : theme.colorScheme.surface;
     final eyeColor = isActive ? primary : inactiveColor;
 
-    return QIcon(
-      size: 24,
-      color: color,
-      screenColor: screenColor,
-      eyeColor: eyeColor,
-      // 未选中：细线稿；选中：实心填充，匹配其余图标 outlined/filled 的语义
-      filled: isActive,
+    return AnimatedBuilder(
+      animation: _eyeOpennessAnimation,
+      builder: (context, child) {
+        return QIcon(
+          size: 24,
+          color: color,
+          screenColor: screenColor,
+          eyeColor: eyeColor,
+          // 未选中：细线稿；选中：实心填充，匹配其余图标 outlined/filled 的语义
+          filled: isActive,
+          eyeOpenness: isActive ? _eyeOpennessAnimation.value : 1.0,
+        );
+      },
     );
   }
 }

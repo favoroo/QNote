@@ -14,6 +14,15 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.59',
+    date: '2026-09-18',
+    notes: [
+      '小米运动健康登录态静默自愈：Token 过期时自动用本地 passToken 换新登录态并重试同步，无需反复扫码授权',
+      '底部导航小Q 新增灵动眨眼动效：切到小Q 页面时打招呼眨眼，之后按随机间隔自然眨动，偶有俏皮双连眨',
+      '小Q 新建对话按钮图标优化为圆角气泡加号造型，线条更柔和',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.58',
     date: '2026-09-17',
     notes: [

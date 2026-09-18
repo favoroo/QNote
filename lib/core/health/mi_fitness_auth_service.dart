@@ -283,4 +283,80 @@ class MiFitnessAuthService {
       return null;
     }
   }
+
+  /// 正在进行的静默刷新任务（并发去重：一次同步会拉多个指标，401 时只需刷新一次）
+  Future<MiAuthCredentials>? _refreshing;
+
+  /// 用 passToken 静默换取新的 serviceToken（无需重新扫码）。
+  /// 成功返回新凭据（已保存到本地）；passToken 被服务端拒绝时会清理本地凭据；
+  /// 两种失败路径均抛出带原因的异常，供上层 Toast 提示。
+  Future<MiAuthCredentials> refreshServiceToken() {
+    return _refreshing ??= _doRefreshServiceToken().whenComplete(() => _refreshing = null);
+  }
+
+  Future<MiAuthCredentials> _doRefreshServiceToken() async {
+    final creds = await loadCredentials();
+    final passToken = creds?.passToken ?? '';
+    if (creds == null || passToken.isEmpty) {
+      throw Exception('本地缺少 passToken，无法静默刷新小米登录态，请重新扫码授权');
+    }
+
+    // 仅捕获网络/解析异常：此时不确定凭据是否失效，不清凭据，保留 passToken 下次再试
+    Response res;
+    Map<String, dynamic> jsonMap;
+    try {
+      res = await _dio.post(
+        '$accountBase/pass/serviceLoginAuth2',
+        data: {
+          'sid': sid,
+          '_json': 'true',
+          'passToken': passToken,
+          'userId': creds.userId,
+        },
+        options: Options(
+          contentType: Headers.formUrlEncodedContentType,
+          // 关闭自动重定向：passToken 失效时服务端会 302 到登录页，以此区分「被拒绝」与「网络异常」
+          followRedirects: false,
+          validateStatus: (status) => status != null && status < 500,
+        ),
+      );
+      final bodyStr = res.data.toString();
+      final jsonStr = bodyStr.replaceFirst('&&&START&&&', '').trim();
+      jsonMap = json.decode(jsonStr) as Map<String, dynamic>;
+    } catch (e) {
+      throw Exception('刷新小米登录态失败（网络异常）：$e');
+    }
+
+    // 走到这里说明网络通、响应可解析，后续失败均为确定性拒绝：清理本地凭据
+    if (res.statusCode != 200) {
+      await clearCredentials();
+      throw Exception('小米登录态已失效（serviceLoginAuth2 HTTP ${res.statusCode}），请重新扫码授权');
+    }
+
+    final code = jsonMap['code'] as int? ?? -1;
+    final location = jsonMap['location'] as String? ?? '';
+    final nonce = jsonMap['nonce'];
+    final ssecurity = jsonMap['ssecurity'] as String? ?? '';
+
+    if (code != 0 || location.isEmpty || nonce == null || ssecurity.isEmpty) {
+      await clearCredentials();
+      throw Exception('小米登录态已失效（passToken 被拒绝 code=$code），请重新扫码授权');
+    }
+
+    // 与扫码成功后的流程一致：通过 location 重定向换取新的 serviceToken
+    final newCreds = await _exchangeServiceToken(
+      location: location,
+      nonce: nonce,
+      ssecurity: ssecurity,
+      userId: jsonMap['userId']?.toString() ?? creds.userId,
+      cUserId: jsonMap['cUserId'] as String? ?? creds.cUserId,
+      passToken: jsonMap['passToken'] as String? ?? passToken,
+    );
+    if (newCreds == null || newCreds.serviceToken.isEmpty) {
+      throw Exception('刷新小米登录态失败：未换取到新的 serviceToken，请重新扫码授权');
+    }
+
+    LoggerService.instance.info('MiFitness serviceToken refreshed silently via passToken');
+    return newCreds;
+  }
 }

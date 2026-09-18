@@ -26,10 +26,14 @@ class MiFitnessApiClient {
   MiFitnessApiClient(this._authService);
 
   /// 通用加密请求
+  ///
+  /// [allowAuthRetry] 为 true 时，若服务端返回 401（serviceToken 失效），
+  /// 会用 passToken 静默刷新登录态并用新凭据重试一次；重试请求不再触发刷新，避免死循环。
   Future<dynamic> _postEncrypted({
     required String path,
     required Map<String, dynamic> payload,
     required MiAuthCredentials credentials,
+    bool allowAuthRetry = true,
   }) async {
     final encFormData = MiFitnessCrypto.encryptRequestParams(
       method: 'POST',
@@ -58,6 +62,18 @@ class MiFitnessApiClient {
         responseType: ResponseType.plain,
       ),
     );
+
+    // serviceToken 失效（auth err）：用 passToken 静默刷新后以新凭据重试一次。
+    // refreshServiceToken 内部有并发去重，fetchDaySummary 的多个并行请求只会触发一次刷新。
+    if (response.statusCode == 401 && allowAuthRetry) {
+      final refreshed = await _authService.refreshServiceToken();
+      return _postEncrypted(
+        path: path,
+        payload: payload,
+        credentials: refreshed,
+        allowAuthRetry: false,
+      );
+    }
 
     if (response.statusCode != 200) {
       throw Exception('小米云端接口响应异常 HTTP ${response.statusCode}: ${response.data}');

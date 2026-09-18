@@ -1150,7 +1150,8 @@ class _AiPageState extends ConsumerState<AiPage> {
         title: const Text('小Q'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.add_comment_outlined),
+            // 圆角气泡+加号造型，线条比 add_comment 更圆润
+            icon: const Icon(Icons.maps_ugc_outlined),
             tooltip: '新建对话',
             onPressed: () async {
               // 先收起键盘，避免新会话打开后键盘自动弹出

@@ -38,6 +38,13 @@ class QIcon extends StatelessWidget {
   /// - `true`：实心机器人，适合导航栏选中态等需要强辨识度的场景
   final bool filled;
 
+  /// 眼睛张合程度（0.0 ~ 1.0），默认为 1.0（完全睁开）。
+  ///
+  /// 用于选中时的呼吸/眨眼动效：
+  /// - 1.0：完全睁开（竖直胶囊眼）
+  /// - 0.0：闭合（压缩为扁平圆角细缝，保留生动俏皮的弧度和表情）
+  final double eyeOpenness;
+
   const QIcon({
     super.key,
     this.size = 20,
@@ -45,6 +52,7 @@ class QIcon extends StatelessWidget {
     this.screenColor,
     this.eyeColor,
     this.filled = false,
+    this.eyeOpenness = 1.0,
   });
 
   @override
@@ -65,6 +73,7 @@ class QIcon extends StatelessWidget {
           screenColor: effectiveScreenColor,
           style: filled ? QRobotStyle.solid : QRobotStyle.outlined,
           contentScale: _contentScale,
+          eyeOpenness: eyeOpenness,
         ),
       ),
     );
@@ -98,6 +107,9 @@ class QAvatar extends StatelessWidget {
   /// 内边距（仅当 withBackground = true 时起作用）
   final EdgeInsetsGeometry padding;
 
+  /// 眼睛张合程度（0.0 ~ 1.0），默认为 1.0（完全睁开）。
+  final double eyeOpenness;
+
   const QAvatar({
     super.key,
     this.size = 24,
@@ -107,6 +119,7 @@ class QAvatar extends StatelessWidget {
     this.withBackground = false,
     this.backgroundColor,
     this.padding = const EdgeInsets.all(4),
+    this.eyeOpenness = 1.0,
   });
 
   @override
@@ -141,6 +154,7 @@ class QAvatar extends StatelessWidget {
           bodyColor: effectiveColor,
           innerColor: effectiveEyeColor,
           screenColor: effectiveScreenColor,
+          eyeOpenness: eyeOpenness,
         ),
       ),
     );
@@ -176,6 +190,7 @@ class QAvatar extends StatelessWidget {
               bodyColor: effectiveColor,
               innerColor: effectiveEyeColor,
               screenColor: effectiveScreenColor,
+              eyeOpenness: eyeOpenness,
             ),
           ),
         ),
@@ -255,12 +270,16 @@ class _QRobotPainter extends CustomPainter {
   /// 内容整体收缩比例（以 [_masterCenter] 为基准），1.0 表示铺满母版画布。
   final double contentScale;
 
+  /// 眼睛睁开程度（0.0 ~ 1.0），1.0 为完全睁开（竖胶囊），0.0 为眨眼闭合（圆角扁缝）
+  final double eyeOpenness;
+
   const _QRobotPainter({
     required this.bodyColor,
     required this.innerColor,
     required this.screenColor,
     this.style = QRobotStyle.solid,
     this.contentScale = 1.0,
+    this.eyeOpenness = 1.0,
   });
 
   @override
@@ -361,18 +380,24 @@ class _QRobotPainter extends CustomPainter {
     // 6. 双眼（浅色圆角垂直胶囊）
     //    尺寸由屏幕宽度按母版比例派生，屏幕放大时眼睛同步等比放大且造型不变形；
     //    垂直居中于机身，圆角取半宽使其保持胶囊形。
+    //    支持 eyeOpenness 动态眨眼：完全闭合时保留圆润扁缝（minHeight = eyeWidth * 0.18）
     const eyeWidth = screenWidth * _eyeWidthRatio;
     const eyeHeight = eyeWidth * _eyeAspect;
     const eyeGap = screenWidth * _eyeGapRatio;
+    final clampedOpenness = eyeOpenness.clamp(0.0, 1.0);
+    const minEyeHeight = eyeWidth * 0.18;
+    final currentEyeHeight = math.max(minEyeHeight, eyeHeight * clampedOpenness);
+    final currentRadius = Radius.circular(currentEyeHeight / 2);
+
     for (final dx in <double>[-eyeGap / 2, eyeGap / 2]) {
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           Rect.fromCenter(
             center: Offset(101.5 + dx, _eyeCenterY),
             width: eyeWidth,
-            height: eyeHeight,
+            height: currentEyeHeight,
           ),
-          const Radius.circular(eyeWidth / 2),
+          currentRadius,
         ),
         innerPaint,
       );
@@ -418,18 +443,25 @@ class _QRobotPainter extends CustomPainter {
       strokePaint,
     );
 
-    // 4. 双眼：竖向胶囊，垂直居中于机身
+    // 4. 双眼：竖向胶囊，垂直居中于机身（支持 eyeOpenness 动态眨眼）
     const eyeCenter = Offset(101.5, 131.5);
+    final clampedOpenness = eyeOpenness.clamp(0.0, 1.0);
+    const minOutlinedEyeHeight = _outlinedEyeWidth * 0.18;
+    final currentOutlinedEyeHeight = math.max(
+      minOutlinedEyeHeight,
+      _outlinedEyeHeight * clampedOpenness,
+    );
+    final currentOutlinedRadius = Radius.circular(currentOutlinedEyeHeight / 2);
+
     for (final dx in <double>[-_outlinedEyeGap / 2, _outlinedEyeGap / 2]) {
       canvas.drawRRect(
         RRect.fromRectAndRadius(
-          Rect.fromLTRB(
-            eyeCenter.dx + dx - _outlinedEyeWidth / 2,
-            eyeCenter.dy - _outlinedEyeHeight / 2,
-            eyeCenter.dx + dx + _outlinedEyeWidth / 2,
-            eyeCenter.dy + _outlinedEyeHeight / 2,
+          Rect.fromCenter(
+            center: Offset(eyeCenter.dx + dx, eyeCenter.dy),
+            width: _outlinedEyeWidth,
+            height: currentOutlinedEyeHeight,
           ),
-          const Radius.circular(_outlinedEyeWidth / 2),
+          currentOutlinedRadius,
         ),
         fillPaint,
       );
@@ -442,6 +474,7 @@ class _QRobotPainter extends CustomPainter {
         oldDelegate.innerColor != innerColor ||
         oldDelegate.screenColor != screenColor ||
         oldDelegate.style != style ||
-        oldDelegate.contentScale != contentScale;
+        oldDelegate.contentScale != contentScale ||
+        oldDelegate.eyeOpenness != eyeOpenness;
   }
 }
