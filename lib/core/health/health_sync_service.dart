@@ -309,7 +309,8 @@ class HealthSyncService {
 
     if (summary.sleepDurationMinutes > 0) {
       final quality = _mapSleepScoreToQuality(summary.sleepScore);
-      contentLines.add('昨晚睡眠: $sleepHours小时$sleepMins分 · $quality$sleepScoreStr | 深睡: ${summary.deepSleepMinutes}分 | 浅睡: ${summary.lightSleepMinutes}分 | REM: ${summary.remSleepMinutes}分');
+      // 时长为当天各段睡眠之和（含午睡），故措辞用「全天」而非「昨晚」
+      contentLines.add('全天睡眠: $sleepHours小时$sleepMins分 · $quality$sleepScoreStr | 深睡: ${summary.deepSleepMinutes}分 | 浅睡: ${summary.lightSleepMinutes}分 | REM: ${summary.remSleepMinutes}分');
     }
 
     final vitals = <String>[];

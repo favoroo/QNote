@@ -118,8 +118,9 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
             final shouldSync = lastSync == null ||
                 DateTime.now().difference(lastSync).inHours >= 1;
             if (shouldSync) {
-              // fire-and-forget，不阻塞启动
-              healthSyncService.syncDays(daysBack: 2);
+              // fire-and-forget，不阻塞启动。窗口取 4 天：午睡可能发生在当天最后一次同步之后，
+              // 窗口过窄会让那天永久停在缺午睡的错值上（落库按 date 主键整行 replace）
+              healthSyncService.syncDays(daysBack: 4);
             }
           }
         }

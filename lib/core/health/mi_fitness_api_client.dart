@@ -13,6 +13,36 @@ final miFitnessApiClientProvider = Provider<MiFitnessApiClient>((ref) {
   return MiFitnessApiClient(authService);
 });
 
+/// 小米单日睡眠聚合结果（一天可能包含多段：跨夜段 + 午睡段）
+class MiSleepSummary {
+  const MiSleepSummary({
+    this.durationMinutes = 0,
+    this.deepMinutes = 0,
+    this.lightMinutes = 0,
+    this.remMinutes = 0,
+    this.awakeMinutes = 0,
+    this.mainStartTime,
+    this.mainEndTime,
+    this.mainScore,
+    this.stages = const [],
+  });
+
+  /// 各段时长之和，对齐小米「全天睡眠」口径
+  final int durationMinutes;
+  final int deepMinutes;
+  final int lightMinutes;
+  final int remMinutes;
+  final int awakeMinutes;
+
+  /// 主睡眠段（时长最长的那一段）的入睡/醒来 ISO8601 与评分
+  final String? mainStartTime;
+  final String? mainEndTime;
+  final int? mainScore;
+
+  /// 全部分期采样，跨段累加
+  final List<Map<String, dynamic>> stages;
+}
+
 class MiFitnessApiClient {
   final MiFitnessAuthService _authService;
   static const String host = 'https://hlth.io.mi.com';
@@ -194,75 +224,8 @@ class MiFitnessApiClient {
     }
     totalSteps = minuteStepMap.values.fold(0, (sum, val) => sum + val);
 
-    // 2. 睡眠解析（只保留醒来日 = 目标日期的睡眠记录）
-    int sleepDuration = 0;
-    int deepSleep = 0;
-    int lightSleep = 0;
-    int remSleep = 0;
-    int awakeTime = 0;
-    String? sleepStartStr;
-    String? sleepEndStr;
-    int? sleepScore;
-    final sleepStages = <Map<String, dynamic>>[];
-
-    for (final item in sleepData) {
-      try {
-        final valStr = item['value'] as String? ?? '{}';
-        final valJson = json.decode(valStr) as Map<String, dynamic>;
-
-        final bedtime = valJson['bedtime'];
-        final wakeup = valJson['wake_up_time'] ?? valJson['wake_time'];
-
-        // 解析完整时间戳，用于判断醒来日是否匹配目标日期
-        DateTime? wakeDt;
-        if (wakeup != null) {
-          wakeDt = DateTime.fromMillisecondsSinceEpoch((wakeup as num).toInt() * 1000);
-        }
-        // 只保留醒来日 = 目标日期的睡眠（跨午夜睡眠归属到醒来当天）
-        if (wakeDt != null &&
-            (wakeDt.year != date.year || wakeDt.month != date.month || wakeDt.day != date.day)) {
-          continue;
-        }
-
-        if (bedtime != null) {
-          final bt = DateTime.fromMillisecondsSinceEpoch((bedtime as num).toInt() * 1000);
-          sleepStartStr = bt.toIso8601String();
-        }
-        if (wakeDt != null) {
-          sleepEndStr = wakeDt.toIso8601String();
-        }
-
-        sleepDuration = (valJson['duration'] as num?)?.toInt() ?? sleepDuration;
-        sleepScore = (valJson['score'] as num?)?.toInt() ?? sleepScore;
-
-        if (valJson['items'] is List) {
-          for (final stg in valJson['items']) {
-            if (stg is Map) {
-              final state = stg['state'] as int? ?? 0;
-              final st = (stg['start_time'] as num?)?.toInt() ?? 0;
-              final et = (stg['end_time'] as num?)?.toInt() ?? 0;
-              final durMin = (et - st) ~/ 60;
-              if (state == 1) deepSleep += durMin;
-              if (state == 2 || state == 3) lightSleep += durMin;
-              if (state == 4) awakeTime += durMin;
-              if (state == 5) remSleep += durMin;
-              sleepStages.add({
-                'state': state,
-                'start': st,
-                'end': et,
-                'duration': durMin,
-              });
-            }
-          }
-        }
-      } catch (e) {
-        LoggerService.instance.warning('Failed to parse sleep item: $e');
-      }
-    }
-
-    if (sleepDuration == 0 && (deepSleep + lightSleep + remSleep) > 0) {
-      sleepDuration = deepSleep + lightSleep + remSleep;
-    }
+    // 2. 睡眠解析（一天可能多段：时长跨段累加，起止与评分取主睡眠段）
+    final sleep = parseSleepSummary(sleepData, date);
 
     // 3. 心率曲线与极值
     final hrSamples = <Map<String, dynamic>>[];
@@ -338,14 +301,14 @@ class MiFitnessApiClient {
       calories: totalCalories,
       activeMinutes: minuteStepMap.length,
       standingCount: totalStanding,
-      sleepDurationMinutes: sleepDuration,
-      deepSleepMinutes: deepSleep,
-      lightSleepMinutes: lightSleep,
-      remSleepMinutes: remSleep,
-      awakeMinutes: awakeTime,
-      sleepStartTime: sleepStartStr,
-      sleepEndTime: sleepEndStr,
-      sleepScore: sleepScore,
+      sleepDurationMinutes: sleep.durationMinutes,
+      deepSleepMinutes: sleep.deepMinutes,
+      lightSleepMinutes: sleep.lightMinutes,
+      remSleepMinutes: sleep.remMinutes,
+      awakeMinutes: sleep.awakeMinutes,
+      sleepStartTime: sleep.mainStartTime,
+      sleepEndTime: sleep.mainEndTime,
+      sleepScore: sleep.mainScore,
       avgHeartRate: avgHr,
       maxHeartRate: hrMax,
       minHeartRate: hrMin,
@@ -357,7 +320,7 @@ class MiFitnessApiClient {
       heartRateSamplesJson: json.encode(hrSamples),
       spo2SamplesJson: json.encode(spo2Samples),
       stressSamplesJson: json.encode(stressSamples),
-      sleepStagesJson: json.encode(sleepStages),
+      sleepStagesJson: json.encode(sleep.stages),
       source: 'mi_fitness',
       updatedAt: DateTime.now(),
     );
@@ -470,6 +433,119 @@ class MiFitnessApiClient {
       default:
         return '日常运动';
     }
+  }
+
+  /// 解析单日睡眠（支持一天多段：跨夜段 + 午睡段）
+  ///
+  /// 小米云端把每段睡眠作为独立 item 返回，且请求 `reverse: false` 按时间升序，
+  /// 若按「最后一段胜出」会让午睡覆盖整夜睡眠（曾导致一天只记 20 分钟）。
+  /// 因此时长与分期跨段累加，入睡/醒来/评分只取最长的那一段。
+  static MiSleepSummary parseSleepSummary(
+    List<Map<String, dynamic>> sleepData,
+    DateTime date,
+  ) {
+    int durationMinutes = 0;
+    int deepSleep = 0;
+    int lightSleep = 0;
+    int remSleep = 0;
+    int awakeTime = 0;
+    final sleepStages = <Map<String, dynamic>>[];
+    final seenSegments = <String>{};
+
+    String? mainStartTime;
+    String? mainEndTime;
+    int? mainScore;
+    // 用 -1 起算，保证只要有合格段就一定能锚定主睡眠
+    int mainSegmentMinutes = -1;
+
+    for (final item in sleepData) {
+      try {
+        final valStr = item['value'] as String? ?? '{}';
+        final valJson = json.decode(valStr) as Map<String, dynamic>;
+
+        final rawBedtime = valJson['bedtime'];
+        final rawWake = valJson['wake_up_time'] ?? valJson['wake_time'];
+        final bedtimeSec = rawBedtime is num ? rawBedtime.toInt() : null;
+        int? wakeSec = rawWake is num ? rawWake.toInt() : null;
+        final reportedDuration = (valJson['duration'] as num?)?.toInt() ?? 0;
+
+        // 缺醒来时间时用「入睡 + 时长」推导；仍推不出说明该段尚未结算（睡眠进行中），
+        // 不计入当天，下次同步会带上完整段
+        if (wakeSec == null && bedtimeSec != null && reportedDuration > 0) {
+          wakeSec = bedtimeSec + reportedDuration * 60;
+        }
+        if (wakeSec == null) {
+          continue;
+        }
+
+        // 只保留醒来日 = 目标日期的睡眠（跨午夜睡眠归属到醒来当天）
+        final wakeDt = DateTime.fromMillisecondsSinceEpoch(wakeSec * 1000);
+        if (wakeDt.year != date.year || wakeDt.month != date.month || wakeDt.day != date.day) {
+          continue;
+        }
+
+        // 手环与手机可能重复上报同一段，按起止时间戳去重避免双计
+        if (!seenSegments.add('$bedtimeSec-$wakeSec')) {
+          continue;
+        }
+
+        int segmentStageMinutes = 0;
+        if (valJson['items'] is List) {
+          for (final stg in valJson['items']) {
+            if (stg is Map) {
+              final state = stg['state'] as int? ?? 0;
+              final st = (stg['start_time'] as num?)?.toInt() ?? 0;
+              final et = (stg['end_time'] as num?)?.toInt() ?? 0;
+              final durMin = (et - st) ~/ 60;
+              if (state == 1) deepSleep += durMin;
+              if (state == 2 || state == 3) lightSleep += durMin;
+              if (state == 4) awakeTime += durMin;
+              if (state == 5) remSleep += durMin;
+              segmentStageMinutes += durMin;
+              sleepStages.add({
+                'state': state,
+                'start': st,
+                'end': et,
+                'duration': durMin,
+              });
+            }
+          }
+        }
+
+        // duration 单位是分钟；缺失时退回该段分期之和，让总时长与分期口径保持一致
+        final segmentMinutes = reportedDuration > 0 ? reportedDuration : segmentStageMinutes;
+        durationMinutes += segmentMinutes;
+
+        // 主睡眠取最长段；等长时因严格大于而保留较早那段（夜睡优先于午睡）
+        if (segmentMinutes > mainSegmentMinutes) {
+          mainSegmentMinutes = segmentMinutes;
+          mainScore = (valJson['score'] as num?)?.toInt();
+          mainStartTime = bedtimeSec != null
+              ? DateTime.fromMillisecondsSinceEpoch(bedtimeSec * 1000).toIso8601String()
+              : null;
+          mainEndTime = wakeDt.toIso8601String();
+        }
+      } catch (e) {
+        LoggerService.instance.warning('Failed to parse sleep item: $e');
+      }
+    }
+
+    LoggerService.instance.info(
+      'MiFitness sleep parsed for ${date.toIso8601String()}: total=$durationMinutes min, '
+      'segments=${seenSegments.length}, main=$mainStartTime~$mainEndTime',
+    );
+
+    return MiSleepSummary(
+      durationMinutes: durationMinutes,
+      deepMinutes: deepSleep,
+      lightMinutes: lightSleep,
+      remMinutes: remSleep,
+      awakeMinutes: awakeTime,
+      mainStartTime: mainStartTime,
+      mainEndTime: mainEndTime,
+      mainScore: mainScore,
+      stages: sleepStages,
+    );
   }
 
   /// 解析站立/活动次数（支持多协议兼容、非标准 value 结构与小时事件打点去重）

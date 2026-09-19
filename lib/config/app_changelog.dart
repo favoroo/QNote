@@ -14,6 +14,15 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.64',
+    date: '2026-09-19',
+    notes: [
+      '睡眠统计修正：全天睡眠时长现在包含午睡，入睡/醒来时间指主睡眠段（最长的一段），与手环 App 口径一致',
+      '健康自动同步窗口从 2 天扩大到 4 天：补齐当天最后一次同步之后发生的午睡，避免当天睡眠数据永久缺一段',
+      '小Q 分析睡眠时明确区分「全天时长」与「主睡眠入睡/醒来」，不再把午睡误当成晚上的睡眠',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.63',
     date: '2026-09-19',
     notes: [

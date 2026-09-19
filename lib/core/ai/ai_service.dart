@@ -1978,12 +1978,13 @@ class AiService {
       final sleepH = m.sleepDurationMinutes ~/ 60;
       final sleepM = m.sleepDurationMinutes % 60;
       final sleepScoreStr = m.sleepScore != null ? ' (得分: ${m.sleepScore})' : '';
-      lines.add('- 睡眠时长: $sleepH小时$sleepM分$sleepScoreStr');
+      // 时长为当天各段之和（含午睡），入睡/醒来则是主睡眠段，两者口径需分别标注以免 AI 误判
+      lines.add('- 全天睡眠时长: $sleepH小时$sleepM分$sleepScoreStr');
       lines.add('  - 深睡: ${m.deepSleepMinutes}分 | 浅睡: ${m.lightSleepMinutes}分 | REM: ${m.remSleepMinutes}分 | 清醒: ${m.awakeMinutes}分');
       final startHm = HealthDailyMetrics.sleepTimeToHHmm(m.sleepStartTime);
       final endHm = HealthDailyMetrics.sleepTimeToHHmm(m.sleepEndTime);
       if (startHm != null && endHm != null) {
-        lines.add('  - 入睡: $startHm | 醒来: $endHm');
+        lines.add('  - 主睡眠入睡: $startHm | 醒来: $endHm');
       }
     }
 
