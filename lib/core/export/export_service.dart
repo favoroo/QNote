@@ -169,9 +169,9 @@ class ExportService {
     final shortcutConfigs = await _configRepo.getAllShortcutConfigs();
     data['shortcut_configs'] = shortcutConfigs.map((c) => c.toMap()).toList();
 
-    final chatSessions = await _configRepo.getAllChatSessions(
-      includeDeleted: true,
-    );
+    // 快照不再携带软删墓碑：删除已改为物理删，带上墓碑只会让恢复/导入方把已删会话
+    // 又写回本地（历史欠账由数据同步页的「立即回收」统一清）
+    final chatSessions = await _configRepo.getAllChatSessions();
     data['chat_sessions'] = chatSessions.map((s) => s.toMap()).toList();
 
     final webdavConfig = await _configRepo.getWebdavConfig();
@@ -569,6 +569,8 @@ class ExportService {
     bool merge,
   ) async {
     for (final map in sessions) {
+      // 旧版本备份/对端快照里可能仍带软删墓碑，导入即复活，一律跳过
+      if ((map['is_deleted'] as int? ?? 0) == 1) continue;
       if (merge) {
         final existing = await _configRepo.getChatSession(map['id'] as String);
         if (existing != null) continue;
@@ -1104,18 +1106,33 @@ class ExportService {
       final tableChanges = Map<String, dynamic>.from(changes['chat_sessions'] as Map);
       final upserts = (tableChanges['upserts'] as List?) ?? [];
       final deletes = (tableChanges['deletes'] as List?) ?? [];
+      final tombstoneIds = <String>[];
       for (final item in upserts) {
+        final map = Map<String, dynamic>.from(item as Map);
+        // 旧客户端的软删除会以 is_deleted=1 的 upsert 形式推过来：这种行绝不能写回本地，
+        // 否则刚被物理删掉的会话会被对端整条复活；统一转成本端的物理删除才能收敛
+        if ((map['is_deleted'] as int? ?? 0) == 1) {
+          final id = map['id']?.toString() ?? '';
+          if (id.isNotEmpty) tombstoneIds.add(id);
+          continue;
+        }
         try {
-          await _configRepo.insertChatSession(ChatSession.fromMap(Map<String, dynamic>.from(item as Map)));
+          await _configRepo.insertChatSession(ChatSession.fromMap(map));
         } catch (_) {
           try {
-            await _configRepo.updateChatSession(ChatSession.fromMap(Map<String, dynamic>.from(item as Map)));
+            await _configRepo.updateChatSession(ChatSession.fromMap(map));
           } catch (_) {}
         }
       }
-      for (final id in deletes) {
+      final victimIds = <String>[
+        ...tombstoneIds,
+        ...deletes.map((id) => id as String),
+      ];
+      if (victimIds.isNotEmpty) {
+        // 与 diary/notes/todos 的 deletes 处理对齐：本端也物理删。
+        // 旧的 softDeleteChatSession 在行已消失时是静默 no-op，会让「A 删 → B → C」断链
         try {
-          await _configRepo.softDeleteChatSession(id as String);
+          await _configRepo.hardDeleteChatSessions(victimIds);
         } catch (_) {}
       }
     }

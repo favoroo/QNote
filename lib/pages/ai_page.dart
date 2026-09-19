@@ -14,11 +14,14 @@ import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/models/todo.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
+import 'package:qnote_flutter/core/storage/chat_storage_usage.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/agent/agent_tool_labels.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
+import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/utils/chat_image_refs.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
@@ -39,8 +42,10 @@ import 'package:qnote_flutter/core/agent/services/q_text_quote.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_usage_tracker.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
+import 'package:qnote_flutter/core/utils/chat_image_dedupe.dart';
 import 'package:qnote_flutter/widgets/ai/q_input_command_panels.dart';
 import 'package:qnote_flutter/widgets/ai/quick_prompt_dialog.dart';
+import 'package:qnote_flutter/widgets/chat/chat_image_view.dart';
 import 'package:qnote_flutter/widgets/q_text_selection_toolbar.dart';
 
 class AiPage extends ConsumerStatefulWidget {
@@ -282,7 +287,7 @@ class _AiPageState extends ConsumerState<AiPage> {
   Future<void> _initActiveModelId() async {
     final roles = await ref.read(aiRolesProvider.future);
     if (roles != null && roles.assistantUseFreeModel) {
-      final freeId = roles.assistantFreeModelId ?? 'gemini-3.5-flash-lite';
+      final freeId = roles.assistantFreeModelId ?? 'gemini-3.5-flash-lite-mix';
       if (mounted) setState(() => _activeModelId = 'free:$freeId');
       return;
     }
@@ -826,6 +831,23 @@ class _AiPageState extends ConsumerState<AiPage> {
     }
   }
 
+  /// 「给小Q」：把聊天里的图片挂到本页输入框附件条，供用户就这张图继续追问。
+  ///
+  /// 用户已在小Q 主页，因此不跳转悬浮面板，直接复用本页的 `_attachedImages` 发送链路。
+  void _attachImageToInput(String path) {
+    if (path.trim().isEmpty) {
+      return;
+    }
+    HapticFeedback.lightImpact();
+    if (!_attachedImages.contains(path)) {
+      setState(() {
+        _attachedImages.add(path);
+      });
+    }
+    _inputFocusNode.requestFocus();
+    Toast.info(context, '已添加到输入框');
+  }
+
   Future<void> _pickJournals() async {
     final journals = await JournalService.instance.getAllJournals();
     if (!mounted) return;
@@ -1211,8 +1233,20 @@ class _AiPageState extends ConsumerState<AiPage> {
     return false;
   }
 
+  /// 工具结果是否可并入「执行步骤」折叠链。
+  ///
+  /// `ask_user` 需保持独立交互卡片；`generate_image` 需保持独立大图卡片——
+  /// 若被折叠隐藏，正文里的同图又已按「卡片已展示」去重，用户将一张图都看不到。
+  bool _isGroupableTool(ChatMessage message) {
+    return message.toolName != 'ask_user' && message.toolName != 'generate_image';
+  }
+
   Widget _buildChatArea(ChatSession? currentChat, ThemeData theme) {
     final stateMessages = currentChat?.messages ?? const <ChatMessage>[];
+
+    // 生图卡片已展示过的图片键：assistant 正文里模型回显的同一张 `![image](<路径>)`
+    // 据此跳过渲染，避免一张生成图在会话流里出现两次
+    final generatedImageKeys = collectGeneratedImageKeys(stateMessages);
 
     // 将消息归一为可视展示项，连续的工具执行结果（≥2项）自动聚合成折叠链
     final displayEntries = <_ChatDisplayEntry>[];
@@ -1224,8 +1258,9 @@ class _AiPageState extends ConsumerState<AiPage> {
         continue;
       }
 
-      // 判断是否可作为工具链聚合（ask_user 需保持独立交互卡片）
-      if (msg.role == 'tool' && msg.toolName != 'ask_user') {
+      // 判断是否可作为工具链聚合（ask_user 需保持独立交互卡片，
+      // generate_image 需保持独立大图卡片：折叠进步骤链后再对正文去重，会导致图片完全不可见）
+      if (msg.role == 'tool' && _isGroupableTool(msg)) {
         final toolGroup = <ChatMessage>[msg];
         var j = i + 1;
         while (j < stateMessages.length) {
@@ -1234,7 +1269,7 @@ class _AiPageState extends ConsumerState<AiPage> {
             j++;
             continue;
           }
-          if (nextMsg.role == 'tool' && nextMsg.toolName != 'ask_user') {
+          if (nextMsg.role == 'tool' && _isGroupableTool(nextMsg)) {
             toolGroup.add(nextMsg);
             j++;
           } else {
@@ -1379,6 +1414,8 @@ class _AiPageState extends ConsumerState<AiPage> {
                 isFirstInGroup: isFirstInGroup,
                 isLastInGroup: isLastInGroup,
                 actionsEnabled: !hasStreaming,
+                generatedImageKeys: generatedImageKeys,
+                onSendToQ: _attachImageToInput,
                 onContinue: () => ref
                     .read(currentChatProvider.notifier)
                     .continueAfterTurnLimit(),
@@ -1435,6 +1472,8 @@ class _AiPageState extends ConsumerState<AiPage> {
               child: _StreamingBubble(
                 isFirstInGroup: !prevIsAssistant && !showTyping,
                 isLastInGroup: true,
+                generatedImageKeys: generatedImageKeys,
+                onSendToQ: _attachImageToInput,
               ),
             );
           },
@@ -2237,39 +2276,31 @@ class _AiPageState extends ConsumerState<AiPage> {
                                 foregroundColor: theme.colorScheme.error,
                               ),
                               onPressed: () async {
-                                final ok = await showDialog<bool>(
-                                  context: context,
-                                  builder: (ctx) => AlertDialog(
-                                    title: const Text('确认'),
-                                    content: const Text('确定要清空所有对话吗？'),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () =>
-                                            Navigator.pop(ctx, false),
-                                        child: const Text('取消'),
-                                      ),
-                                      TextButton(
-                                        onPressed: () =>
-                                            Navigator.pop(ctx, true),
-                                        child: const Text('确定'),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                                if (ok == true) {
-                                  for (final s in sessions) {
-                                    await ref
-                                        .read(chatSessionListProvider.notifier)
-                                        .deleteSession(s.id);
-                                  }
-                                  ref
-                                      .read(currentChatProvider.notifier)
-                                      .setSession(null);
-                                  setState(() {
-                                    _isBatchMode = false;
-                                    _selectedSessionIds = [];
-                                  });
+                                if (!await _confirmDeleteSessions(sessions)) {
+                                  return;
                                 }
+                                try {
+                                  // 一次批量调用：单个事务删完，避免逐条删除时
+                                  // 每次都重扫一遍全表图片引用
+                                  await _performDelete(sessions);
+                                } catch (error) {
+                                  if (mounted) {
+                                    Toast.error(context, '清空失败');
+                                  }
+                                  LoggerService.instance.logAI(
+                                    '清空对话历史失败',
+                                    details: '$error',
+                                    level: LogLevel.warning,
+                                  );
+                                  return;
+                                }
+                                if (!mounted) {
+                                  return;
+                                }
+                                setState(() {
+                                  _isBatchMode = false;
+                                  _selectedSessionIds = [];
+                                });
                               },
                               child: const Text('清空全部'),
                             ),
@@ -2310,43 +2341,32 @@ class _AiPageState extends ConsumerState<AiPage> {
                         backgroundColor: theme.colorScheme.error,
                       ),
                       onPressed: () async {
-                        final ok = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            title: const Text('确认'),
-                            content: Text(
-                              '确定要删除选中的 ${_selectedSessionIds.length} 个对话吗？',
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, false),
-                                child: const Text('取消'),
-                              ),
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, true),
-                                child: const Text('确定'),
-                              ),
-                            ],
-                          ),
-                        );
-                        if (ok == true) {
-                          for (final id in _selectedSessionIds) {
-                            await ref
-                                .read(chatSessionListProvider.notifier)
-                                .deleteSession(id);
-                          }
-                          final currentId = ref.read(currentChatProvider)?.id;
-                          if (currentId != null &&
-                              _selectedSessionIds.contains(currentId)) {
-                            ref
-                                .read(currentChatProvider.notifier)
-                                .setSession(null);
-                          }
-                          setState(() {
-                            _selectedSessionIds = [];
-                            _isBatchMode = false;
-                          });
+                        final selected = sessions
+                            .where((s) => _selectedSessionIds.contains(s.id))
+                            .toList();
+                        if (!await _confirmDeleteSessions(selected)) {
+                          return;
                         }
+                        try {
+                          await _performDelete(selected);
+                        } catch (error) {
+                          if (mounted) {
+                            Toast.error(context, '删除失败');
+                          }
+                          LoggerService.instance.logAI(
+                            '批量删除对话失败',
+                            details: 'count=${selected.length}, $error',
+                            level: LogLevel.warning,
+                          );
+                          return;
+                        }
+                        if (!mounted) {
+                          return;
+                        }
+                        setState(() {
+                          _selectedSessionIds = [];
+                          _isBatchMode = false;
+                        });
                       },
                     ),
                   ),
@@ -2358,6 +2378,101 @@ class _AiPageState extends ConsumerState<AiPage> {
         error: (e, _) => Center(child: Text('加载失败: $e')),
       ),
     );
+  }
+
+  /// 统一的对话删除确认。
+  ///
+  /// 删除已改为物理删除（旧版软删只是打标记，数据一直占着库），所以四条删除入口
+  /// （侧滑、行尾按钮、批量删除、清空全部）都必须先让用户看清三件事：删掉多少内容、
+  /// 不可恢复、以及**不会**牵连小Q已经写成的笔记/日记/待办与工作区文件。
+  Future<bool> _confirmDeleteSessions(List<ChatSession> targets) async {
+    if (targets.isEmpty) {
+      return false;
+    }
+    var messageCount = 0;
+    var imageCount = 0;
+    for (final session in targets) {
+      messageCount += session.messages.length;
+      imageCount += countSessionImageRefs(session);
+    }
+
+    final detail = StringBuffer();
+    detail.writeln(
+      targets.length == 1
+          ? '将永久删除「${targets.first.title}」'
+          : '将永久删除 ${targets.length} 个对话',
+    );
+    detail.write('（共 $messageCount 条消息');
+    if (imageCount > 0) {
+      detail.write(' · $imageCount 张图片');
+    }
+    detail.writeln('），包括小Q生成并保存在本机的图片。');
+    detail.writeln();
+    detail.writeln('小Q已为你创建的笔记、日记、待办和虚拟工作区文件不会被删除。');
+    detail.write('此操作不可恢复，并会同步到其它设备。');
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除对话'),
+        content: SingleChildScrollView(
+          child: Text(
+            detail.toString(),
+            style: Theme.of(ctx).textTheme.bodyMedium,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('永久删除'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) {
+      return false;
+    }
+    return ok == true;
+  }
+
+  /// 执行删除并反馈：内部统一处理「当前会话被删时清空对话区」与 Toast，
+  /// 四条入口共用，避免各处漏掉其中一步。
+  Future<void> _performDelete(List<ChatSession> targets) async {
+    final ids = targets.map((s) => s.id).toList();
+    final report = await ref
+        .read(chatSessionListProvider.notifier)
+        .deleteSessions(ids);
+    final currentId = ref.read(currentChatProvider)?.id;
+    if (currentId != null && ids.contains(currentId)) {
+      ref.read(currentChatProvider.notifier).setSession(null);
+    }
+    if (!mounted) {
+      return;
+    }
+    Toast.success(context, _deleteToastText(targets, report));
+  }
+
+  /// 删除结果文案：只有真的删掉了磁盘上的图片文件才报「释放约」，
+  /// 因为消息记录虽然从库里删了，SQLite 文件要等「整理数据库」才会收缩。
+  String _deleteToastText(
+    List<ChatSession> targets,
+    ChatSessionDeleteReport report,
+  ) {
+    final head = targets.length == 1
+        ? '已删除「${targets.first.title}」'
+        : '已删除 ${targets.length} 个对话';
+    if (report.deletedImageFiles > 0) {
+      return '$head · 回收 ${report.deletedImageFiles} 张图片 · '
+          '释放约 ${formatChatStorageBytes(report.imageFreedBytes)}';
+    }
+    return head;
   }
 
   Widget _buildSessionTile(
@@ -2379,30 +2494,25 @@ class _AiPageState extends ConsumerState<AiPage> {
         color: theme.colorScheme.error,
         child: const Icon(Icons.delete, color: Colors.white),
       ),
-      confirmDismiss: (_) async {
-        return await showDialog<bool>(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: const Text('确认'),
-                content: const Text('确定要删除这个对话吗？'),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text('取消'),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    child: const Text('确定'),
-                  ),
-                ],
-              ),
-            ) ??
-            false;
-      },
-      onDismissed: (_) {
-        ref.read(chatSessionListProvider.notifier).deleteSession(session.id);
-        if (ref.read(currentChatProvider)?.id == session.id) {
-          ref.read(currentChatProvider.notifier).setSession(null);
+      confirmDismiss: (_) => _confirmDeleteSessions([session]),
+      onDismissed: (_) async {
+        try {
+          await _performDelete([session]);
+        } catch (error) {
+          if (mounted) {
+            Toast.error(context, '删除失败');
+          }
+          LoggerService.instance.logAI(
+            '侧滑删除对话失败',
+            details: 'session=${session.id}, $error',
+            level: LogLevel.warning,
+          );
+        } finally {
+          // 划走动画已完成但删除失败时，必须重绘把这一行画回来，
+          // 否则会出现「界面已移除、数据源还在」的 Dismissible 断言
+          if (mounted) {
+            setState(() {});
+          }
         }
       },
       child: ListTile(
@@ -2464,12 +2574,23 @@ class _AiPageState extends ConsumerState<AiPage> {
                   size: 16,
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
+                tooltip: '删除对话',
                 onPressed: () async {
-                  await ref
-                      .read(chatSessionListProvider.notifier)
-                      .deleteSession(session.id);
-                  if (ref.read(currentChatProvider)?.id == session.id) {
-                    ref.read(currentChatProvider.notifier).setSession(null);
+                  // 此前这里点一下就直删、无任何确认；改成真删后必须补确认
+                  if (!await _confirmDeleteSessions([session])) {
+                    return;
+                  }
+                  try {
+                    await _performDelete([session]);
+                  } catch (error) {
+                    if (mounted) {
+                      Toast.error(context, '删除失败');
+                    }
+                    LoggerService.instance.logAI(
+                      '删除对话失败',
+                      details: 'session=${session.id}, $error',
+                      level: LogLevel.warning,
+                    );
                   }
                 },
               )
@@ -2500,9 +2621,15 @@ class _StreamingBubble extends ConsumerWidget {
   final bool isFirstInGroup;
   final bool isLastInGroup;
 
+  /// 与 `ChatBubble` 同义：流式正文同样需要按生图卡片去重
+  final Set<String> generatedImageKeys;
+  final ValueChanged<String>? onSendToQ;
+
   const _StreamingBubble({
     this.isFirstInGroup = true,
     this.isLastInGroup = true,
+    this.generatedImageKeys = const {},
+    this.onSendToQ,
   });
 
   @override
@@ -2526,6 +2653,8 @@ class _StreamingBubble extends ConsumerWidget {
       statusStartedAt: statusStartedAt,
       isFirstInGroup: isFirstInGroup,
       isLastInGroup: isLastInGroup,
+      generatedImageKeys: generatedImageKeys,
+      onSendToQ: onSendToQ,
     );
   }
 }
@@ -2548,6 +2677,12 @@ class ChatBubble extends StatelessWidget {
   /// 按钮是否可点（Agent 执行中禁用，防止并发任务）
   final bool actionsEnabled;
 
+  /// 本会话内已由生图卡片展示过的图片键，用于跳过正文里重复的内联图
+  final Set<String> generatedImageKeys;
+
+  /// 「给小Q」回调（把图片挂到输入框）；为 null 时图片菜单不出现该项
+  final ValueChanged<String>? onSendToQ;
+
   const ChatBubble({
     required this.message,
     this.statusText,
@@ -2557,6 +2692,8 @@ class ChatBubble extends StatelessWidget {
     this.onContinue,
     this.onPause,
     this.actionsEnabled = false,
+    this.generatedImageKeys = const <String>{},
+    this.onSendToQ,
   });
 
   /// 是否为待处理的步数上限消息（渲染「继续/暂停」按钮）
@@ -2704,7 +2841,7 @@ class ChatBubble extends StatelessWidget {
                       children: [
                         if (message.images != null &&
                             message.images!.isNotEmpty)
-                          _buildImagesGrid(context, message.images!),
+                          _buildImagesGrid(message.images!),
                         if (message.content.isNotEmpty)
                           Text(
                             message.content,
@@ -2793,11 +2930,23 @@ class ChatBubble extends StatelessWidget {
                             theme: theme,
                           )
                         else if (message.role == 'tool')
-                          buildToolFeedback(context, message, theme)
+                          buildToolFeedback(
+                            context,
+                            message,
+                            theme,
+                            onSendToQ: onSendToQ,
+                          )
                         else ...[
                           MarkdownBody(
                             data: message.content,
                             selectable: false,
+                            // 拦截正文内联图：生图卡片已展示过的不再重复渲染，
+                            // 其余图片渲染为可点击放大/长按的统一视图而非默认裸 Image
+                            sizedImageBuilder: (config) => ChatBodyImage(
+                              src: config.uri.toString(),
+                              generatedImageKeys: generatedImageKeys,
+                              onSendToQ: onSendToQ,
+                            ),
                             styleSheet: MarkdownStyleSheet(
                               p: TextStyle(
                                 color: theme.colorScheme.onSurface,
@@ -2875,11 +3024,14 @@ class ChatBubble extends StatelessWidget {
   }
 
   /// 构建工具调用执行反馈与小Q确认交互卡片
+  ///
+  /// [onSendToQ] 供图片卡片的长按菜单「给小Q」使用，工具链折叠面板等无该语义的场景可不传。
   static Widget buildToolFeedback(
     BuildContext context,
     ChatMessage message,
-    ThemeData theme,
-  ) {
+    ThemeData theme, {
+    ValueChanged<String>? onSendToQ,
+  }) {
     final uiDetails = message.uiDetails;
     final isAskUser =
         message.toolName == 'ask_user' || uiDetails?['type'] == 'ask_user';
@@ -3046,21 +3198,19 @@ class ChatBubble extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            ...paths.map(
-              (path) => Padding(
+            for (final (index, path) in paths.indexed)
+              Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: GestureDetector(
-                  onTap: () => _showFullImageDialog(context, path),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 240),
-                      child: UnifiedImage(imagePath: path, fit: BoxFit.cover),
-                    ),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 240),
+                  child: ChatImageView(
+                    imagePath: path,
+                    galleryImages: paths,
+                    galleryIndex: index,
+                    onSendToQ: onSendToQ,
                   ),
                 ),
               ),
-            ),
             if (prompt.isNotEmpty)
               Text(
                 prompt,
@@ -3094,19 +3244,16 @@ class ChatBubble extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            GestureDetector(
-              onTap: path.isEmpty
-                  ? null
-                  : () => _showFullImageDialog(context, path),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: SizedBox(
-                  width: 40,
-                  height: 40,
-                  child: UnifiedImage(imagePath: path, fit: BoxFit.cover),
-                ),
+            if (path.isEmpty)
+              const SizedBox(width: 40, height: 40)
+            else
+              ChatImageView(
+                imagePath: path,
+                width: 40,
+                height: 40,
+                borderRadius: const BorderRadius.all(Radius.circular(6)),
+                onSendToQ: onSendToQ,
               ),
-            ),
             const SizedBox(width: 8),
             Flexible(
               child: Text(
@@ -3552,18 +3699,18 @@ class ChatBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildImagesGrid(BuildContext context, List<String> images) {
+  /// 用户消息里的附件图片网格：单图大图展示，多图九宫格缩略，均可点击放大与长按操作
+  Widget _buildImagesGrid(List<String> images) {
     if (images.length == 1) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 6),
-        child: GestureDetector(
-          onTap: () => _showFullImageDialog(context, images.first),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 200, maxHeight: 200),
-              child: UnifiedImage(imagePath: images.first, fit: BoxFit.cover),
-            ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 200, maxHeight: 200),
+          child: ChatImageView(
+            imagePath: images.first,
+            galleryImages: images,
+            borderRadius: const BorderRadius.all(Radius.circular(10)),
+            onSendToQ: onSendToQ,
           ),
         ),
       );
@@ -3574,48 +3721,17 @@ class ChatBubble extends StatelessWidget {
       child: Wrap(
         spacing: 4,
         runSpacing: 4,
-        children: images.map((imgPath) {
-          return GestureDetector(
-            onTap: () => _showFullImageDialog(context, imgPath),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: SizedBox(
-                width: 68,
-                height: 68,
-                child: UnifiedImage(imagePath: imgPath, fit: BoxFit.cover),
-              ),
+        children: [
+          for (final (index, imgPath) in images.indexed)
+            ChatImageView(
+              imagePath: imgPath,
+              galleryImages: images,
+              galleryIndex: index,
+              width: 68,
+              height: 68,
+              onSendToQ: onSendToQ,
             ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  static void _showFullImageDialog(BuildContext context, String imagePath) {
-    showDialog(
-      context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: Colors.black87,
-        insetPadding: EdgeInsets.zero,
-        child: Stack(
-          alignment: Alignment.topRight,
-          children: [
-            InteractiveViewer(
-              child: Center(
-                child: UnifiedImage(imagePath: imagePath, fit: BoxFit.contain),
-              ),
-            ),
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white, size: 28),
-                  onPressed: () => Navigator.pop(ctx),
-                ),
-              ),
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }

@@ -121,6 +121,7 @@ pinned: false           # 是否置顶
 
 ## 5. 图片插入规范
 - 正文图片独立成行写 `![image](<路径>)`；路径必须来自 `generate_image` 工具回显或已有记录中的真实路径，**严禁编造**。
+- 上述写法仅针对**写入文件**的正文；对话回复里不要重复贴同一张图（生图卡片已自动展示，再写一遍会显示两次）。
 - 插入后系统会自动回填图片索引供云同步识别，无需额外操作。
 
 ## 6. 长文排版模板
@@ -313,12 +314,12 @@ description: 系统偏好与配置技能：个性化外观、AI模型分配与�
   "roles": {
     "assistant": {
       "useFreeModel": true,
-      "freeModelId": "gemini-3.5-flash-lite",
+      "freeModelId": "gemini-3.5-flash-lite-mix",
       "customModelId": null
     },
     "timelineOptimization": {
       "useFreeModel": true,
-      "freeModelId": "gemini-3.5-flash-lite",
+      "freeModelId": "gemini-3.5-flash-lite-mix",
       "customModelId": null
     }
   },

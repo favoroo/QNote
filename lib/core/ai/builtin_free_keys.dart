@@ -157,30 +157,30 @@ class BuiltinFreeKeys {
     );
   }
 
-  /// 创建内置的 Gemini 3.8 Flash Low 模型配置
+  /// 创建内置的 Gemini 3.8 Flash Low Mix 模型配置
   static FreeModelConfig createGemini38Config([String? apiKey]) {
     final effectiveKey = apiKey ?? getGeminiApiKey();
     return FreeModelConfig(
-      id: 'gemini-3.8-flash-low',
+      id: 'gemini-3.8-flash-low-mix',
       displayName: 'Gemini 3.8 Flash Low',
       provider: 'openai',
       baseUrl: dynamicCpaBaseUrl,
-      modelName: 'gemini-3.8-flash-low',
+      modelName: 'gemini-3.8-flash-low-mix',
       obfuscatedApiKey: effectiveKey,
       authType: 'bearer',
       priority: 1,
     );
   }
 
-  /// 创建内置的 Gemini 3.5 Flash Lite 模型配置（默认推荐）
+  /// 创建内置的 Gemini 3.5 Flash Lite Mix 模型配置（默认推荐）
   static FreeModelConfig createGemini35Config([String? apiKey]) {
     final effectiveKey = apiKey ?? getGeminiApiKey();
     return FreeModelConfig(
-      id: 'gemini-3.5-flash-lite',
+      id: 'gemini-3.5-flash-lite-mix',
       displayName: 'Gemini 3.5 Flash Lite',
       provider: 'openai',
       baseUrl: dynamicCpaBaseUrl,
-      modelName: 'gemini-3.5-flash-lite',
+      modelName: 'gemini-3.5-flash-lite-mix',
       obfuscatedApiKey: effectiveKey,
       authType: 'bearer',
       priority: 0,

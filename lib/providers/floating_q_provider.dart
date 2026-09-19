@@ -402,6 +402,22 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
     );
   }
 
+  /// 「给小Q」：把面板里看到的图片直接挂到当前附件区，供就这张图继续追问。
+  ///
+  /// 与 [openWithImages] 的区别：后者是系统外部分享入口，会切到外部分享模式；
+  /// 这里只是面板内的一次追加，不改变会话模式。
+  void addAttachedImage(String path) {
+    if (path.trim().isEmpty) {
+      return;
+    }
+    if (state.attachedImages.contains(path)) {
+      return;
+    }
+    state = state.copyWith(
+      attachedImages: [...state.attachedImages, path],
+    );
+  }
+
   /// 移除一张附件图片（缩略图 × 按钮）
   void removeAttachedImage(String path) {
     state = state.copyWith(

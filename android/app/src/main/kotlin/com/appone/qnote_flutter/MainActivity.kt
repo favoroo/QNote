@@ -2,9 +2,14 @@ package com.appone.qnote_flutter
 
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
+import android.content.ContentValues
 import android.content.Intent
+import android.media.MediaScannerConnection
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -16,6 +21,10 @@ class MainActivity : FlutterActivity() {
     private val INSTALLER_CHANNEL = "com.appone.qnote_flutter/installer"
     private val SHARE_CHANNEL = "com.appone.qnote_flutter/share"
     private val USAGE_STATS_CHANNEL = "com.appone.qnote_flutter/usage_stats"
+    private val MEDIA_CHANNEL = "com.appone.qnote_flutter/media"
+
+    /// 保存到系统相册时归类的子目录名（Pictures/QNote）
+    private val GALLERY_ALBUM = "QNote"
     private var pendingRoute: String? = null
     private var pendingSharedText: String? = null
     private var pendingSharedImages: ArrayList<String>? = null
@@ -229,6 +238,31 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+        // 图片保存到系统相册通道（小Q 聊天图片的「下载」入口）
+        val mediaChan = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MEDIA_CHANNEL)
+        mediaChan.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "saveToGallery" -> {
+                    val filePath = call.argument<String>("path")
+                    val fileName = call.argument<String>("fileName")
+                        ?: "QNote_${System.currentTimeMillis()}.png"
+                    if (filePath.isNullOrEmpty()) {
+                        result.error("INVALID_PATH", "图片路径为空", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        saveImageToGallery(filePath, fileName)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("SAVE_FAILED", e.localizedMessage, null)
+                    }
+                }
+                else -> {
+                    result.notImplemented()
+                }
+            }
+        }
+
         // 屏幕与应用使用时长统计通道
         val helper = UsageStatsHelper(this)
         usageStatsHelper = helper
@@ -359,6 +393,62 @@ class MainActivity : FlutterActivity() {
                     result.notImplemented()
                 }
             }
+        }
+    }
+
+    /**
+     * 把应用内的图片写入系统相册的 Pictures/QNote 目录。
+     *
+     * API 29+ 走 MediaStore 的 RELATIVE_PATH + IS_PENDING 两阶段提交（分区存储下无需存储权限）；
+     * 更低版本直接复制到公共 Pictures 目录，再用 MediaScanner 通知媒体库，
+     * 否则相册 App 里不会立即出现这张图。
+     */
+    private fun saveImageToGallery(filePath: String, fileName: String) {
+        val src = File(filePath)
+        if (!src.exists()) {
+            throw IllegalArgumentException("图片文件不存在: $filePath")
+        }
+        val mimeType = when (fileName.substringAfterLast('.', "").lowercase()) {
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            "gif" -> "image/gif"
+            else -> "image/jpeg"
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                put(MediaStore.Images.Media.MIME_TYPE, mimeType)
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/$GALLERY_ALBUM")
+                put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
+            val uri = contentResolver.insert(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                values
+            ) ?: throw IllegalStateException("MediaStore 插入失败")
+            contentResolver.openOutputStream(uri)?.use { out ->
+                src.inputStream().use { input -> input.copyTo(out) }
+            } ?: throw IllegalStateException("无法打开相册输出流")
+            values.clear()
+            values.put(MediaStore.Images.Media.IS_PENDING, 0)
+            contentResolver.update(uri, values, null, null)
+        } else {
+            @Suppress("DEPRECATION")
+            val picturesDir = File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+                GALLERY_ALBUM
+            )
+            if (!picturesDir.exists() && !picturesDir.mkdirs()) {
+                throw IllegalStateException("无法创建相册目录")
+            }
+            val target = File(picturesDir, fileName)
+            src.copyTo(target, overwrite = true)
+            MediaScannerConnection.scanFile(
+                this,
+                arrayOf(target.absolutePath),
+                arrayOf(mimeType),
+                null
+            )
         }
     }
 

@@ -1394,11 +1394,11 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       }
     }
 
-    // 内置免费模型候选列表（包含 Claude Sonnet 4.6、Gemini 3.5 Flash Lite 等）
+    // 内置免费模型候选列表（包含 Claude Sonnet 4.6、Gemini 3.5 Flash Lite Mix 等）
     final builtinModels = [
       {'id': 'free:claude-sonnet-4-6', 'name': '内置 Claude Sonnet 4.6', 'modelId': 'claude-sonnet-4-6'},
-      {'id': 'free:gemini-3.5-flash-lite', 'name': '内置 Gemini 3.5 Flash Lite', 'modelId': 'gemini-3.5-flash-lite'},
-      {'id': 'free:gemini-3.8-flash-low', 'name': '内置 Gemini 3.8 Flash Low', 'modelId': 'gemini-3.8-flash-low'},
+      {'id': 'free:gemini-3.5-flash-lite-mix', 'name': '内置 Gemini 3.5 Flash Lite Mix', 'modelId': 'gemini-3.5-flash-lite-mix'},
+      {'id': 'free:gemini-3.8-flash-low-mix', 'name': '内置 Gemini 3.8 Flash Low Mix', 'modelId': 'gemini-3.8-flash-low-mix'},
       {'id': 'free:sensenova-flash-lite', 'name': '内置 SenseNova 6.8', 'modelId': 'sensenova-flash-lite'},
       {'id': 'free:glm-5.2', 'name': '内置 GLM 5.2', 'modelId': 'glm-5.2'},
       {'id': 'free:deepseek-v4-flash', 'name': '内置 DeepSeek V4 Flash', 'modelId': 'deepseek-v4-flash'},

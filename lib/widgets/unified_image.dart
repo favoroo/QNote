@@ -229,10 +229,19 @@ class FullScreenImageGallery extends StatefulWidget {
   final List<String> images;
   final int initialIndex;
 
+  /// 保存图片回调（如聊天场景的「下载到相册」）；为 null 时顶栏不显示下载按钮，
+  /// 保证日记/笔记等既有调用点行为不变。
+  final void Function(String path)? onSave;
+
+  /// 「给小Q」回调（把当前图片挂到小Q输入框）；为 null 时不显示该项。
+  final void Function(String path)? onSendToQ;
+
   const FullScreenImageGallery({
     super.key,
     required this.images,
     this.initialIndex = 0,
+    this.onSave,
+    this.onSendToQ,
   });
 
   @override
@@ -256,6 +265,14 @@ class _FullScreenImageGalleryState extends State<FullScreenImageGallery> {
     super.dispose();
   }
 
+  /// 顶栏操作作用于「当前页」这张图，翻页后按钮目标随之变化
+  void _runOnCurrentImage(void Function(String path) action) {
+    if (widget.images.isEmpty) {
+      return;
+    }
+    action(widget.images[_currentIndex.clamp(0, widget.images.length - 1)]);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -273,6 +290,20 @@ class _FullScreenImageGalleryState extends State<FullScreenImageGallery> {
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.of(context).pop(),
         ),
+        actions: [
+          if (widget.onSendToQ != null)
+            IconButton(
+              tooltip: '给小Q',
+              icon: const Icon(Icons.forum_outlined, color: Colors.white),
+              onPressed: () => _runOnCurrentImage(widget.onSendToQ!),
+            ),
+          if (widget.onSave != null)
+            IconButton(
+              tooltip: '下载',
+              icon: const Icon(Icons.download_outlined, color: Colors.white),
+              onPressed: () => _runOnCurrentImage(widget.onSave!),
+            ),
+        ],
       ),
       body: PageView.builder(
         controller: _pageController,

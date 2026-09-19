@@ -8,6 +8,7 @@ import 'package:qnote_flutter/core/router/app_router.dart';
 import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
+import 'package:qnote_flutter/core/utils/chat_image_dedupe.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
@@ -15,6 +16,7 @@ import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
 import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
 import 'package:qnote_flutter/widgets/ai/quick_prompt_dialog.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
+import 'package:qnote_flutter/widgets/chat/chat_image_view.dart';
 import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
 import 'package:qnote_flutter/widgets/common/loading_ring.dart';
 import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
@@ -361,6 +363,10 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
 
     final children = <Widget>[];
 
+    // 生图卡片已展示过的图片键：面板气泡用纯 Text 渲染正文，模型回显的
+    // `![image](<路径>)` 需要按同一套规则剥离，否则会把原始标记文本露出来
+    final generatedImageKeys = collectGeneratedImageKeys(fq.messages);
+
     for (final message in fq.messages) {
       // 生图结果直接以图片卡预览；其余工具中间消息不在快捷面板展示
       //（进行中的操作由状态行实时表达）
@@ -369,11 +375,14 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
         if (imageCard != null) children.add(_buildEntrance(imageCard));
         continue;
       }
+      final displayContent = message.role == 'assistant'
+          ? stripRedundantImageMarkdown(message.content, generatedImageKeys)
+          : message.content;
       // Agent 每轮发起工具调用前会生成「正文为空、仅承载 tool_calls」的 assistant
       // 中转消息（与 AI 主页面 _isVisibleMessage 过滤的是同一类消息），快捷面板
       // 不渲染思考胶囊，这类消息只会渲染成空白胶囊卡片，直接跳过
-      if (message.content.trim().isEmpty) continue;
-      children.add(_buildEntrance(_buildBubble(theme, message)));
+      if (displayContent.trim().isEmpty) continue;
+      children.add(_buildEntrance(_buildBubble(theme, message, displayContent)));
       // 步数上限提示：待处理时在气泡下方渲染「继续/暂停」按钮
       if (message.role == 'assistant' &&
           message.uiDetails?['type'] == 'turn_limit' &&
@@ -404,7 +413,12 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
       }
     } else if (fq.streamingText != null && fq.streamingText!.isNotEmpty) {
       children.add(
-        _buildEntrance(_buildAssistantBubble(theme, fq.streamingText!)),
+        _buildEntrance(
+          _buildAssistantBubble(
+            theme,
+            stripRedundantImageMarkdown(fq.streamingText!, generatedImageKeys),
+          ),
+        ),
       );
     }
 
@@ -530,14 +544,17 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            for (final path in paths)
+            for (final (index, path) in paths.indexed)
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 180),
-                    child: UnifiedImage(imagePath: path, fit: BoxFit.cover),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 180),
+                  child: ChatImageView(
+                    imagePath: path,
+                    galleryImages: paths,
+                    galleryIndex: index,
+                    borderRadius: const BorderRadius.all(Radius.circular(6)),
+                    onSendToQ: _sendImageToQ,
                   ),
                 ),
               ),
@@ -547,7 +564,18 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
     );
   }
 
-  Widget _buildBubble(ThemeData theme, ChatMessage message) {
+  /// 「给小Q」：把面板里的图片挂到附件区，供用户就这张图继续追问
+  void _sendImageToQ(String path) {
+    HapticFeedback.lightImpact();
+    ref.read(floatingQProvider.notifier).addAttachedImage(path);
+    Toast.info(context, '已添加到附件');
+  }
+
+  Widget _buildBubble(
+    ThemeData theme,
+    ChatMessage message,
+    String displayContent,
+  ) {
     if (message.role == 'user') {
       return Align(
         alignment: Alignment.centerRight,
@@ -559,7 +587,7 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
             borderRadius: BorderRadius.circular(AppRadius.medium),
           ),
           child: Text(
-            message.content,
+            displayContent,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onPrimary,
             ),
@@ -567,7 +595,7 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
         ),
       );
     }
-    return _buildAssistantBubble(theme, message.content);
+    return _buildAssistantBubble(theme, displayContent);
   }
 
   Widget _buildAssistantBubble(ThemeData theme, String content) {

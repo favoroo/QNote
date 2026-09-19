@@ -7,8 +7,8 @@ import 'package:qnote_flutter/providers/ai_provider.dart';
 /// 小Q可用的内置免费模型（id 带 free: 前缀，裸名为 CPA 模型表 alias）
 const List<Map<String, String>> kAssistantBuiltinModels = [
   {'id': 'free:claude-sonnet-4-6', 'name': '内置 Claude Sonnet 4.6'},
-  {'id': 'free:gemini-3.5-flash-lite', 'name': '内置 Gemini 3.5 Flash Lite'},
-  {'id': 'free:gemini-3.8-flash-low', 'name': '内置 Gemini 3.8 Flash Low'},
+  {'id': 'free:gemini-3.5-flash-lite-mix', 'name': '内置 Gemini 3.5 Flash Lite Mix'},
+  {'id': 'free:gemini-3.8-flash-low-mix', 'name': '内置 Gemini 3.8 Flash Low Mix'},
   {'id': 'free:sensenova-flash-lite', 'name': '内置 SenseNova 6.8'},
   {'id': 'free:glm-5.2', 'name': '内置 GLM 5.2'},
   {'id': 'free:deepseek-v4-flash', 'name': '内置 DeepSeek V4 Flash'},
@@ -18,7 +18,7 @@ const List<Map<String, String>> kAssistantBuiltinModels = [
 String? assistantModelDisplayName(String? id, List<AiConfig> configs) {
   if (id == null) return null;
   // 哨兵值：未绑定任何模型时视为使用默认免费模型
-  if (id == '__free_model__') return '内置 Gemini 3.5 Flash Lite';
+  if (id == '__free_model__') return '内置 Gemini 3.5 Flash Lite Mix';
   if (id.startsWith('free:')) {
     for (final m in kAssistantBuiltinModels) {
       if (m['id'] == id) return m['name'];
@@ -46,7 +46,7 @@ Future<({String id, String name})?> showAssistantModelSelector(
   if (!context.mounted) return null;
   // 从角色绑定推导当前选中模型 id；均未绑定时用哨兵值高亮默认免费模型
   final activeModelId = (roles?.assistantUseFreeModel ?? false)
-      ? 'free:${roles!.assistantFreeModelId ?? 'gemini-3.5-flash-lite'}'
+      ? 'free:${roles!.assistantFreeModelId ?? 'gemini-3.5-flash-lite-mix'}'
       : roles?.assistant ?? '__free_model__';
   final selected = await showDialog<String>(
     context: context,
@@ -91,7 +91,7 @@ class ModelSelectorDialog extends StatelessWidget {
         ...kAssistantBuiltinModels.map((m) {
           final isSelected = activeModelId == m['id'] ||
               (activeModelId == '__free_model__' &&
-                  m['id'] == 'free:gemini-3.5-flash-lite');
+                  m['id'] == 'free:gemini-3.5-flash-lite-mix');
           return SimpleDialogOption(
             onPressed: () => Navigator.pop(context, m['id']),
             child: Row(

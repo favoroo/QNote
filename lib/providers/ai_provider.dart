@@ -21,6 +21,7 @@ import 'package:qnote_flutter/core/agent/skills/skill_usage_tracker.dart';
 import 'package:qnote_flutter/core/agent/vfs/virtual_workspace_service.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
+import 'package:qnote_flutter/core/storage/chat_storage_usage.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
@@ -240,15 +241,42 @@ class ChatSessionListNotifier extends AsyncNotifier<List<ChatSession>> {
     state = AsyncData(list);
   }
 
-  Future<void> deleteSession(String id) async {
+  /// 删除单个会话（真删，不可恢复）。
+  ///
+  /// 保留单条签名兼容既有调用方，实际实现与批量共用 [deleteSessions]。
+  Future<ChatSessionDeleteReport> deleteSession(String id) {
+    return deleteSessions([id]);
+  }
+
+  /// 批量删除会话：走**单个事务**，避免 N 次事务与 N 次全表引用扫描。
+  ///
+  /// 与旧实现的关键差异是这里调 `hardDeleteChatSessions` 真正删行并释放磁盘上的
+  /// 独占生成图；返回值供 UI 组织「已删除 · 释放约 X MB」的 Toast。
+  Future<ChatSessionDeleteReport> deleteSessions(List<String> ids) async {
+    if (ids.isEmpty) {
+      return ChatSessionDeleteReport.empty;
+    }
     // 该会话若有进行中的小Q任务，先取消：避免任务结束时又把消息落回已删除会话
-    ref.read(currentChatProvider.notifier).cancelSessionAgent(id);
-    final repo = ConfigRepository.instance;
-    await repo.softDeleteChatSession(id);
+    for (final id in ids) {
+      ref.read(currentChatProvider.notifier).cancelSessionAgent(id);
+    }
+    final report = await ConfigRepository.instance.hardDeleteChatSessions(ids);
     // 内存移除
+    final gone = ids.toSet();
     state = AsyncData(
-      (state.valueOrNull ?? []).where((s) => s.id != id).toList(),
+      (state.valueOrNull ?? []).where((s) => !gone.contains(s.id)).toList(),
     );
+    return report;
+  }
+
+  /// 回收旧版本软删除留下的墓碑（数据仍占着库，属于历史欠账）。
+  Future<ChatSessionDeleteReport> purgeTombstonedSessions() async {
+    final report = await ConfigRepository.instance
+        .purgeTombstonedChatSessions();
+    if (report.deletedSessions > 0) {
+      state = AsyncData(state.valueOrNull ?? const []);
+    }
+    return report;
   }
 }
 

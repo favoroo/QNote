@@ -31,16 +31,16 @@ void main() {
       expect(mClaude.provider, equals('openai'));
 
       final m38 = BuiltinFreeKeys.createGemini38Config();
-      expect(m38.id, equals('gemini-3.8-flash-low'));
+      expect(m38.id, equals('gemini-3.8-flash-low-mix'));
       expect(m38.displayName, equals('Gemini 3.8 Flash Low'));
-      expect(m38.modelName, equals('gemini-3.8-flash-low'));
+      expect(m38.modelName, equals('gemini-3.8-flash-low-mix'));
       expect(m38.baseUrl, equals('https://1demacbook-pro.tail77f123.ts.net/v1'));
       expect(m38.provider, equals('openai'));
 
       final m35 = BuiltinFreeKeys.createGemini35Config();
-      expect(m35.id, equals('gemini-3.5-flash-lite'));
+      expect(m35.id, equals('gemini-3.5-flash-lite-mix'));
       expect(m35.displayName, equals('Gemini 3.5 Flash Lite'));
-      expect(m35.modelName, equals('gemini-3.5-flash-lite'));
+      expect(m35.modelName, equals('gemini-3.5-flash-lite-mix'));
       expect(m35.baseUrl, equals('https://1demacbook-pro.tail77f123.ts.net/v1'));
       expect(m35.provider, equals('openai'));
     });

@@ -1,6 +1,11 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:sqflite/sqflite.dart';
+import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/storage/chat_image_gc.dart';
+import 'package:qnote_flutter/core/storage/chat_storage_usage.dart';
 import 'package:qnote_flutter/core/storage/database_helper.dart';
 import 'package:qnote_flutter/core/storage/sync_log_repository.dart';
+import 'package:qnote_flutter/core/utils/chat_image_refs.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/agent_memory.dart';
@@ -276,6 +281,12 @@ class ConfigRepository {
     return updated;
   }
 
+  /// 软删除会话（只打标记，不释放空间）。
+  ///
+  /// 保留仅为兼容旧客户端写入的墓碑与灰度回退，新代码一律改用 [hardDeleteChatSessions]：
+  /// 软删的行仍完整留在 `chat_sessions.messages` 里（SQLite 文件不会变小），且它会把
+  /// 整行内容当 `update` 写进 sync_log，导致已删会话在其它设备被全量快照回灌复活。
+  @Deprecated('软删除不释放空间且会造成多端复活，请改用 hardDeleteChatSessions')
   Future<void> softDeleteChatSession(String id) async {
     final db = await _dbHelper.database;
     final existing = await getChatSession(id);
@@ -298,6 +309,210 @@ class ConfigRepository {
       operation: 'update',
       data: updated.toMap(),
     );
+  }
+
+  /// 物理删除会话：真正释放这条对话占用的消息记录与独占生成图片。
+  ///
+  /// 删除范围严格限定在「这条对话自身」：消息（含内联图片 JSON 与 undo 快照）随行消失，
+  /// 外加它独占的 `images/ai/` 生成图；**绝不级联**日记/笔记/待办等业务数据，也不动虚拟
+  /// 工作区（VFS 全是表映射，本就不落盘）。
+  ///
+  /// 三条硬约束，改动时请勿破坏：
+  /// 1. 必须写 `operation: 'delete'` 的最小墓碑（`data: null`）。`SyncLogRepository` 打包
+  ///    delta 时把非 delete 的 operation 一律归入 upserts 并连整行 data 外发，写成
+  ///    'update' 会让已删会话在多端复活，且每次删除都往 sync_log 塞一份完整会话 JSON；
+  /// 2. 幂等：行不存在也不报错，但**仍写墓碑**，保证「A 端删除 → B 端已本地删过 →
+  ///    仍需转发给 C 端」的链路不断（旧实现 `if (existing == null) return;` 正是断点）；
+  /// 3. 事务回调内只用 `txn`：复用 `_syncLog.logChange` 会走 `Database` 对象，其写操作
+  ///    排在事务之后，既有死锁风险又会让墓碑漏在事务外。
+  Future<ChatSessionDeleteReport> hardDeleteChatSessions(
+    List<String> ids,
+  ) async {
+    final targets = ids.where((id) => id.trim().isNotEmpty).toSet();
+    if (targets.isEmpty) {
+      return ChatSessionDeleteReport.empty;
+    }
+
+    final db = await _dbHelper.database;
+    final idList = targets.toList();
+    final placeholders = List.filled(idList.length, '?').join(', ');
+
+    // 事务前只读：先量出这条对话占多大，删掉之后就没有原始行可查了
+    final rows = await db.query(
+      'chat_sessions',
+      columns: [
+        'id',
+        'messages',
+        'LENGTH(CAST(messages AS BLOB)) AS msg_bytes',
+      ],
+      where: 'id IN ($placeholders)',
+      whereArgs: idList,
+    );
+
+    var messageCount = 0;
+    var imageRefCount = 0;
+    var messageBytes = 0;
+    final ownedImageKeys = <String>{};
+    for (final row in rows) {
+      final raw = row['messages'] as String?;
+      ownedImageKeys.addAll(extractChatAiImageKeys(raw));
+      final summary = summarizeMessageRefs(raw);
+      messageCount += summary.messageCount;
+      imageRefCount += summary.imageRefCount;
+      messageBytes += (row['msg_bytes'] as int?) ?? 0;
+    }
+
+    await db.transaction((txn) async {
+      final batch = txn.batch();
+      final nowStr = DateTime.now().toIso8601String();
+      for (final id in idList) {
+        batch.delete('chat_sessions', where: 'id = ?', whereArgs: [id]);
+        batch.insert('sync_log', {
+          'table_name': 'chat_sessions',
+          'record_id': id,
+          'operation': 'delete',
+          'data': null,
+          'timestamp': nowStr,
+        });
+      }
+      await batch.commit(noResult: true);
+    });
+
+    // 文件回收必须在事务提交之后：顺序反过来时一旦事务回滚，就会出现
+    // 「图片已丢失、消息还在」的不可接受损坏。
+    // deleteFilesForKeys 会在行已消失的前提下重算保护集，故同批两个会话共用一张图也能删净。
+    final cleanup = ownedImageKeys.isEmpty
+        ? AiImageCleanupResult.none
+        : await ChatImageGc.instance.deleteFilesForKeys(ownedImageKeys);
+
+    return ChatSessionDeleteReport(
+      deletedSessions: rows.length,
+      messageCount: messageCount,
+      imageRefCount: imageRefCount,
+      deletedImageFiles: cleanup.deletedFiles,
+      imageFreedBytes: cleanup.freedBytes,
+      keptImageFiles: cleanup.keptFiles,
+      freedBytes: messageBytes + cleanup.freedBytes,
+      failedPaths: cleanup.failedPaths,
+    );
+  }
+
+  /// 删除单个会话（语义同 [hardDeleteChatSessions]）。
+  Future<ChatSessionDeleteReport> hardDeleteChatSession(String id) {
+    return hardDeleteChatSessions([id]);
+  }
+
+  /// 回收旧版本软删除留下的墓碑行（数据其实还躺在库里，是历史欠账）。
+  Future<ChatSessionDeleteReport> purgeTombstonedChatSessions() async {
+    final db = await _dbHelper.database;
+    final rows = await db.query(
+      'chat_sessions',
+      columns: ['id'],
+      where: 'is_deleted = 1',
+    );
+    final ids = rows.map((row) => row['id']?.toString() ?? '').toList();
+    return hardDeleteChatSessions(ids);
+  }
+
+  /// 只读估算对话历史占用：活跃会话、待回收墓碑、生成图片与数据库文件体积。
+  Future<ChatStorageUsage> estimateChatStorageUsage() async {
+    var activeSessions = 0;
+    var activeBytes = 0;
+    var tombstones = 0;
+    var tombstoneBytes = 0;
+    int? databaseBytes;
+    try {
+      final db = await _dbHelper.database;
+      final active = await _sumMessagesStorage(db, where: 'is_deleted = 0');
+      final tomb = await _sumMessagesStorage(db, where: 'is_deleted = 1');
+      activeSessions = active.$1;
+      activeBytes = active.$2;
+      tombstones = tomb.$1;
+      tombstoneBytes = tomb.$2;
+      databaseBytes = await _estimateDatabaseBytes(db);
+    } catch (error) {
+      LoggerService.instance.logDatabase(
+        '统计对话存储占用失败',
+        details: error.toString(),
+        level: LogLevel.warning,
+      );
+    }
+    final inventory = await ChatImageGc.instance.inventoryAiImages();
+    return ChatStorageUsage(
+      activeSessions: activeSessions,
+      activeMessagesBytes: activeBytes,
+      tombstonedSessions: tombstones,
+      tombstonedBytes: tombstoneBytes,
+      aiImageFiles: inventory.fileCount,
+      aiImageBytes: inventory.totalBytes,
+      orphanImageFiles: inventory.orphanCount,
+      orphanImageBytes: inventory.orphanBytes,
+      databaseFileBytes: databaseBytes,
+    );
+  }
+
+  /// 整理数据库（VACUUM）：把已删行占用的页真正还给文件系统。
+  ///
+  /// 建表期未开 `PRAGMA auto_vacuum`，`incremental_vacuum` 不可用，VACUUM 是唯一收缩路径
+  /// —— 这正是「删了行文件也不变小」的根因，故界面文案表达为「整理」而非「删除」。
+  /// 代价是需要约 2× 库文件大小的临时磁盘并独占重写整个 db，只在用户显式点击时执行，
+  /// 且**必须在事务外**；Web 端存储实为 IndexedDB，直接返回 false。
+  Future<bool> vacuumDatabase() async {
+    if (kIsWeb) {
+      return false;
+    }
+    try {
+      final db = await _dbHelper.database;
+      await db.execute('VACUUM');
+      LoggerService.instance.logDatabase('已整理数据库（VACUUM）');
+      return true;
+    } catch (error) {
+      LoggerService.instance.logDatabase(
+        '整理数据库失败（当前平台可能不支持 VACUUM）',
+        details: error.toString(),
+        level: LogLevel.warning,
+      );
+      return false;
+    }
+  }
+
+  /// 按条件汇总会话消息体积；返回（行数, 字节数）。
+  ///
+  /// 必须 `CAST(messages AS BLOB)` 再取 `LENGTH`：`LENGTH(text)` 返回**字符数**，
+  /// 中文内容会低估 2~3 倍。
+  Future<(int, int)> _sumMessagesStorage(
+    DatabaseExecutor db, {
+    required String where,
+  }) async {
+    final rows = await db.rawQuery(
+      'SELECT COUNT(*) AS c, '
+      'IFNULL(SUM(LENGTH(CAST(messages AS BLOB))), 0) AS b '
+      'FROM chat_sessions WHERE $where',
+    );
+    if (rows.isEmpty) {
+      return (0, 0);
+    }
+    return (
+      (rows.first['c'] as int?) ?? 0,
+      (rows.first['b'] as int?) ?? 0,
+    );
+  }
+
+  /// 数据库文件体积（page_size × page_count）；个别平台（如 Web WASM）不支持该 PRAGMA，
+  /// 读不到时返回 null，由界面降级为只显示消息与图片体积。
+  Future<int?> _estimateDatabaseBytes(DatabaseExecutor db) async {
+    try {
+      final sizeRows = await db.rawQuery('PRAGMA page_size');
+      final countRows = await db.rawQuery('PRAGMA page_count');
+      final pageSize = (sizeRows.first['page_size'] as int?) ?? 0;
+      final pageCount = (countRows.first['page_count'] as int?) ?? 0;
+      if (pageSize <= 0 || pageCount <= 0) {
+        return null;
+      }
+      return pageSize * pageCount;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<AiRoles?> getAiRoles() async {

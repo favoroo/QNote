@@ -98,7 +98,7 @@ void main() {
     ));
 
     final row = find.ancestor(
-      of: find.text('内置 Gemini 3.5 Flash Lite'),
+      of: find.text('内置 Gemini 3.5 Flash Lite Mix'),
       matching: find.byType(Row),
     ).first;
     expect(
@@ -140,7 +140,7 @@ void main() {
     );
     expect(
       assistantModelDisplayName('__free_model__', const []),
-      '内置 Gemini 3.5 Flash Lite',
+      '内置 Gemini 3.5 Flash Lite Mix',
     );
     expect(assistantModelDisplayName('missing', const []), 'missing');
     expect(assistantModelDisplayName(null, const []), isNull);

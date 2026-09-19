@@ -925,14 +925,14 @@ class VirtualWorkspaceService {
           'assistant': {
             'useFreeModel': roles.assistantUseFreeModel,
             'freeModelId':
-                roles.assistantFreeModelId ?? 'gemini-3.5-flash-lite',
+                roles.assistantFreeModelId ?? 'gemini-3.5-flash-lite-mix',
             'customModelId': roles.assistant,
           },
           'timelineOptimization': {
             'useFreeModel': roles.timelineOptimizationUseFreeModel,
             'freeModelId':
                 roles.timelineOptimizationFreeModelId ??
-                'gemini-3.5-flash-lite',
+                'gemini-3.5-flash-lite-mix',
             'customModelId': roles.timelineOptimization,
           },
         },
@@ -3538,7 +3538,9 @@ class VirtualWorkspaceService {
       final segments = path.substring('/chats/'.length).split('/');
       final id = segments.last.replaceAll('.json', '').trim();
       if (id.isNotEmpty) {
-        await _configRepo.softDeleteChatSession(id);
+        // 物理删除：软删只打标记、不释放空间，且会让已删会话在多端被快照回灌复活。
+        // 删除范围仅限这条会话自身（消息 + 它独占的生成图），不会级联笔记/日记/待办。
+        await _configRepo.hardDeleteChatSession(id);
         WorkspaceEventBus.instance.emit(
           '/chats/sessions.json',
           WorkspaceChangeType.deleted,

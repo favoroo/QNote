@@ -514,7 +514,7 @@ tags: "运动,健康"
       expect(readMarksAfter, isNot(contains('2026-09-15')));
     });
 
-    test('21. chats: /chats/sessions.json 历史会话查看、重命名与软删除', () async {
+    test('21. chats: /chats/sessions.json 历史会话查看、重命名与删除', () async {
       // 1. 验证 list_dir /chats
       final chatFiles = await vfs.listDir('/chats');
       expect(chatFiles, contains('sessions.json'));
@@ -545,12 +545,17 @@ tags: "运动,健康"
       final readAfterRename = await vfs.readFile('/chats/sessions.json');
       expect(readAfterRename, contains('全能小Q开发方案'));
 
-      // 5. 软删除会话
+      // 5. 删除会话：必须是物理删除，旧版软删只会打 is_deleted 标记
       final delSessionRes = await vfs.deleteFile('/chats/$testSessionId.json');
       expect(delSessionRes['status'], 'deleted');
 
       final readAfterDel = await vfs.readFile('/chats/sessions.json');
       expect(readAfterDel, isNot(contains(testSessionId)));
+      expect(
+        await ConfigRepository.instance.getChatSession(testSessionId),
+        isNull,
+        reason: 'delete_file 应真删该行，否则对话历史仍占着库空间',
+      );
     });
 
     test('22. skills: folder-manager 技能手册加载', () async {

@@ -17,8 +17,8 @@ class AiRoles {
     this.timelineOptimization,
     this.assistantUseFreeModel = false,
     this.timelineOptimizationUseFreeModel = false,
-    this.assistantFreeModelId = 'gemini-3.5-flash-lite',
-    this.timelineOptimizationFreeModelId = 'gemini-3.5-flash-lite',
+    this.assistantFreeModelId = 'gemini-3.5-flash-lite-mix',
+    this.timelineOptimizationFreeModelId = 'gemini-3.5-flash-lite-mix',
     this.imageGenerationFreeModelId = 'gemini-3.1-flash-image',
   });
 
@@ -43,9 +43,9 @@ class AiRoles {
       assistantUseFreeModel: map['assistantUseFreeModel'] as bool? ?? false,
       timelineOptimizationUseFreeModel:
           map['timelineOptimizationUseFreeModel'] as bool? ?? false,
-      assistantFreeModelId: map['assistantFreeModelId'] as String? ?? 'gemini-3.5-flash-lite',
+      assistantFreeModelId: map['assistantFreeModelId'] as String? ?? 'gemini-3.5-flash-lite-mix',
       timelineOptimizationFreeModelId:
-          map['timelineOptimizationFreeModelId'] as String? ?? 'gemini-3.5-flash-lite',
+          map['timelineOptimizationFreeModelId'] as String? ?? 'gemini-3.5-flash-lite-mix',
       imageGenerationFreeModelId:
           map['imageGenerationFreeModelId'] as String? ?? 'gemini-3.1-flash-image',
     );

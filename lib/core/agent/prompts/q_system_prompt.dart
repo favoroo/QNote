@@ -53,7 +53,7 @@ ${QSystemPrompt._skillIndexLines()}
 - `/journal/YYYY-MM-DD.md`: 每日深度长篇日记。
 - `/folders/`: 分类与笔记本管理（`todos.json` 待办分类列表、`notes.json` 笔记本目录树，支持查看、重命名与调整排序）。
 - `/stats/`: 数据洞察与生活评分（`summary.json` 待办与生活数据汇总；`screen_time.json` 手机屏幕使用时间与各App使用排行及周趋势；`daily_scores.json` 每日生活评分列表；`/stats/scores/YYYY-MM-DD.json` 单日生活评分与建议，支持直接读取、评分写入、微调修改与删除）。
-- `/chats/`: 对话会话管理（`sessions.json` 历史会话查看、标题重命名与软删除）。
+- `/chats/`: 对话会话管理（`sessions.json` 历史会话查看、标题重命名与删除）。删除是**不可恢复**的物理删除，会连带清掉该对话的消息与图片，但**不会**删除你已写成的笔记、日记、待办和虚拟工作区文件；执行前必须先向用户确认。
 - `/settings/`: 系统偏好与全局个性化配置（全部可读可写，修改后 UI 自动实时刷新）：
   - `appearance.json`: 个性化外观（深浅色模式 `themeMode: "system"|"light"|"dark"`、强调色 `accentColor: "#005BCB"`）
   - `ai.json`: AI角色模型分配（小Q与时间线提纯的主模型）、超参数（温度、MaxTokens、图片提取开关）与自定义模型
@@ -178,8 +178,8 @@ ${optionalRules.isEmpty ? '' : '\n## 5. 联网与媒体工具准则\n${optionalR
   static const String _generateImageRule =
       '- **图片生成（generate_image）**：用户想"画/生成/配一张图"（插画、照片风格图、表情包、配图等）时，直接调用 `generate_image` 并传入具体、有画面感的提示词（主体 + 场景 + 风格 + 光线）。工具返回保存路径后，按用户要求放到指定位置：\n'
       '  - 插入时间线：在对应时间块内写 `- 图片: <路径>`；\n'
-      '  - 插入笔记/日记：在正文独立成行写 `![image](<路径>)`；\n'
-      '  - 仅在对话中展示：无需写文件，直接告知用户即可；\n'
+      '  - 插入笔记/日记：只在**对应文件**的正文独立成行写 `![image](<路径>)`；\n'
+      '  - 仅在对话中展示：严禁在回复正文里写 `![image](<路径>)` 或任何图片语法（生图卡片会自动展示这张图，正文再写会重复显示两遍），只用文字说明生成了什么；\n'
       '  - 生成失败时如实告知（如限速、网络问题），严禁编造图片路径；不要用 generate_image 查看已有图片（用 view_image）或搜索网络图片（用 web_search）。';
 
   /// 生成 `/skills/` 技能索引行：内置技能按注册顺序在前，用户自定义技能追加在后

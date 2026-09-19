@@ -8,6 +8,7 @@ import 'package:qnote_flutter/models/webdav_config.dart';
 import 'package:qnote_flutter/core/export/export_service.dart';
 import 'package:qnote_flutter/core/storage/sync_log_repository.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
+import 'package:qnote_flutter/core/storage/chat_image_gc.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:qnote_flutter/core/storage/database_helper.dart';
@@ -929,7 +930,16 @@ class WebdavService {
       }
 
       // 7. 清理本地物理存在的、但在数据库中没有引用的图片
-      final localCleanupTargets = localPhysicalImages.difference(activeImages);
+      //
+      // 保护集必须并入聊天引用：_getActiveImagesFromDb 只扫日记/笔记/头像，而小Q生图落在
+      // images/ai/ 且从不上云（云端只枚举 diary/notes/avatar），不并入的话每次同步都会把
+      // 会话里仍在显示的生图当孤儿删掉。这里只扩保护集、不扩上传/下载集，
+      // 以免改变同步带宽语义（生图单张可达数 MB）。
+      final chatReferenced = (await ChatImageGc.instance.collectReferencedImageKeys())
+          .map((name) => '${ChatImageGc.subfolder}/$name')
+          .toSet();
+      final localCleanupTargets = localPhysicalImages
+          .difference(activeImages.union(chatReferenced));
       for (final rel in localCleanupTargets) {
         final localPath = p.join(appDir.path, 'images', rel);
         try {

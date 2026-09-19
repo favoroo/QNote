@@ -358,7 +358,9 @@ class FreeModelService {
         model.id == 'deepseek-v4-flash';
     // Gemini 专用网关的内置模型（含 Claude Sonnet 4.6 与生图模型 gemini-3.1-flash-image）
     final isGeminiBuiltinKey = model.id == 'claude-sonnet-4-6' ||
+        model.id == 'gemini-3.8-flash-low-mix' ||
         model.id == 'gemini-3.8-flash-low' ||
+        model.id == 'gemini-3.5-flash-lite-mix' ||
         model.id == 'gemini-3.5-flash-lite' ||
         model.id == 'gemini-3.1-flash-image';
 

@@ -11,6 +11,9 @@ import 'package:qnote_flutter/core/export/export_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/network/sync_scheduler.dart';
 import 'package:qnote_flutter/core/network/webdav_service.dart';
+import 'package:qnote_flutter/core/storage/chat_image_gc.dart';
+import 'package:qnote_flutter/core/storage/chat_storage_usage.dart';
+import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/storage/database_helper.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/pages/settings/sync_settings_page.dart';
@@ -401,12 +404,32 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
   StreamSubscription<SyncStatus>? _statusSubscription;
   bool _isClearing = false;
 
+  /// 对话历史占用（只读估算，进入维护页时拉一次，回收/整理后刷新）
+  ChatStorageUsage? _chatUsage;
+  bool _isReclaiming = false;
+  bool _isVacuuming = false;
+
   @override
   void initState() {
     super.initState();
     _statusSubscription = SyncScheduler.instance.statusStream.listen((_) {
       if (mounted) setState(() {});
     });
+    _loadChatUsage();
+  }
+
+  Future<void> _loadChatUsage() async {
+    try {
+      final usage = await ConfigRepository.instance.estimateChatStorageUsage();
+      if (mounted) setState(() => _chatUsage = usage);
+    } catch (e) {
+      // 估算失败不影响本页其它功能，保持为 null 即可
+      LoggerService.instance.logDatabase(
+        '统计对话存储占用失败',
+        details: e.toString(),
+        level: LogLevel.warning,
+      );
+    }
   }
 
   @override
@@ -568,6 +591,133 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
     }
   }
 
+  /// 对话历史占用摘要行（只读估算，点击可刷新）。
+  String _chatUsageSubtitle(ChatStorageUsage? usage) {
+    if (usage == null) {
+      return '统计中…';
+    }
+    final parts = <String>[
+      '${usage.activeSessions} 个对话 · 消息 ${formatChatStorageBytes(usage.activeMessagesBytes)}',
+      if (usage.aiImageFiles > 0)
+        '生成图 ${usage.aiImageFiles} 张 ${formatChatStorageBytes(usage.aiImageBytes)}',
+      if (usage.databaseFileBytes != null)
+        '库文件 ${formatChatStorageBytes(usage.databaseFileBytes!)}',
+    ];
+    if (usage.tombstonedSessions > 0 || usage.orphanImageFiles > 0) {
+      parts.add('待回收 ${formatChatStorageBytes(usage.reclaimableBytes)}');
+    }
+    return parts.join(' · ');
+  }
+
+  /// 立即回收：清掉旧版本软删除留下的对话墓碑，以及已无对话引用的生成图片。
+  ///
+  /// 只做「删掉无人引用的东西」，不触碰仍在显示的对话与笔记/日记在用的文件。
+  Future<void> _reclaimChatStorage() async {
+    if (SyncScheduler.instance.status == SyncStatus.syncing) {
+      Toast.warning(context, '正在同步中，请稍后再回收');
+      return;
+    }
+    final usage = _chatUsage;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('立即回收'),
+        content: Text(
+          '将永久清除旧版本「已删除但仍占着空间」的 '
+          '${usage?.tombstonedSessions ?? 0} 个对话，'
+          '以及 ${usage?.orphanImageFiles ?? 0} 张已无对话引用的生成图片。'
+          '\n\n仍在显示的对话、笔记和日记不会被改动。是否继续？',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('回收'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isReclaiming = true);
+    try {
+      final purged = await ConfigRepository.instance
+          .purgeTombstonedChatSessions();
+      final orphans = await ChatImageGc.instance.deleteUnreferencedAiImages();
+      final bytes = purged.imageFreedBytes + orphans.freedBytes;
+      ref.invalidate(chatSessionListProvider);
+      await _loadChatUsage();
+      if (!mounted) return;
+
+      if (purged.deletedSessions == 0 && orphans.deletedFiles == 0) {
+        Toast.success(context, '没有需要回收的内容');
+      } else {
+        Toast.success(
+          context,
+          '已回收 ${purged.deletedSessions} 个历史对话 · '
+          '${orphans.deletedFiles} 张图片'
+          '${bytes > 0 ? ' · 释放约 ${formatChatStorageBytes(bytes)}' : ''}',
+        );
+      }
+    } catch (e) {
+      if (mounted) Toast.error(context, '回收失败');
+      LoggerService.instance.logDatabase(
+        '对话存储回收失败',
+        details: e.toString(),
+        level: LogLevel.error,
+      );
+    } finally {
+      if (mounted) setState(() => _isReclaiming = false);
+    }
+  }
+
+  /// 整理数据库（VACUUM）：删行不会让 SQLite 文件变小，只有整理才真正把空间还给系统。
+  Future<void> _vacuumDatabase() async {
+    if (kIsWeb) {
+      Toast.info(context, 'Web 端存储由浏览器管理，无需整理');
+      return;
+    }
+    if (SyncScheduler.instance.status == SyncStatus.syncing) {
+      Toast.warning(context, '正在同步中，请稍后再整理');
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('整理数据库'),
+        content: const Text(
+          '将重写数据库文件，收回已删除内容占用的空间。'
+          '\n\n需要约 2 倍于当前库文件的临时空间，期间请勿同步。是否继续？',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('整理'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isVacuuming = true);
+    final ok = await ConfigRepository.instance.vacuumDatabase();
+    await _loadChatUsage();
+    if (!mounted) return;
+    setState(() => _isVacuuming = false);
+    if (ok) {
+      Toast.success(context, '整理完成');
+    } else {
+      Toast.info(context, '当前平台不支持整理，空间会在后续写入中复用');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -590,6 +740,33 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
               title: '清理旧备份文件',
               color: Colors.teal.shade600,
               onTap: isSyncing ? null : _cleanupOldBackups,
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        _SectionTitle(title: '对话存储', theme: theme),
+        _ActionGroup(
+          children: [
+            _ActionTile(
+              icon: Icons.storage_rounded,
+              title: '对话历史占用',
+              subtitle: _chatUsageSubtitle(_chatUsage),
+              color: colorScheme.onSurfaceVariant,
+              onTap: () => _loadChatUsage(),
+            ),
+            _ActionTile(
+              icon: Icons.delete_sweep_rounded,
+              title: '立即回收',
+              subtitle: '清除旧版已删除的对话与无引用的生成图片',
+              onTap: (_isReclaiming || isSyncing) ? null : _reclaimChatStorage,
+              isLoading: _isReclaiming,
+            ),
+            _ActionTile(
+              icon: Icons.bolt_rounded,
+              title: '整理数据库',
+              subtitle: '把已删除内容占用的库文件空间还给系统',
+              onTap: (_isVacuuming || isSyncing) ? null : _vacuumDatabase,
+              isLoading: _isVacuuming,
             ),
           ],
         ),
@@ -694,6 +871,7 @@ class _ActionTile extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.onTap,
+    this.subtitle,
     this.color,
     this.isDestructive = false,
     this.isLoading = false,
@@ -702,6 +880,9 @@ class _ActionTile extends StatelessWidget {
   final IconData icon;
   final String title;
   final VoidCallback? onTap;
+
+  /// 次要说明行（如存储占用数字）：为空时保持原有单行高度
+  final String? subtitle;
   final Color? color;
   final bool isDestructive;
   final bool isLoading;
@@ -738,15 +919,30 @@ class _ActionTile extends StatelessWidget {
               const SizedBox(width: 14),
               // 文本区域
               Expanded(
-                child: Text(
-                  title,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    color: isDestructive
-                        ? effectiveColor.withValues(alpha: enabled ? 1.0 : 0.5)
-                        : colorScheme.onSurface.withValues(alpha: enabled ? 1.0 : 0.5),
-                    fontWeight: FontWeight.w600,
-                    fontSize: 15,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: isDestructive
+                            ? effectiveColor.withValues(alpha: enabled ? 1.0 : 0.5)
+                            : colorScheme.onSurface.withValues(alpha: enabled ? 1.0 : 0.5),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),
+                    ),
+                    if (subtitle != null && subtitle!.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        subtitle!,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
               const SizedBox(width: 8),

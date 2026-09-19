@@ -17,31 +17,31 @@ class AiRoleService {
   static const _selectedFreeModelKey = 'selected_free_model';
   // AI 温度设置迁移版本标记
   static const _aiTempsMigrationVersionKey = 'ai_temps_migration_version';
-  // 默认免费模型升级迁移标记
-  static const _defaultModelMigrationVersionKey = 'default_model_migration_v2';
+  // 默认免费模型升级迁移标记（升级到 gemini-3.5-flash-lite-mix）
+  static const _defaultModelMigrationVersionKey = 'default_model_migration_v3';
 
   /// 初始化并确保默认配置
   Future<void> initAndEnsureDefaults() async {
     final existing = await _repo.getAiRoles();
     if (existing == null) {
-      // 初次进入应用：自动配置使用内置模型（开箱即用，默认选用 Gemini 3.5 Flash Lite）
+      // 初次进入应用：自动配置使用内置模型（开箱即用，默认选用 Gemini 3.5 Flash Lite Mix）
       await saveRoles(
         const AiRoles(
           assistantUseFreeModel: true,
           timelineOptimizationUseFreeModel: true,
-          assistantFreeModelId: 'gemini-3.5-flash-lite',
-          timelineOptimizationFreeModelId: 'gemini-3.5-flash-lite',
+          assistantFreeModelId: 'gemini-3.5-flash-lite-mix',
+          timelineOptimizationFreeModelId: 'gemini-3.5-flash-lite-mix',
         ),
       );
     }
 
     // 迁移：将 timelineOptimization.extractImages 默认值从 false 升级为 true
     await _migrateExtractImagesDefault();
-    // 迁移：将旧版默认内置模型顺畅升级为 Gemini 3.5 Flash Lite
+    // 迁移：将旧版默认内置模型顺畅升级为 Gemini 3.5 Flash Lite Mix
     await _migrateDefaultFreeModel();
   }
 
-  /// 迁移默认内置模型至 gemini-3.5-flash-lite
+  /// 迁移默认内置模型至 gemini-3.5-flash-lite-mix
   Future<void> _migrateDefaultFreeModel() async {
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool(_defaultModelMigrationVersionKey) == true) return;
@@ -54,14 +54,16 @@ class AiRoleService {
 
       if (existing.assistantUseFreeModel &&
           (existing.assistantFreeModelId == null ||
-              existing.assistantFreeModelId == 'sensenova-flash-lite')) {
-        newAssistantModel = 'gemini-3.5-flash-lite';
+              existing.assistantFreeModelId == 'sensenova-flash-lite' ||
+              existing.assistantFreeModelId == 'gemini-3.5-flash-lite')) {
+        newAssistantModel = 'gemini-3.5-flash-lite-mix';
         needUpdate = true;
       }
       if (existing.timelineOptimizationUseFreeModel &&
           (existing.timelineOptimizationFreeModelId == null ||
-              existing.timelineOptimizationFreeModelId == 'sensenova-flash-lite')) {
-        newTimelineModel = 'gemini-3.5-flash-lite';
+              existing.timelineOptimizationFreeModelId == 'sensenova-flash-lite' ||
+              existing.timelineOptimizationFreeModelId == 'gemini-3.5-flash-lite')) {
+        newTimelineModel = 'gemini-3.5-flash-lite-mix';
         needUpdate = true;
       }
       if (needUpdate) {
@@ -75,8 +77,10 @@ class AiRoleService {
     }
 
     final preferred = await getPreferredFreeModelId();
-    if (preferred == null || preferred == 'sensenova-flash-lite') {
-      await savePreferredFreeModelId('gemini-3.5-flash-lite');
+    if (preferred == null ||
+        preferred == 'sensenova-flash-lite' ||
+        preferred == 'gemini-3.5-flash-lite') {
+      await savePreferredFreeModelId('gemini-3.5-flash-lite-mix');
     }
 
     await prefs.setBool(_defaultModelMigrationVersionKey, true);
@@ -253,6 +257,21 @@ class AiRoleService {
       orElse: () => models.first,
     );
     return FreeModelService.instance.toAiConfig(config);
+  }
+
+  /// 取与主后端互补的备用内置生图配置（Gemini ↔ SenseNova）
+  ///
+  /// 供小Q `generate_image` 工具在主后端返回空结果/报错时降级重试。
+  /// 刻意不读取角色绑定、不落库，也不改变
+  /// [FreeModelService.getImageGenerationModels] 的候选语义（生图模型不得进入聊天 fallback 链）；
+  /// 只按 [primaryModelName] 排除主后端自身，取剩下的第一个内置生图模型。
+  Future<AiConfig?> getImageGenerationFallbackConfig(String primaryModelName) async {
+    final models = FreeModelService.instance.getImageGenerationModels();
+    for (final model in models) {
+      if (model.modelName == primaryModelName) continue;
+      return FreeModelService.instance.toAiConfig(model);
+    }
+    return null;
   }
 
   /// 获取角色的有效配置
