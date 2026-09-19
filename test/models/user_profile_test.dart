@@ -68,5 +68,38 @@ void main() {
       expect(updated.customFields.length, 2);
       expect(profile.customFields['工作'], '设计师'); // Original untouched
     });
+
+    test('copyWith 未指定时保留 otherInfo', () {
+      final now = DateTime(2026, 6, 28, 12, 0);
+      final profile = UserProfile(
+        id: 'user-4',
+        otherInfo: '26年5月份检查，存在胰岛素抵抗',
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      expect(profile.copyWith(nickname: '谦').otherInfo, profile.otherInfo);
+    });
+
+    test('clearOtherInfo 才把 otherInfo 置空（旧输入框下线后的迁移语义）', () {
+      final now = DateTime(2026, 6, 28, 12, 0);
+      const legacy = '26年5月份检查，存在胰岛素抵抗';
+      final profile = UserProfile(
+        id: 'user-5',
+        otherInfo: legacy,
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      final migrated = profile.copyWith(
+        clearOtherInfo: true,
+        customFields: {'备注': legacy},
+      );
+
+      // 内容只留在 customFields 一处，避免小Q 上下文里同一段备忘出现两遍
+      expect(migrated.otherInfo, isNull);
+      expect(migrated.customFields['备注'], legacy);
+      expect(profile.otherInfo, legacy); // 原对象不受影响
+    });
   });
 }

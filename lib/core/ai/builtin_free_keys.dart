@@ -172,6 +172,36 @@ class BuiltinFreeKeys {
     );
   }
 
+  /// 创建内置的 Gemini 3.8 Flash Medium Mix 模型配置
+  static FreeModelConfig createGemini38MediumMixConfig([String? apiKey]) {
+    final effectiveKey = apiKey ?? getGeminiApiKey();
+    return FreeModelConfig(
+      id: 'gemini-3.8-flash-medium-mix',
+      displayName: 'Gemini 3.8 Flash Medium',
+      provider: 'openai',
+      baseUrl: dynamicCpaBaseUrl,
+      modelName: 'gemini-3.8-flash-medium-mix',
+      obfuscatedApiKey: effectiveKey,
+      authType: 'bearer',
+      priority: 1,
+    );
+  }
+
+  /// 创建内置的 Gemini 3.8 Flash High Mix 模型配置
+  static FreeModelConfig createGemini38HighMixConfig([String? apiKey]) {
+    final effectiveKey = apiKey ?? getGeminiApiKey();
+    return FreeModelConfig(
+      id: 'gemini-3.8-flash-high-mix',
+      displayName: 'Gemini 3.8 Flash High',
+      provider: 'openai',
+      baseUrl: dynamicCpaBaseUrl,
+      modelName: 'gemini-3.8-flash-high-mix',
+      obfuscatedApiKey: effectiveKey,
+      authType: 'bearer',
+      priority: 1,
+    );
+  }
+
   /// 创建内置的 Gemini 3.5 Flash Lite Mix 模型配置（默认推荐）
   static FreeModelConfig createGemini35Config([String? apiKey]) {
     final effectiveKey = apiKey ?? getGeminiApiKey();

@@ -300,7 +300,7 @@ description: 系统偏好与配置技能：个性化外观、AI模型分配与�
 ```json
 {
   "themeMode": "system",   // 可选: "system"(跟随系统) | "light"(浅色模式) | "dark"(深色模式)
-  "accentColor": "#005BCB"  // 16 进制颜色（如 #005BCB 经典蓝、#C5E803 荧光黄绿、#E91E8C 玫瑰粉红、#00E676 春天亮绿）
+  "accentColor": "#005BCB"  // 16 进制颜色（如 #005BCB 经典蓝、#C5E803 荧光黄绿、#E91E8C 玫瑰粉红、#00E676 春天亮绿、#FF3B30 活力红、#FF9500 活力橙、#00BCD4 湖水青、#7C4DFF 典雅紫）
 }
 ```
 **场景示例**：

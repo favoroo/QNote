@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
+import 'package:qnote_flutter/core/refresh/refresh_failure_notice.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/models/note.dart';
 
@@ -32,7 +33,18 @@ class NoteListNotifier extends AsyncNotifier<List<Note>> {
 
   Future<void> refresh() async {
     final repo = ref.read(noteRepositoryProvider);
-    state = AsyncData(await repo.getAll());
+    try {
+      state = AsyncData(await repo.getAll());
+    } catch (e, st) {
+      RefreshFailureNotice.report(
+        source: '笔记',
+        error: e,
+        stackTrace: st,
+        retry: () {
+          refresh();
+        },
+      );
+    }
   }
 
   Future<Note> addNote({

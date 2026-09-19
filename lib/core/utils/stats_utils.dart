@@ -102,6 +102,26 @@ String _formatDate(DateTime dt) {
   return '${dt.year}-$m-$d';
 }
 
+/// 统计页的日期标题：今天/昨天/前天，其余为 yyyy年M月d日。
+///
+/// 评分 tab 与屏幕时长 tab 的日期导航头共用，避免两个页面各写一份口径。
+String formatDayLabel(DateTime dt, {DateTime? today}) {
+  final base = today ?? DateTime.now();
+  final todayDate = DateTime(base.year, base.month, base.day);
+  final target = DateTime(dt.year, dt.month, dt.day);
+  final diff = todayDate.difference(target).inDays;
+  if (diff == 0) {
+    return '今天';
+  }
+  if (diff == 1) {
+    return '昨天';
+  }
+  if (diff == 2) {
+    return '前天';
+  }
+  return '${target.year}年${target.month}月${target.day}日';
+}
+
 dynamic _getValFromMap(Map<String, dynamic> map, List<String> keys) {
   for (final k in keys) {
     if (map.containsKey(k)) return map[k];

@@ -310,7 +310,7 @@ class MainActivity : FlutterActivity() {
                         result.success(
                             mapOf(
                                 "totalTime" to totalTime,
-                                "yesterdayTotalTime" to yesterdayTotalTime,
+                                "yesterdayTotalTimeMs" to yesterdayTotalTime,
                                 "appList" to appList
                             )
                         )
@@ -373,7 +373,7 @@ class MainActivity : FlutterActivity() {
                         result.success(
                             mapOf(
                                 "totalTime" to totalTime,
-                                "yesterdayTotalTime" to prevTotalTime,
+                                "yesterdayTotalTimeMs" to prevTotalTime,
                                 "appList" to appList
                             )
                         )
@@ -387,6 +387,17 @@ class MainActivity : FlutterActivity() {
                         result.success(weeklyList)
                     } catch (e: Exception) {
                         result.error("WEEKLY_QUERY_FAILED", e.localizedMessage, null)
+                    }
+                }
+                "getDailyScreenTimeRange" -> {
+                    try {
+                        val startMillis = call.argument<Long>("startMillis") ?: System.currentTimeMillis()
+                        val endMillis = call.argument<Long>("endMillis") ?: System.currentTimeMillis()
+                        val appLimit = call.argument<Int>("appLimitPerDay") ?: 20
+                        val dailyList = helper.getDailyScreenTimeRange(startMillis, endMillis, appLimit)
+                        result.success(dailyList)
+                    } catch (e: Exception) {
+                        result.error("DAILY_RANGE_QUERY_FAILED", e.localizedMessage, null)
                     }
                 }
                 else -> {

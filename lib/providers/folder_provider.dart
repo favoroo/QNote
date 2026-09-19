@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
+import 'package:qnote_flutter/core/refresh/refresh_failure_notice.dart';
 import 'package:qnote_flutter/core/storage/folder_repository.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/models/folder.dart';
@@ -38,11 +39,22 @@ class FolderListNotifier extends AsyncNotifier<List<Folder>> {
 
   Future<void> refresh() async {
     final repo = ref.read(folderRepositoryProvider);
-    await JournalService.instance.ensureRootFolder();
-    await JournalService.instance.cleanupEmptyJournalsIfNeeded();
-    state = AsyncData(
-      await repo.getByTypes(['note', JournalService.rootFolderType, JournalService.monthFolderType]),
-    );
+    try {
+      await JournalService.instance.ensureRootFolder();
+      await JournalService.instance.cleanupEmptyJournalsIfNeeded();
+      state = AsyncData(
+        await repo.getByTypes(['note', JournalService.rootFolderType, JournalService.monthFolderType]),
+      );
+    } catch (e, st) {
+      RefreshFailureNotice.report(
+        source: '文件夹',
+        error: e,
+        stackTrace: st,
+        retry: () {
+          refresh();
+        },
+      );
+    }
   }
 
   Future<Folder> addFolder(String name, [String? parentId]) async {

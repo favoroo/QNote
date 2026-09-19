@@ -3,11 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:intl/intl.dart';
 
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/daily_score.dart';
 import 'package:qnote_flutter/providers/daily_score_provider.dart';
+import 'package:qnote_flutter/widgets/statistics/date_navigation_header.dart';
 import 'package:qnote_flutter/widgets/statistics/score_heatmap.dart';
 
 class DailyScoreStats extends ConsumerStatefulWidget {
@@ -20,25 +20,8 @@ class DailyScoreStats extends ConsumerStatefulWidget {
 class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
   bool _isScoring = false;
 
-  void _onPrevDay(DateTime current) {
-    ref.read(selectedDateProvider.notifier).state = current.subtract(const Duration(days: 1));
-  }
-
-  void _onNextDay(DateTime current) {
-    ref.read(selectedDateProvider.notifier).state = current.add(const Duration(days: 1));
-  }
-
-  Future<void> _selectDate(BuildContext context, DateTime current) async {
-    final result = await showDatePicker(
-      context: context,
-      initialDate: current,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
-      locale: const Locale('zh', 'CN'),
-    );
-    if (result != null && mounted) {
-      ref.read(selectedDateProvider.notifier).state = DateTime(result.year, result.month, result.day);
-    }
+  void _onDateChanged(DateTime date) {
+    ref.read(selectedDateProvider.notifier).state = date;
   }
 
   Future<void> _performScoreAction(BuildContext context, DateTime date, {bool isRescore = false}) async {
@@ -99,76 +82,14 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
     final historyAsync = ref.watch(dailyScoreHistoryProvider(7));
     final heatmapAsync = ref.watch(dailyScoreHeatmapProvider);
 
-    final today = DateTime.now();
-    final todayDate = DateTime(today.year, today.month, today.day);
-    final yesterdayDate = todayDate.subtract(const Duration(days: 1));
-    final beforeYesterdayDate = todayDate.subtract(const Duration(days: 2));
-
-    String formatDayLabel(DateTime dt) {
-      if (dt == todayDate) return '今天';
-      if (dt == yesterdayDate) return '昨天';
-      if (dt == beforeYesterdayDate) return '前天';
-      return DateFormat('yyyy年M月d日').format(dt);
-    }
-
-    final dateLabel = formatDayLabel(selectedDate);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Date selection header
-        Card(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-              width: 0.5,
-            ),
-          ),
-          elevation: 0,
-          color: theme.colorScheme.surface,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.chevron_left),
-                      onPressed: _isScoring ? null : () => _onPrevDay(selectedDate),
-                    ),
-                    GestureDetector(
-                      onTap: _isScoring ? null : () => _selectDate(context, selectedDate),
-                      child: Row(
-                        children: [
-                          Text(
-                            dateLabel,
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(width: 4),
-                          Icon(Icons.calendar_month, size: 16, color: theme.colorScheme.primary),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.chevron_right),
-                      onPressed: _isScoring ? null : () => _onNextDay(selectedDate),
-                    ),
-                  ],
-                ),
-                const Divider(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildQuickDateBtn('前天', beforeYesterdayDate, selectedDate),
-                    _buildQuickDateBtn('昨天', yesterdayDate, selectedDate),
-                    _buildQuickDateBtn('今天', todayDate, selectedDate),
-                  ],
-                ),
-              ],
-            ),
-          ),
+        DateNavigationHeader(
+          selectedDate: selectedDate,
+          onDateChanged: _onDateChanged,
+          enabled: !_isScoring,
         ),
         const SizedBox(height: 16),
 
@@ -566,36 +487,6 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildQuickDateBtn(String label, DateTime btnDate, DateTime activeDate) {
-    final theme = Theme.of(context);
-    final isActive = btnDate.year == activeDate.year &&
-        btnDate.month == activeDate.month &&
-        btnDate.day == activeDate.day;
-
-    final activeForegroundColor = isActive ? theme.colorScheme.onPrimary : theme.colorScheme.primary;
-    final activeBackgroundColor = isActive ? theme.colorScheme.primary : Colors.transparent;
-
-    return OutlinedButton(
-      style: OutlinedButton.styleFrom(
-        foregroundColor: activeForegroundColor,
-        backgroundColor: activeBackgroundColor,
-        disabledForegroundColor: activeForegroundColor,
-        disabledBackgroundColor: activeBackgroundColor,
-        side: BorderSide(
-          color: isActive ? Colors.transparent : theme.colorScheme.outlineVariant,
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      ),
-      onPressed: _isScoring
-          ? null
-          : () {
-              ref.read(selectedDateProvider.notifier).state = btnDate;
-            },
-      child: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
     );
   }
 }

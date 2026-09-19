@@ -10,6 +10,7 @@ import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
+import 'package:qnote_flutter/widgets/app_error_state.dart';
 import 'package:qnote_flutter/widgets/diary/custom_date_range_picker.dart';
 
 class DiaryBatchManageView extends ConsumerStatefulWidget {
@@ -35,6 +36,10 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
   bool _isConfirming = false;
   Timer? _confirmTimer;
 
+  // 读库进行中与失败标记：避免首帧就把「数据还没到」渲染成「无符合条件的记录」
+  bool _loading = true;
+  Object? _loadError;
+
   @override
   void initState() {
     super.initState();
@@ -53,54 +58,66 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
     super.dispose();
   }
 
-  Future<void> _loadRecords() async {
-    final repo = DiaryRepository();
-    final allRecords = await repo.getAll();
-    final tags = <String>{};
-    for (final r in allRecords) {
-      tags.addAll(r.tags);
-    }
-    setState(() {
-      _allTags = tags.toList()..sort();
-    });
-    _applyFilters();
-  }
+  Future<void> _loadRecords() => _reload(withTags: true);
 
-  void _applyFilters() async {
-    final repo = DiaryRepository();
-    List<DiaryRecord> records;
+  void _applyFilters() => _reload();
 
-    if (_dateRange != null) {
-      final start = DateTime(
-        _dateRange!.start.year,
-        _dateRange!.start.month,
-        _dateRange!.start.day,
-      );
-      final end = DateTime(
-        _dateRange!.end.year,
-        _dateRange!.end.month,
-        _dateRange!.end.day,
-        23,
-        59,
-        59,
-      );
-      records = await repo.getByDateRange(start, end);
-    } else {
-      records = await repo.getAll();
-    }
+  /// 读库并刷新筛选结果；`withTags` 为 true 时同时重建标签筛选项。
+  ///
+  /// 加载中不翻转 UI（保留上一次结果，避免切筛选时列表闪烁），
+  /// 失败则保留旧结果但置错误态，让读库异常可见且可重试。
+  Future<void> _reload({bool withTags = false}) async {
+    _loading = true;
+    _loadError = null;
+    try {
+      final repo = DiaryRepository();
+      if (withTags) {
+        final allRecords = await repo.getAll();
+        final tags = <String>{};
+        for (final r in allRecords) {
+          tags.addAll(r.tags);
+        }
+        _allTags = tags.toList()..sort();
+      }
 
-    if (_selectedTags.isNotEmpty) {
-      records = records.where((r) {
-        return _selectedTags.any((tag) => r.tags.contains(tag));
-      }).toList();
-    }
+      List<DiaryRecord> records;
+      if (_dateRange != null) {
+        final start = DateTime(
+          _dateRange!.start.year,
+          _dateRange!.start.month,
+          _dateRange!.start.day,
+        );
+        final end = DateTime(
+          _dateRange!.end.year,
+          _dateRange!.end.month,
+          _dateRange!.end.day,
+          23,
+          59,
+          59,
+        );
+        records = await repo.getByDateRange(start, end);
+      } else {
+        records = await repo.getAll();
+      }
 
-    records.sort((a, b) => b.time.compareTo(a.time));
+      if (_selectedTags.isNotEmpty) {
+        records = records.where((r) {
+          return _selectedTags.any((tag) => r.tags.contains(tag));
+        }).toList();
+      }
 
-    setState(() {
+      records.sort((a, b) => b.time.compareTo(a.time));
+
       _filteredRecords = records;
       _selectedIds = _selectedIds.intersection(records.map((r) => r.id).toSet());
-    });
+    } catch (e) {
+      _loadError = e;
+    } finally {
+      _loading = false;
+      if (mounted) {
+        setState(() {});
+      }
+    }
   }
 
   void _pickDateRange() async {
@@ -1205,6 +1222,16 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
   }
 
   Widget _buildRecordList(ThemeData theme, ColorScheme colorScheme) {
+    if (_loading && _filteredRecords.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 60),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    final error = _loadError;
+    if (error != null) {
+      return AppErrorState(error: error, action: '读取记录失败', onRetry: _loadRecords);
+    }
     if (_filteredRecords.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 40),

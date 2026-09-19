@@ -30,6 +30,7 @@ import 'package:qnote_flutter/widgets/diary/diary_input_bar.dart';
 import 'package:qnote_flutter/widgets/diary/journal_editor_view.dart';
 import 'package:qnote_flutter/widgets/diary/custom_date_picker.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
+import 'package:qnote_flutter/widgets/app_error_state.dart';
 import 'package:qnote_flutter/widgets/common/loading_ring.dart';
 
 class DiaryPage extends ConsumerStatefulWidget {
@@ -2472,7 +2473,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                   },
                   loading: () =>
                       const Center(child: CircularProgressIndicator()),
-                  error: (e, _) => Center(child: Text('加载失败: $e')),
+                  error: (e, _) => AppErrorState(
+                    error: e,
+                    action: '加载记录失败',
+                    // 时间线区域只是 Stack 的一层，FAB 与输入栏仍在兄弟节点，用紧凑态避免整屏替换
+                    compact: true,
+                    onRetry: () => ref.invalidate(diaryListProvider),
+                  ),
                 ),
                 // 每日日记 FAB（智能提取按钮左侧）
                 Positioned(

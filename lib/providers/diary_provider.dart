@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
+import 'package:qnote_flutter/core/refresh/refresh_failure_notice.dart';
 import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/core/storage/color_mark_repository.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
@@ -82,7 +83,18 @@ class DiaryListNotifier extends AsyncNotifier<List<DiaryRecord>> {
 
   Future<void> refresh() async {
     final repo = ref.read(diaryRepositoryProvider);
-    state = AsyncData(await repo.getAll());
+    try {
+      state = AsyncData(await repo.getAll());
+    } catch (e, st) {
+      RefreshFailureNotice.report(
+        source: '日记',
+        error: e,
+        stackTrace: st,
+        retry: () {
+          refresh();
+        },
+      );
+    }
   }
 
   Future<void> loadByDate(DateTime date) async {

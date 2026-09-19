@@ -13,6 +13,7 @@ import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/folder_provider.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
+import 'package:qnote_flutter/widgets/app_error_state.dart';
 import 'package:qnote_flutter/widgets/search_view.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/widgets/notes/note_editor_view.dart';
@@ -222,10 +223,18 @@ class _NotesPageState extends ConsumerState<NotesPage> {
         data: (notes) => folderListAsync.when(
           data: (folders) => _buildTree(context, folders, notes),
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('加载文件夹失败: $e')),
+          error: (e, _) => AppErrorState(
+            error: e,
+            action: '加载文件夹失败',
+            onRetry: () => ref.invalidate(folderListProvider),
+          ),
         ),
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('加载失败: $e')),
+        error: (e, _) => AppErrorState(
+          error: e,
+          action: '加载笔记失败',
+          onRetry: () => ref.invalidate(noteListProvider),
+        ),
       ),
       floatingActionButton: AnimatedSwitcher(
         duration: AppDurations.fast,

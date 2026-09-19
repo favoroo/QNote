@@ -78,31 +78,49 @@ class PersonalizationPage extends ConsumerWidget {
                   const SizedBox(height: 32),
                   Text('主题色', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 16),
-                  Wrap(
-                    spacing: 16,
-                    runSpacing: 16,
+                  // 4 列固定网格：8 色呈规整两行，任何屏宽下都对齐
+                  GridView.count(
+                    crossAxisCount: 4,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
                     children: presetAccentColors.map((color) {
                       final isSelected = color.toARGB32() == accentColor.toARGB32();
-                      return GestureDetector(
-                        onTap: () => ref.read(accentColorProvider.notifier).setAccentColor(color),
-                        child: AnimatedContainer(
-                          duration: AppDurations.fast,
-                          curve: AppCurves.standard,
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: isSelected
-                                ? Border.all(color: theme.colorScheme.primary, width: 2)
-                                : Border.all(color: Colors.transparent, width: 2),
-                          ),
-                          padding: EdgeInsets.all(isSelected ? 3.5 : 2),
+                      return Center(
+                        child: GestureDetector(
+                          onTap: () => ref.read(accentColorProvider.notifier).setAccentColor(color),
+                          // 外环用色块自身颜色，选荧光色时也能与圆点明确区分
                           child: AnimatedContainer(
                             duration: AppDurations.fast,
                             curve: AppCurves.standard,
+                            width: 48,
+                            height: 48,
                             decoration: BoxDecoration(
-                              color: color,
                               shape: BoxShape.circle,
+                              border: isSelected
+                                  ? Border.all(color: color, width: 2)
+                                  : Border.all(color: Colors.transparent, width: 2),
+                            ),
+                            padding: EdgeInsets.all(isSelected ? 4 : 2),
+                            child: AnimatedContainer(
+                              duration: AppDurations.fast,
+                              curve: AppCurves.standard,
+                              decoration: BoxDecoration(
+                                color: color,
+                                shape: BoxShape.circle,
+                              ),
+                              // 选中时白色对勾缩放淡入，选中态更直观
+                              child: AnimatedScale(
+                                scale: isSelected ? 1.0 : 0.0,
+                                duration: AppDurations.fast,
+                                curve: AppCurves.standard,
+                                child: const Icon(
+                                  Icons.check_rounded,
+                                  size: 20,
+                                  color: Colors.white,
+                                ),
+                              ),
                             ),
                           ),
                         ),

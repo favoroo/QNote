@@ -24,6 +24,7 @@ class UsageStatsHelper(private val context: Context) {
         context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
     private val packageManager: PackageManager = context.packageManager
     private val iconCache = mutableMapOf<String, ByteArray?>()
+    private val labelCache = mutableMapOf<String, String>()
 
     /**
      * 检查用户是否已授予使用情况访问权限
@@ -168,6 +169,151 @@ class UsageStatsHelper(private val context: Context) {
     }
 
     /**
+     * 获取区间内逐日的屏幕总时长与各应用明细。
+     *
+     * 与 getWeeklyScreenTime 的关键差别：只做**一次** queryUsageStats，再按自然日分桶，
+     * 因此回填 14~31 天不会线性放大 IPC 开销。每日总量不过滤 10 秒门槛，
+     * 与 calculateTotalScreenTime 口径一致，保证柱状图与大数字对得上；
+     * 应用明细则沿用 getUsageStats 的 10 秒门槛与倒序截断。
+     *
+     * @param startTime 区间起点毫秒时间戳
+     * @param endTime 区间终点毫秒时间戳
+     * @param appLimitPerDay 每日最多返回几个应用（供落库与区间累计 Top 榜）
+     */
+    fun getDailyScreenTimeRange(
+        startTime: Long,
+        endTime: Long,
+        appLimitPerDay: Int = 20
+    ): List<Map<String, Any>> {
+        val manager = usageStatsManager ?: return emptyList()
+        val statsList = manager.queryUsageStats(
+            UsageStatsManager.INTERVAL_DAILY,
+            startTime,
+            endTime
+        ) ?: return emptyList()
+
+        val homePackages = getLauncherPackages()
+
+        // 预生成区间内所有自然日，保证没用机的那天也有柱子
+        val dayKeys = mutableListOf<Long>()
+        val dayCal = Calendar.getInstance().apply {
+            timeInMillis = startTime
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        while (dayCal.timeInMillis <= endTime) {
+            dayKeys.add(dayCal.timeInMillis)
+            dayCal.add(Calendar.DAY_OF_YEAR, 1)
+        }
+        if (dayKeys.isEmpty()) {
+            return emptyList()
+        }
+        val dayIndex = dayKeys.withIndex().associate { (index, key) -> key to index }
+
+        // dayIndex -> (pkg -> ms)
+        val dailyApps = Array(dayKeys.size) { mutableMapOf<String, Long>() }
+
+        for (stats in statsList) {
+            val pkg = stats.packageName
+            if (pkg.isNullOrBlank() || pkg == "android" || homePackages.contains(pkg)) {
+                continue
+            }
+            val time = stats.totalTimeInForeground
+            if (time <= 0) {
+                continue
+            }
+            // UsageStats 的 bucket 边界只能靠 firstTimeStamp / lastTimeStamp 定位
+            // （没有 beginTime/endTime 这两个 getter），二者即该聚合区间的起止
+            val begin = stats.firstTimeStamp
+            val end = if (stats.lastTimeStamp > begin) stats.lastTimeStamp else begin
+            if (end < startTime || begin > endTime) {
+                continue
+            }
+            // 跨自然日的 bucket 按与各日的重叠时长比例拆分，
+            // 否则整段会被记到 bucket 起始那天，导致相邻两天一高一低
+            val span = (end - begin).coerceAtLeast(1L)
+            for ((dayStart, overlapMs) in splitByDay(begin, end)) {
+                val idx = dayIndex[dayStart] ?: continue
+                val share = if (span == 1L) time else time * overlapMs / span
+                if (share > 0) {
+                    dailyApps[idx][pkg] = (dailyApps[idx][pkg] ?: 0L) + share
+                }
+            }
+        }
+
+        val todayStart = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+
+        val result = mutableListOf<Map<String, Any>>()
+        for ((idx, dayStart) in dayKeys.withIndex()) {
+            val apps = dailyApps[idx]
+            var total = 0L
+            for ((_, ms) in apps) {
+                total += ms
+            }
+            val topApps = apps.filter { it.value >= 10_000L }
+                .toList()
+                .sortedByDescending { it.second }
+                .take(appLimitPerDay)
+                .map { mapOf("pkg" to it.first, "name" to getAppLabel(it.first), "ms" to it.second) }
+
+            val cal = Calendar.getInstance().apply { timeInMillis = dayStart }
+            result.add(
+                mapOf(
+                    "date" to dayStart,
+                    "totalTime" to total,
+                    "dayOfWeek" to cal.get(Calendar.DAY_OF_WEEK),
+                    "isToday" to (dayStart == todayStart),
+                    "topApps" to topApps
+                )
+            )
+        }
+        return result
+    }
+
+    /**
+     * 把 [from, to] 按自然日切分为 (当日 00:00, 该日重叠毫秒) 列表。
+     * 用 Calendar 推进而非 24 小时定值，避开夏令时导致的偏差。
+     */
+    private fun splitByDay(from: Long, to: Long): List<Pair<Long, Long>> {
+        val parts = mutableListOf<Pair<Long, Long>>()
+        if (to <= from) {
+            val cal = Calendar.getInstance().apply {
+                timeInMillis = from
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            return listOf(cal.timeInMillis to 1L)
+        }
+        val cal = Calendar.getInstance().apply {
+            timeInMillis = from
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        while (cal.timeInMillis < to) {
+            val dayStart = cal.timeInMillis
+            cal.add(Calendar.DAY_OF_YEAR, 1)
+            val dayEnd = cal.timeInMillis
+            val overlapStart = maxOf(from, dayStart)
+            val overlapEnd = minOf(to, dayEnd)
+            if (overlapEnd > overlapStart) {
+                parts.add(dayStart to (overlapEnd - overlapStart))
+            }
+        }
+        return parts
+    }
+
+    /**
      * 计算特定时间段内的屏幕总时长（毫秒）
      */
     fun calculateTotalScreenTime(startTime: Long, endTime: Long): Long {
@@ -210,9 +356,12 @@ class UsageStatsHelper(private val context: Context) {
 
     /**
      * 根据包名获取应用可读名称
+     *
+     * 带缓存：区间查询会对多天的同一批包名取标签，PackageManager 调用不便宜。
      */
     private fun getAppLabel(packageName: String): String {
-        return try {
+        labelCache[packageName]?.let { return it }
+        val label = try {
             val appInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 packageManager.getApplicationInfo(packageName, PackageManager.ApplicationInfoFlags.of(0))
             } else {
@@ -223,6 +372,8 @@ class UsageStatsHelper(private val context: Context) {
         } catch (_: Exception) {
             packageName.substringAfterLast('.')
         }
+        labelCache[packageName] = label
+        return label
     }
 
     /**

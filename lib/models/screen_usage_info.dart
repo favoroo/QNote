@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'package:qnote_flutter/models/screen_usage_daily.dart';
+
 /// 单个应用的使用情况信息
 class AppUsageInfo {
   final String packageName;
@@ -118,21 +120,8 @@ class TodayScreenUsage {
   /// 与昨天对比差值（毫秒）
   int get diffWithYesterdayMs => totalTimeMs - yesterdayTotalTimeMs;
 
-  /// 较昨日文案（如：较昨日增加29分钟 / 较昨日减少15分钟 / 与昨日持平）
-  String get diffDescription {
-    final diffMins = (diffWithYesterdayMs.abs()) ~/ 60000;
-    if (diffMins == 0) {
-      return '与昨日基本持平';
-    }
-    final diffHours = diffMins ~/ 60;
-    final remMins = diffMins % 60;
-    final timeStr = diffHours > 0 ? '$diffHours小时$remMins分钟' : '$remMins分钟';
-    if (diffWithYesterdayMs > 0) {
-      return '较昨日增加$timeStr';
-    } else {
-      return '较昨日减少$timeStr';
-    }
-  }
+  /// 较昨日文案（如：较昨日增加29分钟 / 较昨日减少15分钟 / 与昨日基本持平）
+  String get diffDescription => screenDurationDiffText(totalTimeMs, yesterdayTotalTimeMs);
 
   factory TodayScreenUsage.fromMap(Map<dynamic, dynamic> map) {
     final rawApps = map['appList'] as List<dynamic>? ?? [];

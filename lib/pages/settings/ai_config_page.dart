@@ -17,6 +17,7 @@ import 'package:qnote_flutter/core/ai/model_fetch_service.dart';
 import 'package:qnote_flutter/core/agent/services/agent_tool_config.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
+import 'package:qnote_flutter/widgets/app_error_state.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 class AiConfigPage extends ConsumerStatefulWidget {
@@ -837,7 +838,11 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       ),
       body: configsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('加载失败: $e')),
+        error: (e, _) => AppErrorState(
+          error: e,
+          action: '加载 AI 配置失败',
+          onRetry: () => ref.invalidate(aiConfigListProvider),
+        ),
         data: (configs) => SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -1399,6 +1404,8 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       {'id': 'free:claude-sonnet-4-6', 'name': '内置 Claude Sonnet 4.6', 'modelId': 'claude-sonnet-4-6'},
       {'id': 'free:gemini-3.5-flash-lite-mix', 'name': '内置 Gemini 3.5 Flash Lite Mix', 'modelId': 'gemini-3.5-flash-lite-mix'},
       {'id': 'free:gemini-3.8-flash-low-mix', 'name': '内置 Gemini 3.8 Flash Low Mix', 'modelId': 'gemini-3.8-flash-low-mix'},
+      {'id': 'free:gemini-3.8-flash-medium-mix', 'name': '内置 Gemini 3.8 Flash Medium Mix', 'modelId': 'gemini-3.8-flash-medium-mix'},
+      {'id': 'free:gemini-3.8-flash-high-mix', 'name': '内置 Gemini 3.8 Flash High Mix', 'modelId': 'gemini-3.8-flash-high-mix'},
       {'id': 'free:sensenova-flash-lite', 'name': '内置 SenseNova 6.8', 'modelId': 'sensenova-flash-lite'},
       {'id': 'free:glm-5.2', 'name': '内置 GLM 5.2', 'modelId': 'glm-5.2'},
       {'id': 'free:deepseek-v4-flash', 'name': '内置 DeepSeek V4 Flash', 'modelId': 'deepseek-v4-flash'},
@@ -2376,42 +2383,52 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                   ),
                   FilledButton(
                     onPressed: () async {
-                      // Save API Key to SharedPreferences
-                      final prefs = await _getPrefs();
-                      if (selectedVendorId.isNotEmpty &&
-                          apiKeyCtl.text.isNotEmpty) {
-                        prefs.setString(
-                          'last_api_key_$selectedVendorId',
-                          apiKeyCtl.text,
-                        );
-                      }
-
                       final rawModelName = modelCtl.text.trim();
                       final cleanName = getCleanModelName(rawModelName);
-                      final effectiveName = cleanName.isNotEmpty
-                          ? cleanName
-                          : (rawModelName.isNotEmpty ? rawModelName : '未命名');
+                      // 原来空模型名会静默落库成「未命名」，等到调用时才发现配置是废的
+                      if (rawModelName.isEmpty) {
+                        Toast.warning(ctx, '请填写模型名称');
+                        return;
+                      }
 
-                      final config = AiConfig(
-                        id: existingConfig?.id ?? const Uuid().v4(),
-                        name: effectiveName,
-                        provider: selectedProvider,
-                        modelName: rawModelName,
-                        apiKey: apiKeyCtl.text.trim(),
-                        baseUrl: baseUrlCtl.text.trim(),
-                        isDefault: existingConfig?.isDefault ?? false,
-                        vendorId: selectedVendorId,
-                        createdAt: existingConfig?.createdAt ?? DateTime.now(),
-                        updatedAt: DateTime.now(),
-                      );
-                      if (isEditing) {
-                        await ref
-                            .read(aiConfigListProvider.notifier)
-                            .updateConfig(config);
-                      } else {
-                        await ref
-                            .read(aiConfigListProvider.notifier)
-                            .addConfig(config);
+                      try {
+                        // Save API Key to SharedPreferences
+                        final prefs = await _getPrefs();
+                        if (selectedVendorId.isNotEmpty &&
+                            apiKeyCtl.text.isNotEmpty) {
+                          prefs.setString(
+                            'last_api_key_$selectedVendorId',
+                            apiKeyCtl.text,
+                          );
+                        }
+
+                        final config = AiConfig(
+                          id: existingConfig?.id ?? const Uuid().v4(),
+                          name: cleanName.isNotEmpty ? cleanName : rawModelName,
+                          provider: selectedProvider,
+                          modelName: rawModelName,
+                          apiKey: apiKeyCtl.text.trim(),
+                          baseUrl: baseUrlCtl.text.trim(),
+                          isDefault: existingConfig?.isDefault ?? false,
+                          vendorId: selectedVendorId,
+                          createdAt: existingConfig?.createdAt ?? DateTime.now(),
+                          updatedAt: DateTime.now(),
+                        );
+                        if (isEditing) {
+                          await ref
+                              .read(aiConfigListProvider.notifier)
+                              .updateConfig(config);
+                        } else {
+                          await ref
+                              .read(aiConfigListProvider.notifier)
+                              .addConfig(config);
+                        }
+                      } catch (e) {
+                        // 写库失败绝不能假装保存成功，停在对话框里让用户改
+                        if (ctx.mounted) {
+                          Toast.error(ctx, '保存失败：$e');
+                        }
+                        return;
                       }
                       if (ctx.mounted) Navigator.pop(ctx);
                     },

@@ -19,10 +19,10 @@ class ViewImageTool extends AgentTool {
 
   @override
   String get description =>
-      '查看（读取）本地图片文件的内容。当时间线/日记记录的「- 图片:」字段、笔记中的图片链接，'
-      '或用户消息里出现本地图片路径（如 "/data/.../images/xxx.jpg" 或 "/images/xxx.jpg"）时，'
-      '调用本工具即可加载图片并"看到"画面内容（需当前模型支持图片输入）。'
-      '路径必须来自数据中真实存在的图片字段，不要自行构造路径。';
+      '查看（读取）本地图片文件的内容。仅当时间线/日记记录的「- 图片:」字段或笔记中的图片链接'
+      '出现真实存在的本地图片路径（如 "/images/xxx.jpg"）时调用，用于加载并"看到"画面内容（需当前模型支持图片输入）。'
+      '注意：用户在消息中直接附带/发送的图片已随消息注入上下文，你已能直接看到画面，'
+      '严禁再调用本工具读取，也不要为其虚构路径。';
 
   @override
   Map<String, dynamic> get parametersSchema => {
@@ -30,7 +30,8 @@ class ViewImageTool extends AgentTool {
         'properties': {
           'path': {
             'type': 'string',
-            'description': '图片文件路径（时间线/日记/笔记中列出的完整路径，或以 /images/ 开头的相对路径）',
+            'description':
+                '图片文件路径（须来自时间线/日记/笔记等数据中真实记录的路径，或以 /images/ 开头的相对路径；不可用于对话附件图片）',
           },
         },
         'required': ['path'],
@@ -55,7 +56,8 @@ class ViewImageTool extends AgentTool {
       final exists = await _imageRepo.imageExists(path);
       if (!exists) {
         return ToolResult.error(
-          '图片文件不存在: $path。请确认路径来自时间线/日记的图片字段或笔记中的图片链接，不要自行构造路径',
+          '图片文件不存在: $path。请确认路径来自时间线/日记的图片字段或笔记中的图片链接，不要自行构造路径；'
+          '若用户消息中已附带图片，该图片已直接可见，请基于其画面内容回答，无需调用本工具',
         );
       }
 

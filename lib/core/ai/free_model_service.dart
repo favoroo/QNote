@@ -236,7 +236,7 @@ class FreeModelService {
     };
   }
 
-  /// 获取内置模型列表（包含 Claude Sonnet 4.6、Gemini 3.5 Flash Lite、Gemini 3.8 Flash Low、SenseNova 6.8、GLM 5.2、DeepSeek V4 Flash）
+  /// 获取内置模型列表（包含 Claude Sonnet 4.6、Gemini 3.5 Flash Lite、Gemini 3.8 Flash Low/Medium/High、SenseNova 6.8、GLM 5.2、DeepSeek V4 Flash）
   Future<List<FreeModelConfig>> getCachedModels() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -256,6 +256,8 @@ class FreeModelService {
       BuiltinFreeKeys.createClaudeSonnet46Config(),
       BuiltinFreeKeys.createGemini35Config(),
       BuiltinFreeKeys.createGemini38Config(),
+      BuiltinFreeKeys.createGemini38MediumMixConfig(),
+      BuiltinFreeKeys.createGemini38HighMixConfig(),
       BuiltinFreeKeys.createDefaultConfig(),
       BuiltinFreeKeys.createGlmConfig(),
       BuiltinFreeKeys.createDeepSeekConfig(),
@@ -360,6 +362,8 @@ class FreeModelService {
     final isGeminiBuiltinKey = model.id == 'claude-sonnet-4-6' ||
         model.id == 'gemini-3.8-flash-low-mix' ||
         model.id == 'gemini-3.8-flash-low' ||
+        model.id == 'gemini-3.8-flash-medium-mix' ||
+        model.id == 'gemini-3.8-flash-high-mix' ||
         model.id == 'gemini-3.5-flash-lite-mix' ||
         model.id == 'gemini-3.5-flash-lite' ||
         model.id == 'gemini-3.1-flash-image';

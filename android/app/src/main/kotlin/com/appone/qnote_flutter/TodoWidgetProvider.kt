@@ -293,9 +293,12 @@ class TodoWidgetProvider : AppWidgetProvider() {
 
         // 4. 手动控制空状态可见性与“更多”提示
         if (pendingCount == 0) {
+            // 隐藏列表容器：它同样占 layout_weight=1，不隐藏会把剩余空间对半分，空态文本只能在下半区居中而偏下
+            views.setViewVisibility(R.id.todo_static_container, android.view.View.GONE)
             views.setViewVisibility(R.id.todo_empty_view, android.view.View.VISIBLE)
             views.setViewVisibility(R.id.todo_more_layout, android.view.View.GONE)
         } else {
+            views.setViewVisibility(R.id.todo_static_container, android.view.View.VISIBLE)
             views.setViewVisibility(R.id.todo_empty_view, android.view.View.GONE)
             if (pendingCount > 4) {
                 views.setViewVisibility(R.id.todo_more_layout, android.view.View.VISIBLE)

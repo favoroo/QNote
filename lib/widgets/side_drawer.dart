@@ -78,14 +78,6 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
-    // 设置与管理菜单项统一使用系统主品牌色（蓝色），使界面色彩一致不杂乱
-    final itemColor = colorScheme.primary;
-    final itemBgColor = colorScheme.primaryContainer;
-
-    // 关于 QNote：使用中性灰色，低调不喧宾夺主
-    final aboutColor = colorScheme.onSurfaceVariant;
-    final aboutBgColor = aboutColor.withValues(alpha: isDark ? 0.15 : 0.08);
-
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
@@ -94,7 +86,7 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
           children: [
             // Header
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 16, 24),
+              padding: const EdgeInsets.fromLTRB(24, 16, 16, 16),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -117,85 +109,34 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
 
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.only(bottom: 8),
                 children: [
-                  const _SectionHeader(title: '设置与管理'),
-                  _DrawerMenuItem(
-                    icon: Icons.person_outline,
-                    iconBgColor: itemBgColor,
-                    iconColor: itemColor,
-                    label: '个人信息',
-                    onTap: () => _navigateTo(context, const UserProfilePage()),
-                  ),
-                  _DrawerMenuItem(
-                    iconWidget: const QAvatar(
-                      size: 24,
-                      withBackground: true,
+                  // 全部入口收进一张集合卡片：扁平无分组，行间以超细分隔线区隔
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainer,
+                      borderRadius: BorderRadius.circular(AppRadius.large),
                     ),
-                    iconBgColor: itemBgColor,
-                    iconColor: itemColor,
-                    label: '小Q设置',
-                    onTap: () => _navigateTo(context, const QSettingsPage()),
-                  ),
-                  _DrawerMenuItem(
-                    icon: Icons.tune_rounded,
-                    iconBgColor: itemBgColor,
-                    iconColor: itemColor,
-                    label: 'AI 配置',
-                    onTap: () => _navigateTo(context, const AiConfigPage()),
-                  ),
-                  _DrawerMenuItem(
-                    icon: Icons.hexagon_outlined,
-                    iconBgColor: itemBgColor,
-                    iconColor: itemColor,
-                    label: '快捷按钮管理',
-                    onTap: () => _navigateTo(context, const ShortcutsPage()),
-                  ),
-                  _DrawerMenuItem(
-                    icon: Icons.event_repeat,
-                    iconBgColor: itemBgColor,
-                    iconColor: itemColor,
-                    label: '固定事件管理',
-                    onTap: () => _navigateTo(context, const FixedEventsPage()),
-                  ),
-                  _DrawerMenuItem(
-                    icon: Icons.sync_rounded,
-                    iconBgColor: itemBgColor,
-                    iconColor: itemColor,
-                    label: '数据与同步',
-                    onTap: () => _navigateTo(context, const DataSyncPage()),
-                  ),
-                  _DrawerMenuItem(
-                    icon: Icons.favorite_border_rounded,
-                    iconBgColor: itemBgColor,
-                    iconColor: itemColor,
-                    label: '小米运动健康',
-                    onTap: () => _navigateTo(context, const MiFitnessSettingsPage()),
-                  ),
-                  _DrawerMenuItem(
-                    icon: Icons.hourglass_bottom_rounded,
-                    iconBgColor: itemBgColor,
-                    iconColor: itemColor,
-                    label: '屏幕使用时间',
-                    onTap: () => _navigateTo(context, const ScreenUsagePage()),
-                  ),
-                  _DrawerMenuItem(
-                    icon: Icons.palette_outlined,
-                    iconBgColor: itemBgColor,
-                    iconColor: itemColor,
-                    label: '个性化设置',
-                    onTap: () => _navigateTo(context, const PersonalizationPage()),
-                  ),
-                  const SizedBox(height: 24),
-                  const Divider(indent: 8, endIndent: 8),
-                  const SizedBox(height: 16),
-                  const _SectionHeader(title: '其他'),
-                  _DrawerMenuItem(
-                    icon: Icons.info_outline,
-                    iconBgColor: aboutBgColor,
-                    iconColor: aboutColor,
-                    label: '关于 QNote',
-                    onTap: () => _navigateTo(context, const AboutPage()),
+                    child: Column(
+                      children: [
+                        for (int i = 0; i < _menuEntries.length; i++) ...[
+                          if (i > 0)
+                            Divider(
+                              height: 1,
+                              thickness: 0.5,
+                              indent: 60,
+                              endIndent: 16,
+                              color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.35 : 0.5),
+                            ),
+                          _DrawerMenuItem(
+                            entry: _menuEntries[i],
+                            onTap: () => _navigateTo(context, _menuEntries[i].page),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -203,7 +144,7 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
 
             // Bottom theme toggle or version
             Padding(
-              padding: const EdgeInsets.all(24.0),
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
               child: Row(
                 children: [
                   Text(
@@ -226,75 +167,81 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  const _SectionHeader({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-              fontWeight: FontWeight.bold,
-            ),
-      ),
-    );
-  }
-}
-
-class _DrawerMenuItem extends StatelessWidget {
+/// 抽屉菜单项描述：icon 与 iconWidget 二选一
+class _MenuEntry {
   final IconData? icon;
   final Widget? iconWidget;
   final String label;
-  final Color iconBgColor;
-  final Color iconColor;
+  final Widget page;
+
+  const _MenuEntry({this.icon, this.iconWidget, required this.label, required this.page});
+}
+
+/// 抽屉入口清单：扁平一屏陈列，统一品牌色，不再按「设置/其他」分组
+const List<_MenuEntry> _menuEntries = [
+  _MenuEntry(icon: Icons.person_outline, label: '个人信息', page: UserProfilePage()),
+  _MenuEntry(
+    iconWidget: QAvatar(size: 32, withBackground: true),
+    label: '小Q设置',
+    page: QSettingsPage(),
+  ),
+  _MenuEntry(icon: Icons.tune_rounded, label: 'AI 配置', page: AiConfigPage()),
+  _MenuEntry(icon: Icons.hexagon_outlined, label: '快捷按钮管理', page: ShortcutsPage()),
+  _MenuEntry(icon: Icons.event_repeat, label: '固定事件管理', page: FixedEventsPage()),
+  _MenuEntry(icon: Icons.sync_rounded, label: '数据与同步', page: DataSyncPage()),
+  _MenuEntry(icon: Icons.favorite_border_rounded, label: '小米运动健康', page: MiFitnessSettingsPage()),
+  _MenuEntry(icon: Icons.hourglass_bottom_rounded, label: '屏幕使用时间', page: ScreenUsagePage()),
+  _MenuEntry(icon: Icons.palette_outlined, label: '个性化设置', page: PersonalizationPage()),
+  _MenuEntry(icon: Icons.info_outline, label: '关于 QNote', page: AboutPage()),
+];
+
+class _DrawerMenuItem extends StatelessWidget {
+  final _MenuEntry entry;
   final VoidCallback onTap;
 
-  const _DrawerMenuItem({
-    this.icon,
-    this.iconWidget,
-    required this.label,
-    required this.iconBgColor,
-    required this.iconColor,
-    required this.onTap,
-  }) : assert(icon != null || iconWidget != null, 'Either icon or iconWidget must be provided');
+  const _DrawerMenuItem({required this.entry, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0), // Reduced spacing between items
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-        leading: Container(
-          padding: const EdgeInsets.all(10),
+    final colorScheme = theme.colorScheme;
+
+    // 统一品牌色小圆底，压低图标色彩权重，让列表主体保持干净
+    final Widget leading = entry.iconWidget ??
+        Container(
+          width: 32,
+          height: 32,
+          alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: iconBgColor,
+            color: colorScheme.primaryContainer,
             shape: BoxShape.circle,
           ),
-          child: iconWidget ?? Icon(icon, color: iconColor, size: 22),
+          child: Icon(entry.icon, color: colorScheme.primary, size: 17),
+        );
+
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+      horizontalTitleGap: 12,
+      minLeadingWidth: 0,
+      visualDensity: const VisualDensity(horizontal: 0, vertical: -2),
+      leading: leading,
+      title: Text(
+        entry.label,
+        style: theme.textTheme.bodyLarge?.copyWith(
+          fontWeight: FontWeight.w600,
+          color: colorScheme.onSurface,
         ),
-        title: Text(
-          label,
-          style: theme.textTheme.bodyLarge?.copyWith(
-            fontWeight: FontWeight.w600,
-            color: theme.colorScheme.onSurface,
-          ),
-        ),
-        trailing: Icon(
-          Icons.chevron_right,
-          size: 20,
-          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
-        ),
-        onTap: () {
-          HapticFeedback.selectionClick();
-          onTap();
-        },
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.medium)),
       ),
+      trailing: Icon(
+        Icons.chevron_right,
+        size: 18,
+        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.25),
+      ),
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.medium)),
     );
   }
 }

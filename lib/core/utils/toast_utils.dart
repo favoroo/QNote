@@ -14,9 +14,28 @@ class Toast {
     String? actionLabel,
     VoidCallback? onAction,
   }) {
+    showIn(
+      Overlay.of(context),
+      message,
+      type: type,
+      duration: duration,
+      actionLabel: actionLabel,
+      onAction: onAction,
+    );
+  }
+
+  /// 直接指定挂载 Overlay 的入口，供没有 widget context 的层复用同一套样式与
+  /// 单槽互斥语义（如 provider 的后台刷新失败提示，经 `rootNavigatorKey` 取 Overlay）。
+  static void showIn(
+    OverlayState overlay,
+    String message, {
+    ToastType type = ToastType.info,
+    Duration? duration,
+    String? actionLabel,
+    VoidCallback? onAction,
+  }) {
     _dismiss();
 
-    final overlay = Overlay.of(context);
     final entry = OverlayEntry(
       builder: (_) => _ToastWidget(
         message: message,

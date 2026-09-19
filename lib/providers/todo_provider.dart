@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
+import 'package:qnote_flutter/core/refresh/refresh_failure_notice.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/models/todo.dart';
 import 'package:qnote_flutter/core/notification/notification_service.dart';
@@ -59,12 +60,23 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
 
   Future<void> refresh() async {
     final repo = ref.read(todoRepositoryProvider);
-    await repo.cleanEmptyTodos();
-    await repo.healNullFolderIds();
-    state = AsyncData(await repo.getAll());
-    // Invalidate other providers to force them to reload from the database
-    ref.invalidate(completedTodoListProvider);
-    ref.invalidate(upcomingRemindersProvider);
+    try {
+      await repo.cleanEmptyTodos();
+      await repo.healNullFolderIds();
+      state = AsyncData(await repo.getAll());
+      // Invalidate other providers to force them to reload from the database
+      ref.invalidate(completedTodoListProvider);
+      ref.invalidate(upcomingRemindersProvider);
+    } catch (e, st) {
+      RefreshFailureNotice.report(
+        source: '待办',
+        error: e,
+        stackTrace: st,
+        retry: () {
+          refresh();
+        },
+      );
+    }
   }
 
   Future<void> loadByIsLongTerm(bool isLongTerm) async {

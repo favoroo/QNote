@@ -12,6 +12,7 @@ import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/note_provider.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/utils/delta_markdown.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/core/utils/note_file_type.dart';
@@ -199,7 +200,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.note.title);
-    _lastSavedTitle = widget.note.title;
+    // 基线必须与 _saveNote 的归一化口径一致，否则空标题笔记一进来就被判脏、白写一次库
+    _lastSavedTitle = _normalizeTitle(widget.note.title);
 
     final rawContent = _initContentString();
     _lastSavedContent = rawContent;
@@ -572,46 +574,175 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     return _segments.whereType<_ImageSegment>().map((s) => s.path).toList();
   }
 
-  void _triggerAutoSave() {
-    // 悬浮小Q任务进行中或程序化刷新时暂停自动保存，避免编辑器旧内容覆盖小Q的工作区修改
-    if (_qSuppressAutoSave) return;
-    _autoSaveTimer?.cancel();
-    _autoSaveTimer = Timer(const Duration(seconds: 2), () {
-      if (mounted) _saveNote();
+  /// 标题入库口径：空标题统一存成「无标题」，比较与写入必须走同一个函数
+  String _normalizeTitle(String raw) => raw.isEmpty ? '无标题' : raw;
+
+  /// 是否有尚未落库的改动（AppBar 保存状态与退出拦截共用）
+  bool get _isDirty =>
+      _normalizeTitle(_titleController.text) != _lastSavedTitle ||
+      _serializeToMarkdown() != _lastSavedContent;
+
+  /// AppBar 副标题的保存状态文案
+  String get _saveStatusLabel => _isSaving ? '保存中…' : (_isDirty ? '未保存' : '已保存');
+
+  /// 上一帧实际渲染出来的保存状态文案。
+  ///
+  /// 打字本身不会重建编辑器（TextField 自己重绘），所以「已保存 → 未保存」这一跳
+  /// 要主动补一次 setState；用「与上一帧渲染值比较」而不是布尔标记来判定，
+  /// 因为 initState 期间的监听器回调会先把布尔标记消费掉，导致真正改动时不再刷新。
+  String _renderedSaveStatusLabel = '';
+
+  void _notifyDirtyVisible() {
+    if (!mounted) {
+      return;
+    }
+    final label = _saveStatusLabel;
+    if (label == _renderedSaveStatusLabel) {
+      return;
+    }
+    setState(() {});
+  }
+
+  void _setSaving(bool value) {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isSaving = value;
     });
   }
 
-  Future<void> _saveNote() async {
-    final title = _titleController.text.isEmpty ? '无标题' : _titleController.text;
-    final content = _serializeToMarkdown();
-    if (title == _lastSavedTitle && content == _lastSavedContent) return;
-    _lastSavedTitle = title;
-    _lastSavedContent = content;
+  /// AppBar 副标题的「保存中…/已保存/未保存」状态行
+  Widget _buildSaveStatusLine(ThemeData theme) {
+    final label = _saveStatusLabel;
+    // 记下本帧真正渲染出来的文案，供 _notifyDirtyVisible 判断要不要补一次重建
+    _renderedSaveStatusLabel = label;
 
-    final updated = widget.note.copyWith(
-      title: title,
-      content: content,
-      images: _extractImages(),
-      updatedAt: DateTime.now(),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: AnimatedSwitcher(
+        duration: AppDurations.fast,
+        child: Text(
+          label,
+          key: ValueKey<String>(label),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: _isSaving || _isDirty
+                ? theme.colorScheme.primary
+                : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+          ),
+        ),
+      ),
     );
-    await ref.read(noteListProvider.notifier).updateNote(updated);
+  }
+
+  void _triggerAutoSave() {
+    // 悬浮小Q任务进行中或程序化刷新时暂停自动保存，避免编辑器旧内容覆盖小Q的工作区修改
+    if (_qSuppressAutoSave) return;
+    _notifyDirtyVisible();
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) {
+        // 必须接住返回值：原来裸调用 _saveNote()，写库失败会变成未处理的 Future error
+        unawaited(_autoSave());
+      }
+    });
+  }
+
+  /// 定时器驱动的自动保存：失败要让人看见，否则用户会一直以为内容已经存上了
+  Future<void> _autoSave() async {
+    if (_isSaving) {
+      // 已有保存在途，本轮跳过即可，下一次输入仍会重新排程
+      return;
+    }
+    if (!await _saveNote()) {
+      if (!mounted) return;
+      Toast.show(
+        context,
+        '自动保存失败，内容暂未存储',
+        type: ToastType.error,
+        duration: const Duration(seconds: 5),
+        actionLabel: '重试',
+        onAction: _autoSave,
+      );
+    }
+  }
+
+  /// 落库当前标题与正文，返回 false 表示写入失败。
+  ///
+  /// 基线只在确认写库成功后才推进：失败时保持「未保存」态，下一轮自动保存会重试同一版。
+  Future<bool> _saveNote() async {
+    if (_isSaving) {
+      return true;
+    }
+    final title = _normalizeTitle(_titleController.text);
+    final content = _serializeToMarkdown();
+    if (title == _lastSavedTitle && content == _lastSavedContent) {
+      return true;
+    }
+
+    _setSaving(true);
+    bool saved = false;
+    try {
+      final updated = widget.note.copyWith(
+        title: title,
+        content: content,
+        images: _extractImages(),
+        updatedAt: DateTime.now(),
+      );
+      await ref.read(noteListProvider.notifier).updateNote(updated);
+      saved = true;
+    } catch (e) {
+      // UI 侧只给简洁提示，细节留在日志里排查
+      debugPrint('笔记保存失败: $e');
+      saved = false;
+    }
+
+    if (saved) {
+      _lastSavedTitle = title;
+      _lastSavedContent = content;
+    }
+    _setSaving(false);
+    // 旧图物理删除挪到写库成功之后：原先在退出时先删图再保存，
+    // 保存一失败笔记就会引用到已经被删掉的文件
+    if (saved) {
+      await _purgeRemovedImages();
+    }
+    return saved;
+  }
+
+  /// 删除已从笔记中移走的图片文件，仅在内容确认落库后调用
+  Future<void> _purgeRemovedImages() async {
+    if (_removedPaths.isEmpty) return;
+    for (final path in _removedPaths) {
+      try {
+        await _imageRepo.deleteImage(path);
+      } catch (_) {
+        // 文件可能已被系统清理，删不掉不影响笔记内容
+      }
+    }
+    _removedPaths.clear();
   }
 
   Future<void> _handleBack() async {
     if (_isSaving) return;
-    setState(() => _isSaving = true);
     _autoSaveTimer?.cancel();
-    try {
-      for (final path in _removedPaths) {
-        try { await _imageRepo.deleteImage(path); } catch (_) {}
-      }
-      await _saveNote();
-    } catch (e) {
-      debugPrint('Error saving note: $e');
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
+    final saved = await _saveNote();
+    if (!mounted) return;
+    if (!saved) {
+      // 保存失败还退出就等于丢内容，停在原页并给一次重试机会
+      Toast.show(
+        context,
+        '保存失败，未退出编辑',
+        type: ToastType.error,
+        duration: const Duration(seconds: 5),
+        actionLabel: '重试',
+        onAction: _handleBack,
+      );
+      return;
     }
-    if (mounted) Navigator.of(context).pop();
+    Navigator.of(context).pop();
   }
 
   /// 悬浮小Q任务结束后从仓库重读最新内容刷新编辑器
@@ -627,7 +758,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     // 抑制监听器：程序化刷新不触发自动保存
     _qSuppressAutoSave = true;
     _titleController.text = fresh.title;
-    _lastSavedTitle = fresh.title.isEmpty ? '无标题' : fresh.title;
+    _lastSavedTitle = _normalizeTitle(fresh.title);
 
     final rawContent = decodeNoteContent(fresh.content);
     for (final seg in _segments) {
@@ -1390,6 +1521,11 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           scrolledUnderElevation: 0,
+          // 保存状态常驻可见：原来 _isSaving 只当重入锁用，用户完全看不出内容存没存上
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(20),
+            child: _buildSaveStatusLine(theme),
+          ),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: _handleBack,

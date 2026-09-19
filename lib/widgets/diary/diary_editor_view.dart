@@ -56,6 +56,10 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   late List<String> _removedPaths;
   late List<TagEntry> _tagEntries;
   bool _isExtracting = false;
+  // 保存重入保护：防止压缩完成瞬间双击重复提交
+  bool _isSaving = false;
+  // 压缩等待弹窗标志：防重复弹窗，也防弹窗孤儿
+  bool _waitingForCompression = false;
   CancelToken? _cancelToken;
   final Map<String, Future<String>> _compressingTasks = {};
 
@@ -944,38 +948,51 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   }
 
   Future<void> _waitForCompressing() async {
-    if (_compressingTasks.isNotEmpty) {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => const Center(
-          child: Card(
-            child: Padding(
-              padding: EdgeInsets.all(20.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('正在处理图片，请稍候...'),
-                ],
-              ),
+    if (_compressingTasks.isEmpty || _waitingForCompression) return;
+    _waitingForCompression = true;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(20.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('正在处理图片，请稍候...'),
+              ],
             ),
           ),
         ),
-      );
-      try {
-        await Future.wait(_compressingTasks.values);
-      } catch (e) {
-        debugPrint('Error waiting for compression: $e');
-      }
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
+      ),
+    );
+    try {
+      // 超时兜底：压缩任务若因系统回收 isolate 而永不完成，
+      // 不能让不可关闭的弹窗把界面钉死在黑色遮罩上
+      await Future.wait(_compressingTasks.values).timeout(const Duration(seconds: 30));
+    } catch (e) {
+      debugPrint('Error waiting for compression: $e');
+    }
+    _waitingForCompression = false;
+    if (mounted) {
+      Navigator.of(context).pop();
     }
   }
 
   Future<void> _save() async {
+    if (_isSaving) return;
+    _isSaving = true;
+    try {
+      await _doSave();
+    } finally {
+      _isSaving = false;
+    }
+  }
+
+  Future<void> _doSave() async {
     await _waitForCompressing();
     if (!mounted) return;
 
@@ -2681,14 +2698,16 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               child: SizedBox(
                 height: 52,
                 child: FilledButton(
-                  onPressed: _save,
+                  // 图片压缩处理中禁用保存：此时照片还是临时路径，压缩完成后自动恢复
+                  onPressed:
+                      (_compressingTasks.isNotEmpty || _isSaving) ? null : _save,
                   style: FilledButton.styleFrom(
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(AppRadius.medium),
                     ),
                   ),
-                  child: const Text(
-                    '保存修改',
+                  child: Text(
+                    _compressingTasks.isNotEmpty ? '图片处理中...' : '保存修改',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),

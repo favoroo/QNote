@@ -41,12 +41,17 @@ dependencies:
   webview_flutter: ^4.10.0
   web: ^1.1.0
   html: ^0.15.7
+  flutter_edge_tts: ^0.0.2
+  just_audio: ^0.10.0
+  flutter_tts: ^4.2.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.13.1
+  # 仅测试用：mock 文档目录路径（path_provider 的传递依赖）
+  path_provider_platform_interface: ^2.1.0
 
 flutter_launcher_icons:
   android: true

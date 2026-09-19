@@ -10,6 +10,7 @@ import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/webdav_config.dart';
 import 'package:qnote_flutter/providers/sync_provider.dart';
+import 'package:qnote_flutter/widgets/unsaved_changes_dialog.dart';
 
 /// 云同步设置视图
 ///
@@ -126,36 +127,12 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
   }
 
   /// 存在未保存改动时弹出确认框；返回 true 表示可以继续离开
-  Future<bool> confirmUnsavedChanges() async {
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('未保存的更改'),
-        content: const Text('您有未保存的同步设置更改，是否保存？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop('discard'),
-            child: const Text('放弃更改', style: TextStyle(color: Colors.red)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop('cancel'),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop('save'),
-            child: const Text('保存'),
-          ),
-        ],
-      ),
+  Future<bool> confirmUnsavedChanges() {
+    return promptUnsavedChanges(
+      context,
+      content: '您有未保存的同步设置更改，是否保存？',
+      onSave: saveConfig,
     );
-
-    if (result == 'save') {
-      await saveConfig();
-      return true;
-    } else if (result == 'discard') {
-      return true;
-    }
-    return false;
   }
 
   Future<void> _loadConfig() async {

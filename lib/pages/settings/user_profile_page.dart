@@ -2,7 +2,7 @@ import 'dart:convert' show base64Encode;
 import 'dart:io';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'package:fl_chart/fl_chart.dart';
@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
+import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/user_profile.dart';
 import 'package:qnote_flutter/models/weight_record.dart';
 import 'package:qnote_flutter/providers/user_profile_provider.dart';
@@ -30,7 +31,6 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   final _heightController = TextEditingController();
   final _weightController = TextEditingController();
   final _ageController = TextEditingController();
-  final _otherInfoController = TextEditingController();
   final _scrollController = ScrollController();
   final _weightInputFocusNode = FocusNode();
   final Map<String, TextEditingController> _customFieldControllers = {};
@@ -65,7 +65,10 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
         });
       }
     } catch (e) {
-      debugPrint('加载用户资料失败: $e');
+      // 读失败会退化成一张全空的资料页，不提示等于让用户以为资料被清了
+      if (mounted) {
+        Toast.error(context, '加载资料失败：$e');
+      }
     }
     if (!mounted) return;
     final profile = ref.read(userProfileNotifierProvider);
@@ -75,7 +78,6 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
         _heightController.text = profile.height != null ? profile.height!.toStringAsFixed(0) : '';
         _avatarPath = profile.avatarPath;
         _gender = profile.gender;
-        _otherInfoController.text = profile.otherInfo ?? '';
         if (profile.birthday != null) {
           _birthday = DateTime.tryParse(profile.birthday!);
         }
@@ -87,24 +89,54 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
         profile.customFields.forEach((key, value) {
           _customFieldControllers[key] = TextEditingController(text: value);
         });
+        // 旧版内置的「其他信息」输入框已下线，历史内容并入自定义字段统一维护；
+        // 用户点保存前不写库，所以这里只做展示映射，重复打开结果一致
+        final legacyInfo = profile.otherInfo?.trim() ?? '';
+        if (legacyInfo.isNotEmpty) {
+          _customFieldControllers[_uniqueFieldName('备注')] =
+              TextEditingController(text: legacyInfo);
+        }
       });
     }
   }
 
+  /// 为迁移进来的字段挑一个不与现有字段重名的名字（备注、备注 2、备注 3…）
+  String _uniqueFieldName(String base) {
+    if (!_customFieldControllers.containsKey(base)) {
+      return base;
+    }
+    var index = 2;
+    while (_customFieldControllers.containsKey('$base $index')) {
+      index++;
+    }
+    return '$base $index';
+  }
+
   Future<void> _setWeightUnit(String unit) async {
     if (_weightUnit == unit) return;
+    final previousUnit = _weightUnit;
     setState(() {
       _weightUnit = unit;
     });
     try {
       await ConfigRepository.instance.setAppConfig('weight_unit', unit);
     } catch (e) {
-      debugPrint('保存体重单位偏好失败: $e');
+      // 偏好没落盘就把界面留在新单位上是在骗人，回滚并说明原因
+      if (!mounted) return;
+      setState(() {
+        _weightUnit = previousUnit;
+      });
+      Toast.error(context, '切换单位失败：$e');
     }
   }
 
   void _toggleWeightUnit() {
     _setWeightUnit(_weightUnit == 'kg' ? '斤' : 'kg');
+  }
+
+  /// 聚焦体重录入框并唤起输入法
+  void _focusWeightInput() {
+    _weightInputFocusNode.requestFocus();
   }
 
   @override
@@ -115,7 +147,6 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     _heightController.dispose();
     _weightController.dispose();
     _ageController.dispose();
-    _otherInfoController.dispose();
     _customFieldControllers.forEach((_, controller) => controller.dispose());
     super.dispose();
   }
@@ -237,6 +268,18 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   }
 
   Future<void> _save() async {
+    // 身高此前解析失败会静默写成 null：用户看到「已保存」，实际身高丢了
+    final heightText = _heightController.text.trim();
+    double? height;
+    if (heightText.isNotEmpty) {
+      final parsedHeight = double.tryParse(heightText);
+      if (parsedHeight == null || parsedHeight < 50 || parsedHeight > 250) {
+        Toast.warning(context, '请填写 50~250 之间的身高（cm）');
+        return;
+      }
+      height = parsedHeight;
+    }
+
     try {
       final notifier = ref.read(userProfileNotifierProvider.notifier);
       final current = ref.read(userProfileNotifierProvider);
@@ -253,29 +296,47 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
           .copyWith(
         nickname: _nicknameController.text.isEmpty ? null : _nicknameController.text,
         birthday: _birthday?.toIso8601String().split('T').first,
-        height: double.tryParse(_heightController.text),
+        height: height,
         avatarPath: _avatarPath,
         gender: _gender,
-        otherInfo: _otherInfoController.text.isEmpty ? null : _otherInfoController.text,
+        // 历史 otherInfo 已在 _loadProfile 里并入 customFields，保存时一并清掉，
+        // 避免同一段备忘以小Q 上下文里的两个键重复出现
+        clearOtherInfo: true,
         customFields: customFields,
         updatedAt: DateTime.now(),
       );
       await notifier.save(profile);
       if (!mounted) return;
+      // 成功反馈由 AppBar 保存按钮的「已保存」态承担，不再叠加 Toast 避免双重提示
       setState(() => _saveSuccess = true);
       Future.delayed(const Duration(seconds: 2), () {
         if (mounted) setState(() => _saveSuccess = false);
       });
     } catch (e) {
-      debugPrint('保存用户资料失败: $e');
+      Toast.error(context, '保存失败：$e');
     }
   }
 
   Future<void> _addWeightRecord() async {
+    final input = _weightController.text.trim();
+    if (input.isEmpty) {
+      return;
+    }
+    final weight = double.tryParse(input);
+    // 按当前单位校验范围，越界或非法值原本都是静默 return
+    final isJin = _weightUnit == '斤';
+    final minWeight = isJin ? 40.0 : 20.0;
+    final maxWeight = isJin ? 600.0 : 300.0;
+    if (weight == null || weight < minWeight || weight > maxWeight) {
+      Toast.warning(
+        context,
+        '请填写合理体重（${minWeight.toInt()}~${maxWeight.toInt()} $_weightUnit）',
+      );
+      return;
+    }
+
     try {
-      final weight = double.tryParse(_weightController.text);
-      if (weight == null || weight <= 0) return;
-      final weightInKg = _weightUnit == '斤' ? weight / 2.0 : weight;
+      final weightInKg = isJin ? weight / 2.0 : weight;
       await ref.read(userProfileNotifierProvider.notifier).addWeightRecord(
             weightInKg,
             time: DateTime(
@@ -290,16 +351,41 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
       setState(() {
         _weightDate = DateTime.now();
       });
+      Toast.success(context, '已记录体重');
     } catch (e) {
-      debugPrint('添加体重记录失败: $e');
+      Toast.error(context, '记录失败：$e');
     }
   }
 
   Future<void> _deleteWeightRecord(String id) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除体重记录'),
+        content: const Text('确定删除这条体重记录吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Theme.of(ctx).colorScheme.error),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
     try {
       await ref.read(userProfileNotifierProvider.notifier).deleteWeightRecord(id);
+      if (!mounted) return;
+      Toast.success(context, '已删除');
     } catch (e) {
-      debugPrint('删除体重记录失败: $e');
+      Toast.error(context, '删除失败：$e');
     }
   }
 
@@ -789,36 +875,50 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
             child: Row(
               children: [
-                Icon(Icons.monitor_weight_outlined, size: 16, color: theme.colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(
-                  '体重记录',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
+                // 左侧标题与当前体重看起来就是可编辑的，点击直接聚焦下方录入条
+                Expanded(
+                  child: InkWell(
+                    onTap: _focusWeightInput,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+                      child: Row(
+                        children: [
+                          Icon(Icons.monitor_weight_outlined,
+                              size: 16, color: theme.colorScheme.primary),
+                          const SizedBox(width: 8),
+                          Text(
+                            '体重记录',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                          if (_latestWeightInKg != null) ...[
+                            const SizedBox(width: 10),
+                            Text(
+                              '当前',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            // 数值加大加粗，突出当前体重
+                            Text(
+                              _displayLatestWeight,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: theme.colorScheme.onSurface,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
                   ),
                 ),
-                if (_latestWeightInKg != null) ...[
-                  const SizedBox(width: 10),
-                  Text(
-                    '当前',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  // 数值加大加粗，突出当前体重
-                  Text(
-                    _displayLatestWeight,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.onSurface,
-                    ),
-                  ),
-                ],
-                const Spacer(),
                 // 斤 / kg 单位微切换
                 _buildUnitToggle(theme),
                 const SizedBox(width: 10),
@@ -1176,44 +1276,20 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
         ),
       ),
       children: [
-        // 其他信息多行文本
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          child: TextField(
-            controller: _otherInfoController,
-            maxLines: 3,
-            minLines: 2,
-            keyboardType: TextInputType.multiline,
-            style: theme.textTheme.bodyMedium?.copyWith(height: 1.35, fontSize: 13),
-            decoration: InputDecoration(
-              hintText: '个性说明、职业、生活习惯或身体状况备忘...',
-              hintStyle: TextStyle(
+        // 信息一律通过右上角「添加字段」录入，不再内置默认输入框
+        if (_customFieldControllers.isEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+            child: Text(
+              '还没有补充信息，点右上角「添加字段」记录职业、生活习惯、身体状况等备忘',
+              style: TextStyle(
                 fontSize: 12,
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.45),
-              ),
-              filled: true,
-              fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
-              isDense: true,
-              contentPadding: const EdgeInsets.all(10),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide.none,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide.none,
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: theme.colorScheme.primary.withValues(alpha: 0.5)),
+                height: 1.4,
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-          ),
-        ),
-
-        // 自定义字段列表
-        if (_customFieldControllers.isNotEmpty) ...[
-          _buildDivider(theme),
+          )
+        else ...[
           ..._customFieldControllers.keys.map((key) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1335,9 +1411,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                 final name = controller.text.trim();
                 if (name.isNotEmpty) {
                   if (_customFieldControllers.containsKey(name) || name == '其他信息') {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('该字段名称已存在')),
-                    );
+                    Toast.warning(context, '该字段名称已存在');
                     return;
                   }
                   setState(() {
@@ -1378,9 +1452,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                 final newName = controller.text.trim();
                 if (newName.isNotEmpty && newName != oldName) {
                   if (_customFieldControllers.containsKey(newName) || newName == '其他信息') {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('该字段名称已存在')),
-                    );
+                    Toast.warning(context, '该字段名称已存在');
                     return;
                   }
                   setState(() {

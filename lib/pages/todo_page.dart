@@ -16,6 +16,7 @@ import 'package:qnote_flutter/providers/todo_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
+import 'package:qnote_flutter/widgets/app_error_state.dart';
 import 'package:qnote_flutter/widgets/time_picker.dart';
 
 /// 已完成待办折叠状态本地持久化键
@@ -435,7 +436,11 @@ class _TodoPageState extends ConsumerState<TodoPage> {
               );
             },
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text('分类加载失败: $e')),
+            error: (e, _) => AppErrorState(
+              error: e,
+              action: '加载分类失败',
+              onRetry: () => ref.invalidate(todoFolderListProvider),
+            ),
           ),
         ),
       ),
@@ -522,7 +527,11 @@ class _TodoPageState extends ConsumerState<TodoPage> {
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('加载失败: $e')),
+      error: (e, _) => AppErrorState(
+        error: e,
+        action: '加载待办失败',
+        onRetry: () => ref.invalidate(todoListProvider),
+      ),
     );
   }
 
@@ -1599,7 +1608,6 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
                                           style: TextStyle(
                                             fontWeight: isDone ? FontWeight.normal : FontWeight.w600,
                                             fontSize: 15.5,
-                                            decoration: isDone ? TextDecoration.lineThrough : TextDecoration.none,
                                             color: isDone
                                                 ? colorScheme.onSurfaceVariant.withValues(alpha: 0.5)
                                                 : colorScheme.onSurface,

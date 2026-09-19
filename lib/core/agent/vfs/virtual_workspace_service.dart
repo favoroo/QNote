@@ -899,7 +899,7 @@ class VirtualWorkspaceService {
         'themeMode': _themeModeToString(themeMode),
         'accentColor': colorHex,
         'description':
-            'themeMode 可选: "system" | "light" | "dark"；accentColor 为 16 进制颜色（如 #005BCB 经典蓝、#C5E803 荧光黄绿、#E91E8C 玫瑰粉红、#00E676 春天亮绿）',
+            'themeMode 可选: "system" | "light" | "dark"；accentColor 为 16 进制颜色（如 #005BCB 经典蓝、#C5E803 荧光黄绿、#E91E8C 玫瑰粉红、#00E676 春天亮绿、#FF3B30 活力红、#FF9500 活力橙、#00BCD4 湖水青、#7C4DFF 典雅紫）',
       };
       return const JsonEncoder.withIndent('  ').convert(data);
     } else if (name == 'health.json') {
@@ -3174,6 +3174,10 @@ class VirtualWorkspaceService {
       if (s == 'pink' || s == 'rose' || s == '玫瑰粉红')
         return const Color(0xFFE91E8C);
       if (s == 'green' || s == '春天亮绿') return const Color(0xFF00E676);
+      if (s == 'red' || s == '红色' || s == '活力红') return const Color(0xFFFF3B30);
+      if (s == 'orange' || s == '橙色' || s == '活力橙') return const Color(0xFFFF9500);
+      if (s == 'cyan' || s == '青色' || s == '湖水青') return const Color(0xFF00BCD4);
+      if (s == 'purple' || s == '紫色' || s == '典雅紫') return const Color(0xFF7C4DFF);
       var hex = s.replaceAll('#', '').replaceAll('0x', '');
       if (hex.length == 6) hex = 'ff$hex';
       if (hex.length == 8) {

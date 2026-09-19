@@ -4,21 +4,25 @@ import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 
-/// 小Q可用的内置免费模型（id 带 free: 前缀，裸名为 CPA 模型表 alias）
+/// 小Q可用的内置免费模型（id 带 free: 前缀，裸名为 CPA 模型表 alias）。
+///
+/// 名称只写模型本身，「内置」语义由选择器的分组标题承载，避免重复。
 const List<Map<String, String>> kAssistantBuiltinModels = [
-  {'id': 'free:claude-sonnet-4-6', 'name': '内置 Claude Sonnet 4.6'},
-  {'id': 'free:gemini-3.5-flash-lite-mix', 'name': '内置 Gemini 3.5 Flash Lite Mix'},
-  {'id': 'free:gemini-3.8-flash-low-mix', 'name': '内置 Gemini 3.8 Flash Low Mix'},
-  {'id': 'free:sensenova-flash-lite', 'name': '内置 SenseNova 6.8'},
-  {'id': 'free:glm-5.2', 'name': '内置 GLM 5.2'},
-  {'id': 'free:deepseek-v4-flash', 'name': '内置 DeepSeek V4 Flash'},
+  {'id': 'free:claude-sonnet-4-6', 'name': 'Claude Sonnet 4.6'},
+  {'id': 'free:gemini-3.5-flash-lite-mix', 'name': 'Gemini 3.5 Flash Lite Mix'},
+  {'id': 'free:gemini-3.8-flash-low-mix', 'name': 'Gemini 3.8 Flash Low Mix'},
+  {'id': 'free:gemini-3.8-flash-medium-mix', 'name': 'Gemini 3.8 Flash Medium Mix'},
+  {'id': 'free:gemini-3.8-flash-high-mix', 'name': 'Gemini 3.8 Flash High Mix'},
+  {'id': 'free:sensenova-flash-lite', 'name': 'SenseNova 6.8'},
+  {'id': 'free:glm-5.2', 'name': 'GLM 5.2'},
+  {'id': 'free:deepseek-v4-flash', 'name': 'DeepSeek V4 Flash'},
 ];
 
 /// 模型 id → 显示名：free: 前缀查内置表，未收录时回退裸 id；自定义配置查 name
 String? assistantModelDisplayName(String? id, List<AiConfig> configs) {
   if (id == null) return null;
   // 哨兵值：未绑定任何模型时视为使用默认免费模型
-  if (id == '__free_model__') return '内置 Gemini 3.5 Flash Lite Mix';
+  if (id == '__free_model__') return 'Gemini 3.5 Flash Lite Mix';
   if (id.startsWith('free:')) {
     for (final m in kAssistantBuiltinModels) {
       if (m['id'] == id) return m['name'];
@@ -88,6 +92,16 @@ class ModelSelectorDialog extends StatelessWidget {
     return SimpleDialog(
       title: const Text('选择小Q模型'),
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 4, 24, 4),
+          child: Text(
+            '内置免费模型',
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
         ...kAssistantBuiltinModels.map((m) {
           final isSelected = activeModelId == m['id'] ||
               (activeModelId == '__free_model__' &&
@@ -119,6 +133,17 @@ class ModelSelectorDialog extends StatelessWidget {
             ),
           );
         }),
+        if (configs.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
+            child: Text(
+              '自定义模型',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.outline,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
         ...configs.map((config) {
           final isActive = config.id == activeModelId;
           return SimpleDialogOption(

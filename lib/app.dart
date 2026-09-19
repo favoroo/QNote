@@ -10,6 +10,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:qnote_flutter/config/app_version.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/health/health_sync_service.dart';
+import 'package:qnote_flutter/core/health/screen_usage_snapshot_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/network/sync_scheduler.dart';
 import 'package:qnote_flutter/core/network/update_service.dart';
@@ -73,6 +74,26 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
     _initExternalSharedTextListener();
     _runDeferredInitialization();
     _runStartupUpdateCheck();
+    _runScreenUsageSnapshot(delay: const Duration(seconds: 2));
+  }
+
+  /// 屏幕时长每日快照：系统 UsageStats 只保留最近约 7 天，必须靠 App 主动把
+  /// 逐日数值落库，统计页才能回看历史日期并做周/月聚合。
+  ///
+  /// 平台判断、权限、30 分钟节流都在服务内部完成，这里 fire-and-forget，
+  /// 启动与回前台各触发一次即可保证数据持续累积。
+  void _runScreenUsageSnapshot({bool force = false, Duration? delay}) async {
+    if (delay != null) {
+      await Future.delayed(delay);
+      if (!mounted) {
+        return;
+      }
+    }
+    try {
+      ref.read(screenUsageSnapshotServiceProvider).ensureSnapshot(force: force);
+    } catch (e) {
+      debugPrint('屏幕时长快照触发失败: $e');
+    }
   }
 
   /// 延迟初始化：主界面显示后执行，不阻塞首帧。
@@ -177,6 +198,8 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
       _tryNavigatePendingRoute();
       _tryConsumePendingSharedText();
       _tryConsumePendingSharedImages();
+      // 跨天后再回前台是补采前一日整日数值的关键时机，节流由服务内部把关
+      _runScreenUsageSnapshot();
     }
   }
 

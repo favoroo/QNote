@@ -79,6 +79,9 @@ class UserProfile {
     List<WeightRecord>? weightHistory,
     String? gender,
     String? otherInfo,
+
+    /// 显式清空 [otherInfo]：`otherInfo: null` 无法区分「不改」与「改成空」
+    bool clearOtherInfo = false,
     Map<String, String>? customFields,
     String? avatarPath,
     DateTime? createdAt,
@@ -92,7 +95,7 @@ class UserProfile {
       height: height ?? this.height,
       weightHistory: weightHistory ?? this.weightHistory,
       gender: gender ?? this.gender,
-      otherInfo: otherInfo ?? this.otherInfo,
+      otherInfo: clearOtherInfo ? null : (otherInfo ?? this.otherInfo),
       customFields: customFields ?? this.customFields,
       avatarPath: avatarPath ?? this.avatarPath,
       createdAt: createdAt ?? this.createdAt,

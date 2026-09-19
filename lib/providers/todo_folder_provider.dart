@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
+import 'package:qnote_flutter/core/refresh/refresh_failure_notice.dart';
 import 'package:qnote_flutter/core/storage/folder_repository.dart';
 import 'package:qnote_flutter/models/folder.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
@@ -73,8 +74,19 @@ class TodoFolderListNotifier extends AsyncNotifier<List<Folder>> {
   /// 刷新待办分类
   Future<void> refresh() async {
     final repo = ref.read(todoFolderRepositoryProvider);
-    final folders = await repo.getByType('todo');
-    state = AsyncData(folders);
+    try {
+      final folders = await repo.getByType('todo');
+      state = AsyncData(folders);
+    } catch (e, st) {
+      RefreshFailureNotice.report(
+        source: '待办分类',
+        error: e,
+        stackTrace: st,
+        retry: () {
+          refresh();
+        },
+      );
+    }
   }
 
   /// 新增待办分类

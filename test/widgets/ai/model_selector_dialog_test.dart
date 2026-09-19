@@ -61,8 +61,12 @@ void main() {
       ),
     ));
 
-    expect(find.text('内置 Claude Sonnet 4.6'), findsOneWidget);
-    expect(find.text('内置 DeepSeek V4 Flash'), findsOneWidget);
+    expect(find.text('内置免费模型'), findsOneWidget);
+    expect(find.text('Claude Sonnet 4.6'), findsOneWidget);
+    expect(find.text('Gemini 3.8 Flash Medium Mix'), findsOneWidget);
+    expect(find.text('Gemini 3.8 Flash High Mix'), findsOneWidget);
+    expect(find.text('DeepSeek V4 Flash'), findsOneWidget);
+    expect(find.text('自定义模型'), findsOneWidget);
     expect(find.text('我的自定义模型'), findsOneWidget);
     expect(find.text('openai / test-model'), findsOneWidget);
   });
@@ -76,7 +80,7 @@ void main() {
     ));
 
     final row = find.ancestor(
-      of: find.text('内置 GLM 5.2'),
+      of: find.text('GLM 5.2'),
       matching: find.byType(Row),
     ).first;
     expect(
@@ -98,7 +102,7 @@ void main() {
     ));
 
     final row = find.ancestor(
-      of: find.text('内置 Gemini 3.5 Flash Lite Mix'),
+      of: find.text('Gemini 3.5 Flash Lite Mix'),
       matching: find.byType(Row),
     ).first;
     expect(
@@ -115,7 +119,7 @@ void main() {
       tester,
       configs: [customConfig],
       activeModelId: null,
-      tapText: '内置 GLM 5.2',
+      tapText: 'GLM 5.2',
     );
     expect(builtinId, 'free:glm-5.2');
 
@@ -128,8 +132,23 @@ void main() {
     expect(customId, 'cfg-1');
   });
 
+  test('内置候选按 3.5 Lite → 3.8 Low → Medium → High 顺序排列', () {
+    final ids = kAssistantBuiltinModels.map((m) => m['id']).toList();
+    final from = ids.indexOf('free:gemini-3.5-flash-lite-mix');
+    final to = ids.indexOf('free:sensenova-flash-lite');
+    expect(
+      ids.sublist(from, to),
+      const [
+        'free:gemini-3.5-flash-lite-mix',
+        'free:gemini-3.8-flash-low-mix',
+        'free:gemini-3.8-flash-medium-mix',
+        'free:gemini-3.8-flash-high-mix',
+      ],
+    );
+  });
+
   test('assistantModelDisplayName：内置映射/裸 id 回退/自定义配置/哨兵/空值', () {
-    expect(assistantModelDisplayName('free:glm-5.2', const []), '内置 GLM 5.2');
+    expect(assistantModelDisplayName('free:glm-5.2', const []), 'GLM 5.2');
     expect(
       assistantModelDisplayName('free:unknown-model', const []),
       'unknown-model',
@@ -140,7 +159,7 @@ void main() {
     );
     expect(
       assistantModelDisplayName('__free_model__', const []),
-      '内置 Gemini 3.5 Flash Lite Mix',
+      'Gemini 3.5 Flash Lite Mix',
     );
     expect(assistantModelDisplayName('missing', const []), 'missing');
     expect(assistantModelDisplayName(null, const []), isNull);

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/models/screen_usage_daily.dart';
 import 'package:qnote_flutter/models/screen_usage_info.dart';
 
 final screenUsageServiceProvider = Provider<ScreenUsageService>((ref) {
@@ -94,5 +95,52 @@ class ScreenUsageService {
       LoggerService.instance.error('ScreenUsageService.getWeeklyScreenTime failed: $e', stackTrace: stack);
       return [];
     }
+  }
+
+  /// 获取区间内逐日的屏幕总时长与各应用明细（单次原生调用，供每日快照回填）
+  ///
+  /// 注意：系统 UsageStats 通常只保留最近约 7 天，超出窗口的日期会返回 0，
+  /// 调用方不应把 0 当作「当天没用手机」。
+  Future<List<ScreenUsageDaily>> getDailyScreenTimeRange(
+    DateTime start,
+    DateTime end, {
+    int appLimitPerDay = 20,
+  }) async {
+    if (!isSupported) return [];
+    try {
+      final res = await _channel.invokeListMethod<dynamic>(
+        'getDailyScreenTimeRange',
+        {
+          'startMillis': start.millisecondsSinceEpoch,
+          'endMillis': end.millisecondsSinceEpoch,
+          'appLimitPerDay': appLimitPerDay,
+        },
+      );
+      if (res == null) return [];
+      return res.whereType<Map<dynamic, dynamic>>().map(_parseDailyRange).toList();
+    } catch (e, stack) {
+      LoggerService.instance.error('ScreenUsageService.getDailyScreenTimeRange failed: $e', stackTrace: stack);
+      return [];
+    }
+  }
+
+  static ScreenUsageDaily _parseDailyRange(Map<dynamic, dynamic> map) {
+    final dateMillis = (map['date'] as num?)?.toInt() ?? 0;
+    final date = DateTime.fromMillisecondsSinceEpoch(dateMillis);
+    final isToday = map['isToday'] as bool? ?? false;
+    final rawApps = map['topApps'] as List<dynamic>? ?? [];
+    final now = DateTime.now();
+    return ScreenUsageDaily(
+      date: ScreenUsageDaily.dateKey(date),
+      totalTimeMs: (map['totalTime'] as num?)?.toInt() ?? 0,
+      topApps: rawApps
+          .whereType<Map<dynamic, dynamic>>()
+          .map((e) => ScreenAppUsage.fromMap(e))
+          .toList(),
+      // 今日尚未过完，标记为未完成，避免被当成整日数据参与环比
+      isComplete: !isToday,
+      createdAt: now,
+      updatedAt: now,
+    );
   }
 }

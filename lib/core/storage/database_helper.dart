@@ -11,6 +11,21 @@ class DatabaseHelper {
 
   DatabaseHelper._internal();
 
+  /// 每日屏幕时长快照表 DDL：系统 UsageStats 仅保留最近约 7 天，
+  /// 需自行逐日落库才能回看历史与做周/月聚合，故建表语句在冷装、升级、
+  /// schema 兜底三处共用同一份，避免字段漂移。
+  static const String _screenUsageDailyDdl = '''
+    CREATE TABLE IF NOT EXISTS screen_usage_daily (
+      date TEXT PRIMARY KEY,
+      total_time_ms INTEGER NOT NULL DEFAULT 0,
+      top_apps_json TEXT DEFAULT '[]',
+      is_complete INTEGER NOT NULL DEFAULT 0,
+      source TEXT NOT NULL DEFAULT 'usage_stats',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  ''';
+
   Future<Database> get database async {
     if (_database != null) return _database!;
     _database = await _initDatabase();
@@ -28,7 +43,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 22,
+      version: 23,
       onConfigure: (db) async {
         // 遇到写锁时等待重试（默认立即抛 database is locked），提升并发访问健壮性
         try {
@@ -213,6 +228,11 @@ class DatabaseHelper {
       ''');
       await db.execute('CREATE INDEX IF NOT EXISTS idx_health_sport_sid ON health_sport_records(sid)');
       await db.execute('CREATE INDEX IF NOT EXISTS idx_health_sport_start ON health_sport_records(start_time)');
+    } catch (_) {}
+
+    // 兜底：确保 screen_usage_daily 存在（开发期热重载可能未触发 onUpgrade）
+    try {
+      await db.execute(_screenUsageDailyDdl);
     } catch (_) {}
 
     // 标记本次检查已完成，后续启动直接跳过 PRAGMA 检查
@@ -500,6 +520,8 @@ class DatabaseHelper {
         created_at TEXT NOT NULL
       )
     ''');
+
+    await db.execute(_screenUsageDailyDdl);
 
     // Performance indexes
     await _createIndexes(db);
@@ -822,6 +844,12 @@ class DatabaseHelper {
         if (hdmColNames.isNotEmpty && !hdmColNames.contains('standing_count')) {
           await db.execute('ALTER TABLE health_daily_metrics ADD COLUMN standing_count INTEGER DEFAULT 0');
         }
+      } catch (_) {}
+    }
+
+    if (oldVersion < 23) {
+      try {
+        await db.execute(_screenUsageDailyDdl);
       } catch (_) {}
     }
   }

@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
+import 'package:qnote_flutter/providers/user_profile_provider.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
@@ -32,6 +33,7 @@ import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
 import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
+import 'package:qnote_flutter/widgets/app_error_state.dart';
 import 'package:qnote_flutter/widgets/common/loading_ring.dart';
 import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
 import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
@@ -104,6 +106,10 @@ class _AiPageState extends ConsumerState<AiPage> {
     _loadSlashSkills();
     _initActiveModelId();
     _registerTargetBridge();
+    // 用户资料默认懒加载（仅在个人信息页打开时加载），聊天页需要主动拉一次才能显示头像/昵称
+    Future.microtask(
+      () => ref.read(userProfileNotifierProvider.notifier).load(),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(currentChatProvider.notifier).initLastSession();
       _scrollToBottom();
@@ -1178,10 +1184,16 @@ class _AiPageState extends ConsumerState<AiPage> {
             onPressed: () async {
               // 先收起键盘，避免新会话打开后键盘自动弹出
               FocusManager.instance.primaryFocus?.unfocus();
+              final previous = ref.read(currentChatProvider);
               final session = await ref
                   .read(chatSessionListProvider.notifier)
                   .createSession();
               ref.read(currentChatProvider.notifier).setSession(session);
+              // 本来就停在空白新对话上时，界面点了不会有任何变化，用 Toast 明确回应
+              if (context.mounted &&
+                  (previous == null || isBlankNewChatSession(previous))) {
+                Toast.info(context, '已是新对话，直接说就行');
+              }
             },
           ),
           IconButton(
@@ -1238,7 +1250,8 @@ class _AiPageState extends ConsumerState<AiPage> {
   /// `ask_user` 需保持独立交互卡片；`generate_image` 需保持独立大图卡片——
   /// 若被折叠隐藏，正文里的同图又已按「卡片已展示」去重，用户将一张图都看不到。
   bool _isGroupableTool(ChatMessage message) {
-    return message.toolName != 'ask_user' && message.toolName != 'generate_image';
+    return message.toolName != 'ask_user' &&
+        message.toolName != 'generate_image';
   }
 
   Widget _buildChatArea(ChatSession? currentChat, ThemeData theme) {
@@ -1305,7 +1318,8 @@ class _AiPageState extends ConsumerState<AiPage> {
               ChatMessage(
                 role: 'assistant',
                 content:
-                    defaultSystemPrompts['assistant_greeting'] ?? '嗨，你好',
+                    defaultSystemPrompts['assistant_greeting'] ??
+                    '嗨，我是小Q —— 记待办、写笔记、打卡时间线、看统计，说一句就行',
                 timestamp: DateTime.now(),
               ),
             ),
@@ -1602,17 +1616,12 @@ class _AiPageState extends ConsumerState<AiPage> {
                               children: [
                                 Flexible(
                                   child: Text(
-                                    // 按钮上仅展示裸模型名，不带「内置」前缀
-                                    (assistantModelDisplayName(
-                                              _activeModelId,
-                                              aiConfigsAsync.valueOrNull ??
-                                                  const <AiConfig>[],
-                                            ) ??
-                                            '选择模型')
-                                        .replaceFirst(
-                                          RegExp('^内置\\s*'),
-                                          '',
-                                        ),
+                                    assistantModelDisplayName(
+                                          _activeModelId,
+                                          aiConfigsAsync.valueOrNull ??
+                                              const <AiConfig>[],
+                                        ) ??
+                                        '选择模型',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: theme.textTheme.bodySmall?.copyWith(
@@ -1808,6 +1817,9 @@ class _AiPageState extends ConsumerState<AiPage> {
 
   Widget _buildAttachmentBar(ThemeData theme) {
     return Container(
+      // 外层 Column 默认 crossAxisAlignment.center，而横向滚动条会收缩到内容宽度，
+      // 不撑满就会让附件整体看起来悬在中间；这里强制占满后由内部 Row 左对齐
+      width: double.infinity,
       constraints: const BoxConstraints(maxHeight: 64),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -2375,7 +2387,13 @@ class _AiPageState extends ConsumerState<AiPage> {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('加载失败: $e')),
+        error: (e, _) => AppErrorState(
+          error: e,
+          action: '加载历史对话失败',
+          // Drawer 宽度有限，用紧凑态避免长异常串挤掉重试按钮
+          compact: true,
+          onRetry: () => ref.invalidate(chatSessionListProvider),
+        ),
       ),
     );
   }
@@ -2612,6 +2630,16 @@ class _AiPageState extends ConsumerState<AiPage> {
             Navigator.pop(context);
           }
         },
+        onLongPress: () {
+          // 长按直接进批量管理并选中当前行：右上角宫格图标入口太小容易忽略，
+          // 与笔记等列表「长按进批量」的手感保持一致；批量态下点按已可勾选，无需重复响应
+          if (_isBatchMode) return;
+          HapticFeedback.lightImpact();
+          setState(() {
+            _isBatchMode = true;
+            _selectedSessionIds = [session.id];
+          });
+        },
       ),
     );
   }
@@ -2659,7 +2687,7 @@ class _StreamingBubble extends ConsumerWidget {
   }
 }
 
-class ChatBubble extends StatelessWidget {
+class ChatBubble extends ConsumerWidget {
   final ChatMessage message;
 
   /// 流式占位的阶段性状态文案（非 null 即占位模式），与正文互斥展示
@@ -2702,9 +2730,19 @@ class ChatBubble extends StatelessWidget {
       message.uiDetails?['handled'] != true;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final isUser = message.role == 'user';
+    // 用户侧头部展示个人信息页设置的昵称与头像：昵称优先、其次姓名，都空兜底「You」
+    final profile = ref.watch(userProfileNotifierProvider);
+    final nickname = profile?.nickname;
+    final realName = profile?.name;
+    final userName = (nickname?.isNotEmpty ?? false)
+        ? nickname!
+        : (realName?.isNotEmpty ?? false)
+        ? realName!
+        : 'You';
+    final avatarPath = profile?.avatarPath ?? '';
     // 实例字段的空安全提升不跨闭包生效，局部变量化供下方 builder 内使用
     final statusText = this.statusText;
 
@@ -2760,7 +2798,7 @@ class ChatBubble extends StatelessWidget {
                     ),
                   ] else ...[
                     Text(
-                      'You',
+                      userName,
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w500,
@@ -2768,21 +2806,30 @@ class ChatBubble extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 6),
-                    Container(
-                      width: 24,
-                      height: 24,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surfaceContainerHighest,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Center(
-                        child: Icon(
-                          Icons.chat_bubble_outline_rounded,
-                          size: 12,
-                          color: theme.colorScheme.onSurfaceVariant,
+                    if (avatarPath.isNotEmpty)
+                      UnifiedImage(
+                        imagePath: avatarPath,
+                        width: 24,
+                        height: 24,
+                        borderRadius: BorderRadius.circular(12),
+                        fit: BoxFit.cover,
+                      )
+                    else
+                      Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: Icon(
+                            Icons.person_rounded,
+                            size: 14,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ],
               ),
@@ -2925,8 +2972,8 @@ class ChatBubble extends StatelessWidget {
                           ToolChainGroupWidget(
                             toolMessages:
                                 (message.uiDetails?['messages']
-                                        as List<ChatMessage>?) ??
-                                    const [],
+                                    as List<ChatMessage>?) ??
+                                const [],
                             theme: theme,
                           )
                         else if (message.role == 'tool')
@@ -3373,8 +3420,9 @@ class ChatBubble extends StatelessWidget {
       }
 
       final skillTitle = name.isEmpty ? '技能手册' : name;
-      final sectionHint =
-          (section != null && section.trim().isNotEmpty) ? ' · $section' : '';
+      final sectionHint = (section != null && section.trim().isNotEmpty)
+          ? ' · $section'
+          : '';
 
       return Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
@@ -3680,7 +3728,10 @@ class ChatBubble extends StatelessWidget {
                 blockquoteDecoration: BoxDecoration(
                   color: theme.colorScheme.surfaceContainerLow,
                   border: Border(
-                    left: BorderSide(color: theme.colorScheme.primary, width: 4),
+                    left: BorderSide(
+                      color: theme.colorScheme.primary,
+                      width: 4,
+                    ),
                   ),
                   borderRadius: const BorderRadius.horizontal(
                     right: Radius.circular(6),
@@ -3787,10 +3838,7 @@ class ChatBubble extends StatelessWidget {
                 const Divider(height: 20),
                 Flexible(
                   child: SingleChildScrollView(
-                    child: MarkdownBody(
-                      data: content,
-                      selectable: true,
-                    ),
+                    child: MarkdownBody(data: content, selectable: true),
                   ),
                 ),
               ],
@@ -3877,10 +3925,7 @@ class _DirectoryFeedbackWidget extends StatefulWidget {
   final ChatMessage message;
   final ThemeData theme;
 
-  const _DirectoryFeedbackWidget({
-    required this.message,
-    required this.theme,
-  });
+  const _DirectoryFeedbackWidget({required this.message, required this.theme});
 
   @override
   State<_DirectoryFeedbackWidget> createState() =>
@@ -3923,10 +3968,7 @@ class _DirectoryFeedbackWidgetState extends State<_DirectoryFeedbackWidget> {
                 message.content.trim().isNotEmpty
                     ? message.content.trim()
                     : '查看目录失败',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: theme.colorScheme.error,
-                ),
+                style: TextStyle(fontSize: 12, color: theme.colorScheme.error),
               ),
             ),
           ],
@@ -3934,16 +3976,12 @@ class _DirectoryFeedbackWidgetState extends State<_DirectoryFeedbackWidget> {
       );
     }
 
-    final totalCount = items?.length ??
-        message.content
-            .split('\n')
-            .where((l) => l.trim().isNotEmpty)
-            .length;
-    final displayList = items ??
-        message.content
-            .split('\n')
-            .where((l) => l.trim().isNotEmpty)
-            .toList();
+    final totalCount =
+        items?.length ??
+        message.content.split('\n').where((l) => l.trim().isNotEmpty).length;
+    final displayList =
+        items ??
+        message.content.split('\n').where((l) => l.trim().isNotEmpty).toList();
 
     final pathHint = path.isNotEmpty ? path : '/';
 
@@ -3987,7 +4025,9 @@ class _DirectoryFeedbackWidgetState extends State<_DirectoryFeedbackWidget> {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.85,
+                        ),
                       ),
                     ),
                   ),
@@ -4027,7 +4067,9 @@ class _DirectoryFeedbackWidgetState extends State<_DirectoryFeedbackWidget> {
                                 ? Icons.folder_outlined
                                 : Icons.insert_drive_file_outlined,
                             size: 13,
-                            color: theme.colorScheme.primary.withValues(alpha: 0.7),
+                            color: theme.colorScheme.primary.withValues(
+                              alpha: 0.7,
+                            ),
                           ),
                           const SizedBox(width: 6),
                           Expanded(
@@ -4063,10 +4105,7 @@ class _GrepFeedbackWidget extends StatefulWidget {
   final ChatMessage message;
   final ThemeData theme;
 
-  const _GrepFeedbackWidget({
-    required this.message,
-    required this.theme,
-  });
+  const _GrepFeedbackWidget({required this.message, required this.theme});
 
   @override
   State<_GrepFeedbackWidget> createState() => _GrepFeedbackWidgetState();
@@ -4105,10 +4144,7 @@ class _GrepFeedbackWidgetState extends State<_GrepFeedbackWidget> {
                 message.content.trim().isNotEmpty
                     ? message.content.trim()
                     : '搜索失败',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: theme.colorScheme.error,
-                ),
+                style: TextStyle(fontSize: 12, color: theme.colorScheme.error),
               ),
             ),
           ],
@@ -4157,7 +4193,9 @@ class _GrepFeedbackWidgetState extends State<_GrepFeedbackWidget> {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.85,
+                        ),
                       ),
                     ),
                   ),
@@ -4183,10 +4221,7 @@ class _GrepFeedbackWidgetState extends State<_GrepFeedbackWidget> {
               constraints: const BoxConstraints(maxHeight: 200),
               padding: const EdgeInsets.all(10),
               child: SingleChildScrollView(
-                child: MarkdownBody(
-                  data: message.content,
-                  selectable: true,
-                ),
+                child: MarkdownBody(data: message.content, selectable: true),
               ),
             ),
           ],
@@ -4203,10 +4238,7 @@ class ToolChainGroupWidget extends StatefulWidget {
   final List<ChatMessage> toolMessages;
   final ThemeData theme;
 
-  const ToolChainGroupWidget({
-    required this.toolMessages,
-    required this.theme,
-  });
+  const ToolChainGroupWidget({required this.toolMessages, required this.theme});
 
   @override
   State<ToolChainGroupWidget> createState() => _ToolChainGroupWidgetState();
@@ -4280,7 +4312,9 @@ class _ToolChainGroupWidgetState extends State<ToolChainGroupWidget> {
                         fontWeight: FontWeight.w600,
                         color: hasError
                             ? theme.colorScheme.error
-                            : theme.colorScheme.onSurface.withValues(alpha: 0.9),
+                            : theme.colorScheme.onSurface.withValues(
+                                alpha: 0.9,
+                              ),
                       ),
                     ),
                   ),

@@ -55,7 +55,7 @@ class ChatBodyImage extends StatelessWidget {
 /// 生图结果卡、正文 markdown 内联图、用户上传附件缩略图、`view_image` 缩略图共用此组件，
 /// 避免每处各写一套 GestureDetector 与预览入口。
 ///
-/// 宿主语义通过 [onSendToQ] 注入：为 null 时菜单与大图页都不出现「给小Q」，
+/// 宿主语义通过 [onSendToQ] 注入：为 null 时长按菜单不出现「给小Q」，
 /// 因此本组件也可安全用于没有小Q 语境的场景。
 class ChatImageView extends StatefulWidget {
   const ChatImageView({
@@ -114,7 +114,6 @@ class _ChatImageViewState extends State<ChatImageView> {
           images: _gallery,
           initialIndex: _galleryIndex,
           onSave: _save,
-          onSendToQ: widget.onSendToQ,
         ),
       ),
     );

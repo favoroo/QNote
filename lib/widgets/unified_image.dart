@@ -233,15 +233,11 @@ class FullScreenImageGallery extends StatefulWidget {
   /// 保证日记/笔记等既有调用点行为不变。
   final void Function(String path)? onSave;
 
-  /// 「给小Q」回调（把当前图片挂到小Q输入框）；为 null 时不显示该项。
-  final void Function(String path)? onSendToQ;
-
   const FullScreenImageGallery({
     super.key,
     required this.images,
     this.initialIndex = 0,
     this.onSave,
-    this.onSendToQ,
   });
 
   @override
@@ -291,12 +287,6 @@ class _FullScreenImageGalleryState extends State<FullScreenImageGallery> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
-          if (widget.onSendToQ != null)
-            IconButton(
-              tooltip: '给小Q',
-              icon: const Icon(Icons.forum_outlined, color: Colors.white),
-              onPressed: () => _runOnCurrentImage(widget.onSendToQ!),
-            ),
           if (widget.onSave != null)
             IconButton(
               tooltip: '下载',

@@ -103,6 +103,10 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     with TickerProviderStateMixin {
   bool _isExpanded = true;
   bool _isExtracting = false;
+  // 发送重入保护：防止压缩完成瞬间/弹窗渲染前一帧内的双击重复提交
+  bool _isSending = false;
+  // 压缩等待弹窗标志：防重复弹窗，也防弹窗孤儿
+  bool _waitingForCompression = false;
   CancelToken? _cancelToken;
   _ExtractPhase _extractPhase = _ExtractPhase.idle;
 
@@ -929,7 +933,13 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
   Future<void> _pickImageFromCamera() async {
     if (_activeDraft.selectedPhotos.length >= 3) return;
     try {
-      final xFile = await _imagePicker.pickImage(source: ImageSource.camera);
+      // 与编辑页一致先在原生层降采样，避免全尺寸原图进入压缩流程
+      final xFile = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1200,
+        maxHeight: 1200,
+        imageQuality: 80,
+      );
       if (xFile == null) return;
       
       final tempPath = xFile.path;
@@ -1613,38 +1623,51 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
   }
 
   Future<void> _waitForCompressing() async {
-    if (_compressingTasks.isNotEmpty) {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => const Center(
-          child: Card(
-            child: Padding(
-              padding: EdgeInsets.all(20.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('正在处理图片，请稍候...'),
-                ],
-              ),
+    if (_compressingTasks.isEmpty || _waitingForCompression) return;
+    _waitingForCompression = true;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(20.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('正在处理图片，请稍候...'),
+              ],
             ),
           ),
         ),
-      );
-      try {
-        await Future.wait(_compressingTasks.values);
-      } catch (e) {
-        debugPrint('Error waiting for compression: $e');
-      }
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
+      ),
+    );
+    try {
+      // 超时兜底：压缩任务若因系统回收 isolate 而永不完成，
+      // 不能让不可关闭的弹窗把界面钉死在黑色遮罩上
+      await Future.wait(_compressingTasks.values).timeout(const Duration(seconds: 30));
+    } catch (e) {
+      debugPrint('Error waiting for compression: $e');
+    }
+    _waitingForCompression = false;
+    if (mounted) {
+      Navigator.of(context).pop();
     }
   }
 
   Future<void> _handleSend() async {
+    if (_isSending) return;
+    _isSending = true;
+    try {
+      await _doHandleSend();
+    } finally {
+      _isSending = false;
+    }
+  }
+
+  Future<void> _doHandleSend() async {
     await _waitForCompressing();
     if (!mounted) return;
     final draft = _draft;
@@ -3812,7 +3835,9 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         draft.inputText.trim().isEmpty &&
         draft.tagEntries.isEmpty &&
         draft.selectedPhotos.isEmpty;
-    final isDisabled = isValidationError || isEmpty;
+    // 图片压缩处理中禁止发送：此时照片还是临时路径，压缩完成后自动恢复可点
+    final isDisabled =
+        isValidationError || isEmpty || _compressingTasks.isNotEmpty;
 
     final aiTempsAsync = ref.watch(aiTemperaturesProvider);
     final extractImages =
@@ -4024,15 +4049,27 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                 shape: BoxShape.circle,
               ),
               child: Center(
-                child: Icon(
-                  Icons.send_rounded,
-                  size: 20,
-                  color: isDisabled
-                      ? theme.colorScheme.onSurfaceVariant.withValues(
-                          alpha: 0.3,
-                        )
-                      : theme.colorScheme.primary,
-                ),
+                // 压缩处理中给出发送按钮转圈反馈，避免用户点了没反应的困惑
+                child: _compressingTasks.isNotEmpty
+                    ? SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: theme.colorScheme.onSurfaceVariant.withValues(
+                            alpha: 0.6,
+                          ),
+                        ),
+                      )
+                    : Icon(
+                        Icons.send_rounded,
+                        size: 20,
+                        color: isDisabled
+                            ? theme.colorScheme.onSurfaceVariant.withValues(
+                                alpha: 0.3,
+                              )
+                            : theme.colorScheme.primary,
+                      ),
               ),
             ),
           ),

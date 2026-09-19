@@ -8,6 +8,7 @@ import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/free_model_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/refresh/refresh_failure_notice.dart';
 import 'package:qnote_flutter/core/agent/agent_tool_labels.dart';
 import 'package:qnote_flutter/core/agent/agent_tool_registry.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_cancellation_token.dart';
@@ -114,7 +115,18 @@ class AiConfigListNotifier extends AsyncNotifier<List<AiConfig>> {
 
   Future<void> refresh() async {
     final repo = ConfigRepository.instance;
-    state = AsyncData(await repo.getAllAiConfigs());
+    try {
+      state = AsyncData(await repo.getAllAiConfigs());
+    } catch (e, st) {
+      RefreshFailureNotice.report(
+        source: 'AI 配置',
+        error: e,
+        stackTrace: st,
+        retry: () {
+          refresh();
+        },
+      );
+    }
   }
 
   Future<AiConfig> addConfig(AiConfig config) async {
@@ -161,6 +173,13 @@ Future<void> saveAiTemperatures(AiTemperatures temps) async {
   await repo.saveAiTemperatures(temps);
 }
 
+/// 是否为「空白新对话」：标题仍是默认值，且最多只有一条问候语
+///
+/// [ChatSessionListNotifier.createSession] 用它复用空白会话，新建按钮也用它判断
+/// 「点了其实没变化」是否需要给 Toast 反馈
+bool isBlankNewChatSession(ChatSession? session) =>
+    session != null && session.title == '新对话' && session.messages.length <= 1;
+
 final chatSessionListProvider =
     AsyncNotifierProvider<ChatSessionListNotifier, List<ChatSession>>(() {
       return ChatSessionListNotifier();
@@ -186,14 +205,25 @@ class ChatSessionListNotifier extends AsyncNotifier<List<ChatSession>> {
 
   Future<void> refresh() async {
     final repo = ConfigRepository.instance;
-    state = AsyncData(await repo.getAllChatSessions());
+    try {
+      state = AsyncData(await repo.getAllChatSessions());
+    } catch (e, st) {
+      RefreshFailureNotice.report(
+        source: '历史对话',
+        error: e,
+        stackTrace: st,
+        retry: () {
+          refresh();
+        },
+      );
+    }
   }
 
   Future<ChatSession> createSession({String? aiConfigId}) async {
     // 复用已有空白会话（标题仍为默认且最多只有一条问候语）：
     // 避免连点「新建对话」堆积多个空会话，列表按 updatedAt 倒序，取最近一个
     for (final existing in state.valueOrNull ?? const <ChatSession>[]) {
-      if (existing.title == '新对话' && existing.messages.length <= 1) {
+      if (isBlankNewChatSession(existing)) {
         return existing;
       }
     }
