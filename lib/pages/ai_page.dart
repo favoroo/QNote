@@ -28,10 +28,11 @@ import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/config/defaults.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/tts/tts_player.dart';
 import 'package:qnote_flutter/widgets/empty_state.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
-import 'package:qnote_flutter/widgets/ai/bubble_voice_button.dart';
+import 'package:qnote_flutter/widgets/ai/bubble_action_bar.dart';
 import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/widgets/app_error_state.dart';
@@ -1424,6 +1425,14 @@ class _AiPageState extends ConsumerState<AiPage> {
                 }
               }
 
+              // 重新生成只对会话最后一条回复开放：更早的轮次重发会连带撤销
+              // 其后所有轮次的数据修改，误触代价太高
+              final canRegenerate =
+                  !currentIsUser &&
+                  !hasStreaming &&
+                  entry.stateIndex != null &&
+                  entry.stateIndex == stateMessages.length - 1;
+
               final bubble = ChatBubble(
                 message: currentMsg,
                 isFirstInGroup: isFirstInGroup,
@@ -1431,6 +1440,11 @@ class _AiPageState extends ConsumerState<AiPage> {
                 actionsEnabled: !hasStreaming,
                 generatedImageKeys: generatedImageKeys,
                 onSendToQ: _attachImageToInput,
+                onRegenerate: canRegenerate
+                    ? () => _retryFailedTurn(entry.stateIndex!)
+                    : null,
+                // 回退与重发期间置灰，避免连点触发两轮
+                regenerateEnabled: !_isTyping,
                 onContinue: () => ref
                     .read(currentChatProvider.notifier)
                     .continueAfterTurnLimit(),
@@ -2712,6 +2726,12 @@ class ChatBubble extends ConsumerWidget {
   /// 「给小Q」回调（把图片挂到输入框）；为 null 时图片菜单不出现该项
   final ValueChanged<String>? onSendToQ;
 
+  /// 重新生成本轮（气泡下方操作条入口）；为 null 时不显示该按钮
+  final VoidCallback? onRegenerate;
+
+  /// 重新生成是否可点（流式输出中禁用，避免与进行中的任务并发）
+  final bool regenerateEnabled;
+
   const ChatBubble({
     required this.message,
     this.statusText,
@@ -2723,12 +2743,30 @@ class ChatBubble extends ConsumerWidget {
     this.actionsEnabled = false,
     this.generatedImageKeys = const <String>{},
     this.onSendToQ,
+    this.onRegenerate,
+    this.regenerateEnabled = true,
   });
 
   /// 是否为待处理的步数上限消息（渲染「继续/暂停」按钮）
   bool get _isTurnLimitPending =>
       message.uiDetails?['type'] == 'turn_limit' &&
       message.uiDetails?['handled'] != true;
+
+  /// 点击助手气泡：本条正在合成/播放时中断朗读，否则沿用收起键盘行为。
+  ///
+  /// 子级命中后外层聊天区域的点击监听不再触发，故非播放态需自行 unfocus，
+  /// 保持「点气泡也能收起软键盘」的原有手感。
+  void _onBubbleTap(WidgetRef ref) {
+    final playback = ref.read(ttsPlaybackProvider);
+    final isVoiceOn =
+        playback.messageId == TtsPlayer.messageKeyOf(message) &&
+        playback.status != TtsPlaybackStatus.idle;
+    if (!isVoiceOn) {
+      FocusManager.instance.primaryFocus?.unfocus();
+      return;
+    }
+    ref.read(ttsPlaybackProvider.notifier).stop();
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -2746,6 +2784,16 @@ class ChatBubble extends ConsumerWidget {
     final avatarPath = profile?.avatarPath ?? '';
     // 实例字段的空安全提升不跨闭包生效，局部变量化供下方 builder 内使用
     final statusText = this.statusText;
+
+    // 助手正文气泡下挂连体操作条（复制/朗读/重新生成）；
+    // 流式占位、错误气泡与工具卡片不给入口
+    final showActionBar =
+        !isUser &&
+        message.role == 'assistant' &&
+        statusText == null &&
+        message.uiDetails == null &&
+        (message.isError ?? false) != true &&
+        message.content.trim().isNotEmpty;
 
     // 该消息是否还有可渲染的主体（正文 / 思考过程 / 工具卡片）
     final hasRenderableBody =
@@ -2836,236 +2884,252 @@ class ChatBubble extends ConsumerWidget {
               ),
             ),
           // Bubble container
-          Align(
-            alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-            child: Container(
-              width: isUser ? null : double.infinity,
-              margin: EdgeInsets.only(bottom: isLastInGroup ? 16 : 4),
-              padding: EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: isUser ? 10 : 12,
-              ),
-              constraints: BoxConstraints(
-                maxWidth: isUser
-                    ? MediaQuery.of(context).size.width * 0.82
-                    : double.infinity,
-              ),
-              decoration: BoxDecoration(
-                color: isUser
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.surfaceContainer,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(16),
-                  topRight: const Radius.circular(16),
-                  bottomLeft: isUser
-                      ? const Radius.circular(16)
-                      : const Radius.circular(4),
-                  bottomRight: isUser
-                      ? const Radius.circular(4)
-                      : const Radius.circular(16),
+          // 朗读/合成中点击本条气泡即中断播放（与豆包一致）；其余气泡不接管点击，
+          // 交给外层聊天区域的收起键盘逻辑
+          GestureDetector(
+            // opaque：整张卡片（含内边距）都是中断区域，避免点留白处没反应
+            behavior: HitTestBehavior.opaque,
+            onTap: showActionBar ? () => _onBubbleTap(ref) : null,
+            child: Align(
+              alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+              child: Container(
+                width: isUser ? null : double.infinity,
+                // 下挂操作条时收紧间距，让两段读起来是同一张卡
+                margin: EdgeInsets.only(
+                  bottom: showActionBar ? 6 : (isLastInGroup ? 16 : 4),
                 ),
-                border: isUser
-                    ? null
-                    : Border.all(
-                        color: theme.colorScheme.outlineVariant.withValues(
-                          alpha: 0.5,
-                        ),
-                        width: 1,
-                      ),
-                boxShadow: isUser
-                    ? null
-                    : [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.03),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-              ),
-              child: isUser
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (message.images != null &&
-                            message.images!.isNotEmpty)
-                          _buildImagesGrid(message.images!),
-                        if (message.content.isNotEmpty)
-                          Text(
-                            message.content,
-                            style: TextStyle(
-                              color: theme.colorScheme.onPrimary,
-                              fontSize: 14,
-                            ),
+                padding: EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: isUser ? 10 : 12,
+                ),
+                constraints: BoxConstraints(
+                  maxWidth: isUser
+                      ? MediaQuery.of(context).size.width * 0.82
+                      : double.infinity,
+                ),
+                decoration: BoxDecoration(
+                  color: isUser
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.surfaceContainer,
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(16),
+                    topRight: const Radius.circular(16),
+                    bottomLeft: isUser
+                        ? const Radius.circular(16)
+                        : const Radius.circular(4),
+                    bottomRight: isUser
+                        ? const Radius.circular(4)
+                        : const Radius.circular(16),
+                  ),
+                  border: isUser
+                      ? null
+                      : Border.all(
+                          color: theme.colorScheme.outlineVariant.withValues(
+                            alpha: 0.5,
                           ),
-                      ],
-                    )
-                  : statusText != null
-                  ? // 阶段性状态行：弱化色文案 + 逐点渐显的动态省略号，替代原先文本下方的闪烁光标；
-                    // 下方挂实时思考区（模型返回 reasoning_content 时滚动展示思考过程）
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 2),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  statusText,
-                                  style: TextStyle(
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                    fontSize: 14,
-                                    height: 1.5,
-                                  ),
-                                ),
-                              ),
-                              // 思考中采用形变无限符号动画，流动生命力替代三个跳动圆点
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                  left: 8,
-                                  right: 6,
-                                ),
-                                child: MorphingInfinity(
-                                  size: 21,
-                                  strokeWidth: 1.5,
-                                  color: theme.colorScheme.primary,
-                                ),
-                              ),
-                              // 已用时递增计数：长任务期间传达"仍在推进，没有卡住"
-                              Padding(
-                                padding: const EdgeInsets.only(left: 2),
-                                child: StreamingElapsedText(
-                                  startedAt: statusStartedAt,
-                                  style: TextStyle(
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
+                          width: 1,
                         ),
-                        const _LiveThoughtView(),
-                      ],
-                    )
-                  : !hasRenderableBody
-                  ? const MorphingInfinity()
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // 思考过程展示（若有，折叠在单行流水中滚动展示，点击可展开完整内容）
-                        if (message.thought != null &&
-                            message.thought!.trim().isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: _ThoughtProcessView(
-                              thought: message.thought!.trim(),
-                            ),
-                          ),
-
-                        // 连续工具聚合卡片或单工具执行反馈卡片
-                        if (message.role == 'tool_group')
-                          ToolChainGroupWidget(
-                            toolMessages:
-                                (message.uiDetails?['messages']
-                                    as List<ChatMessage>?) ??
-                                const [],
-                            theme: theme,
-                          )
-                        else if (message.role == 'tool')
-                          buildToolFeedback(
-                            context,
-                            message,
-                            theme,
-                            onSendToQ: onSendToQ,
-                          )
-                        else ...[
-                          MarkdownBody(
-                            data: message.content,
-                            selectable: false,
-                            // 拦截正文内联图：生图卡片已展示过的不再重复渲染，
-                            // 其余图片渲染为可点击放大/长按的统一视图而非默认裸 Image
-                            sizedImageBuilder: (config) => ChatBodyImage(
-                              src: config.uri.toString(),
-                              generatedImageKeys: generatedImageKeys,
-                              onSendToQ: onSendToQ,
-                            ),
-                            styleSheet: MarkdownStyleSheet(
-                              p: TextStyle(
-                                color: theme.colorScheme.onSurface,
-                                fontSize: 14,
-                                height: 1.5,
-                              ),
-                              h1: TextStyle(
-                                color: theme.colorScheme.onSurface,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                height: 1.6,
-                              ),
-                              h2: TextStyle(
-                                color: theme.colorScheme.onSurface,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                height: 1.5,
-                              ),
-                              h3: TextStyle(
-                                color: theme.colorScheme.onSurface,
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                height: 1.4,
-                              ),
-                              code: TextStyle(
-                                fontFamily: 'monospace',
-                                fontSize: 13,
-                                color: theme.colorScheme.primary,
-                                backgroundColor: Colors.transparent,
-                              ),
-                              codeblockDecoration: BoxDecoration(
-                                color: theme.colorScheme.surfaceContainerLow,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: theme.colorScheme.outlineVariant
-                                      .withValues(alpha: 0.5),
-                                ),
-                              ),
-                              blockquoteDecoration: BoxDecoration(
-                                color: theme.colorScheme.surfaceContainerLow,
-                                border: Border(
-                                  left: BorderSide(
-                                    color: theme.colorScheme.primary,
-                                    width: 4,
-                                  ),
-                                ),
-                                borderRadius: const BorderRadius.horizontal(
-                                  right: Radius.circular(6),
-                                ),
-                              ),
-                              blockquotePadding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                              listBullet: TextStyle(
-                                color: theme.colorScheme.onSurface,
-                              ),
-                            ),
+                  boxShadow: isUser
+                      ? null
+                      : [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.03),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
                           ),
                         ],
-                      ],
-                    ),
+                ),
+                child: isUser
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (message.images != null &&
+                              message.images!.isNotEmpty)
+                            _buildImagesGrid(message.images!),
+                          if (message.content.isNotEmpty)
+                            Text(
+                              message.content,
+                              style: TextStyle(
+                                color: theme.colorScheme.onPrimary,
+                                fontSize: 14,
+                              ),
+                            ),
+                        ],
+                      )
+                    : statusText != null
+                    ? // 阶段性状态行：弱化色文案 + 逐点渐显的动态省略号，替代原先文本下方的闪烁光标；
+                      // 下方挂实时思考区（模型返回 reasoning_content 时滚动展示思考过程）
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 2),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    statusText,
+                                    style: TextStyle(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                      fontSize: 14,
+                                      height: 1.5,
+                                    ),
+                                  ),
+                                ),
+                                // 思考中采用形变无限符号动画，流动生命力替代三个跳动圆点
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                    left: 8,
+                                    right: 6,
+                                  ),
+                                  child: MorphingInfinity(
+                                    size: 21,
+                                    strokeWidth: 1.5,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                                // 已用时递增计数：长任务期间传达"仍在推进，没有卡住"
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 2),
+                                  child: StreamingElapsedText(
+                                    startedAt: statusStartedAt,
+                                    style: TextStyle(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const _LiveThoughtView(),
+                        ],
+                      )
+                    : !hasRenderableBody
+                    ? const MorphingInfinity()
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // 思考过程展示（若有，折叠在单行流水中滚动展示，点击可展开完整内容）
+                          if (message.thought != null &&
+                              message.thought!.trim().isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: _ThoughtProcessView(
+                                thought: message.thought!.trim(),
+                              ),
+                            ),
+
+                          // 连续工具聚合卡片或单工具执行反馈卡片
+                          if (message.role == 'tool_group')
+                            ToolChainGroupWidget(
+                              toolMessages:
+                                  (message.uiDetails?['messages']
+                                      as List<ChatMessage>?) ??
+                                  const [],
+                              theme: theme,
+                            )
+                          else if (message.role == 'tool')
+                            buildToolFeedback(
+                              context,
+                              message,
+                              theme,
+                              onSendToQ: onSendToQ,
+                            )
+                          else ...[
+                            MarkdownBody(
+                              data: message.content,
+                              selectable: false,
+                              // 拦截正文内联图：生图卡片已展示过的不再重复渲染，
+                              // 其余图片渲染为可点击放大/长按的统一视图而非默认裸 Image
+                              sizedImageBuilder: (config) => ChatBodyImage(
+                                src: config.uri.toString(),
+                                generatedImageKeys: generatedImageKeys,
+                                onSendToQ: onSendToQ,
+                              ),
+                              styleSheet: MarkdownStyleSheet(
+                                p: TextStyle(
+                                  color: theme.colorScheme.onSurface,
+                                  fontSize: 14,
+                                  height: 1.5,
+                                ),
+                                h1: TextStyle(
+                                  color: theme.colorScheme.onSurface,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1.6,
+                                ),
+                                h2: TextStyle(
+                                  color: theme.colorScheme.onSurface,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1.5,
+                                ),
+                                h3: TextStyle(
+                                  color: theme.colorScheme.onSurface,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1.4,
+                                ),
+                                code: TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontSize: 13,
+                                  color: theme.colorScheme.primary,
+                                  backgroundColor: Colors.transparent,
+                                ),
+                                codeblockDecoration: BoxDecoration(
+                                  color: theme.colorScheme.surfaceContainerLow,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: theme.colorScheme.outlineVariant
+                                        .withValues(alpha: 0.5),
+                                  ),
+                                ),
+                                blockquoteDecoration: BoxDecoration(
+                                  color: theme.colorScheme.surfaceContainerLow,
+                                  border: Border(
+                                    left: BorderSide(
+                                      color: theme.colorScheme.primary,
+                                      width: 4,
+                                    ),
+                                  ),
+                                  borderRadius: const BorderRadius.horizontal(
+                                    right: Radius.circular(6),
+                                  ),
+                                ),
+                                blockquotePadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                listBullet: TextStyle(
+                                  color: theme.colorScheme.onSurface,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+              ),
             ),
           ),
-          // 语音朗读：助手正文气泡下方提供朗读/停止入口（自动朗读的补充）
-          if (!isUser &&
-              message.role == 'assistant' &&
-              statusText == null &&
-              (message.isError ?? false) != true &&
-              message.content.trim().isNotEmpty)
-            BubbleVoiceButton(message: message),
+          // 助手正文气泡下方的连体操作条（复制/朗读/重新生成）
+          if (showActionBar)
+            Padding(
+              padding: EdgeInsets.only(bottom: isLastInGroup ? 10 : 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: BubbleActionBar(
+                  message: message,
+                  onRegenerate: onRegenerate,
+                  regenerateEnabled: regenerateEnabled,
+                ),
+              ),
+            ),
           // 步数上限提示：待处理时在气泡下方渲染「继续/暂停」按钮
           if (!isUser && _isTurnLimitPending)
             AgentTurnLimitActions(

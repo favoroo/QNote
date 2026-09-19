@@ -1718,41 +1718,62 @@ class _DiaryItemState extends State<DiaryItem> {
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.phone_android_rounded, size: 16, color: screenBlue),
-                          const SizedBox(width: 6),
-                          Text(
-                            '屏幕使用',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.bold,
+                          // 标题区可收缩：与右侧时长组争抢宽度时宁可省略，也不让 Row 溢出裁切
+                          Expanded(
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.phone_android_rounded,
+                                  size: 16,
+                                  color: screenBlue,
+                                ),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    '屏幕使用',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          if (screenDiffDesc != null) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                              decoration: BoxDecoration(
-                                color: screenBlue.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                screenDiffDesc,
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
+                          // 时长与环比上下成组，横向只占较长一项，窄屏也能完整显示
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                screenTimeDisplay,
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
                                   color: screenBlue,
                                 ),
                               ),
-                            ),
-                          ],
-                          const Spacer(),
-                          Text(
-                            screenTimeDisplay,
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: screenBlue,
-                            ),
+                              if (screenDiffDesc != null) ...[
+                                const SizedBox(height: 3),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                  decoration: BoxDecoration(
+                                    color: screenBlue.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    screenDiffDesc,
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: screenBlue,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
-                          const SizedBox(width: 2),
+                          const SizedBox(width: 4),
                           Icon(
                             Icons.chevron_right_rounded,
                             size: 16,

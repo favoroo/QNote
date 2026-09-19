@@ -101,6 +101,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
     ref.invalidate(screenUsageDayProvider);
     ref.invalidate(screenUsageRangeProvider);
     ref.invalidate(screenUsageTrendProvider);
+    ref.invalidate(screenUsageWeekAvgProvider);
     ref.invalidate(screenUsageEarliestDateProvider);
   }
 
@@ -502,6 +503,8 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
           const SizedBox(height: 10),
           const Divider(height: 1),
           const SizedBox(height: 6),
+          _buildSectionLabel(theme, '每日趋势', icon: Icons.bar_chart_rounded),
+          const SizedBox(height: 2),
           trendAsync.when(
             loading: () => const SizedBox(height: 104),
             error: (err, _) => const SizedBox.shrink(),
@@ -520,9 +523,218 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
                     child: _buildBarChart(theme, trend, selectedDate),
                   ),
           ),
+          const SizedBox(height: 10),
+          const Divider(height: 1),
+          const SizedBox(height: 6),
+          _buildWeekCompare(theme, selectedDate),
         ],
       ],
     );
+  }
+
+  /// 周均时长对比：基准周及其前两次的日均并排成条形，
+  /// 快捷按钮直接跳到本周/上周/上上周，箭头可把整个对比窗口往前挪。
+  Widget _buildWeekCompare(ThemeData theme, DateTime selectedDate) {
+    final colorScheme = theme.colorScheme;
+    final offset = ref.watch(screenUsageCompareWeekProvider);
+    final baseWeekStart = mondayOf(selectedDate).add(Duration(days: 7 * offset));
+    final weeksAsync = ref.watch(screenUsageWeekAvgProvider(baseWeekStart));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _buildSectionLabel(
+                theme,
+                '周均时长对比',
+                icon: Icons.timeline_rounded,
+              ),
+            ),
+            _buildWeekArrow(
+              theme,
+              icon: Icons.chevron_left_rounded,
+              enabled: offset > -12,
+              onTap: () => _shiftCompareWeek(-1),
+            ),
+            _buildWeekArrow(
+              theme,
+              icon: Icons.chevron_right_rounded,
+              enabled: offset < 0,
+              onTap: () => _shiftCompareWeek(1),
+            ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Row(
+          children: [
+            _buildWeekChip(theme, '本周', 0, offset),
+            const SizedBox(width: 6),
+            _buildWeekChip(theme, '上周', -1, offset),
+            const SizedBox(width: 6),
+            _buildWeekChip(theme, '上上周', -2, offset),
+          ],
+        ),
+        weeksAsync.when(
+          loading: () => const SizedBox(height: 72),
+          error: (err, _) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              '读取周均数据失败',
+              style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.error),
+            ),
+          ),
+          data: (weeks) {
+            final maxAvgMs = weeks.fold<int>(
+              0,
+              (m, e) => e.avgMs > m ? e.avgMs : m,
+            );
+            return Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Column(
+                children: [
+                  for (final week in weeks)
+                    _buildWeekAvgRow(theme, week, maxAvgMs, isBase: week.weekStart == baseWeekStart),
+                ],
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  /// 一行周均对比：周标签 + 相对最长周的条形 + 日均时长
+  Widget _buildWeekAvgRow(
+    ThemeData theme,
+    ScreenUsageWeekAvg week,
+    int maxAvgMs, {
+    required bool isBase,
+  }) {
+    final colorScheme = theme.colorScheme;
+    final ratio = maxAvgMs > 0 ? week.avgMs / maxAvgMs : 0.0;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 52,
+            child: Text(
+              _weekLabel(week.weekStart),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontSize: 12,
+                fontWeight: isBase ? FontWeight.w700 : FontWeight.w500,
+                color: isBase ? colorScheme.primary : colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Expanded(
+            child: week.hasData
+                ? _buildShareBar(theme, ratio)
+                : Text(
+                    '无记录',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontSize: 11,
+                      color: colorScheme.outline,
+                    ),
+                  ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            week.hasData ? week.formattedAvg : '-',
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontSize: 12,
+              fontWeight: isBase ? FontWeight.w700 : FontWeight.w500,
+              color: isBase ? colorScheme.onSurface : colorScheme.outline,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 对比基准周的快捷按钮，样式与日期导航的「前天/昨天/今天」保持同一族
+  Widget _buildWeekChip(ThemeData theme, String label, int targetOffset, int currentOffset) {
+    final colorScheme = theme.colorScheme;
+    final selected = targetOffset == currentOffset;
+    return GestureDetector(
+      onTap: () =>
+          ref.read(screenUsageCompareWeekProvider.notifier).state = targetOffset,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: selected
+              ? colorScheme.primary.withValues(alpha: 0.12)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected
+                ? colorScheme.primary.withValues(alpha: 0.5)
+                : colorScheme.outlineVariant,
+            width: 0.8,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            color: selected
+                ? colorScheme.primary
+                : colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 对比窗口平移箭头
+  Widget _buildWeekArrow(
+    ThemeData theme, {
+    required IconData icon,
+    required bool enabled,
+    required VoidCallback onTap,
+  }) {
+    final colorScheme = theme.colorScheme;
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: enabled ? onTap : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: Icon(
+          icon,
+          size: 18,
+          color: enabled ? colorScheme.onSurfaceVariant : colorScheme.outlineVariant,
+        ),
+      ),
+    );
+  }
+
+  void _shiftCompareWeek(int delta) {
+    final next = (ref.read(screenUsageCompareWeekProvider) + delta).clamp(-12, 0);
+    ref.read(screenUsageCompareWeekProvider.notifier).state = next;
+  }
+
+  /// 周标签：以今天所在周为基准说「本周/上周/上上周」，更早的按「N周前」，再远退化成周一日期
+  String _weekLabel(DateTime weekStart) {
+    final now = DateTime.now();
+    final thisWeekStart = mondayOf(DateTime(now.year, now.month, now.day));
+    final weeksAgo = thisWeekStart.difference(weekStart).inDays ~/ 7;
+    switch (weeksAgo) {
+      case <= 0:
+        return '本周';
+      case 1:
+        return '上周';
+      case 2:
+        return '上上周';
+      case < 10:
+        return '$weeksAgo周前';
+      default:
+        return '${weekStart.month}/${weekStart.day}';
+    }
   }
 
   Widget _buildMetric(
