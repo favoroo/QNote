@@ -68,9 +68,9 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      kOnlineSynthesisSupported
-                          ? TtsService.voiceById(_current.voice).label
-                          : '浏览器语音',
+                      _current.voice == QVoiceConfig.systemVoiceId
+                          ? '系统语音'
+                          : TtsService.voiceById(_current.voice).label,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: colorScheme.onSurfaceVariant,
                       ),
@@ -106,19 +106,6 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
             ],
           ),
         ),
-        // Web 端无 Edge 在线合成通道，音色由浏览器决定，需要向用户说明差异
-        if (!kOnlineSynthesisSupported) ...[
-          const SizedBox(height: 12),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Text(
-              'Web 端使用浏览器自带语音朗读，音色与语速跟随浏览器设置。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-        ],
       ],
     );
 
@@ -175,62 +162,91 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         final theme = Theme.of(ctx);
-        return Container(
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.onSurfaceVariant.withValues(
-                      alpha: 0.2,
-                    ),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+        // 面板整体吃掉点击（opaque）：面板内空白处点按不会落到 modal barrier
+        // 造成"点透"式误关闭
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {},
+          child: SafeArea(
+            child: Container(
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(28),
                 ),
               ),
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.only(left: 8, bottom: 8),
-                child: Text(
-                  '选择音色',
-                  style: theme.textTheme.titleMedium,
-                ),
-              ),
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  children: [
-                    for (final voice in TtsService.builtinVoices)
-                      ListTile(
-                        leading: _buildPreviewButton(voice),
-                        title: Text(voice.label),
-                        subtitle: Text(
-                          voice.note,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.2,
                         ),
-                        trailing: voice.id == _current.voice
-                            ? Icon(
-                                Icons.check_circle,
-                                color: theme.colorScheme.primary,
-                              )
-                            : null,
-                        onTap: () => _selectVoice(voice.id),
+                        borderRadius: BorderRadius.circular(2),
                       ),
-                  ],
-                ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8, bottom: 8),
+                    child: Text(
+                      '选择音色',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                  ),
+                  Flexible(
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        // 系统语音：设备自带引擎，离线可用，无网络依赖
+                        ListTile(
+                          leading: _buildSystemPreviewButton(),
+                          title: const Text('系统语音'),
+                          subtitle: Text(
+                            '设备自带 · 离线可用',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          trailing:
+                              _current.voice == QVoiceConfig.systemVoiceId
+                                  ? Icon(
+                                      Icons.check_circle,
+                                      color: theme.colorScheme.primary,
+                                    )
+                                  : null,
+                          onTap: () => _selectVoice(ctx, QVoiceConfig.systemVoiceId),
+                        ),
+                        for (final voice in TtsService.builtinVoices)
+                          ListTile(
+                            leading: _buildPreviewButton(voice),
+                            title: Text(voice.label),
+                            subtitle: Text(
+                              voice.note,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            trailing: voice.id == _current.voice
+                                ? Icon(
+                                    Icons.check_circle,
+                                    color: theme.colorScheme.primary,
+                                  )
+                                : null,
+                            onTap: () => _selectVoice(ctx, voice.id),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         );
       },
@@ -239,8 +255,17 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
 
   /// 音色试听按钮：播放固定示例句，播放中变为停止
   Widget _buildPreviewButton(TtsVoiceOption voice) {
+    return _buildPreviewButtonFor(voice.id);
+  }
+
+  /// 系统语音的试听按钮（哨兵 ID 直通，播放层自动走设备引擎）
+  Widget _buildSystemPreviewButton() {
+    return _buildPreviewButtonFor(QVoiceConfig.systemVoiceId);
+  }
+
+  Widget _buildPreviewButtonFor(String voiceId) {
     final playback = ref.watch(ttsPlaybackProvider);
-    final previewKey = 'preview_${voice.id}';
+    final previewKey = 'preview_$voiceId';
     final isPlaying =
         playback.messageId == previewKey &&
         playback.status == TtsPlaybackStatus.playing;
@@ -258,7 +283,7 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
         notifier.speakMessage(
           previewKey,
           '你好，我是小Q，很高兴认识你。',
-          voiceOverride: voice.id,
+          voiceOverride: voiceId,
         );
       },
       icon: isBusy
@@ -271,12 +296,14 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
     );
   }
 
-  Future<void> _selectVoice(String voiceId) async {
+  Future<void> _selectVoice(BuildContext sheetCtx, String voiceId) async {
     try {
       await QVoiceConfig.instance.setVoice(voiceId);
       if (!mounted) return;
       setState(() => _settings = _current.copyWith(voice: voiceId));
-      Navigator.of(context).pop();
+      // 用弹窗自身的 context pop：页面 context 在嵌套导航下可能解析到
+      // 页面所在的 Navigator 而非弹窗所在的 root Navigator
+      Navigator.of(sheetCtx).pop();
     } catch (e) {
       if (!mounted) return;
       Toast.error(context, '保存失败：$e');
@@ -288,55 +315,65 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
     showModalBottomSheet(
       context: context,
       useRootNavigator: true,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         final theme = Theme.of(ctx);
-        return Container(
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          padding: const EdgeInsets.fromLTRB(8, 16, 8, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.onSurfaceVariant.withValues(
-                      alpha: 0.2,
-                    ),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+        // 面板整体吃掉点击，防空白处点透到 modal barrier 误关闭
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {},
+          child: SafeArea(
+            child: Container(
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(28),
                 ),
               ),
-              const SizedBox(height: 8),
-              for (final entry in QVoiceConfig.rateOptions.entries)
-                ListTile(
-                  title: Text(entry.value, textAlign: TextAlign.center),
-                  trailing: entry.key == currentRate
-                      ? Icon(
-                          Icons.check_circle,
-                          color: theme.colorScheme.primary,
-                        )
-                      : null,
-                  onTap: () => _selectRate(entry.key),
-                ),
-            ],
+              padding: const EdgeInsets.fromLTRB(8, 16, 8, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.2,
+                        ),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  for (final entry in QVoiceConfig.rateOptions.entries)
+                    ListTile(
+                      title: Text(entry.value, textAlign: TextAlign.center),
+                      trailing: entry.key == currentRate
+                          ? Icon(
+                              Icons.check_circle,
+                              color: theme.colorScheme.primary,
+                            )
+                          : null,
+                      onTap: () => _selectRate(ctx, entry.key),
+                    ),
+                ],
+              ),
+            ),
           ),
         );
       },
     );
   }
 
-  Future<void> _selectRate(double rate) async {
+  Future<void> _selectRate(BuildContext sheetCtx, double rate) async {
     try {
       await QVoiceConfig.instance.setRate(rate);
       if (!mounted) return;
       setState(() => _settings = _current.copyWith(rate: rate));
-      Navigator.of(context).pop();
+      Navigator.of(sheetCtx).pop();
     } catch (e) {
       if (!mounted) return;
       Toast.error(context, '保存失败：$e');

@@ -1,7 +1,9 @@
 /// 平台 TTS 引擎的条件导入入口。
 ///
-/// Edge 在线合成（flutter_edge_tts）依赖 `dart:io` WebSocket，仅原生端可用；
-/// Web 端走浏览器自带 speechSynthesis。平台差异由本文件按条件导入分发，
+/// Edge 在线合成走自研协议层（见 `edge_tts_client.dart`）：原生端手动握手
+/// 覆盖 User-Agent（dart:io 的 `WebSocket.connect` 追加 Dart UA 会被微软
+/// WAF 403），Web 端浏览器 WebSocket 天然放行——因此三端均可在线合成；
+/// 合成失败时降级到平台系统语音（原生 flutter_tts / 浏览器 speechSynthesis）。
 /// 各平台实现文件（tts_engine_io / tts_engine_web / tts_engine_stub）暴露
 /// 同一套顶层函数与同名常量（仿 image_saver 的鸭子类型模式）。
 library;

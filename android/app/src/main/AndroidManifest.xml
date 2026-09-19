@@ -34,6 +34,14 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+            <!-- 关闭框架级深链：Router API 下默认开启，会把小组件跳转 Intent 的 data
+                 （WidgetIntents 编入的 qnote://route/...，仅用于 PendingIntent 判等）
+                 原样推给 go_router 匹配而抛 no routes for location。
+                 路由导航统一走 route extra → MethodChannel 通道，本 App 无任何 VIEW 深链入口 -->
+            <meta-data
+              android:name="flutter_deeplinking_enabled"
+              android:value="false"
+              />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>

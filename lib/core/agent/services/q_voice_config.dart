@@ -70,6 +70,9 @@ class QVoiceConfig {
 
   static const String storageKey = 'q_voice';
 
+  /// 音色哨兵值：设备系统自带语音（离线可用，无网络依赖）
+  static const String systemVoiceId = 'system';
+
   /// 语速可选档位（档位值 → 展示名）。double 不具备 const 基元相等性，用 final
   static final Map<double, String> rateOptions = {
     0.8: '慢速',

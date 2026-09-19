@@ -6,7 +6,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:audio_session/audio_session.dart';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 
@@ -54,9 +56,13 @@ class TtsPlayer extends Notifier<TtsPlaybackState> {
   @override
   TtsPlaybackState build() => TtsPlaybackState.idle;
 
-  /// 消息的稳定播放标识：时间戳 + 正文哈希（消息模型无 id 字段）
+  /// 消息的稳定播放标识：角色 + 正文 md5。
+  ///
+  /// 消息模型无 id 字段，且自动朗读与气泡渲染拿到的可能是内容相同的
+  /// 不同对象（时间戳会有毫秒级差异），按内容摘要定 key 才能保证
+  /// 按钮状态精确对齐，点击"停止"不会因 key 不匹配被误判成重新朗读。
   static String messageKeyOf(ChatMessage message) =>
-      'msg_${message.timestamp?.millisecondsSinceEpoch ?? 0}_${message.content.hashCode}';
+      'msg_${message.role}_${md5.convert(utf8.encode(message.content))}';
 
   /// 气泡按钮入口：同一消息再次点击时停止，否则开始朗读
   Future<void> toggleMessage(ChatMessage message) async {
@@ -98,8 +104,13 @@ class TtsPlayer extends Notifier<TtsPlaybackState> {
     final voice = voiceOverride ?? settings.voice;
     final rate = rateOverride ?? settings.rate;
 
-    // 首选 Edge 在线合成（仅原生端）；失败记录原因后降级系统语音
-    if (kOnlineSynthesisSupported) {
+    // 首选 Edge 在线合成（三端均可用；选了系统语音则直接跳过在线通道），
+    // 失败记录原因后降级系统语音
+    String? onlineFailureReason;
+    final useSystemVoice = voice == QVoiceConfig.systemVoiceId;
+    if (useSystemVoice) {
+      LoggerService.instance.logAI('TTS 使用系统语音（用户指定，跳过在线合成）');
+    } else if (kOnlineSynthesisSupported) {
       try {
         final bytes = await _synthesizedBytes(cleanText, voice, rate);
         if (gen != _generation) return;
@@ -107,9 +118,11 @@ class TtsPlayer extends Notifier<TtsPlaybackState> {
         return;
       } on TtsException catch (e) {
         if (gen != _generation) return;
+        onlineFailureReason = e.message;
         LoggerService.instance.logAI('Edge TTS 降级系统语音: ${e.message}');
       } catch (e) {
         if (gen != _generation) return;
+        onlineFailureReason = '$e';
         LoggerService.instance.logAI('Edge TTS 降级系统语音: $e');
       }
     }
@@ -124,7 +137,12 @@ class TtsPlayer extends Notifier<TtsPlaybackState> {
       state = TtsPlaybackState(messageId: messageId);
     } catch (e) {
       if (gen != _generation) return;
-      state = TtsPlaybackState(error: e is TtsException ? e.message : '$e');
+      // 把两段失败原因都带给用户，便于区分网络问题与设备能力问题
+      final fallbackReason = e is TtsException ? e.message : '$e';
+      final combined = onlineFailureReason == null
+          ? fallbackReason
+          : '$onlineFailureReason；系统语音：$fallbackReason';
+      state = TtsPlaybackState(error: combined);
     }
   }
 
@@ -173,6 +191,7 @@ class TtsPlayer extends Notifier<TtsPlaybackState> {
         _onPlaybackFinished();
       }
     });
+    _configureAudioSession();
     ref.onDispose(() {
       _playerSub?.cancel();
       _player?.dispose();
@@ -184,6 +203,18 @@ class TtsPlayer extends Notifier<TtsPlaybackState> {
     // 仅当没有新任务接管（代际未变）时复位；播放中状态由 stop/speak 主动变更
     if (state.status == TtsPlaybackStatus.playing) {
       state = TtsPlaybackState(messageId: state.messageId);
+    }
+  }
+
+  /// 原生端配置音频会话为语音场景：iOS 默认会话会跟随硬件静音键，
+  /// playback 类别下朗读不受静音键影响；Android 上自动暂停其他媒体。
+  Future<void> _configureAudioSession() async {
+    if (kIsWeb) return;
+    try {
+      final session = await AudioSession.instance;
+      await session.configure(const AudioSessionConfiguration.speech());
+    } catch (_) {
+      // 会话配置失败不阻塞朗读：仅影响静音键行为与混音策略
     }
   }
 }

@@ -15,6 +15,12 @@ import 'package:qnote_flutter/pages/settings/screen_usage_page.dart';
 import 'package:qnote_flutter/pages/settings/about_page.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 
+/// 侧边栏（抽屉）。
+///
+/// 间距按 6 / 14 / 16 / 24 四档刻度收口：6 用于卡片内边距与分隔线留白，
+/// 14 用于行内横向缩进与图标到文字的间距，16 用于卡片外边距，24 用于头部与
+/// 底部区域的左右基线。行高交给 ListTile 的默认 [VisualDensity.standard]
+/// （约 56），不再用负 density 压缩，避免整列贴边、难以扫读。
 class SideDrawer extends ConsumerStatefulWidget {
   const SideDrawer({super.key});
 
@@ -86,7 +92,7 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
           children: [
             // Header
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 16, 16),
+              padding: const EdgeInsets.fromLTRB(24, 20, 14, 14),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -109,26 +115,36 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
 
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.only(top: 4, bottom: 16),
                 children: [
-                  // 全部入口收进一张集合卡片：扁平无分组，行间以超细分隔线区隔
+                  // 全部入口收进一张集合卡片：扁平无分组，行间以超细分隔线区隔。
+                  // 卡片只描边、不填色——抽屉底色已是 surface，再铺一层不透明
+                  // 填充会把 InkWell 的悬停/按下高亮盖住（Ink 特征画在 Material 层，
+                  // 本容器是其后代、绘制在其之上），因此这里必须保持透明。
                   Container(
                     margin: const EdgeInsets.symmetric(horizontal: 16),
-                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
-                      color: colorScheme.surfaceContainer,
                       borderRadius: BorderRadius.circular(AppRadius.large),
+                      border: Border.all(
+                        width: 1,
+                        // 浅色下 outlineVariant 本身已很淡，需满 alpha 才能撑住卡片边界；
+                        // 深色底对比更强，压到 0.6 避免描边发亮
+                        color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.6 : 1.0),
+                      ),
                     ),
                     child: Column(
                       children: [
                         for (int i = 0; i < _menuEntries.length; i++) ...[
                           if (i > 0)
                             Divider(
-                              height: 1,
+                              height: 9,
                               thickness: 0.5,
-                              indent: 60,
-                              endIndent: 16,
-                              color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.35 : 0.5),
+                              // indent = 卡片内边距 6 + 行内缩进 14 + 图标 36 + 文字间距 14，
+                              // 使分隔线左端与菜单文字左缘对齐（此处按内容盒计算为 64）
+                              indent: 64,
+                              endIndent: 8,
+                              color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.45 : 0.9),
                             ),
                           _DrawerMenuItem(
                             entry: _menuEntries[i],
@@ -144,7 +160,7 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
 
             // Bottom theme toggle or version
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
+              padding: const EdgeInsets.fromLTRB(24, 14, 24, 24),
               child: Row(
                 children: [
                   Text(
@@ -181,7 +197,7 @@ class _MenuEntry {
 const List<_MenuEntry> _menuEntries = [
   _MenuEntry(icon: Icons.person_outline, label: '个人信息', page: UserProfilePage()),
   _MenuEntry(
-    iconWidget: QAvatar(size: 32, withBackground: true),
+    iconWidget: QAvatar(size: 36, withBackground: true),
     label: '小Q设置',
     page: QSettingsPage(),
   ),
@@ -205,25 +221,25 @@ class _DrawerMenuItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
 
     // 统一品牌色小圆底，压低图标色彩权重，让列表主体保持干净
     final Widget leading = entry.iconWidget ??
         Container(
-          width: 32,
-          height: 32,
+          width: 36,
+          height: 36,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: colorScheme.primaryContainer,
             shape: BoxShape.circle,
           ),
-          child: Icon(entry.icon, color: colorScheme.primary, size: 17),
+          child: Icon(entry.icon, color: colorScheme.primary, size: 19),
         );
 
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-      horizontalTitleGap: 12,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+      horizontalTitleGap: 14,
       minLeadingWidth: 0,
-      visualDensity: const VisualDensity(horizontal: 0, vertical: -2),
       leading: leading,
       title: Text(
         entry.label,
@@ -234,9 +250,16 @@ class _DrawerMenuItem extends StatelessWidget {
       ),
       trailing: Icon(
         Icons.chevron_right,
-        size: 18,
-        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.25),
+        size: 20,
+        // 0.25 时箭头几乎看不见，提到 0.4 让「可进入」的暗示清晰且不过重
+        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
       ),
+      // Web/桌面端悬停与键盘聚焦反馈；ListTileThemeData 不提供 hoverColor，
+      // 因此只能在 widget 上局部设置（浅色底用更低 alpha 保持克制）。
+      // 按下态用 splashColor（ListTile 没有 highlightColor 参数）。
+      hoverColor: colorScheme.primary.withValues(alpha: isDark ? 0.10 : 0.06),
+      focusColor: colorScheme.primary.withValues(alpha: isDark ? 0.14 : 0.10),
+      splashColor: colorScheme.primary.withValues(alpha: isDark ? 0.16 : 0.12),
       onTap: () {
         HapticFeedback.selectionClick();
         onTap();

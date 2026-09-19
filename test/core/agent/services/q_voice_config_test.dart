@@ -52,5 +52,15 @@ void main() {
       expect(updated.voice, 'a');
       expect(updated.rate, 1.0);
     });
+
+    test('系统语音哨兵 ID 可往返保存', () {
+      const settings = QVoiceSettings(
+        autoRead: true,
+        voice: QVoiceConfig.systemVoiceId,
+        rate: 1.0,
+      );
+      final decoded = QVoiceSettings.decode(jsonEncode(settings.encode()));
+      expect(decoded.voice, QVoiceConfig.systemVoiceId);
+    });
   });
 }

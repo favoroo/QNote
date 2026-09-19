@@ -954,10 +954,12 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         }
         if (_bindsCurrentSession(run)) {
           state = state!.copyWith(messages: List.of(run.messages));
-          // 语音回复：开关开启且用户仍停留在发起会话时，自动朗读最终答复
-          //（异步触发不阻塞落库；切走会话、发起新任务、手动停止都会打断朗读）
+          // 语音回复：开关开启且用户仍停留在发起会话时，自动朗读最终答复。
+          // 必须 unawaited：await 会把 finally（清流式气泡/清运行态/落库）推迟
+          // 到朗读结束，期间界面同时挂着正式气泡与流式气泡（回复"重复出现"），
+          // 且运行态停止按钮对已结束的任务无效（按了没反应）
           if (finalResponse.content.trim().isNotEmpty) {
-            await _autoSpeakReply(finalResponse);
+            unawaited(_autoSpeakReply(finalResponse));
           }
         }
       }

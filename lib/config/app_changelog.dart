@@ -14,6 +14,16 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.62',
+    date: '2026-09-19',
+    notes: [
+      '修复小Q 语音回复完全无声：自研 Edge TTS 协议层替换失效的第三方包，Web 端也用上微软在线音色',
+      '语音回复体验优化：自动朗读不再重复出现、朗读按钮状态稳定、新增「系统语音」离线选项、设置弹窗防点透',
+      '侧边栏排版放松与视觉美化：行高恢复、透明描边卡片、分隔线留白、悬停/按下交互反馈',
+      '修复桌面小组件点击报错（需重装 APK 生效）',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.61',
     date: '2026-09-19',
     notes: [
