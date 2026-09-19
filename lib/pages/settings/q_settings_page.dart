@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/pages/settings/q_memory_page.dart';
 import 'package:qnote_flutter/pages/settings/q_personality_page.dart';
 import 'package:qnote_flutter/pages/settings/q_skills_page.dart';
+import 'package:qnote_flutter/pages/settings/q_voice_page.dart';
 
 /// 小Q设置（管理）一体化页面
 ///
@@ -12,7 +13,8 @@ import 'package:qnote_flutter/pages/settings/q_skills_page.dart';
 /// 整合为统一入口，提供顶部平滑切换分段栏：
 /// - 个性：人设、语气风格与自定义 Prompt；
 /// - 技能：用户技能、使用次数统计、创建/编辑/归档；
-/// - 记忆：长期记忆（用户画像与小Q手记）、条目编辑与沉淀管理。
+/// - 记忆：长期记忆（用户画像与小Q手记）、条目编辑与沉淀管理；
+/// - 语音：自动朗读开关、音色与语速（语音回复功能）。
 class QSettingsPage extends ConsumerStatefulWidget {
   const QSettingsPage({super.key, this.initialTab = 0});
 
@@ -28,6 +30,7 @@ class _QSettingsPageState extends ConsumerState<QSettingsPage> {
     _TabItem(title: '个性', icon: Icons.mood_outlined),
     _TabItem(title: '技能', icon: Icons.auto_fix_high_outlined),
     _TabItem(title: '记忆', icon: Icons.psychology_outlined),
+    _TabItem(title: '语音', icon: Icons.graphic_eq_outlined),
   ];
 
   late int _currentIndex;
@@ -78,6 +81,7 @@ class _QSettingsPageState extends ConsumerState<QSettingsPage> {
                 const QPersonalityPage(embedded: true),
                 QSkillsPage(key: _skillsKey, embedded: true),
                 const QMemoryPage(embedded: true),
+                const QVoicePage(embedded: true),
               ],
             ),
           ),

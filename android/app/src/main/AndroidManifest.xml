@@ -104,6 +104,16 @@
                 android:resource="@xml/widget_todo_info" />
         </receiver>
 
+        <!-- 问小Q：无业务数据的纯跳转入口，故只注册系统刷新 action -->
+        <receiver android:name="com.appone.qnote_flutter.AiEntryWidgetProvider" android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_ai_entry_info" />
+        </receiver>
+
 
         <activity
             android:name="com.appone.qnote_flutter.QuickRecordActivity"

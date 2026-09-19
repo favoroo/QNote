@@ -24,6 +24,7 @@ import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
+import 'package:qnote_flutter/widgets/unsaved_changes_dialog.dart';
 import 'package:qnote_flutter/widgets/diary/ai_extract_helper.dart';
 import 'package:qnote_flutter/widgets/diary/model_selection_dialog.dart';
 import 'package:qnote_flutter/widgets/diary/edit_tag_time_sheet.dart';
@@ -58,6 +59,8 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   bool _isExtracting = false;
   // 保存重入保护：防止压缩完成瞬间双击重复提交
   bool _isSaving = false;
+  // 进入编辑器时的内容指纹，用于判断有没有未保存改动（返回拦截与保存按钮灰态共用）
+  late String _baselineSignature;
   // 压缩等待弹窗标志：防重复弹窗，也防弹窗孤儿
   bool _waitingForCompression = false;
   CancelToken? _cancelToken;
@@ -411,6 +414,8 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     _contentController = TextEditingController(
       text: _parseUserRemarks(r.content, _tagEntries),
     );
+    // 正文输入不触发本页重建，脏态文案靠它自己补一次 setState
+    _contentController.addListener(_onContentChanged);
 
     // 注册悬浮小Q页面上下文与重载钩子：任务结束后从仓库重读该记录，
     // 避免编辑器旧字段在小Q修改后仍被随后的显式保存覆盖
@@ -432,6 +437,87 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         quoteSelection: _captureSelectionQuote,
       ),
     );
+
+    // 基线在 initState 同步采集即可：表单字段的最新值始终已回写进 _tagEntries，
+    // 不依赖 build 期懒创建的 _formControllers
+    _resetBaseline();
+  }
+
+  /// 当前编辑内容的指纹：正文 + 时间 + 标签 + 图片 + 各标签表单字段。
+  ///
+  /// 表单字段以 `_tagEntries` 为准而非 `_formControllers`——后者由 build 懒创建，
+  /// 且每次 onChanged 都会回写进 entries，因此 entries 一定是最新值。
+  String _editSignature() {
+    final buffer = StringBuffer()
+      ..writeln(_contentController.text)
+      ..writeln(_time.microsecondsSinceEpoch)
+      ..writeln(_startTime?.microsecondsSinceEpoch ?? 0)
+      ..writeln(_endTime?.microsecondsSinceEpoch ?? 0)
+      ..writeln(_tags.join('\u0000'))
+      ..writeln(_displayTag)
+      ..writeln(_photos.join('\u0000'));
+    for (final entry in _tagEntries) {
+      buffer.write(
+        '${entry.id}|${entry.name}|${entry.time}|'
+        '${entry.startHour}:${entry.startMinute}:${entry.startOffset}|'
+        '${entry.endHour}:${entry.endMinute}:${entry.endOffset}|',
+      );
+      // 字段名排序后拼接：Map 插入顺序会变，不排序会把同一内容编成不同指纹
+      final fieldKeys = entry.fields.keys.toList()..sort();
+      for (final key in fieldKeys) {
+        buffer.write('$key=${entry.fields[key]};');
+      }
+      buffer.writeln();
+    }
+    return buffer.toString();
+  }
+
+  /// 是否有尚未保存的改动
+  bool get _isDirty => _baselineSignature != _editSignature();
+
+  /// 状态行文案
+  String get _saveStatusLabel => _isSaving ? '保存中…' : (_isDirty ? '未保存' : '已保存');
+
+  /// 上一帧实际渲染出来的状态文案。
+  ///
+  /// 正文输入不会重建本页（TextField 自绘），所以「已保存 → 未保存」这一跳要主动补
+  /// 一次重建；用「与上一帧渲染值比对」而非布尔标记，避免只翻转一次的判断被提前消费。
+  String _renderedSaveStatusLabel = '';
+
+  void _onContentChanged() {
+    if (!mounted || _saveStatusLabel == _renderedSaveStatusLabel) {
+      return;
+    }
+    setState(() {});
+  }
+
+  /// AppBar 副标题的「保存中…/已保存/未保存」状态行
+  Widget _buildSaveStatusLine(ThemeData theme) {
+    final label = _saveStatusLabel;
+    _renderedSaveStatusLabel = label;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: AnimatedSwitcher(
+        duration: AppDurations.fast,
+        child: Text(
+          label,
+          key: ValueKey<String>(label),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: _isDirty
+                ? theme.colorScheme.primary
+                : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 以当前内容刷新基线：进入编辑器、保存成功、小Q 回填之后各调一次
+  void _resetBaseline() {
+    _baselineSignature = _editSignature();
   }
 
   @override
@@ -463,6 +549,8 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       // 表单控制器由 build 懒创建，清空后随新数据重建
       _formControllers.clear();
     });
+    // 小Q 改的是仓库不是用户输入，回填后不算未保存改动
+    _resetBaseline();
   }
 
   /// 捕获正文当前框选内容为引用（选择菜单「给小Q」与悬浮球点按共用）。
@@ -504,6 +592,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     _qContainer
         ?.read(floatingQProvider.notifier)
         .popOverlayContext(_qContext);
+    _contentController.removeListener(_onContentChanged);
     _contentController.dispose();
     _contentFocusNode.dispose();
     for (final c in _formControllers.values) {
@@ -982,19 +1071,39 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     }
   }
 
-  Future<void> _save() async {
-    if (_isSaving) return;
-    _isSaving = true;
-    try {
-      await _doSave();
-    } finally {
-      _isSaving = false;
+  /// 落库当前内容，返回是否成功。
+  ///
+  /// [notify] 为 false 时不提示，交给调用方（如未保存确认框）统一提示，
+  /// 避免两条 Toast 互相顶掉。不 pop，退出与否由调用方决定。
+  Future<bool> _save({bool notify = true}) async {
+    if (_isSaving) {
+      return false;
     }
+    _isSaving = true;
+    bool saved = false;
+    try {
+      saved = await _doSave();
+    } catch (e) {
+      // 细节进日志，UI 只给简洁可操作的提示
+      debugPrint('保存记录失败: $e');
+    }
+    _isSaving = false;
+    if (!saved && notify && mounted) {
+      Toast.show(
+        context,
+        '保存失败，内容未存储',
+        type: ToastType.error,
+        duration: const Duration(seconds: 5),
+        actionLabel: '重试',
+        onAction: _save,
+      );
+    }
+    return saved;
   }
 
-  Future<void> _doSave() async {
+  Future<bool> _doSave() async {
     await _waitForCompressing();
-    if (!mounted) return;
+    if (!mounted) return false;
 
     // Ensure sleep tag time is in sync with record time on save (only if sleepEntry has time or _startTime is set)
     final sleepIndex = _tagEntries.indexWhere((e) => e.id == 'sleep' || e.name == '睡眠');
@@ -1026,10 +1135,6 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         
         _tagEntries[sleepIndex] = updatedSleep.copyWith(time: updatedSleep.formattedTime);
       }
-    }
-
-    for (final path in _removedPaths) {
-      await ImageRepository().deleteImage(path);
     }
 
     final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
@@ -1106,7 +1211,21 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       updatedAt: DateTime.now(),
     );
     await ref.read(diaryListProvider.notifier).updateDiary(updated);
-    if (mounted) Navigator.of(context).pop();
+
+    // 内容已落库：被移走的旧图这时才可以安全删除，本次新增的图则已被记录引用、
+    // 不能再当作「未保存的临时文件」处理
+    for (final path in _removedPaths) {
+      try {
+        await ImageRepository().deleteImage(path);
+      } catch (_) {
+        // 文件可能已被系统清理，删不掉不影响记录内容
+      }
+    }
+    _removedPaths.clear();
+    _newlyUploadedPaths.clear();
+    // 保存期间会改写 _tagEntries（如睡眠标签时间同步），基线必须在写完之后刷新
+    _resetBaseline();
+    return true;
   }
 
   Future<void> _delete() async {
@@ -1139,9 +1258,35 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     }
   }
 
-  void _handleBack() {
+  /// 返回键与 iOS 侧滑共用的退出入口。
+  ///
+  /// 有未保存改动时先问「保存 / 放弃 / 取消」——原来这里直接 pop，
+  /// 手打的正文会静默丢弃（既没有自动保存，也没有二次确认）。
+  Future<void> _handleBack() async {
+    // 判脏之前不做任何 await/IO，避免 iOS 侧滑期间停在半过渡态
+    if (_isDirty) {
+      final canLeave = await promptUnsavedChanges(
+        context,
+        content: '这条记录有未保存的修改，离开后将丢失。',
+        onSave: () => _save(notify: false),
+      );
+      if (!canLeave || !mounted) {
+        return;
+      }
+    }
+
+    // 走到这里要么没改动、要么已保存成功（此时列表已被清空），
+    // 剩下的场景是用户选了「放弃更改」：本次新上传的图还没被记录引用，删掉
     for (final path in _newlyUploadedPaths) {
-      ImageRepository().deleteImage(path);
+      try {
+        await ImageRepository().deleteImage(path);
+      } catch (_) {
+        // 删不掉也不能挡住退出
+      }
+    }
+    _newlyUploadedPaths.clear();
+    if (!mounted) {
+      return;
     }
     Navigator.of(context).pop();
   }
@@ -1337,6 +1482,11 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
           ),
           title: const Text('编辑记录'),
           centerTitle: true,
+          // 未保存状态常驻可见，配合底部保存按钮的灰态给出一致预期
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(20),
+            child: _buildSaveStatusLine(theme),
+          ),
           actions: [
             IconButton(
               icon: Icon(Icons.delete_outline, color: colorScheme.error),
@@ -2698,17 +2848,25 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               child: SizedBox(
                 height: 52,
                 child: FilledButton(
-                  // 图片压缩处理中禁用保存：此时照片还是临时路径，压缩完成后自动恢复
-                  onPressed:
-                      (_compressingTasks.isNotEmpty || _isSaving) ? null : _save,
+                  // 图片压缩处理中禁用保存：此时照片还是临时路径，压缩完成后自动恢复；
+                  // 没有改动时同样置灰，按钮亮不亮本身就是「有没有待保存内容」的指示
+                  onPressed: (_compressingTasks.isNotEmpty || _isSaving || !_isDirty)
+                      ? null
+                      : () async {
+                          if (await _save() && mounted) {
+                            Navigator.of(context).pop();
+                          }
+                        },
                   style: FilledButton.styleFrom(
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(AppRadius.medium),
                     ),
                   ),
                   child: Text(
+                    // 文案固定，未保存与否交给按钮亮灭 + 顶部状态行表达，
+                    // 避免同屏出现两处「已保存」
                     _compressingTasks.isNotEmpty ? '图片处理中...' : '保存修改',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),

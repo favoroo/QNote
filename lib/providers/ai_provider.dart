@@ -17,6 +17,8 @@ import 'package:qnote_flutter/core/agent/engine/agent_loop.dart';
 import 'package:qnote_flutter/core/agent/prompts/q_system_prompt.dart';
 import 'package:qnote_flutter/core/agent/services/agent_tool_config.dart';
 import 'package:qnote_flutter/core/agent/services/q_personality_service.dart';
+import 'package:qnote_flutter/core/agent/services/q_voice_config.dart';
+import 'package:qnote_flutter/core/tts/tts_player.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_usage_tracker.dart';
 import 'package:qnote_flutter/core/agent/vfs/virtual_workspace_service.dart';
@@ -526,6 +528,8 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
   void setSession(ChatSession? session) {
     // 流式气泡/状态行/思考区随会话走：先卸下，避免上一会话的流式内容串显到目标会话
     _clearStreamingProviders();
+    // 朗读音随会话：切走时停掉上一会话正在进行的朗读
+    unawaited(_ref.read(ttsPlaybackProvider.notifier).stop());
 
     // 目标会话若有进行中的小Q任务：以任务内的消息累积为准恢复
     // （列表/库里的会话对象是过期快照，缺少任务中途产生的中间消息）
@@ -729,6 +733,8 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
     )..messages.addAll(updatedMessages);
     _activeRuns[startSessionId] = run;
     _publishRunningSessions();
+    // 新一轮任务发起即打断上一轮仍在进行的语音朗读
+    unawaited(_ref.read(ttsPlaybackProvider.notifier).stop());
 
     state = state!.copyWith(title: newTitle, messages: updatedMessages);
 
@@ -948,6 +954,11 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         }
         if (_bindsCurrentSession(run)) {
           state = state!.copyWith(messages: List.of(run.messages));
+          // 语音回复：开关开启且用户仍停留在发起会话时，自动朗读最终答复
+          //（异步触发不阻塞落库；切走会话、发起新任务、手动停止都会打断朗读）
+          if (finalResponse.content.trim().isNotEmpty) {
+            await _autoSpeakReply(finalResponse);
+          }
         }
       }
     } catch (e, stackTrace) {
@@ -1022,6 +1033,20 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         await repo.updateChatSession(finalSession);
         _ref.read(chatSessionListProvider.notifier).upsertLocal(finalSession);
       }
+    }
+  }
+
+  /// 自动朗读最终答复：仅在语音回复开关开启时生效。
+  ///
+  /// 朗读失败只记日志（气泡上的手动朗读按钮会给出 Toast 反馈），不影响主流程。
+  Future<void> _autoSpeakReply(ChatMessage reply) async {
+    try {
+      if (!await QVoiceConfig.instance.isAutoReadEnabled()) return;
+      await _ref
+          .read(ttsPlaybackProvider.notifier)
+          .speakMessage(TtsPlayer.messageKeyOf(reply), reply.content);
+    } catch (e) {
+      LoggerService.instance.logAI('自动朗读失败: $e', level: LogLevel.error);
     }
   }
 

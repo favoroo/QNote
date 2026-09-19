@@ -10,13 +10,15 @@ import 'package:qnote_flutter/core/utils/toast_utils.dart';
 /// 三种落点：选「保存」且保存成功、选「放弃更改」、或直接关闭对话框外的其它
 /// 显式选择。**关闭（点遮罩/返回键）视为留在当前页**，与「取消」同义。
 ///
-/// [onSave] 约定：保存失败请**抛出异常**，由本对话框统一提示并留在当前页；
-/// 调用方不必（也不该）自己再提示一次，避免重复 Toast 互相顶掉。
+/// [onSave] 约定：返回 true 表示已保存成功、可以离开；返回 false 或抛异常都算失败，
+/// 此时留在当前页并提示 [failureMessage]。**具体错误细节请调用方自己写日志**，
+/// 这里只给一句通用文案，避免把异常对象直接拼进用户可见的提示里。
 Future<bool> promptUnsavedChanges(
   BuildContext context, {
   String title = '未保存的更改',
   String content = '有未保存的更改，离开后将丢失。',
-  Future<void> Function()? onSave,
+  String failureMessage = '未能保存，仍停在当前页',
+  Future<bool> Function()? onSave,
 }) async {
   final colorScheme = Theme.of(context).colorScheme;
 
@@ -50,16 +52,17 @@ Future<bool> promptUnsavedChanges(
     case 'discard':
       return true;
     case 'save':
+      bool saved = false;
       try {
-        await onSave!();
-        return true;
-      } catch (e) {
-        if (context.mounted) {
-          Toast.error(context, '保存失败：$e');
-        }
-        // 保存没成功就离开等于丢内容，停在原页等用户处理
-        return false;
+        saved = await onSave!();
+      } catch (_) {
+        // 抛异常与返回 false 同义：没存上就不许离开
       }
+      if (!saved && context.mounted) {
+        // 保存没成功就离开等于丢内容，停在原页等用户处理
+        Toast.error(context, failureMessage);
+      }
+      return saved;
     default:
       // 含 'cancel' 与对话框被遮罩/返回键关闭
       return false;

@@ -14,6 +14,16 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.61',
+    date: '2026-09-19',
+    notes: [
+      '小Q 新增语音回复：免费 Edge TTS 朗读 + 系统语音兜底，消息气泡一键朗读，支持自动朗读、7 款中文音色试听与语速调节',
+      '桌面小组件升级：新增「问小Q」直达入口组件；修复待办组件「今日」计数把其他文件夹待办也算进来的问题',
+      '桌面勾选待办更可靠：修复标题含引号或换行时破坏同步、重复规则被抹掉等隐患',
+      '日记编辑器新增未保存守卫：返回时弹窗确认，不再静默丢弃改动',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.60',
     date: '2026-09-19',
     notes: [

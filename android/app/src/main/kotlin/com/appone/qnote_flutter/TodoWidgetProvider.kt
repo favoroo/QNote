@@ -9,12 +9,8 @@ import android.content.Context
 import android.content.Intent
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
-import android.os.Build
 import android.widget.RemoteViews
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.TimeZone
+import org.json.JSONObject
 
 class TodoWidgetProvider : AppWidgetProvider() {
     companion object {
@@ -64,16 +60,16 @@ class TodoWidgetProvider : AppWidgetProvider() {
     )
 
     private fun toggleTodoStatus(context: Context, todoId: String, isCompleted: Boolean) {
-        // 在后台线程异步修改数据库以保持流畅性
-        Thread {
+        // 走串行队列而不是裸 Thread：组件进程被回收时，Thread 会连同这次勾选一起被丢掉
+        WidgetDatabase.executor.execute {
             var db: SQLiteDatabase? = null
             try {
-                val dbFile = context.getDatabasePath("qnote.db")
-                if (!dbFile.exists()) return@Thread
+                // 用非空局部量接住，避免可空 var 在多层 try 里丢智能转换
+                val writable = WidgetDatabase.openReadwrite(context) ?: return@execute
+                db = writable
 
-                db = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
                 val newStatus = if (isCompleted) 0 else 1 // 取反
-                val nowStr = getISO8601Timestamp()
+                val nowStr = WidgetDatabase.iso8601()
 
                 // 1. 获取原数据，记录到 sync_log
                 var title = ""
@@ -85,23 +81,33 @@ class TodoWidgetProvider : AppWidgetProvider() {
                 var isLongTerm = 0
                 var reminderTime: String? = null
                 var deadline: String? = null
+                var repeatRule = "none"
                 var sortOrder = 0
                 var createdAt = nowStr
 
                 val cursor = db.rawQuery("SELECT * FROM todos WHERE id = ?", arrayOf(todoId))
-                if (cursor.moveToFirst()) {
-                    title = cursor.getString(cursor.getColumnIndexOrThrow("title"))
-                    desc = cursor.getString(cursor.getColumnIndexOrThrow("description")) ?: ""
-                    priority = cursor.getString(cursor.getColumnIndexOrThrow("priority")) ?: "normal"
-                    dueDate = cursor.getString(cursor.getColumnIndexOrThrow("due_date"))
-                    tags = cursor.getString(cursor.getColumnIndexOrThrow("tags")) ?: ""
-                    folderId = cursor.getString(cursor.getColumnIndexOrThrow("folder_id"))
-                    isLongTerm = cursor.getInt(cursor.getColumnIndexOrThrow("is_long_term"))
-                    reminderTime = cursor.getString(cursor.getColumnIndexOrThrow("reminder_time"))
-                    deadline = cursor.getString(cursor.getColumnIndexOrThrow("deadline"))
-                    sortOrder = cursor.getInt(cursor.getColumnIndexOrThrow("sort_order"))
-                    createdAt = cursor.getString(cursor.getColumnIndexOrThrow("created_at"))
+                if (!cursor.moveToFirst()) {
+                    // 待办已被删除：继续往下写会给一条不存在的记录造出 update 日志，污染增量包
+                    cursor.close()
+                    return@execute
                 }
+                title = cursor.getString(cursor.getColumnIndexOrThrow("title"))
+                desc = cursor.getString(cursor.getColumnIndexOrThrow("description")) ?: ""
+                priority = cursor.getString(cursor.getColumnIndexOrThrow("priority")) ?: "normal"
+                dueDate = cursor.getString(cursor.getColumnIndexOrThrow("due_date"))
+                tags = cursor.getString(cursor.getColumnIndexOrThrow("tags")) ?: ""
+                folderId = cursor.getString(cursor.getColumnIndexOrThrow("folder_id"))
+                isLongTerm = cursor.getInt(cursor.getColumnIndexOrThrow("is_long_term"))
+                reminderTime = cursor.getString(cursor.getColumnIndexOrThrow("reminder_time"))
+                deadline = cursor.getString(cursor.getColumnIndexOrThrow("deadline"))
+                // repeat_rule 是后期迁移加的列，老库可能还没有；用 getColumnIndex 容错，
+                // 避免整次勾选因为一个字段而抛异常失败
+                val repeatRuleIndex = cursor.getColumnIndex("repeat_rule")
+                if (repeatRuleIndex >= 0 && !cursor.isNull(repeatRuleIndex)) {
+                    repeatRule = cursor.getString(repeatRuleIndex)
+                }
+                sortOrder = cursor.getInt(cursor.getColumnIndexOrThrow("sort_order"))
+                createdAt = cursor.getString(cursor.getColumnIndexOrThrow("created_at"))
                 cursor.close()
 
                 // 2. 更新 todos 表
@@ -109,7 +115,6 @@ class TodoWidgetProvider : AppWidgetProvider() {
                     put("is_completed", newStatus)
                     put("updated_at", nowStr)
                 }
-                db.update("todos", values, "id = ?", arrayOf(todoId))
 
                 // 3. 构造更新的 JSON 并记录 sync_log 保证与 Flutter toMap() 表现一致
                 val dataJson = buildTodoJsonString(
@@ -124,6 +129,7 @@ class TodoWidgetProvider : AppWidgetProvider() {
                     isLongTerm = isLongTerm == 1,
                     reminderTime = reminderTime,
                     deadline = deadline,
+                    repeatRule = repeatRule,
                     sortOrder = sortOrder,
                     createdAt = createdAt,
                     updatedAt = nowStr
@@ -136,8 +142,22 @@ class TodoWidgetProvider : AppWidgetProvider() {
                     put("data", dataJson)
                     put("timestamp", nowStr)
                 }
-                db.insert("sync_log", null, logValues)
 
+                // 三笔写入放同一事务：中途崩溃不会留下「待办已改但无同步日志」或反过来的状态
+                db.beginTransaction()
+                try {
+                    db.update("todos", values, "id = ?", arrayOf(todoId))
+                    db.insert("sync_log", null, logValues)
+                    // 就地刷新今日计数，桌面立刻反映新值，不必等下一次回 App 由 Dart 覆写
+                    WidgetDatabase.writeSnapshotInt(
+                        db,
+                        WidgetDatabase.SNAPSHOT_TODO_PENDING_TODAY,
+                        WidgetDatabase.countTodayPending(db)
+                    )
+                    db.setTransactionSuccessful()
+                } finally {
+                    db.endTransaction()
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
@@ -148,12 +168,12 @@ class TodoWidgetProvider : AppWidgetProvider() {
             val appWidgetManager = AppWidgetManager.getInstance(context)
             val component = ComponentName(context, TodoWidgetProvider::class.java)
             val appWidgetIds = appWidgetManager.getAppWidgetIds(component)
-            
+
             // 重新渲染各个 Widget 实例
             for (widgetId in appWidgetIds) {
                 updateAppWidget(context, appWidgetManager, widgetId)
             }
-        }.start()
+        }
     }
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
@@ -179,19 +199,26 @@ class TodoWidgetProvider : AppWidgetProvider() {
         views.setOnClickPendingIntent(R.id.btn_widget_todo_refresh, refreshPendingIntent)
 
         // 点击标题仍然进入今日待办页
-        val addPendingIntent = getPendingRouteIntent(context, "/todo", appWidgetId + 100)
+        val addPendingIntent = WidgetIntents.route(context, "/todo", appWidgetId + 100)
         views.setOnClickPendingIntent(R.id.todo_widget_title, addPendingIntent)
+
+        // 点击加号进入应用并直接弹出快速添加待办弹窗（Flutter 侧消费 /todo?add=1）
+        val quickAddPendingIntent = WidgetIntents.route(context, "/todo?add=1", appWidgetId + 600)
+        views.setOnClickPendingIntent(R.id.btn_widget_todo_add, quickAddPendingIntent)
 
         // 2. 加载待办数据，前 4 条进行静态渲染
         val todos = ArrayList<TodoItemData>()
         var pendingCount = 0
         var db: SQLiteDatabase? = null
         try {
-            val dbFile = context.getDatabasePath("qnote.db")
-            if (dbFile.exists()) {
-                db = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+            db = WidgetDatabase.openReadonly(context)
+            if (db != null) {
+                // 计数直接查 todos，不读 widget_snapshot：两者同库同源，快照只可能比表更旧，
+                // 读它反而会把桌面数字冻在上次 App 运行的值上。口径一致性靠 TODAY_PENDING_WHERE
+                // 与 Dart 侧 WidgetSnapshotService 保持同形，两侧都有测试锁定。
                 val cursor = db.rawQuery(
-                    "SELECT id, title, is_completed, priority FROM todos WHERE is_deleted = 0 AND is_completed = 0 AND is_long_term = 0 AND TRIM(title) != '' ORDER BY sort_order ASC, created_at ASC",
+                    "SELECT id, title, is_completed, priority FROM todos WHERE ${WidgetDatabase.TODAY_PENDING_WHERE} " +
+                        "ORDER BY sort_order ASC, created_at ASC",
                     null
                 )
                 pendingCount = cursor.count
@@ -283,9 +310,9 @@ class TodoWidgetProvider : AppWidgetProvider() {
                 )
                 views.setOnClickPendingIntent(checkboxId, togglePendingIntent)
 
-                // 点击待办项文字直接跳转主应用待办界面
-                val titlePendingIntent = getPendingRouteIntent(context, "/todo", appWidgetId * 10 + i + 100)
-                views.setOnClickPendingIntent(titleId, titlePendingIntent)
+                // 点击待办项文字直接跳转主应用待办界面：与标题同一目标，复用同一个 PendingIntent，
+                // 不必为每个槽位再构造一份
+                views.setOnClickPendingIntent(titleId, addPendingIntent)
             } else {
                 views.setViewVisibility(layoutId, android.view.View.GONE)
             }
@@ -304,8 +331,7 @@ class TodoWidgetProvider : AppWidgetProvider() {
                 views.setViewVisibility(R.id.todo_more_layout, android.view.View.VISIBLE)
                 views.setTextViewText(R.id.todo_more_badge, "+${pendingCount - 4}")
                 // 点击提示文本也可以进入应用
-                val morePendingIntent = getPendingRouteIntent(context, "/todo", appWidgetId + 500)
-                views.setOnClickPendingIntent(R.id.todo_more_layout, morePendingIntent)
+                views.setOnClickPendingIntent(R.id.todo_more_layout, addPendingIntent)
             } else {
                 views.setViewVisibility(R.id.todo_more_layout, android.view.View.GONE)
             }
@@ -314,26 +340,14 @@ class TodoWidgetProvider : AppWidgetProvider() {
         appWidgetManager.updateAppWidget(appWidgetId, views)
     }
 
-
-    private fun getPendingRouteIntent(context: Context, route: String, requestCode: Int): PendingIntent {
-        val intent = Intent(context, MainActivity::class.java).apply {
-            putExtra("route", route)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        return PendingIntent.getActivity(
-            context,
-            requestCode,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-    }
-
-    private fun getISO8601Timestamp(): String {
-        val df = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", Locale.US)
-        df.timeZone = TimeZone.getDefault()
-        return df.format(Date())
-    }
-
+    /**
+     * 构造与 Flutter 侧 Todo.toMap() 逐字段一致的 JSON，供 sync_log 记录。
+     *
+     * 必须用 JSONObject 而不是字符串拼接：标题含双引号或换行时拼接会产出非法 JSON 行，
+     * 直接污染 WebDAV 增量包（sync_log_repository 的 buildDeltaJson）。
+     * 字段集合也要跟 Dart 对齐——此前漏了 repeat_rule，而对端 fromMap 缺省会填 'none'，
+     * 在桌面勾选一条重复待办就可能把它的重复规则抹掉。
+     */
     private fun buildTodoJsonString(
         id: String,
         title: String,
@@ -346,28 +360,28 @@ class TodoWidgetProvider : AppWidgetProvider() {
         isLongTerm: Boolean,
         reminderTime: String?,
         deadline: String?,
+        repeatRule: String,
         sortOrder: Int,
         createdAt: String,
         updatedAt: String
     ): String {
-        val sb = StringBuilder()
-        sb.append("{")
-        sb.append("\"id\":\"$id\",")
-        sb.append("\"title\":\"$title\",")
-        sb.append("\"description\":\"$desc\",")
-        sb.append("\"is_completed\":${if (isCompleted) 1 else 0},")
-        sb.append("\"priority\":\"$priority\",")
-        sb.append("\"due_date\":${if (dueDate != null) "\"$dueDate\"" else "null"},")
-        sb.append("\"tags\":\"$tags\",")
-        sb.append("\"folder_id\":${if (folderId != null) "\"$folderId\"" else "null"},")
-        sb.append("\"is_long_term\":${if (isLongTerm) 1 else 0},")
-        sb.append("\"reminder_time\":${if (reminderTime != null) "\"$reminderTime\"" else "null"},")
-        sb.append("\"deadline\":${if (deadline != null) "\"$deadline\"" else "null"},")
-        sb.append("\"sort_order\":$sortOrder,")
-        sb.append("\"created_at\":\"$createdAt\",")
-        sb.append("\"updated_at\":\"$updatedAt\",")
-        sb.append("\"is_deleted\":0")
-        sb.append("}")
-        return sb.toString()
+        return JSONObject().apply {
+            put("id", id)
+            put("title", title)
+            put("description", desc)
+            put("is_completed", if (isCompleted) 1 else 0)
+            put("priority", priority)
+            put("due_date", dueDate)
+            put("tags", tags)
+            put("folder_id", folderId)
+            put("is_long_term", if (isLongTerm) 1 else 0)
+            put("reminder_time", reminderTime)
+            put("deadline", deadline)
+            put("repeat_rule", repeatRule)
+            put("sort_order", sortOrder)
+            put("created_at", createdAt)
+            put("updated_at", updatedAt)
+            put("is_deleted", 0)
+        }.toString()
     }
 }

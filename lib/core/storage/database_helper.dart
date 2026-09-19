@@ -26,6 +26,25 @@ class DatabaseHelper {
     )
   ''';
 
+  /// 桌面小组件快照表 DDL：收支、心情、日记归属日等聚合口径全部实现在 Dart
+  /// （stats_utils 带中文正则回退、diary_record.getEffectiveDate），原生裸 SQL
+  /// 算不出与 App 一致的数字。改由 Dart 算完落库、原生只读渲染，冷装与升级共用
+  /// 同一份避免字段漂移。
+  ///
+  /// (key, date) 复合主键：高频小值用 date=''，按日聚合用 'YYYY-MM-DD' + payload，
+  /// 这样新增一类组件不必再迁移表结构。
+  static const String _widgetSnapshotDdl = '''
+    CREATE TABLE IF NOT EXISTS widget_snapshot (
+      key TEXT NOT NULL,
+      date TEXT NOT NULL DEFAULT '',
+      value_num REAL,
+      value_text TEXT,
+      payload TEXT,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (key, date)
+    )
+  ''';
+
   Future<Database> get database async {
     if (_database != null) return _database!;
     _database = await _initDatabase();
@@ -43,7 +62,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 23,
+      version: 24,
       onConfigure: (db) async {
         // 遇到写锁时等待重试（默认立即抛 database is locked），提升并发访问健壮性
         try {
@@ -233,6 +252,11 @@ class DatabaseHelper {
     // 兜底：确保 screen_usage_daily 存在（开发期热重载可能未触发 onUpgrade）
     try {
       await db.execute(_screenUsageDailyDdl);
+    } catch (_) {}
+
+    // 兜底：同上，桌面组件快照表在开发期热重载时也不会走 onUpgrade
+    try {
+      await db.execute(_widgetSnapshotDdl);
     } catch (_) {}
 
     // 标记本次检查已完成，后续启动直接跳过 PRAGMA 检查
@@ -522,6 +546,7 @@ class DatabaseHelper {
     ''');
 
     await db.execute(_screenUsageDailyDdl);
+    await db.execute(_widgetSnapshotDdl);
 
     // Performance indexes
     await _createIndexes(db);
@@ -850,6 +875,12 @@ class DatabaseHelper {
     if (oldVersion < 23) {
       try {
         await db.execute(_screenUsageDailyDdl);
+      } catch (_) {}
+    }
+
+    if (oldVersion < 24) {
+      try {
+        await db.execute(_widgetSnapshotDdl);
       } catch (_) {}
     }
   }

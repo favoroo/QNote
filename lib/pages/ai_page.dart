@@ -31,6 +31,7 @@ import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/widgets/empty_state.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
+import 'package:qnote_flutter/widgets/ai/bubble_voice_button.dart';
 import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/widgets/app_error_state.dart';
@@ -3058,6 +3059,13 @@ class ChatBubble extends ConsumerWidget {
                     ),
             ),
           ),
+          // 语音朗读：助手正文气泡下方提供朗读/停止入口（自动朗读的补充）
+          if (!isUser &&
+              message.role == 'assistant' &&
+              statusText == null &&
+              (message.isError ?? false) != true &&
+              message.content.trim().isNotEmpty)
+            BubbleVoiceButton(message: message),
           // 步数上限提示：待处理时在气泡下方渲染「继续/暂停」按钮
           if (!isUser && _isTurnLimitPending)
             AgentTurnLimitActions(

@@ -131,7 +131,16 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
     return promptUnsavedChanges(
       context,
       content: '您有未保存的同步设置更改，是否保存？',
-      onSave: saveConfig,
+      onSave: () async {
+        try {
+          await saveConfig();
+          return true;
+        } catch (e) {
+          // 原来异常一路抛给调用方，`if (!await confirm...) return` 变成未处理错误
+          _showNotification('保存失败：$e', isError: true);
+          return false;
+        }
+      },
     );
   }
 

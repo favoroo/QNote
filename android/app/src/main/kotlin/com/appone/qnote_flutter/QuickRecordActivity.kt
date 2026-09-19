@@ -32,12 +32,10 @@ import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.TimeZone
 import java.util.UUID
 
 class QuickRecordActivity : Activity() {
@@ -300,17 +298,14 @@ class QuickRecordActivity : Activity() {
             return
         }
 
-        // 异步写入数据库，保证流畅性
-        Thread {
+        // 异步写入数据库，保证流畅性；串行队列与待办组件共用，避免两条原生写路径互相抢锁
+        WidgetDatabase.executor.execute {
             var db: SQLiteDatabase? = null
             try {
-                val dbFile = getDatabasePath("qnote.db")
-                if (!dbFile.exists()) return@Thread
-
-                db = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
+                db = WidgetDatabase.openReadwrite(this@QuickRecordActivity) ?: return@execute
 
                 val id = UUID.randomUUID().toString()
-                val nowStr = getISO8601Timestamp()
+                val nowStr = WidgetDatabase.iso8601()
 
                 // 1. 将临时图片拷贝到 images/diary 目录下并保存新路径
                 val finalPhotoPaths = ArrayList<String>()
@@ -327,14 +322,9 @@ class QuickRecordActivity : Activity() {
                 }
 
                 val title = if (content.length > 15) content.substring(0, 15) else if (content.isNotEmpty()) content else "快速记录"
-                val photosJson = buildString {
-                    append("[")
-                    for (i in finalPhotoPaths.indices) {
-                        append("\"").append(finalPhotoPaths[i]).append("\"")
-                        if (i < finalPhotoPaths.size - 1) append(",")
-                    }
-                    append("]")
-                }
+                val photosJson = JSONArray().apply {
+                    finalPhotoPaths.forEach { put(it) }
+                }.toString()
 
                 // 2. 插入到 diary_records
                 val values = ContentValues().apply {
@@ -352,8 +342,6 @@ class QuickRecordActivity : Activity() {
                     put("time", nowStr)
                     put("is_deleted", 0)
                 }
-                db.insert("diary_records", null, values)
-
                 // 3. 构造完整 JSON 并记录 sync_log
                 val recordJson = buildRecordJson(
                     id = id,
@@ -370,7 +358,16 @@ class QuickRecordActivity : Activity() {
                     put("data", recordJson)
                     put("timestamp", nowStr)
                 }
-                db.insert("sync_log", null, logValues)
+
+                // 两笔写入放同一事务：只落一半会出现「本机有记录、云端增量里没有」或反过来的状态
+                db.beginTransaction()
+                try {
+                    db.insert("diary_records", null, values)
+                    db.insert("sync_log", null, logValues)
+                    db.setTransactionSuccessful()
+                } finally {
+                    db.endTransaction()
+                }
 
                 // 清理缓存
                 selectedPhotos.forEach { File(it).delete() }
@@ -399,15 +396,15 @@ class QuickRecordActivity : Activity() {
             } finally {
                 db?.close()
             }
-        }.start()
+        }
     }
 
-    private fun getISO8601Timestamp(): String {
-        val df = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", Locale.US)
-        df.timeZone = TimeZone.getDefault()
-        return df.format(Date())
-    }
-
+    /**
+     * 构造与 Flutter 侧 DiaryRecord.toMap() 一致的 sync_log 载荷。
+     *
+     * 手写的转义只覆盖了双引号和换行，正文里的反斜杠（如 Windows 风格路径、
+     * LaTeX 片段）会产出非法 JSON 污染云端增量包；改走 JSONObject 统一转义。
+     */
     private fun buildRecordJson(
         id: String,
         title: String,
@@ -415,26 +412,21 @@ class QuickRecordActivity : Activity() {
         photosJson: String,
         nowStr: String
     ): String {
-        // 转义 JSON 中的字符串换行与双引号
-        val escapedContent = content.replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r")
-        val escapedTitle = title.replace("\"", "\\\"")
-        
-        return buildString {
-            append("{")
-            append("\"id\":\"$id\",")
-            append("\"title\":\"$escapedTitle\",")
-            append("\"content\":\"$escapedContent\",")
-            append("\"mood\":3,")
-            append("\"weather\":\"\",")
-            append("\"tags\":\"[]\",")
-            append("\"display_tag\":\"\",")
-            append("\"photos\":\"${photosJson.replace("\"", "\\\"")}\",") // toMap 中 photos 字段存的是 JSON 序列化字符串本身
-            append("\"color_mark\":\"\",")
-            append("\"created_at\":\"$nowStr\",")
-            append("\"updated_at\":\"$nowStr\",")
-            append("\"time\":\"$nowStr\",")
-            append("\"is_deleted\":0")
-            append("}")
-        }
+        return JSONObject().apply {
+            put("id", id)
+            put("title", title)
+            put("content", content)
+            put("mood", 3)
+            put("weather", "")
+            put("tags", "[]")
+            put("display_tag", "")
+            // toMap 中 photos 字段存的是 JSON 序列化字符串本身，这里同样按字符串放入
+            put("photos", photosJson)
+            put("color_mark", "")
+            put("created_at", nowStr)
+            put("updated_at", nowStr)
+            put("time", nowStr)
+            put("is_deleted", 0)
+        }.toString()
     }
 }

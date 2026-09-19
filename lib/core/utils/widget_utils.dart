@@ -1,11 +1,17 @@
 import 'package:flutter/services.dart';
 
+import 'package:qnote_flutter/core/utils/widget_snapshot_service.dart';
+
 /// 桌面小组件工具类，用于 Flutter 侧与原生小组件进行数据通信与状态刷新
 class WidgetUtils {
   static const _channel = MethodChannel('com.appone.qnote_flutter/widgets');
 
   /// 通知原生小组件（今日待办、快捷记录）刷新数据
+  ///
+  /// 所有刷新都从这里过一道，因此需要 Dart 口径的统计在这唯一入口处写快照，
+  /// 22 处业务调用点无需感知。快照写失败不阻断刷新——组件侧会回落到自查 SQL。
   static Future<void> updateHomeWidgets() async {
+    await WidgetSnapshotService.writeTodoSnapshot();
     try {
       await _channel.invokeMethod('updateWidgets');
     } on PlatformException catch (_) {

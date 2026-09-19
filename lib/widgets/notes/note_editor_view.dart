@@ -696,7 +696,6 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     } catch (e) {
       // UI 侧只给简洁提示，细节留在日志里排查
       debugPrint('笔记保存失败: $e');
-      saved = false;
     }
 
     if (saved) {

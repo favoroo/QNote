@@ -52,8 +52,19 @@ class MainActivity : FlutterActivity() {
         val route = intent.getStringExtra("route")
         if (route != null) {
             pendingRoute = route
-            // Flutter 引擎就绪时，立即推送路由，解决 App 前台时 didChangeAppLifecycleState 不触发的问题
-            methodChannel?.invokeMethod("navigate", route)
+            // Flutter 引擎就绪时，立即推送路由，解决 App 前台时 didChangeAppLifecycleState 不触发的问题；
+            // Dart 处理完成后才清空挂起，避免回前台拉取（getPendingRoute）把同一份再投递一次，
+            // 导致带参数的路由（如 /todo?add=1、/quick_record?action=...）重复触发动作。
+            // 推送未达（冷启动 Dart 未就绪）则保留给拉取兜底
+            methodChannel?.invokeMethod("navigate", route, object : MethodChannel.Result {
+                override fun success(result: Any?) {
+                    pendingRoute = null
+                }
+
+                override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {}
+
+                override fun notImplemented() {}
+            })
         }
 
         // 2. 外部划选文本（PROCESS_TEXT）

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      桌面小组件在选择器里的名称与说明。
+      appwidget-provider 的 android:description 只接受资源引用（写死字面量会 AAPT 报错），
+      label 一并走资源，便于后续翻译。
+    -->
+    <string name="widget_todo_label">今日待办</string>
+    <string name="widget_todo_description">查看并勾选今日待办</string>
+    <string name="widget_quick_record_label">快捷记录</string>
+    <string name="widget_quick_record_description">不打开 App 也能随手记一条</string>
+    <string name="widget_ai_label">问小Q</string>
+    <string name="widget_ai_description">一键打开小Q，随手提问、记录与整理</string>
+</resources>

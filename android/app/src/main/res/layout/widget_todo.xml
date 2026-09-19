@@ -45,6 +45,19 @@
             android:layout_alignParentRight="true"
             android:layout_centerVertical="true"
             android:scaleType="centerInside" />
+
+        <!-- Quick Add Todo Button -->
+        <ImageButton
+            android:id="@+id/btn_widget_todo_add"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_add"
+            android:contentDescription="快速添加待办"
+            android:layout_toLeftOf="@id/btn_widget_todo_refresh"
+            android:layout_marginRight="6dp"
+            android:layout_centerVertical="true"
+            android:scaleType="centerInside" />
     </RelativeLayout>
 
     <!-- Todo Static List Container -->
