@@ -133,3 +133,6 @@ __pycache__/
 *.zip
 *.tar.gz
 *.rar
+
+# ---- Kotlin 编译器会话临时文件 ----
+android/.kotlin/
