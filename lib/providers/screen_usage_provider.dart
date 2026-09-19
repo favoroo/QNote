@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:qnote_flutter/core/health/screen_usage_service.dart';
@@ -6,10 +8,8 @@ import 'package:qnote_flutter/models/screen_usage_daily.dart';
 import 'package:qnote_flutter/models/screen_usage_info.dart';
 import 'package:qnote_flutter/widgets/time_range_selector.dart';
 
-/// 屏幕时长 tab 的时间范围（与统计页顶部的 TimeRangeSelector 共用一个枚举）
-final screenUsageTimeRangeProvider = StateProvider<TimeRangeType>(
-  (ref) => TimeRangeType.week,
-);
+/// 屏幕时长固定按周统计（周一~周日），不再暴露周/月/年切换；
+/// 这里只复用 TimeRangeSelector 的 TimeRangeType 作为区间口径枚举。
 
 /// 区间起止与「上期同期」边界
 class ScreenRangeBounds {
@@ -197,7 +197,9 @@ class ScreenUsageAggregate {
   }
 }
 
+/// 区间聚合的入参：以哪天为锚点取它所在的统计区间
 class ScreenUsageRangeArg {
+  /// 区间口径；屏幕时长目前固定用 week，保留字段以便后续按需扩展
   final TimeRangeType range;
   final DateTime anchor;
 
@@ -352,92 +354,43 @@ final screenUsageDayProvider =
       );
     });
 
-/// 趋势图的一根柱子对应的请求参数
+/// 趋势图的请求参数：以哪天为锚点取它所在的整周
 class ScreenUsageTrendArg {
-  /// null 表示「以所选日为终点的近 N 天」
-  final TimeRangeType? range;
   final DateTime anchor;
 
-  ScreenUsageTrendArg(this.range, DateTime anchor)
+  ScreenUsageTrendArg(DateTime anchor)
     : anchor = DateTime(anchor.year, anchor.month, anchor.day);
 
   @override
   bool operator ==(Object other) =>
-      other is ScreenUsageTrendArg &&
-      other.range == range &&
-      other.anchor == anchor;
+      other is ScreenUsageTrendArg && other.anchor == anchor;
 
   @override
-  int get hashCode => Object.hash(range, anchor);
+  int get hashCode => anchor.hashCode;
 }
 
-/// 趋势图数据
+/// 趋势图数据：所选日所在周的逐日柱
 class ScreenUsageTrend {
   final List<ScreenUsageTrendPoint> points;
 
-  /// true 为按月分桶（年视图），false 为按日
-  final bool monthly;
-
-  const ScreenUsageTrend({required this.points, required this.monthly});
+  const ScreenUsageTrend({required this.points});
 
   bool get isEmpty => points.every((e) => !e.collected);
   double get maxHours =>
       points.fold<double>(0, (m, e) => e.hours > m ? e.hours : m);
 }
 
-/// 趋势序列：周→7 日柱、月→当月每日柱、年→12 月柱、单日视图→近 14 日柱。
-/// 缺口日标为未采集，由 UI 画成空心柱，与「当天真没用机」区分。
+/// 所选日所在周（周一~周日，未过完的日子不纳入）的逐日趋势。
+/// 缺口日标为未采集，由 UI 画成空柱，与「当天真没用机」区分。
 final screenUsageTrendProvider =
     FutureProvider.family<ScreenUsageTrend, ScreenUsageTrendArg>((
       ref,
       arg,
     ) async {
       final repo = ref.read(screenUsageDailyRepositoryProvider);
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-
-      if (arg.range == TimeRangeType.year) {
-        final yearStart = DateTime(arg.anchor.year);
-        final yearEnd = DateTime(arg.anchor.year, 12, 31);
-        final rows = await repo.getRange(
-          ScreenUsageDaily.dateKey(yearStart),
-          ScreenUsageDaily.dateKey(yearEnd),
-        );
-        final buckets = List<int>.filled(12, 0);
-        final touched = List<bool>.filled(12, false);
-        for (final row in rows) {
-          final d = ScreenUsageDaily.parseDateKey(row.date);
-          if (d == null) {
-            continue;
-          }
-          buckets[d.month - 1] += row.totalTimeMs;
-          if (row.totalTimeMs > 0) {
-            touched[d.month - 1] = true;
-          }
-        }
-        final points = <ScreenUsageTrendPoint>[];
-        for (int i = 0; i < 12; i++) {
-          points.add(
-            ScreenUsageTrendPoint(
-              date: DateTime(arg.anchor.year, i + 1),
-              totalTimeMs: buckets[i],
-              collected: touched[i],
-            ),
-          );
-        }
-        return ScreenUsageTrend(points: points, monthly: true);
-      }
-
-      final DateTime start;
-      final DateTime end;
-      if (arg.range == null) {
-        end = arg.anchor.isAfter(today) ? today : arg.anchor;
-        start = end.subtract(const Duration(days: 13));
-      } else {
-        final bounds = resolveScreenRange(arg.range!, arg.anchor);
-        start = bounds.start;
-        end = bounds.dataEnd;
-      }
+      final bounds = resolveScreenRange(TimeRangeType.week, arg.anchor);
+      final start = bounds.start;
+      final end = bounds.dataEnd;
 
       final rows = await repo.getRange(
         ScreenUsageDaily.dateKey(start),
@@ -463,10 +416,22 @@ final screenUsageTrendProvider =
         );
       }
 
-      return ScreenUsageTrend(points: points, monthly: false);
+      return ScreenUsageTrend(points: points);
     });
 
 /// 最早已采集日期，UI 据此判断「未采集」提示的边界与文案
 final screenUsageEarliestDateProvider = FutureProvider<DateTime?>((ref) {
   return ref.read(screenUsageDailyRepositoryProvider).earliestDate();
 });
+
+/// 应用图标批量拉取，key 为逗号拼接的包名集合（family 需要可比较的 key）。
+///
+/// 区间应用榜与历史日明细只有包名，图标要回原生按包名补齐；
+/// 字节缓存在 ScreenUsageService 里常驻，同一批包名不会重复走 IPC。
+final screenAppIconProvider =
+    FutureProvider.family<Map<String, Uint8List>, String>((ref, key) async {
+      if (key.isEmpty) {
+        return const {};
+      }
+      return ref.read(screenUsageServiceProvider).getIcons(key.split(','));
+    });

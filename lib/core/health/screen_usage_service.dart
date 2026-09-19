@@ -81,6 +81,55 @@ class ScreenUsageService {
     }
   }
 
+  /// 包名 → 图标 PNG 字节 的进程内缓存；取不到（未安装等）记 null，避免反复重试
+  final Map<String, Uint8List?> _iconCache = {};
+
+  /// 已缓存的图标，命中可同步返回，列表复用时不必再等 IPC
+  Uint8List? peekIcon(String packageName) => _iconCache[packageName];
+
+  /// 按包名批量获取应用图标。
+  ///
+  /// 区间应用榜与历史日明细来自逐日快照，快照只存包名/名称/时长，图标要回原生补齐；
+  /// 已缓存的包名直接跳过，未安装或取图失败的包名不会出现在返回值里。
+  Future<Map<String, Uint8List>> getIcons(List<String> packageNames) async {
+    if (!isSupported || packageNames.isEmpty) return const {};
+
+    final pending = <String>{
+      for (final pkg in packageNames)
+        if (pkg.isNotEmpty && !_iconCache.containsKey(pkg)) pkg,
+    }.toList();
+
+    if (pending.isNotEmpty) {
+      try {
+        final res = await _channel.invokeMapMethod<dynamic, dynamic>(
+          'getAppIcons',
+          {'packageNames': pending},
+        );
+        final fetched = <String, Uint8List>{};
+        res?.forEach((key, value) {
+          if (key is String && value is Uint8List && value.isNotEmpty) {
+            fetched[key] = value;
+          }
+        });
+        for (final pkg in pending) {
+          _iconCache[pkg] = fetched[pkg];
+        }
+      } catch (e, stack) {
+        // 取图失败只影响图标显示，时长与榜单照常；不写缓存，下次进页面还会再试
+        LoggerService.instance.error('ScreenUsageService.getIcons failed: $e', stackTrace: stack);
+      }
+    }
+
+    final icons = <String, Uint8List>{};
+    for (final pkg in packageNames) {
+      final bytes = _iconCache[pkg];
+      if (pkg.isNotEmpty && bytes != null) {
+        icons[pkg] = bytes;
+      }
+    }
+    return icons;
+  }
+
   /// 获取最近 7 天的每日屏幕使用总时长
   Future<List<DailyScreenTime>> getWeeklyScreenTime() async {
     if (!isSupported) return [];

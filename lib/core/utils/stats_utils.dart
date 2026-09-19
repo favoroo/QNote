@@ -122,6 +122,21 @@ String formatDayLabel(DateTime dt, {DateTime? today}) {
   return '${target.year}年${target.month}月${target.day}日';
 }
 
+/// 把柱状图 Y 轴上限抬到便于阅读的整点小时刻度，让右侧标签与网格线落在整数上。
+///
+/// 屏幕时长趋势按日统计，单日最多 24 小时，调用方通常再 clamp 到 24；
+/// 刻度表全部取偶数，保证 maxY/2 仍是整数小时。
+double niceHourCeiling(double rawMax) {
+  const steps = <double>[2, 4, 6, 8, 12, 16, 20, 24, 32];
+  for (final step in steps) {
+    if (rawMax <= step) {
+      return step;
+    }
+  }
+  // 超出常规量级时按 10 小时向上取整，仍然保证刻度是整数且可被 2 整除
+  return (rawMax / 10).ceilToDouble() * 10;
+}
+
 dynamic _getValFromMap(Map<String, dynamic> map, List<String> keys) {
   for (final k in keys) {
     if (map.containsKey(k)) return map[k];

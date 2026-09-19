@@ -9,7 +9,8 @@ import 'package:qnote_flutter/core/utils/toast_utils.dart';
 /// 小Q语音回复设置
 ///
 /// 提供自动朗读开关、Edge 音色选择（带试听）与语速档位；
-/// Web 端在线合成不可用，朗读走浏览器自带语音并在此说明。
+/// 在线音色依赖 Edge 语音服务，非 Edge 浏览器/无网络时自动降级为设备语音，
+/// 试听失败会以 Toast 报出具体原因。
 class QVoicePage extends ConsumerStatefulWidget {
   const QVoicePage({super.key, this.embedded = false});
 
@@ -37,6 +38,15 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+
+    // 试听失败此前只写进播放状态、界面上既没声音也没提示（与气泡按钮不同），
+    // 这里对齐 Toast 报错，让"为什么没出声"可见
+    ref.listen<TtsPlaybackState>(ttsPlaybackProvider, (prev, next) {
+      final error = next.error;
+      if (error != null && error.isNotEmpty) {
+        Toast.error(context, '语音试听失败：$error');
+      }
+    });
 
     final body = ListView(
       padding: const EdgeInsets.all(20),

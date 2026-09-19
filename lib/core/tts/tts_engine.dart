@@ -1,9 +1,10 @@
 /// 平台 TTS 引擎的条件导入入口。
 ///
-/// Edge 在线合成走自研协议层（见 `edge_tts_client.dart`）：原生端手动握手
-/// 覆盖 User-Agent（dart:io 的 `WebSocket.connect` 追加 Dart UA 会被微软
-/// WAF 403），Web 端浏览器 WebSocket 天然放行——因此三端均可在线合成；
-/// 合成失败时降级到平台系统语音（原生 flutter_tts / 浏览器 speechSynthesis）。
+/// Edge 在线合成走自研协议层（见 `edge_tts_client.dart`）：该服务只放行 UA 中
+/// 含 `Edg/` 的连接，原生端手动握手覆盖 User-Agent（dart:io 的
+/// `WebSocket.connect` 追加 Dart UA 会被微软 WAF 403），Web 端浏览器无法改写 UA，
+/// 故仅 Microsoft Edge 浏览器可在线合成、其余浏览器直接走系统语音；
+/// 在线通道失败时统一降级到平台系统语音（原生 flutter_tts / 浏览器 speechSynthesis）。
 /// 各平台实现文件（tts_engine_io / tts_engine_web / tts_engine_stub）暴露
 /// 同一套顶层函数与同名常量（仿 image_saver 的鸭子类型模式）。
 library;

@@ -20,6 +20,7 @@
         android:label="QNote"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:requestLegacyExternalStorage="true">
         <activity
             android:name=".MainActivity"
@@ -153,6 +154,11 @@
         <intent>
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="https"/>
+        </intent>
+        <!-- Android 11+ 包可见性限制：不声明则 flutter_tts 枚举不到系统 TTS 引擎，
+             在线合成失败后的「系统语音」兜底会同样无声（flutter_tts README 要求） -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE"/>
         </intent>
     </queries>
 </manifest>

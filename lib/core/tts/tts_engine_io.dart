@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_tts/flutter_tts.dart';
@@ -30,38 +31,60 @@ Future<Uint8List> synthesizeOnlineImpl(
   }
 }
 
+/// 系统 TTS 引擎实例（进程内复用）。
+///
+/// Android/iOS 上每次新建 `FlutterTts` 都要重新绑定引擎，首帧朗读有概率在
+/// 引擎就绪前被丢弃且不报错——正是"点了完全没声音"的形态，故全局复用一个。
+FlutterTts? _systemTts;
+
+Future<FlutterTts> _sharedSystemTts() async {
+  final existing = _systemTts;
+  if (existing != null) return existing;
+  final tts = FlutterTts();
+  // speak() 等待朗读结束再返回，与在线合成的完成语义对齐
+  await tts.awaitSpeakCompletion(true);
+  _systemTts = tts;
+  return tts;
+}
+
 /// 系统 TTS 朗读（flutter_tts），阻塞至朗读完成，便于上层复位播放状态。
 ///
 /// 语速映射：flutter_tts 的 setSpeechRate 在 Android/iOS 上均为 0.0~1.0，
-/// 0.5 约等于正常语速，故按倍率×0.5 换算。
+/// 0.5 约等于正常语速，故按倍率×0.5 换算。上限须大于最长朗读时长
+/// （600 字正常要 2 分多钟），超时不再被当作成功而是明确报错。
 Future<void> systemSpeakImpl(String text, {required double rate}) async {
-  final tts = FlutterTts();
+  final tts = await _sharedSystemTts();
   await tts.setLanguage('zh-CN');
   await tts.setSpeechRate((rate * 0.5).clamp(0.0, 1.0));
   await tts.setPitch(1.0);
   await tts.setVolume(1.0);
-  // speak() 等待朗读完成再返回，与在线合成的完成语义对齐；设备缺 TTS
-  // 引擎时可能永远不回调，限时兜底避免卡死播放状态（上限须大于最长
-  // 朗读时长：600 字正常要 2 分多钟，90s 内的超时会截断正常朗读）
-  await tts.awaitSpeakCompletion(true);
   try {
-    final result = await tts.speak(text).timeout(
-          const Duration(seconds: 300),
-          onTimeout: () => 0,
-        );
+    final result = await tts.speak(text).timeout(const Duration(seconds: 300));
     if (result is int && result < 0) {
-      throw const TtsException('speech_failed', '系统语音朗读失败');
+      throw const TtsException(
+        'speech_failed',
+        '系统语音朗读失败（设备可能没有可用的中文语音引擎）',
+      );
     }
+  } on TtsException {
+    rethrow;
+  } on TimeoutException {
+    // 超时意味着引擎从未回调（未安装/未就绪），静默当成成功会让用户只听到无声
+    await tts.stop().catchError((_) {});
+    throw const TtsException(
+      'speech_timeout',
+      '系统语音无响应：设备可能未安装中文语音引擎',
+    );
   } catch (e) {
-    if (e is TtsException) rethrow;
     throw TtsException('speech_failed', '系统语音朗读失败：$e');
   }
 }
 
 Future<void> systemStopImpl() async {
   try {
-    await FlutterTts().stop();
+    // 必须停掉真正在朗读的那个实例：新建 FlutterTts().stop() 打到的是空引擎
+    await _systemTts?.stop();
   } catch (_) {
-    // 停止失败无需上报：下一次朗读前会重新初始化引擎
+    // 停止失败无需上报：下一次朗读会重新配置引擎
   }
 }

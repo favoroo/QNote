@@ -124,6 +124,21 @@ class UsageStatsHelper(private val context: Context) {
     }
 
     /**
+     * 按包名批量获取应用图标（PNG 字节），供「只有包名」的场景补齐图标，
+     * 例如区间应用榜来自逐日快照，快照里不存图标。
+     *
+     * 只返回成功取到图标的包名；未安装或取不到图标的包名不出现在结果中，
+     * 由 Flutter 侧走首字母色块兜底。结果复用 [getAppIconBytes] 的内存缓存。
+     */
+    fun getAppIcons(packageNames: List<String>): Map<String, ByteArray> {
+        val icons = mutableMapOf<String, ByteArray>()
+        for (pkg in packageNames.filter { it.isNotBlank() }.distinct()) {
+            getAppIconBytes(pkg)?.let { icons[pkg] = it }
+        }
+        return icons
+    }
+
+    /**
      * 获取最近 7 天的每日屏幕总使用时长（按天统计，供柱状图展示）
      */
     fun getWeeklyScreenTime(): List<Map<String, Any>> {
@@ -378,23 +393,29 @@ class UsageStatsHelper(private val context: Context) {
 
     /**
      * 根据包名获取应用图标并转为 PNG 字节流（带内存缓存与尺寸压缩）
+     *
+     * 缓存会被主线程的实时查询与批量取图的后台线程并发读写，故缓存读写统一加锁；
+     * PackageManager 取图与 PNG 压缩放在锁外，避免后台取图时把 UI 线程一起挡住。
      */
     private fun getAppIconBytes(packageName: String): ByteArray? {
-        if (iconCache.containsKey(packageName)) {
-            return iconCache[packageName]
+        synchronized(iconCache) {
+            if (iconCache.containsKey(packageName)) {
+                return iconCache[packageName]
+            }
         }
-        return try {
+        val bytes = try {
             val drawable = packageManager.getApplicationIcon(packageName)
             val bitmap = drawableToBitmap(drawable)
             val stream = ByteArrayOutputStream()
             bitmap.compress(Bitmap.CompressFormat.PNG, 85, stream)
-            val bytes = stream.toByteArray()
-            iconCache[packageName] = bytes
-            bytes
+            stream.toByteArray()
         } catch (_: Exception) {
-            iconCache[packageName] = null
             null
         }
+        synchronized(iconCache) {
+            iconCache[packageName] = bytes
+        }
+        return bytes
     }
 
     /**

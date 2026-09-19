@@ -30,10 +30,12 @@ class EdgeTtsClient {
   /// 合成一段文本为 mp3 字节（24kHz 48kbit 单声道）。
   ///
   /// [rate] 为语速倍率（1.0 正常）。握手/超时/空音频统一抛 [TtsException]。
+  /// [connect] 仅供测试注入假连接，生产走平台真实的 [connectEdgeWs]。
   static Future<Uint8List> synthesize({
     required String text,
     required String voice,
     required double rate,
+    @visibleForTesting Future<EdgeWsConnection> Function(Uri uri)? connect,
   }) async {
     final connectionId = _randomHex(16);
     final uri = Uri.parse(
@@ -43,7 +45,7 @@ class EdgeTtsClient {
       '&Sec-MS-GEC-Version=1-$_chromiumFullVersion',
     );
 
-    final connection = await connectEdgeWs(uri);
+    final connection = await (connect ?? connectEdgeWs)(uri);
     final audio = BytesBuilder();
     var finished = false;
     try {
@@ -64,7 +66,13 @@ class EdgeTtsClient {
         '${buildSsml(text: text, voice: voice, rate: rate)}',
       );
 
-      await for (final frame in connection.frames) {
+      // 帧间空闲超时：服务端只发了 turn.start 就挂住时，不能把按钮永久留在"生成中"
+      await for (final frame in connection.frames.timeout(
+        _synthesisTimeout,
+        onTimeout: (sink) => sink.addError(
+          const TtsException('synthesis_timeout', '语音合成超时中断'),
+        ),
+      )) {
         switch (frame) {
           case EdgeWsTextFrame(:final text):
             // turn.end 表示本轮音频全部到齐
@@ -74,10 +82,13 @@ class EdgeTtsClient {
           case EdgeWsBinaryFrame(:final bytes):
             if (bytes.length < 2) continue;
             final headerLength = (bytes[0] << 8) | bytes[1];
+            // 头长超出帧体（帧被截断或畸形）时跳过，避免 sublist 越界抛错
+            if (headerLength > bytes.length - 2) continue;
             final header = utf8.decode(
-              bytes.sublist(2, min(2 + headerLength, bytes.length)),
+              bytes.sublist(2, 2 + headerLength),
+              allowMalformed: true,
             );
-            if (header.contains('Path:audio')) {
+            if (_isAudioFrameHeader(header)) {
               audio.add(bytes.sublist(2 + headerLength));
             }
         }
@@ -96,6 +107,13 @@ class EdgeTtsClient {
     }
     return result;
   }
+
+  /// 二进制帧头是否为音频帧。
+  ///
+  /// 必须整行等于 `Path:audio`：`Path:audio.metadata` 的负载是 JSON，
+  /// 用包含匹配会把元数据拼进 mp3 流。
+  static bool _isAudioFrameHeader(String header) =>
+      header.split('\r\n').any((line) => line == 'Path:audio');
 
   /// 构造 SSML 请求体。[rate] 倍率换算为 Azure prosody 的百分比偏移。
   static String buildSsml({

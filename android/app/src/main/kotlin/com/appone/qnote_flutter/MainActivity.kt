@@ -9,12 +9,15 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.appone.qnote_flutter/widgets"
@@ -31,6 +34,13 @@ class MainActivity : FlutterActivity() {
     private var methodChannel: MethodChannel? = null
     private var shareChannel: MethodChannel? = null
     private var usageStatsHelper: UsageStatsHelper? = null
+
+    /// 批量取图标的后台线程（进程级共享，Activity 重建也不会堆积线程）与回包用的主线程 Handler
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    companion object {
+        private val iconExecutor = Executors.newSingleThreadExecutor()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -409,6 +419,23 @@ class MainActivity : FlutterActivity() {
                         result.success(dailyList)
                     } catch (e: Exception) {
                         result.error("DAILY_RANGE_QUERY_FAILED", e.localizedMessage, null)
+                    }
+                }
+                "getAppIcons" -> {
+                    val packages = call.argument<List<String>>("packageNames") ?: emptyList()
+                    if (packages.isEmpty()) {
+                        result.success(emptyMap<String, ByteArray>())
+                    } else {
+                        // 批量取图标是 PackageManager 查询 + PNG 压缩的开销，几十张一次拉会卡住 UI 线程；
+                        // 放到单线程后台串行处理，回包再切回平台主线程（MethodChannel 的 result 必须在主线程调用）
+                        iconExecutor.execute {
+                            val icons = try {
+                                helper.getAppIcons(packages)
+                            } catch (e: Exception) {
+                                emptyMap<String, ByteArray>()
+                            }
+                            mainHandler.post { result.success(icons) }
+                        }
                     }
                 }
                 else -> {

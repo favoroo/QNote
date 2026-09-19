@@ -72,6 +72,14 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- just_audio 的 StreamAudioSource（小Q朗读播放内存里的 mp3 字节）依赖本机
+		回环 HTTP 代理取流，ATS 默认会拦掉 http://127.0.0.1；这里只放行本地网络，
+		远程请求仍按 ATS 走 HTTPS -->
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

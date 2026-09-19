@@ -48,7 +48,14 @@ class TtsPlayer extends Notifier<TtsPlaybackState> {
 
   AudioPlayer? _player;
   StreamSubscription? _playerSub;
+  StreamSubscription? _playerErrorSub;
   int _generation = 0;
+
+  /// 播放器最近一次载入/播放失败的描述。
+  ///
+  /// just_audio 的 `play()` 不会因源载入失败而抛异常（错误只在事件流里报告），
+  /// 不主动收集就会出现"无声也无报错、还错过系统语音兜底"的静默失败。
+  String? _playbackErrorMessage;
 
   /// 合成结果内存缓存（digest → mp3 bytes），重听同一条回复免重复合成
   final Map<String, Uint8List> _cache = {};
@@ -168,9 +175,17 @@ class TtsPlayer extends Notifier<TtsPlaybackState> {
     return bytes;
   }
 
-  /// 用 just_audio 播放 mp3 字节流；完成事件校验代际后复位状态
+  /// 用 just_audio 播放 mp3 字节流；完成事件校验代际后复位状态。
+  ///
+  /// 原生端 `StreamAudioSource` 由 just_audio 的本机回环 HTTP 代理供流，明文被
+  /// 系统网络策略拦截时 `play()` 只记录错误不抛异常，因此播放返回后必须核对
+  /// 错误事件与处理状态，把失败变成可降级、可提示的异常。
   Future<void> _playBytes(int gen, Uint8List bytes) async {
+    if (bytes.isEmpty) {
+      throw const TtsException('empty_audio', '在线语音合成返回了空音频');
+    }
     final player = _ensurePlayer();
+    _playbackErrorMessage = null;
     await player.setAudioSource(_BytesAudioSource(bytes));
     if (gen != _generation) return;
     state = TtsPlaybackState(
@@ -178,6 +193,16 @@ class TtsPlayer extends Notifier<TtsPlaybackState> {
       status: TtsPlaybackStatus.playing,
     );
     await player.play();
+    if (gen != _generation) return;
+
+    final message = _playbackErrorMessage;
+    if (message != null) {
+      throw TtsException('playback_failed', '音频播放失败：$message');
+    }
+    // 未进入任何可播放状态即返回，说明源根本没被播放器接受
+    if (player.processingState == ProcessingState.idle) {
+      throw const TtsException('playback_failed', '音频未能载入播放器');
+    }
   }
 
   AudioPlayer _ensurePlayer() {
@@ -191,9 +216,25 @@ class TtsPlayer extends Notifier<TtsPlaybackState> {
         _onPlaybackFinished();
       }
     });
+    _playerErrorSub = player.playbackEventStream.listen(
+      (event) {
+        // Android/iOS 把 ExoPlayer/AVPlayer 的错误码与描述随事件下发
+        if (event.errorCode != null) {
+          _playbackErrorMessage = event.errorMessage ?? '错误码 ${event.errorCode}';
+        }
+      },
+      // 广播流上单个订阅者出错不影响其它订阅，留痕后继续监听
+      onError: (Object e) {
+        _playbackErrorMessage = e is PlayerException
+            ? (e.message ?? '错误码 ${e.code}')
+            : '$e';
+      },
+      cancelOnError: false,
+    );
     _configureAudioSession();
     ref.onDispose(() {
       _playerSub?.cancel();
+      _playerErrorSub?.cancel();
       _player?.dispose();
     });
     return player;

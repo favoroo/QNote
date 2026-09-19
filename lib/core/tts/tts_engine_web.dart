@@ -7,10 +7,16 @@ import 'package:web/web.dart' as web;
 import 'edge_tts_client.dart';
 import 'tts_exception.dart';
 
-/// Web 端 TTS 引擎实现：浏览器标准 WebSocket 可直连 Edge TTS
-/// （UA 由浏览器决定，不含 Dart 特征，无需手动握手），
-/// 仅当在线合成失败时降级到浏览器自带 speechSynthesis。
+/// Web 端 TTS 引擎实现。
+///
+/// Edge 在线合成只在 Microsoft Edge 浏览器可用：浏览器不允许改写 WebSocket
+/// 握手头的 User-Agent，而微软侧对 UA 不含 `Edg/` 的连接一律返回 403
+/// （实测 Chrome/Safari 403，Edge 101），故其余浏览器直接走自带 speechSynthesis。
 const bool kOnlineSynthesisSupportedImpl = true;
+
+/// 当前浏览器是否具备直连 Edge 语音服务的条件（UA 含 Edg/ 标记）
+bool get _edgeBrowserSupported =>
+    web.window.navigator.userAgent.contains('Edg/');
 
 /// Edge 在线合成：返回 mp3 音频字节，失败抛 [TtsException]
 Future<Uint8List> synthesizeOnlineImpl(
@@ -18,6 +24,12 @@ Future<Uint8List> synthesizeOnlineImpl(
   required String voice,
   required double rate,
 }) async {
+  if (!_edgeBrowserSupported) {
+    throw const TtsException(
+      'unsupported_platform',
+      '当前浏览器不支持 Edge 在线语音（仅 Microsoft Edge 可用），已改用设备语音',
+    );
+  }
   try {
     return await EdgeTtsClient.synthesize(
       text: text,
