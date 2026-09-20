@@ -7,11 +7,27 @@ import 'package:qnote_flutter/core/tts/tts_player.dart';
 import 'package:qnote_flutter/core/tts/tts_service.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 
+/// 语速弹窗行首/行尾的常驻占位宽度（与 check_circle 同宽）。
+///
+/// 两侧等宽占位，档位名才居中；且勾选图标出现或消失时标题可用宽度不变，
+/// 选中前后文字不会左右挪位。
+const double _kRateSlotWidth = 24;
+
+/// 试听在播放通道里的消息标识前缀（关闭弹窗时按此前缀识别并停播，
+/// 不会误伤正文朗读）
+const String _previewKeyPrefix = 'preview_';
+
+/// 音色试听标识
+String _voicePreviewKey(String voiceId) => '$_previewKeyPrefix$voiceId';
+
+/// 语速档位试听标识：不带音色，音色变化时同一档位仍是同一个试听任务
+String _ratePreviewKey(double rate) => '${_previewKeyPrefix}rate_$rate';
+
 /// 小Q语音回复设置
 ///
-/// 提供自动朗读开关、Edge 音色选择（带试听）与语速档位；
-/// 在线音色依赖 Edge 语音服务，非 Edge 浏览器/无网络时自动降级为设备语音，
-/// 试听失败会以 Toast 报出具体原因。
+/// 提供自动朗读开关、Edge 音色选择与语速档位；两个选择弹窗都「选中即试播且不收起」，
+/// 方便连续试听对比。在线音色依赖 Edge 语音服务，非 Edge 浏览器/无网络时自动降级为
+/// 设备语音，试听失败会以 Toast 报出具体原因。
 class QVoicePage extends ConsumerStatefulWidget {
   const QVoicePage({super.key, this.embedded = false});
 
@@ -184,105 +200,74 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
           behavior: HitTestBehavior.opaque,
           onTap: () {},
           child: SafeArea(
-            child: Container(
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(28),
-                ),
-              ),
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.onSurfaceVariant.withValues(
-                          alpha: 0.2,
+            child: _SheetPanel(
+              title: '选择音色',
+              // 弹窗挂在 root Navigator，页面的 setState 不会重建弹窗子树，
+              // 勾选态必须由弹窗自身的 sheetSetState 刷新
+              child: Flexible(
+                child: StatefulBuilder(
+                  builder: (_, sheetSetState) => ListView(
+                    shrinkWrap: true,
+                    children: [
+                      // 系统语音：设备自带引擎，离线可用，无网络依赖
+                      ListTile(
+                        leading: const _PreviewButton(
+                          voiceId: QVoiceConfig.systemVoiceId,
                         ),
-                        borderRadius: BorderRadius.circular(2),
+                        title: const Text('系统语音'),
+                        subtitle: Text(
+                          '设备自带 · 离线可用',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        trailing: _current.voice == QVoiceConfig.systemVoiceId
+                            ? Icon(
+                                Icons.check_circle,
+                                color: theme.colorScheme.primary,
+                              )
+                            : null,
+                        onTap: () => _selectVoice(
+                          QVoiceConfig.systemVoiceId,
+                          sheetSetState,
+                        ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 8, bottom: 8),
-                    child: Text(
-                      '选择音色',
-                      style: theme.textTheme.titleMedium,
-                    ),
-                  ),
-                  Flexible(
-                    // 弹窗挂在 root Navigator，页面的 setState 不会重建弹窗子树，
-                    // 勾选态必须由弹窗自身的 sheetSetState 刷新
-                    child: StatefulBuilder(
-                      builder: (_, sheetSetState) => ListView(
-                        shrinkWrap: true,
-                        children: [
-                          // 系统语音：设备自带引擎，离线可用，无网络依赖
-                          ListTile(
-                            leading: const _PreviewButton(
-                              voiceId: QVoiceConfig.systemVoiceId,
-                            ),
-                            title: const Text('系统语音'),
-                            subtitle: Text(
-                              '设备自带 · 离线可用',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                            trailing:
-                                _current.voice == QVoiceConfig.systemVoiceId
-                                    ? Icon(
-                                        Icons.check_circle,
-                                        color: theme.colorScheme.primary,
-                                      )
-                                    : null,
-                            onTap: () => _selectVoice(
-                              QVoiceConfig.systemVoiceId,
-                              sheetSetState,
+                      for (final voice in TtsService.builtinVoices)
+                        ListTile(
+                          leading: _PreviewButton(voiceId: voice.id),
+                          title: Text(voice.label),
+                          subtitle: Text(
+                            voice.note,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
                             ),
                           ),
-                          for (final voice in TtsService.builtinVoices)
-                            ListTile(
-                              leading: _PreviewButton(voiceId: voice.id),
-                              title: Text(voice.label),
-                              subtitle: Text(
-                                voice.note,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                              trailing: voice.id == _current.voice
-                                  ? Icon(
-                                      Icons.check_circle,
-                                      color: theme.colorScheme.primary,
-                                    )
-                                  : null,
-                              onTap: () => _selectVoice(voice.id, sheetSetState),
-                            ),
-                        ],
-                      ),
-                    ),
+                          trailing: voice.id == _current.voice
+                              ? Icon(
+                                  Icons.check_circle,
+                                  color: theme.colorScheme.primary,
+                                )
+                              : null,
+                          onTap: () => _selectVoice(voice.id, sheetSetState),
+                        ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
         );
       },
-    ).whenComplete(() {
-      // 弹窗关闭时若试听还在播则停掉；messageId 限定 preview 前缀，
-      // 不影响可能由其他入口触发的正文朗读
-      final playback = ref.read(ttsPlaybackProvider);
-      if (playback.messageId?.startsWith('preview_') == true) {
-        ref.read(ttsPlaybackProvider.notifier).stop();
-      }
-    });
+    ).whenComplete(_stopPreviewIfPlaying);
+  }
+
+  /// 弹窗关闭时若试听还在播则停掉；messageId 限定 preview 前缀，
+  /// 不影响可能由其他入口触发的正文朗读
+  void _stopPreviewIfPlaying() {
+    final playback = ref.read(ttsPlaybackProvider);
+    if (playback.messageId?.startsWith(_previewKeyPrefix) == true) {
+      ref.read(ttsPlaybackProvider.notifier).stop();
+    }
   }
 
   /// 选中音色：持久化后刷新弹窗勾选并自动试播；弹窗保持打开，由用户自行关闭
@@ -292,27 +277,54 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
       if (!mounted) return;
       setState(() => _settings = _current.copyWith(voice: voiceId));
       refreshSheet(() {});
-      // 选中即试播：正在播这条就不重复触发，播别的音色时由播放器
-      // 单通道逻辑自动切换
-      final previewKey = _PreviewButton.keyOf(voiceId);
-      final playback = ref.read(ttsPlaybackProvider);
-      final isThisPlaying = playback.messageId == previewKey &&
-          playback.status != TtsPlaybackStatus.idle;
-      if (!isThisPlaying) {
-        ref.read(ttsPlaybackProvider.notifier).speakMessage(
-              previewKey,
-              _PreviewButton.previewText,
-              voiceOverride: voiceId,
-            );
-      }
+      _preview(_voicePreviewKey(voiceId), voiceOverride: voiceId);
     } catch (e) {
       if (!mounted) return;
       Toast.error(context, '保存失败：$e');
     }
   }
 
+  /// 选中语速：持久化后刷新弹窗勾选并自动试播；弹窗保持打开，由用户自行关闭
+  ///
+  /// 语速只有 0.8/1.0/1.2 三档，光看文字难以预期效果，因此选中即试播，
+  /// 且不像旧版那样选完就收起弹窗——用户需要连续试听对比。
+  Future<void> _selectRate(double rate, StateSetter refreshSheet) async {
+    try {
+      await QVoiceConfig.instance.setRate(rate);
+      if (!mounted) return;
+      setState(() => _settings = _current.copyWith(rate: rate));
+      refreshSheet(() {});
+      _preview(_ratePreviewKey(rate), rateOverride: rate);
+    } catch (e) {
+      if (!mounted) return;
+      Toast.error(context, '保存失败：$e');
+    }
+  }
+
+  /// 试播固定示例句：正在播这一条就停下（再点一次即重播），播别的试听时
+  /// 由播放器单通道逻辑自动切换
+  void _preview(
+    String previewKey, {
+    String? voiceOverride,
+    double? rateOverride,
+  }) {
+    final notifier = ref.read(ttsPlaybackProvider.notifier);
+    final playback = ref.read(ttsPlaybackProvider);
+    if (playback.messageId == previewKey &&
+        playback.status != TtsPlaybackStatus.idle) {
+      notifier.stop();
+      return;
+    }
+    notifier.speakMessage(
+      previewKey,
+      _PreviewButton.previewText,
+      voiceOverride: voiceOverride,
+      rateOverride: rateOverride,
+    );
+  }
+
+  /// 语速选择弹窗：档位名居中，选中不关闭弹窗并自动试播，由用户自行关闭
   void _showRatePicker() {
-    final currentRate = _current.rate;
     showModalBottomSheet(
       context: context,
       useRootNavigator: true,
@@ -325,81 +337,117 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
           behavior: HitTestBehavior.opaque,
           onTap: () {},
           child: SafeArea(
-            child: Container(
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(28),
-                ),
-              ),
-              padding: const EdgeInsets.fromLTRB(8, 16, 8, 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.onSurfaceVariant.withValues(
-                          alpha: 0.2,
+            child: _SheetPanel(
+              title: '选择语速',
+              // 勾选态由弹窗自身的 sheetSetState 刷新（同音色弹窗，
+              // 弹窗挂在 root Navigator，页面的 setState 不会重建它）
+              child: StatefulBuilder(
+                builder: (_, sheetSetState) => Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final entry in QVoiceConfig.rateOptions.entries)
+                      ListTile(
+                        // leading 与 trailing 等宽常驻：勾选图标出现或消失时
+                        // 标题可用宽度不变，档位名就不会左右挪位
+                        leading: const SizedBox(
+                          width: _kRateSlotWidth,
+                          height: _kRateSlotWidth,
                         ),
-                        borderRadius: BorderRadius.circular(2),
+                        titleAlignment: ListTileTitleAlignment.center,
+                        title: Text(entry.value, textAlign: TextAlign.center),
+                        subtitle: Text(
+                          '${entry.key} 倍速',
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        trailing: SizedBox(
+                          width: _kRateSlotWidth,
+                          height: _kRateSlotWidth,
+                          child: entry.key == _current.rate
+                              ? Icon(
+                                  Icons.check_circle,
+                                  color: theme.colorScheme.primary,
+                                )
+                              : null,
+                        ),
+                        onTap: () => _selectRate(entry.key, sheetSetState),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  for (final entry in QVoiceConfig.rateOptions.entries)
-                    ListTile(
-                      title: Text(entry.value, textAlign: TextAlign.center),
-                      trailing: entry.key == currentRate
-                          ? Icon(
-                              Icons.check_circle,
-                              color: theme.colorScheme.primary,
-                            )
-                          : null,
-                      onTap: () => _selectRate(ctx, entry.key),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
         );
       },
-    );
-  }
-
-  Future<void> _selectRate(BuildContext sheetCtx, double rate) async {
-    try {
-      await QVoiceConfig.instance.setRate(rate);
-      if (!mounted) return;
-      setState(() => _settings = _current.copyWith(rate: rate));
-      Navigator.of(sheetCtx).pop();
-    } catch (e) {
-      if (!mounted) return;
-      Toast.error(context, '保存失败：$e');
-    }
+    ).whenComplete(_stopPreviewIfPlaying);
   }
 }
 
-/// 音色试听按钮：独立 ConsumerWidget 而非页面 State 方法，因为弹窗
-/// 挂在 root Navigator 上，页面 State 的 ref.watch 依赖会随页面重建失效，
-/// 弹窗内的合成中/播放中状态从此不再更新（转圈永不出现）
+/// 底部弹窗面板：拖拽条 + 标题 + 内容，音色/语速两个弹窗共用
+///
+/// 底色必须由 Material 自身承担而不是外层套带颜色的 Container：ListTile 的水波纹
+/// 画在最近的 Material 上，Container 底色会把涟漪盖在下面（debug 下直接断言报错）。
+class _SheetPanel extends StatelessWidget {
+  const _SheetPanel({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.colorScheme.surface,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.onSurfaceVariant.withValues(
+                    alpha: 0.2,
+                  ),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.only(left: 8, bottom: 8),
+              child: Text(title, style: theme.textTheme.titleMedium),
+            ),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 音色试听按钮：独立 ConsumerWidget 而非页面 State 方法，因为弹窗挂在 root
+/// Navigator 上，页面 State 的 ref.watch 依赖会随页面重建失效，弹窗内的
+/// 合成中/播放中状态从此不再更新（转圈永不出现）
 class _PreviewButton extends ConsumerWidget {
   const _PreviewButton({required this.voiceId});
 
-  /// 固定示例句，选中音色的自动试播与按钮点播共用
+  /// 固定示例句，音色/语速弹窗的自动试播与按钮点播共用
   static const String previewText = '你好，我是小Q，很高兴认识你。';
-
-  /// 试听在播放通道里的消息标识（关闭弹窗停止播放时按此前缀识别）
-  static String keyOf(String voiceId) => 'preview_$voiceId';
 
   final String voiceId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final previewKey = _voicePreviewKey(voiceId);
     final playback = ref.watch(ttsPlaybackProvider);
-    final previewKey = keyOf(voiceId);
     final isPlaying = playback.messageId == previewKey &&
         playback.status == TtsPlaybackStatus.playing;
     final isBusy = playback.messageId == previewKey &&
@@ -413,7 +461,11 @@ class _PreviewButton extends ConsumerWidget {
           notifier.stop();
           return;
         }
-        notifier.speakMessage(previewKey, previewText, voiceOverride: voiceId);
+        notifier.speakMessage(
+          previewKey,
+          previewText,
+          voiceOverride: voiceId,
+        );
       },
       // 合成需一次网络请求，转圈让"延迟"变成可见的加载而非卡住
       icon: AnimatedSwitcher(

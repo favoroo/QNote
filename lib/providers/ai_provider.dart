@@ -251,7 +251,11 @@ class ChatSessionListNotifier extends AsyncNotifier<List<ChatSession>> {
   /// 将 [session] 回写到内存列表（替换或插入并按 updatedAt 降序重排），不写库。
   ///
   /// 供 CurrentChatNotifier 等直接落库的场景同步历史抽屉，避免重复持久化
-  void upsertLocal(ChatSession session) {
+  void upsertLocal(ChatSession session) => _applyLocally(session);
+
+  /// 内存替换目标项（缺失则插入）并按 updatedAt 降序重排，保持与数据库
+  /// `updated_at DESC` 同一口径。
+  void _applyLocally(ChatSession session) {
     final list = (state.valueOrNull ?? [])
         .map((s) => s.id == session.id ? session : s)
         .toList();
@@ -262,15 +266,51 @@ class ChatSessionListNotifier extends AsyncNotifier<List<ChatSession>> {
     state = AsyncData(list);
   }
 
+  ChatSession? _findById(String id) {
+    for (final session in state.valueOrNull ?? const <ChatSession>[]) {
+      if (session.id == id) {
+        return session;
+      }
+    }
+    return null;
+  }
+
   Future<void> updateSession(ChatSession session) async {
     final repo = ConfigRepository.instance;
-    await repo.updateChatSession(session);
-    // 内存替换目标项并按 updatedAt 降序重排，保持与数据库查询排序一致
-    final list = (state.valueOrNull ?? [])
-        .map((s) => s.id == session.id ? session : s)
-        .toList();
-    list.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    state = AsyncData(list);
+    // 用仓储返回的实例替换内存项：updateChatSession 会把 updatedAt 刷成 now，
+    // 若沿用入参那份旧时间戳，内存序就和下一次 getAllChatSessions 的库序分叉了
+    final updated = await repo.updateChatSession(session);
+    _applyLocally(updated);
+  }
+
+  /// 切换会话置顶。
+  ///
+  /// 与 [renameSession] 的关键区别：**不刷 updatedAt**。历史抽屉按 updatedAt 归档到
+  /// 「7 天内 / 30 天内 / 某年某月」，置顶只是展示排序，不该把三个月前的对话搬进近组。
+  Future<void> setPinned(String id, bool isPinned) async {
+    final target = _findById(id);
+    if (target == null || target.isPinned == isPinned) {
+      return;
+    }
+    await ConfigRepository.instance.setChatSessionPinned(id, isPinned);
+    _applyLocally(target.copyWith(isPinned: isPinned));
+    // 回填当前会话副本，否则下一条消息整行落库会把刚设的置顶静默抹掉
+    ref.read(currentChatProvider.notifier).patchMetadata(id, isPinned: isPinned);
+  }
+
+  /// 重命名会话。
+  ///
+  /// 与 [setPinned] 相反，这里**允许刷 updatedAt**（走 [updateSession]）：重命名是
+  /// 「用户正在动这条内容」，与对话推进同一语义，浮到「7 天内」符合直觉。
+  Future<void> renameSession(String id, String title) async {
+    final trimmed = title.trim();
+    final target = _findById(id);
+    if (target == null || trimmed.isEmpty || target.title == trimmed) {
+      return;
+    }
+    await updateSession(target.copyWith(title: trimmed));
+    // 同上：不回填的话，下一条消息落库会把新标题覆盖回旧值
+    ref.read(currentChatProvider.notifier).patchMetadata(id, title: trimmed);
   }
 
   /// 删除单个会话（真删，不可恢复）。
@@ -551,6 +591,19 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         prefs.remove('last_chat_session_id');
       }
     });
+  }
+
+  /// 把历史抽屉改掉的标题/置顶位同步回内存里的当前会话对象，**不写库**。
+  ///
+  /// 必要性：本 Notifier 持有会话**快照副本**，而发消息、步数上限处理、Agent 任务收尾
+  /// 等路径都会拿副本整行 `updateChatSession` 落库。抽屉改完不回填这里，用户接着发一条
+  /// 消息就会把刚改的标题或置顶静默抹掉——症状延迟出现、极难归因。
+  void patchMetadata(String id, {String? title, bool? isPinned}) {
+    final current = state;
+    if (current == null || current.id != id) {
+      return;
+    }
+    state = current.copyWith(title: title, isPinned: isPinned);
   }
 
   /// 启动时从持久化存储恢复上次的会话

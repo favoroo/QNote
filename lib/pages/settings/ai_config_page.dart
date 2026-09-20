@@ -828,7 +828,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('AI 配置'),
+        title: const Text('AI 模型配置'),
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
@@ -840,7 +840,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => AppErrorState(
           error: e,
-          action: '加载 AI 配置失败',
+          action: '加载 AI 模型配置失败',
           onRetry: () => ref.invalidate(aiConfigListProvider),
         ),
         data: (configs) => SingleChildScrollView(
@@ -1420,6 +1420,20 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         ? colorScheme.primary
         : Colors.purple.shade600;
 
+    // 识图检测结果拆分：行内徽标只放短文案，长失败原因降级为标签下的副行小字
+    final rawImageTest = _imageTestResult;
+    final imageTestOk = rawImageTest == '支持识别';
+    final String? imageTestChip = switch (rawImageTest) {
+      null => null,
+      '支持识别' => '支持',
+      '不支持图片识别' => '不支持',
+      _ => '失败',
+    };
+    final String? imageTestDetail =
+        rawImageTest != null && rawImageTest.startsWith('测试失败')
+        ? rawImageTest.replaceFirst('测试失败: ', '')
+        : null;
+
     return Container(
       decoration: BoxDecoration(
         color: theme.cardColor,
@@ -1623,139 +1637,175 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           if (roleKey == 'timelineOptimization') ...[
             const SizedBox(height: 10),
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.fromLTRB(12, 7, 6, 7),
               decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                // 开启时用主色淡染，让开关状态一眼可辨
+                color: settings.extractImages
+                    ? colorScheme.primary.withValues(alpha: 0.06)
+                    : colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Column(
+              child: Row(
                 children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.photo_library_outlined,
-                        size: 18,
-                        color: colorScheme.primary,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
+                  Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: (settings.extractImages
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant)
+                          .withValues(
+                            alpha: settings.extractImages ? 0.12 : 0.08,
+                          ),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      Icons.photo_library_outlined,
+                      size: 15,
+                      color: settings.extractImages
+                          ? colorScheme.primary
+                          : colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                    ),
+                  ),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
                           '提取图片内容',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             fontWeight: FontWeight.w600,
                             fontSize: 13,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                      Switch(
-                        value: settings.extractImages,
-                        onChanged: (value) {
-                          _updateRoleSettings(
-                            roleKey,
-                            settings.copyWith(extractImages: value),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                  if (settings.extractImages) ...[
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Divider(
-                        height: 1,
-                        color: colorScheme.outlineVariant.withValues(alpha: 0.25),
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: _testingImageRecognition
-                              ? null
-                              : () => _testModelImageRecognition(roleKey, configs),
-                          style: OutlinedButton.styleFrom(
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            side: BorderSide(
-                              color: colorScheme.primary.withValues(alpha: 0.35),
-                            ),
-                          ),
-                          icon: _testingImageRecognition
-                              ? SizedBox(
-                                  width: 12,
-                                  height: 12,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: colorScheme.primary,
-                                  ),
-                                )
-                              : Icon(
-                                  Icons.image_search_rounded,
-                                  size: 14,
-                                  color: colorScheme.primary,
-                                ),
-                          label: Text(
-                            _testingImageRecognition ? '正在检测...' : '检测识图能力',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              color: colorScheme.primary,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                        if (_imageTestResult != null) ...[
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Align(
-                              alignment: Alignment.centerRight,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: _imageTestResult == '支持识别'
-                                      ? Colors.green.withValues(alpha: 0.1)
-                                      : colorScheme.error.withValues(alpha: 0.08),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(
-                                    color: _imageTestResult == '支持识别'
-                                        ? Colors.green.withValues(alpha: 0.25)
-                                        : colorScheme.error.withValues(alpha: 0.25),
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      _imageTestResult == '支持识别'
-                                          ? Icons.check_circle_rounded
-                                          : Icons.info_outline_rounded,
-                                      size: 13,
-                                      color: _imageTestResult == '支持识别'
-                                          ? Colors.green.shade700
-                                          : colorScheme.error,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Flexible(
-                                      child: Text(
-                                        _imageTestResult!,
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                          color: _imageTestResult == '支持识别'
-                                              ? Colors.green.shade700
-                                              : colorScheme.error,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                        // 失败原因较长，只以副行小字呈现，主行保持单行
+                        if (imageTestDetail != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 1),
+                            child: Text(
+                              imageTestDetail,
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                color: colorScheme.onSurfaceVariant,
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                        ],
                       ],
                     ),
+                  ),
+                  if (imageTestChip != null) ...[
+                    const SizedBox(width: 6),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 76),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(999),
+                          color: imageTestOk
+                              ? Colors.green.withValues(alpha: 0.12)
+                              : colorScheme.error.withValues(alpha: 0.08),
+                          border: Border.all(
+                            color: imageTestOk
+                                ? Colors.green.withValues(alpha: 0.3)
+                                : colorScheme.error.withValues(alpha: 0.28),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              imageTestOk
+                                  ? Icons.check_rounded
+                                  : Icons.close_rounded,
+                              size: 11,
+                              color: imageTestOk
+                                  ? Colors.green.shade700
+                                  : colorScheme.error,
+                            ),
+                            const SizedBox(width: 3),
+                            Flexible(
+                              child: Text(
+                                imageTestChip,
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: imageTestOk
+                                      ? Colors.green.shade700
+                                      : colorScheme.error,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ],
+                  if (settings.extractImages) ...[
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      onPressed: _testingImageRecognition
+                          ? null
+                          : () => _testModelImageRecognition(roleKey, configs),
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        minimumSize: const Size(0, 32),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        side: BorderSide(
+                          color: colorScheme.primary.withValues(alpha: 0.35),
+                        ),
+                      ),
+                      icon: _testingImageRecognition
+                          ? SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: colorScheme.primary,
+                              ),
+                            )
+                          : Icon(
+                              Icons.image_search_rounded,
+                              size: 13,
+                              color: colorScheme.primary,
+                            ),
+                      label: Text(
+                        _testingImageRecognition ? '检测中' : '识图检测',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: colorScheme.primary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                  Switch(
+                    value: settings.extractImages,
+                    onChanged: (value) {
+                      // 关闭时清掉旧结果，避免重新打开残留上一次的徽标
+                      if (!value) setState(() => _imageTestResult = null);
+                      _updateRoleSettings(
+                        roleKey,
+                        settings.copyWith(extractImages: value),
+                      );
+                    },
+                  ),
                 ],
               ),
             ),

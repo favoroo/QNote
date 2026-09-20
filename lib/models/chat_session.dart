@@ -166,6 +166,11 @@ class ChatSession {
   final DateTime updatedAt;
   final bool isDeleted;
 
+  /// 历史抽屉的置顶位。**只影响展示排序，绝不参与时间分组归属**，
+  /// 因此切换它必须走 `setChatSessionPinned` 而不是 `updateChatSession`
+  /// （后者会刷 updatedAt，会把三个月前的对话整个搬进「7 天内」）。
+  final bool isPinned;
+
   ChatSession({
     required this.id,
     required this.title,
@@ -174,6 +179,7 @@ class ChatSession {
     required this.createdAt,
     required this.updatedAt,
     this.isDeleted = false,
+    this.isPinned = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -185,6 +191,7 @@ class ChatSession {
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
       'is_deleted': isDeleted ? 1 : 0,
+      'is_pinned': isPinned ? 1 : 0,
     };
   }
 
@@ -214,8 +221,14 @@ class ChatSession {
       createdAt: DateTime.parse(map['created_at'] as String),
       updatedAt: DateTime.parse(map['updated_at'] as String),
       isDeleted: (map['is_deleted'] as int? ?? 0) == 1,
+      isPinned: _flagOf(map['is_pinned']),
     );
   }
+
+  /// 标志位收口：库里是 0/1，但旧备份与对端 JSON 可能直接写 true/false，
+  /// 用 `as int?` 读到 bool 会当场抛；缺键（迁移前的行、旧版本备份）按未置顶处理。
+  static bool _flagOf(Object? value) =>
+      value is bool ? value : (value as int? ?? 0) != 0;
 
   ChatSession copyWith({
     String? id,
@@ -225,6 +238,7 @@ class ChatSession {
     DateTime? createdAt,
     DateTime? updatedAt,
     bool? isDeleted,
+    bool? isPinned,
   }) {
     return ChatSession(
       id: id ?? this.id,
@@ -234,6 +248,7 @@ class ChatSession {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       isDeleted: isDeleted ?? this.isDeleted,
+      isPinned: isPinned ?? this.isPinned,
     );
   }
 }

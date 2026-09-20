@@ -126,7 +126,15 @@
 
         <activity
             android:name="com.appone.qnote_flutter.QuickRecordActivity"
-            android:theme="@style/QuickRecordDialogTheme"
+            android:theme="@style/WidgetDialogTheme"
+            android:launchMode="singleInstance"
+            android:windowSoftInputMode="stateAlwaysVisible|adjustResize"
+            android:exported="false" />
+
+        <!-- 待办小组件「+」的桌面原生快速添加弹窗，与快捷记录弹窗共用同一套透明 Dialog 主题 -->
+        <activity
+            android:name="com.appone.qnote_flutter.QuickTodoAddActivity"
+            android:theme="@style/WidgetDialogTheme"
             android:launchMode="singleInstance"
             android:windowSoftInputMode="stateAlwaysVisible|adjustResize"
             android:exported="false" />

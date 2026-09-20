@@ -15,28 +15,26 @@ import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/models/todo.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
-import 'package:qnote_flutter/core/storage/chat_storage_usage.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/agent/agent_tool_labels.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
-import 'package:qnote_flutter/core/logger/logger_service.dart';
-import 'package:qnote_flutter/core/utils/chat_image_refs.dart';
+import 'package:qnote_flutter/core/utils/chat_reedit.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/config/defaults.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/tts/tts_player.dart';
-import 'package:qnote_flutter/widgets/empty_state.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
 import 'package:qnote_flutter/widgets/ai/auto_read_toggle_button.dart';
 import 'package:qnote_flutter/widgets/ai/bubble_action_bar.dart';
+import 'package:qnote_flutter/widgets/ai/chat_history_drawer.dart';
 import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
-import 'package:qnote_flutter/widgets/app_error_state.dart';
+import 'package:qnote_flutter/widgets/ai/user_bubble_reedit_tap.dart';
 import 'package:qnote_flutter/widgets/common/loading_ring.dart';
 import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
 import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
@@ -76,8 +74,6 @@ class _AiPageState extends ConsumerState<AiPage> {
   double _lastBottomInset = 0.0;
 
   bool _isTyping = false;
-  bool _isBatchMode = false;
-  List<String> _selectedSessionIds = [];
   String? _activeModelId;
 
   // 待发送的对话引用文本（用户通过消息框选「给小Q」或点击悬浮球挂起）
@@ -465,145 +461,48 @@ class _AiPageState extends ConsumerState<AiPage> {
   }
 
   // ==========================================
-  // 用户消息长按操作：再次编辑 / 撤回本轮对话 / 复制
+  // 最后一条用户提问：点击直达再次编辑
   // ==========================================
 
-  /// 长按用户消息弹出的操作菜单；[stateIndex] 为该消息在会话态中的真实下标
-  void _showUserMessageActions(int stateIndex, ChatMessage message) {
+  /// 点击我最后发的那条提问：立即回退本轮（含恢复本轮数据修改）并把提问完整填回输入框。
+  ///
+  /// 零二次确认是产品决策——命中面已收窄到最后一条提问本体、按下有震动与高亮的事前反馈，
+  /// 但回退本身仍是不可恢复的删除，所以生成中与未发送草稿这两道拒绝门必须留着。
+  Future<void> _reopenLastUserMessage(int stateIndex) async {
     if (_isTyping ||
         ref.read(aiStreamingMessageProvider) != null ||
         ref.read(aiStreamingStatusProvider) != null) {
       Toast.warning(context, '小Q正在生成中，请等待完成后再操作');
       return;
     }
-
-    final theme = Theme.of(context);
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: theme.colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetCtx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 36,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 8),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.outlineVariant.withValues(
-                      alpha: 0.5,
-                    ),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.edit_note_rounded, size: 22),
-                  title: const Text('再次编辑', style: TextStyle(fontSize: 14)),
-                  subtitle: const Text(
-                    '回退到本轮对话发起前，内容填回输入框重新生成',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                  onTap: () {
-                    Navigator.pop(sheetCtx);
-                    _confirmRollback(stateIndex, refill: true);
-                  },
-                ),
-                ListTile(
-                  leading: Icon(
-                    Icons.undo_rounded,
-                    size: 22,
-                    color: theme.colorScheme.error,
-                  ),
-                  title: Text(
-                    '撤回本轮对话',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: theme.colorScheme.error,
-                    ),
-                  ),
-                  subtitle: const Text(
-                    '回退到本轮对话发起前，并撤销本轮对数据的修改',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                  onTap: () {
-                    Navigator.pop(sheetCtx);
-                    _confirmRollback(stateIndex, refill: false);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.copy_rounded, size: 20),
-                  title: const Text('复制', style: TextStyle(fontSize: 14)),
-                  onTap: () {
-                    Navigator.pop(sheetCtx);
-                    Clipboard.setData(ClipboardData(text: message.content));
-                    Toast.success(context, '已复制');
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+    if (_hasUnsentDraft()) {
+      Toast.warning(context, '输入框还有未发送的内容，先清空或发送后再改');
+      return;
+    }
+    await _executeRollback(stateIndex);
   }
 
-  /// 撤回前的二次确认（破坏性操作：删除该轮起的消息并恢复数据修改，不可恢复）
-  Future<void> _confirmRollback(int stateIndex, {required bool refill}) async {
+  /// 输入框是否已有未发送内容。
+  ///
+  /// 回退后「最后一条提问」会落到更早一轮，此时输入框正躺着刚回填的草稿，
+  /// 再点一次会被静默覆盖，因此必须先拒。
+  bool _hasUnsentDraft() =>
+      _inputController.text.trim().isNotEmpty ||
+      _quotedChatText != null ||
+      _attachedImages.isNotEmpty ||
+      _attachedJournalIds.isNotEmpty ||
+      _attachedNoteIds.isNotEmpty ||
+      _attachedTodoIds.isNotEmpty;
+
+  /// 执行回退：删除该轮起的消息并恢复本轮数据修改，随后把提问完整填回输入区
+  Future<void> _executeRollback(int stateIndex) async {
     final session = ref.read(currentChatProvider);
-    final messages = session?.messages ?? const <ChatMessage>[];
-    if (stateIndex < 0 || stateIndex >= messages.length) return;
-
-    final removedCount = messages.length - stateIndex;
-    int changeCount = 0;
-    for (final m in messages.skip(stateIndex).where((m) => m.role == 'user')) {
-      changeCount += WorkspaceUndoEntry.decodeList(m.undoLog).length;
-    }
-
-    final description = StringBuffer('将删除该轮起的 $removedCount 条消息');
-    if (changeCount > 0) {
-      description.write('，并撤销本轮及之后的 $changeCount 处数据修改');
-    }
-    description.write('。此操作不可恢复。');
-
-    final theme = Theme.of(context);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogCtx) => AlertDialog(
-        title: Text(refill ? '再次编辑并回退？' : '撤回本轮对话？'),
-        content: Text(description.toString()),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: theme.colorScheme.error,
-              foregroundColor: theme.colorScheme.onError,
-            ),
-            onPressed: () => Navigator.pop(dialogCtx, true),
-            child: Text(refill ? '编辑并回退' : '撤回'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    await _executeRollback(stateIndex, refill: refill);
-  }
-
-  /// 执行撤回；[refill] 为 true 时把被撤回的用户消息内容与图片回填输入区（再次编辑）
-  Future<void> _executeRollback(int stateIndex, {required bool refill}) async {
-    final message = refill
-        ? ref.read(currentChatProvider)?.messages[stateIndex]
+    // 回退会把这条提问从会话态里移除，先取一份快照供回填用
+    final message = (session != null && stateIndex < session.messages.length)
+        ? session.messages[stateIndex]
         : null;
 
-    // 复用生成中状态禁用输入区，防止撤回期间发送新消息
+    // 复用生成中状态禁用输入区，防止回退与回填期间插入新消息
     setState(() => _isTyping = true);
     try {
       final result = await ref
@@ -611,7 +510,7 @@ class _AiPageState extends ConsumerState<AiPage> {
           .rollbackToMessage(stateIndex);
       if (!mounted) return;
       if (result == null) {
-        Toast.error(context, '当前状态无法撤回');
+        Toast.error(context, '当前状态无法重新编辑');
         return;
       }
       final (restored, failed) = result;
@@ -622,8 +521,10 @@ class _AiPageState extends ConsumerState<AiPage> {
       } else {
         Toast.success(context, '已回退对话');
       }
-      if (refill && message != null) {
-        _refillInputFromMessage(message);
+      // 附件标题回查是异步的，必须留在忙窗口内完成：窗口内发送按钮本身就是「中止」，
+      // 因此回填期间不存在用户又点了发送的竞态
+      if (message != null) {
+        await _refillInputFromMessage(message);
       }
       _scrollToBottom();
     } finally {
@@ -748,16 +649,8 @@ class _AiPageState extends ConsumerState<AiPage> {
       if (confirmed != true || !mounted) return;
     }
 
-    // 解析发送时持久化的附件引用（旧消息或纯文本/图片提问则视为无引用）
-    final attachments = userMessage.uiDetails?['attachments'];
-    final attachmentMap = attachments is Map ? attachments : null;
-    List<String>? readIds(String key) {
-      final raw = attachmentMap?[key];
-      if (raw is List && raw.isNotEmpty) {
-        return raw.map((e) => e.toString()).toList();
-      }
-      return null;
-    }
+    // 引用附件的 id 与「再次编辑」回填共用同一份解析，落库格式因此只有一个读取口
+    final refs = ChatAttachmentRefs.fromMessage(userMessage);
 
     // 复用生成中状态禁用输入区，防止回退与重发期间插入新消息
     setState(() => _isTyping = true);
@@ -776,9 +669,9 @@ class _AiPageState extends ConsumerState<AiPage> {
           .sendMessage(
             userMessage.content,
             images: userMessage.images,
-            noteIds: readIds('notes'),
-            todoIds: readIds('todos'),
-            journalIds: readIds('journals'),
+            noteIds: refs.noteIds,
+            todoIds: refs.todoIds,
+            journalIds: refs.journalIds,
             skillName: _parseSlashCommand(userMessage.content),
           );
     } finally {
@@ -789,18 +682,44 @@ class _AiPageState extends ConsumerState<AiPage> {
     }
   }
 
-  /// 「再次编辑」：把被撤回的用户消息文本与图片回填到输入区（引用的日记/笔记/待办
-  /// 未持久化到消息上，无法回填，需重新选择）
-  void _refillInputFromMessage(ChatMessage message) {
+  /// 把被回退的提问完整填回输入区：正文、图片、日记/笔记/待办引用一并还原。
+  ///
+  /// 标题必须按 id 回查：附件条的标题缓存只在打开选择弹窗时填充、不落库，冷启动后是空的，
+  /// 不补标题 chip 就只剩「日记/笔记/待办」这类类型名，用户无从确认拿回来的是哪几条。
+  Future<void> _refillInputFromMessage(ChatMessage message) async {
+    final refs = ChatAttachmentRefs.fromMessage(message);
+    final titles = await resolveAttachmentTitles(refs);
+    if (!mounted) return;
+
+    final text = message.content;
     setState(() {
-      _inputController.text = message.content;
+      _journalTitles.addAll(titles.journals);
+      _noteTitles.addAll(titles.notes);
+      _todoTitles.addAll(titles.todos);
+      _attachedJournalIds
+        ..clear()
+        ..addAll(refs.journalIds ?? const []);
+      _attachedNoteIds
+        ..clear()
+        ..addAll(refs.noteIds ?? const []);
+      _attachedTodoIds
+        ..clear()
+        ..addAll(refs.todoIds ?? const []);
       _attachedImages
         ..clear()
         ..addAll(message.images ?? const []);
-      _attachedJournalIds.clear();
-      _attachedNoteIds.clear();
-      _attachedTodoIds.clear();
+      // 引用文本整段留在正文里原样回填，不反解析回 _quotedChatText：反解析要靠文案模板
+      // 匹配，_sendMessage 的措辞一改就静默丢内容，整段回填才与用户当初发的逐字一致
+      _quotedChatText = null;
+      // 一次性写 value：连带把光标钉在文末，避免 .text 赋值保留旧 selection 造成瞬时越界
+      _inputController.value = TextEditingValue(
+        text: text,
+        selection: TextSelection.collapsed(offset: text.length),
+      );
     });
+    // 程序化写入同样会走 _onInputChanged，原文以「/技能名」「@类别」结尾时会误拉面板；
+    // 回填不是敲键，这里显式收起，下一次真实输入仍会重算
+    _updateOverlays(null, null);
     _inputFocusNode.requestFocus();
   }
 
@@ -878,7 +797,7 @@ class _AiPageState extends ConsumerState<AiPage> {
         _attachedJournalIds.clear();
         _attachedJournalIds.addAll(result);
         for (final j in journals) {
-          _journalTitles[j.id] = '${j.title} 日记';
+          _journalTitles[j.id] = journalChipTitle(j);
         }
       });
     }
@@ -903,7 +822,7 @@ class _AiPageState extends ConsumerState<AiPage> {
         _attachedNoteIds.clear();
         _attachedNoteIds.addAll(result);
         for (final n in validNotes) {
-          _noteTitles[n.id] = n.title.isNotEmpty ? n.title : '无标题笔记';
+          _noteTitles[n.id] = noteChipTitle(n);
         }
       });
     }
@@ -925,7 +844,7 @@ class _AiPageState extends ConsumerState<AiPage> {
         _attachedTodoIds.clear();
         _attachedTodoIds.addAll(result);
         for (final t in validTodos) {
-          _todoTitles[t.id] = t.title.isNotEmpty ? t.title : '无标题待办';
+          _todoTitles[t.id] = todoChipTitle(t);
         }
       });
     }
@@ -1216,7 +1135,10 @@ class _AiPageState extends ConsumerState<AiPage> {
         builder: (context, ref, _) {
           final sessionsAsync = ref.watch(chatSessionListProvider);
           final activeId = ref.watch(currentChatProvider.select((c) => c?.id));
-          return _buildHistoryDrawer(sessionsAsync, activeId, theme);
+          return ChatHistoryDrawer(
+            sessionsAsync: sessionsAsync,
+            activeId: activeId,
+          );
         },
       ),
       body: Column(
@@ -1343,6 +1265,10 @@ class _AiPageState extends ConsumerState<AiPage> {
         displayItems.last.message.role == 'user';
     final showStreaming = hasStreaming;
 
+    // 「再次编辑」入口只挂在我最后发的那条提问上：更早的轮次回退会连带撤销其后
+    // 所有真实数据修改，误触代价不可接受
+    final reeditIndex = reeditableUserIndex(stateMessages);
+
     final totalCount =
         displayItems.length + (showTyping ? 1 : 0) + (showStreaming ? 1 : 0);
 
@@ -1455,15 +1381,16 @@ class _AiPageState extends ConsumerState<AiPage> {
                     .read(currentChatProvider.notifier)
                     .pauseAfterTurnLimit(),
               );
-              // 用户消息长按弹出操作菜单（撤回本轮 / 再次编辑 / 复制）；
-              // 失败气泡长按弹出重试菜单（重试本轮 / 复制错误详情）
+              // 我最后发的那条提问：点一下直达再次编辑；失败气泡仍走长按弹重试菜单
+              final canReedit =
+                  currentIsUser &&
+                  reeditIndex != null &&
+                  entry.stateIndex == reeditIndex;
               return RepaintBoundary(
-                child: currentIsUser && entry.stateIndex != null
-                    ? GestureDetector(
-                        onLongPress: () => _showUserMessageActions(
-                          entry.stateIndex!,
-                          currentMsg,
-                        ),
+                child: canReedit
+                    ? UserBubbleReeditTap(
+                        enabled: !_isTyping && !hasStreaming,
+                        onTap: () => _reopenLastUserMessage(entry.stateIndex!),
                         child: bubble,
                       )
                     : !currentIsUser &&
@@ -2206,458 +2133,6 @@ class _AiPageState extends ConsumerState<AiPage> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildHistoryDrawer(
-    AsyncValue<List<ChatSession>> sessionsAsync,
-    String? activeId,
-    ThemeData theme,
-  ) {
-    return Drawer(
-      child: sessionsAsync.when(
-        data: (sessions) {
-          return Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 8, 0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      '对话历史',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (sessions.isNotEmpty)
-                          IconButton(
-                            icon: Icon(
-                              Icons.grid_view,
-                              size: 18,
-                              color: _isBatchMode
-                                  ? theme.colorScheme.primary
-                                  : theme.colorScheme.onSurfaceVariant,
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                _isBatchMode = !_isBatchMode;
-                                if (!_isBatchMode) _selectedSessionIds = [];
-                              });
-                            },
-                          ),
-                        IconButton(
-                          icon: const Icon(Icons.close, size: 18),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: !_isBatchMode
-                    ? SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          icon: const Icon(Icons.add, size: 18),
-                          label: const Text('新建对话'),
-                          onPressed: () async {
-                            final session = await ref
-                                .read(chatSessionListProvider.notifier)
-                                .createSession();
-                            ref
-                                .read(currentChatProvider.notifier)
-                                .setSession(session);
-                            if (!mounted) return;
-                            Navigator.pop(context);
-                          },
-                        ),
-                      )
-                    : Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () {
-                                setState(() {
-                                  _selectedSessionIds =
-                                      _selectedSessionIds.length ==
-                                          sessions.length
-                                      ? []
-                                      : sessions.map((s) => s.id).toList();
-                                });
-                              },
-                              child: Text(
-                                _selectedSessionIds.length == sessions.length
-                                    ? '取消全选'
-                                    : '全选',
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton(
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: theme.colorScheme.error,
-                              ),
-                              onPressed: () async {
-                                if (!await _confirmDeleteSessions(sessions)) {
-                                  return;
-                                }
-                                try {
-                                  // 一次批量调用：单个事务删完，避免逐条删除时
-                                  // 每次都重扫一遍全表图片引用
-                                  await _performDelete(sessions);
-                                } catch (error) {
-                                  if (mounted) {
-                                    Toast.error(context, '清空失败');
-                                  }
-                                  LoggerService.instance.logAI(
-                                    '清空对话历史失败',
-                                    details: '$error',
-                                    level: LogLevel.warning,
-                                  );
-                                  return;
-                                }
-                                if (!mounted) {
-                                  return;
-                                }
-                                setState(() {
-                                  _isBatchMode = false;
-                                  _selectedSessionIds = [];
-                                });
-                              },
-                              child: const Text('清空全部'),
-                            ),
-                          ),
-                        ],
-                      ),
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: sessions.isEmpty
-                    ? const EmptyStateWidget(
-                        icon: Icons.chat_bubble_outline,
-                        message: '暂无对话',
-                      )
-                    : ListView.builder(
-                        itemCount: sessions.length,
-                        itemBuilder: (ctx, i) => _buildSessionTile(
-                          sessions[i],
-                          sessions[i].id == activeId,
-                          theme,
-                        ),
-                      ),
-              ),
-              if (_isBatchMode && _selectedSessionIds.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      top: BorderSide(color: theme.colorScheme.outlineVariant),
-                    ),
-                  ),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      icon: const Icon(Icons.delete_outline, size: 18),
-                      label: Text('删除已选 (${_selectedSessionIds.length})'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: theme.colorScheme.error,
-                      ),
-                      onPressed: () async {
-                        final selected = sessions
-                            .where((s) => _selectedSessionIds.contains(s.id))
-                            .toList();
-                        if (!await _confirmDeleteSessions(selected)) {
-                          return;
-                        }
-                        try {
-                          await _performDelete(selected);
-                        } catch (error) {
-                          if (mounted) {
-                            Toast.error(context, '删除失败');
-                          }
-                          LoggerService.instance.logAI(
-                            '批量删除对话失败',
-                            details: 'count=${selected.length}, $error',
-                            level: LogLevel.warning,
-                          );
-                          return;
-                        }
-                        if (!mounted) {
-                          return;
-                        }
-                        setState(() {
-                          _selectedSessionIds = [];
-                          _isBatchMode = false;
-                        });
-                      },
-                    ),
-                  ),
-                ),
-            ],
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => AppErrorState(
-          error: e,
-          action: '加载历史对话失败',
-          // Drawer 宽度有限，用紧凑态避免长异常串挤掉重试按钮
-          compact: true,
-          onRetry: () => ref.invalidate(chatSessionListProvider),
-        ),
-      ),
-    );
-  }
-
-  /// 统一的对话删除确认。
-  ///
-  /// 删除已改为物理删除（旧版软删只是打标记，数据一直占着库），所以四条删除入口
-  /// （侧滑、行尾按钮、批量删除、清空全部）都必须先让用户看清三件事：删掉多少内容、
-  /// 不可恢复、以及**不会**牵连小Q已经写成的笔记/日记/待办与工作区文件。
-  Future<bool> _confirmDeleteSessions(List<ChatSession> targets) async {
-    if (targets.isEmpty) {
-      return false;
-    }
-    var messageCount = 0;
-    var imageCount = 0;
-    for (final session in targets) {
-      messageCount += session.messages.length;
-      imageCount += countSessionImageRefs(session);
-    }
-
-    final detail = StringBuffer();
-    detail.writeln(
-      targets.length == 1
-          ? '将永久删除「${targets.first.title}」'
-          : '将永久删除 ${targets.length} 个对话',
-    );
-    detail.write('（共 $messageCount 条消息');
-    if (imageCount > 0) {
-      detail.write(' · $imageCount 张图片');
-    }
-    detail.writeln('），包括小Q生成并保存在本机的图片。');
-    detail.writeln();
-    detail.writeln('小Q已为你创建的笔记、日记、待办和虚拟工作区文件不会被删除。');
-    detail.write('此操作不可恢复，并会同步到其它设备。');
-
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除对话'),
-        content: SingleChildScrollView(
-          child: Text(
-            detail.toString(),
-            style: Theme.of(ctx).textTheme.bodyMedium,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('永久删除'),
-          ),
-        ],
-      ),
-    );
-    if (!mounted) {
-      return false;
-    }
-    return ok == true;
-  }
-
-  /// 执行删除并反馈：内部统一处理「当前会话被删时清空对话区」与 Toast，
-  /// 四条入口共用，避免各处漏掉其中一步。
-  Future<void> _performDelete(List<ChatSession> targets) async {
-    final ids = targets.map((s) => s.id).toList();
-    final report = await ref
-        .read(chatSessionListProvider.notifier)
-        .deleteSessions(ids);
-    final currentId = ref.read(currentChatProvider)?.id;
-    if (currentId != null && ids.contains(currentId)) {
-      ref.read(currentChatProvider.notifier).setSession(null);
-    }
-    if (!mounted) {
-      return;
-    }
-    Toast.success(context, _deleteToastText(targets, report));
-  }
-
-  /// 删除结果文案：只有真的删掉了磁盘上的图片文件才报「释放约」，
-  /// 因为消息记录虽然从库里删了，SQLite 文件要等「整理数据库」才会收缩。
-  String _deleteToastText(
-    List<ChatSession> targets,
-    ChatSessionDeleteReport report,
-  ) {
-    final head = targets.length == 1
-        ? '已删除「${targets.first.title}」'
-        : '已删除 ${targets.length} 个对话';
-    if (report.deletedImageFiles > 0) {
-      return '$head · 回收 ${report.deletedImageFiles} 张图片 · '
-          '释放约 ${formatChatStorageBytes(report.imageFreedBytes)}';
-    }
-    return head;
-  }
-
-  Widget _buildSessionTile(
-    ChatSession session,
-    bool isActive,
-    ThemeData theme,
-  ) {
-    final isSelected = _selectedSessionIds.contains(session.id);
-    // 该会话的小Q任务是否正在生成：列表项转圈 + 「生成中」副标题提示
-    final isRunning = ref.watch(
-      agentRunningSessionsProvider.select((s) => s.contains(session.id)),
-    );
-    return Dismissible(
-      key: ValueKey(session.id),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 16),
-        color: theme.colorScheme.error,
-        child: const Icon(Icons.delete, color: Colors.white),
-      ),
-      confirmDismiss: (_) => _confirmDeleteSessions([session]),
-      onDismissed: (_) async {
-        try {
-          await _performDelete([session]);
-        } catch (error) {
-          if (mounted) {
-            Toast.error(context, '删除失败');
-          }
-          LoggerService.instance.logAI(
-            '侧滑删除对话失败',
-            details: 'session=${session.id}, $error',
-            level: LogLevel.warning,
-          );
-        } finally {
-          // 划走动画已完成但删除失败时，必须重绘把这一行画回来，
-          // 否则会出现「界面已移除、数据源还在」的 Dismissible 断言
-          if (mounted) {
-            setState(() {});
-          }
-        }
-      },
-      child: ListTile(
-        leading: _isBatchMode
-            ? Checkbox(
-                value: isSelected,
-                onChanged: (v) {
-                  setState(() {
-                    if (v == true) {
-                      _selectedSessionIds = [
-                        ..._selectedSessionIds,
-                        session.id,
-                      ];
-                    } else {
-                      _selectedSessionIds = _selectedSessionIds
-                          .where((id) => id != session.id)
-                          .toList();
-                    }
-                  });
-                },
-              )
-            : isRunning
-            ? LoadingRing(
-                size: 16,
-                strokeWidth: 1.8,
-                color: isActive
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.onSurfaceVariant,
-              )
-            : Icon(
-                Icons.chat_bubble_outline,
-                size: 16,
-                color: isActive
-                    ? theme.colorScheme.primary
-                    : theme.disabledColor,
-              ),
-        title: Text(
-          session.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontWeight: FontWeight.w500,
-            color: isActive ? theme.colorScheme.primary : null,
-          ),
-        ),
-        subtitle: Text(
-          isRunning && !_isBatchMode
-              ? '小Q生成中…'
-              : DateFormat('MM/dd HH:mm').format(session.updatedAt),
-          style: TextStyle(
-            fontSize: 10,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        trailing: !_isBatchMode
-            ? IconButton(
-                icon: Icon(
-                  Icons.delete_outline,
-                  size: 16,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                tooltip: '删除对话',
-                onPressed: () async {
-                  // 此前这里点一下就直删、无任何确认；改成真删后必须补确认
-                  if (!await _confirmDeleteSessions([session])) {
-                    return;
-                  }
-                  try {
-                    await _performDelete([session]);
-                  } catch (error) {
-                    if (mounted) {
-                      Toast.error(context, '删除失败');
-                    }
-                    LoggerService.instance.logAI(
-                      '删除对话失败',
-                      details: 'session=${session.id}, $error',
-                      level: LogLevel.warning,
-                    );
-                  }
-                },
-              )
-            : null,
-        selected: isActive && !_isBatchMode,
-        onTap: () {
-          if (_isBatchMode) {
-            setState(() {
-              if (isSelected) {
-                _selectedSessionIds = _selectedSessionIds
-                    .where((id) => id != session.id)
-                    .toList();
-              } else {
-                _selectedSessionIds = [..._selectedSessionIds, session.id];
-              }
-            });
-          } else {
-            ref.read(currentChatProvider.notifier).setSession(session);
-            Navigator.pop(context);
-          }
-        },
-        onLongPress: () {
-          // 长按直接进批量管理并选中当前行：右上角宫格图标入口太小容易忽略，
-          // 与笔记等列表「长按进批量」的手感保持一致；批量态下点按已可勾选，无需重复响应
-          if (_isBatchMode) return;
-          HapticFeedback.lightImpact();
-          setState(() {
-            _isBatchMode = true;
-            _selectedSessionIds = [session.id];
-          });
-        },
       ),
     );
   }

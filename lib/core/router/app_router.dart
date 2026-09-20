@@ -26,7 +26,6 @@ import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
-import 'package:qnote_flutter/providers/todo_provider.dart';
 
 /// 根导航键。
 ///
@@ -108,14 +107,6 @@ final routerProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: '/todo',
-                // 待办小组件「+」按钮经 /todo?add=1 进入：置位一次性标志后正常构建，
-                // TodoPage 消费标志自动弹出添加弹窗（redirect 在 build 之外执行，置位安全）
-                redirect: (context, state) {
-                  if (state.uri.queryParameters['add'] == '1') {
-                    ref.read(pendingTodoAddProvider.notifier).state = true;
-                  }
-                  return null;
-                },
                 builder: (context, state) => const TodoPage(),
               ),
             ],

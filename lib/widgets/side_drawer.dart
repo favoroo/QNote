@@ -201,7 +201,7 @@ const List<_MenuEntry> _menuEntries = [
     label: '小Q设置',
     page: QSettingsPage(),
   ),
-  _MenuEntry(icon: Icons.tune_rounded, label: 'AI 配置', page: AiConfigPage()),
+  _MenuEntry(icon: Icons.tune_rounded, label: 'AI 模型配置', page: AiConfigPage()),
   _MenuEntry(icon: Icons.hexagon_outlined, label: '快捷按钮管理', page: ShortcutsPage()),
   _MenuEntry(icon: Icons.event_repeat, label: '固定事件管理', page: FixedEventsPage()),
   _MenuEntry(icon: Icons.sync_rounded, label: '数据与同步', page: DataSyncPage()),

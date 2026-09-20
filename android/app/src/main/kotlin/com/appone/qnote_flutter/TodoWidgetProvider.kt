@@ -10,7 +10,6 @@ import android.content.Intent
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
 import android.widget.RemoteViews
-import org.json.JSONObject
 
 class TodoWidgetProvider : AppWidgetProvider() {
     companion object {
@@ -82,7 +81,7 @@ class TodoWidgetProvider : AppWidgetProvider() {
                 var reminderTime: String? = null
                 var deadline: String? = null
                 var repeatRule = "none"
-                var sortOrder = 0
+                var sortOrder = 0L
                 var createdAt = nowStr
 
                 val cursor = db.rawQuery("SELECT * FROM todos WHERE id = ?", arrayOf(todoId))
@@ -106,7 +105,8 @@ class TodoWidgetProvider : AppWidgetProvider() {
                 if (repeatRuleIndex >= 0 && !cursor.isNull(repeatRuleIndex)) {
                     repeatRule = cursor.getString(repeatRuleIndex)
                 }
-                sortOrder = cursor.getInt(cursor.getColumnIndexOrThrow("sort_order"))
+                // Long 读取毫秒时间戳，getInt 会截断到 32 位污染 sync_log 与回写值
+                sortOrder = cursor.getLong(cursor.getColumnIndexOrThrow("sort_order"))
                 createdAt = cursor.getString(cursor.getColumnIndexOrThrow("created_at"))
                 cursor.close()
 
@@ -117,7 +117,7 @@ class TodoWidgetProvider : AppWidgetProvider() {
                 }
 
                 // 3. 构造更新的 JSON 并记录 sync_log 保证与 Flutter toMap() 表现一致
-                val dataJson = buildTodoJsonString(
+                val dataJson = WidgetDatabase.buildTodoJson(
                     id = todoId,
                     title = title,
                     desc = desc,
@@ -202,8 +202,14 @@ class TodoWidgetProvider : AppWidgetProvider() {
         val addPendingIntent = WidgetIntents.route(context, "/todo", appWidgetId + 100)
         views.setOnClickPendingIntent(R.id.todo_widget_title, addPendingIntent)
 
-        // 点击加号进入应用并直接弹出快速添加待办弹窗（Flutter 侧消费 /todo?add=1）
-        val quickAddPendingIntent = WidgetIntents.route(context, "/todo?add=1", appWidgetId + 600)
+        // 点击加号在桌面原地弹出原生快速添加弹窗（QuickTodoAddActivity），不再跳进应用
+        val quickAddIntent = Intent(context, QuickTodoAddActivity::class.java)
+        val quickAddPendingIntent = PendingIntent.getActivity(
+            context,
+            appWidgetId + 700,
+            quickAddIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         views.setOnClickPendingIntent(R.id.btn_widget_todo_add, quickAddPendingIntent)
 
         // 2. 加载待办数据，前 4 条进行静态渲染
@@ -338,50 +344,5 @@ class TodoWidgetProvider : AppWidgetProvider() {
         }
 
         appWidgetManager.updateAppWidget(appWidgetId, views)
-    }
-
-    /**
-     * 构造与 Flutter 侧 Todo.toMap() 逐字段一致的 JSON，供 sync_log 记录。
-     *
-     * 必须用 JSONObject 而不是字符串拼接：标题含双引号或换行时拼接会产出非法 JSON 行，
-     * 直接污染 WebDAV 增量包（sync_log_repository 的 buildDeltaJson）。
-     * 字段集合也要跟 Dart 对齐——此前漏了 repeat_rule，而对端 fromMap 缺省会填 'none'，
-     * 在桌面勾选一条重复待办就可能把它的重复规则抹掉。
-     */
-    private fun buildTodoJsonString(
-        id: String,
-        title: String,
-        desc: String,
-        isCompleted: Boolean,
-        priority: String,
-        dueDate: String?,
-        tags: String,
-        folderId: String?,
-        isLongTerm: Boolean,
-        reminderTime: String?,
-        deadline: String?,
-        repeatRule: String,
-        sortOrder: Int,
-        createdAt: String,
-        updatedAt: String
-    ): String {
-        return JSONObject().apply {
-            put("id", id)
-            put("title", title)
-            put("description", desc)
-            put("is_completed", if (isCompleted) 1 else 0)
-            put("priority", priority)
-            put("due_date", dueDate)
-            put("tags", tags)
-            put("folder_id", folderId)
-            put("is_long_term", if (isLongTerm) 1 else 0)
-            put("reminder_time", reminderTime)
-            put("deadline", deadline)
-            put("repeat_rule", repeatRule)
-            put("sort_order", sortOrder)
-            put("created_at", createdAt)
-            put("updated_at", updatedAt)
-            put("is_deleted", 0)
-        }.toString()
     }
 }

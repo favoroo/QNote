@@ -14,6 +14,15 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.66',
+    date: '2026-09-20',
+    notes: [
+      '小Q 历史对话抽屉重构：支持全文搜索、自然日时间分桶（置顶/7天内/30天内/月份）、吸顶分组节头与置顶/重命名管理',
+      '待办桌面小组件体验升级：点击「+」直达原生极速添加弹窗，支持回车连续记录并即时同步桌面列表',
+      '小米健康步数与距离对齐：改用逐小时动态选主源口径，大幅收敛与官方汇总的统计差异',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.65',
     date: '2026-09-20',
     notes: [

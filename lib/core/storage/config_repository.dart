@@ -281,6 +281,36 @@ class ConfigRepository {
     return updated;
   }
 
+  /// 只切换置顶标志，**不改 `updated_at`**。
+  ///
+  /// 不能复用 [updateChatSession]：它会无条件把 `updatedAt` 刷成 now，而历史抽屉的
+  /// 「7 天内 / 30 天内 / 某年某月」分组完全按 `updatedAt` 归档 —— 置顶一个三个月前
+  /// 的对话会把它整体搬进「7 天内」，一个纯展示动作篡改了数据的时间归属。
+  /// （`note_repository.togglePin` 就同时写了 `updated_at`，那是 notes 的既存问题，
+  /// 这里刻意不照抄。）
+  ///
+  /// 同步日志仍带整行 `toMap()`（含原 `updatedAt`）：`SyncLogRepository` 的 delta
+  /// 打包按整行 upsert 外发，见 [hardDeleteChatSessions] 上方硬约束。
+  Future<void> setChatSessionPinned(String id, bool isPinned) async {
+    final db = await _dbHelper.database;
+    final existing = await getChatSession(id);
+    if (existing == null) {
+      return;
+    }
+    await db.update(
+      'chat_sessions',
+      {'is_pinned': isPinned ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    await _syncLog.logChange(
+      tableName: 'chat_sessions',
+      recordId: id,
+      operation: 'update',
+      data: existing.copyWith(isPinned: isPinned).toMap(),
+    );
+  }
+
   /// 软删除会话（只打标记，不释放空间）。
   ///
   /// 保留仅为兼容旧客户端写入的墓碑与灰度回退，新代码一律改用 [hardDeleteChatSessions]：

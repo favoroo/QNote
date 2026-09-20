@@ -13,10 +13,6 @@ final todoRepositoryProvider = Provider<TodoRepository>((ref) {
 
 final isLongTermFilterProvider = StateProvider<bool>((ref) => false);
 
-/// 待办小组件「+」按钮的一次性动作标志：/todo?add=1 路由 redirect 置位，
-/// TodoPage 消费后立即复位，驱动其自动弹出快速添加弹窗（仿日记 pendingWidgetActionProvider）
-final pendingTodoAddProvider = StateProvider<bool>((ref) => false);
-
 final todoListProvider = AsyncNotifierProvider<TodoListNotifier, List<Todo>>(
   () {
     return TodoListNotifier();

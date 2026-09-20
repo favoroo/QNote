@@ -62,7 +62,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 24,
+      version: 25,
       onConfigure: (db) async {
         // 遇到写锁时等待重试（默认立即抛 database is locked），提升并发访问健壮性
         try {
@@ -259,6 +259,20 @@ class DatabaseHelper {
       await db.execute(_widgetSnapshotDdl);
     } catch (_) {}
 
+    // 兜底：补 chat_sessions 缺失的 is_pinned 列。这条是**主流程级**而非「置顶不生效」
+    // 级别的问题——updateChatSession 是整行 toMap() 写库，列不存在会直接抛
+    // no such column，用户表现为「发一条消息就报错」。Web(sqflite_common_ffi_web)
+    // 与开发期热重载都只走 onOpen 这条路，不会走 _onUpgrade。
+    try {
+      final chatColumns = await db.rawQuery('PRAGMA table_info(chat_sessions)');
+      final chatColNames = chatColumns.map((c) => c['name'] as String).toSet();
+      if (chatColNames.isNotEmpty && !chatColNames.contains('is_pinned')) {
+        await db.execute(
+          'ALTER TABLE chat_sessions ADD COLUMN is_pinned INTEGER DEFAULT 0',
+        );
+      }
+    } catch (_) {}
+
     // 标记本次检查已完成，后续启动直接跳过 PRAGMA 检查
     await prefs.setBool(checkedKey, true);
   }
@@ -396,7 +410,8 @@ class DatabaseHelper {
         ai_config_id TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        is_deleted INTEGER DEFAULT 0
+        is_deleted INTEGER DEFAULT 0,
+        is_pinned INTEGER DEFAULT 0
       )
     ''');
 
@@ -881,6 +896,15 @@ class DatabaseHelper {
     if (oldVersion < 24) {
       try {
         await db.execute(_widgetSnapshotDdl);
+      } catch (_) {}
+    }
+
+    if (oldVersion < 25) {
+      // 历史抽屉「置顶」：列名与 notes.is_pinned 保持一致，避免全库出现第二种写法
+      try {
+        await db.execute(
+          'ALTER TABLE chat_sessions ADD COLUMN is_pinned INTEGER DEFAULT 0',
+        );
       } catch (_) {}
     }
   }

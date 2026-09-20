@@ -101,7 +101,6 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
     ref.invalidate(screenUsageDayProvider);
     ref.invalidate(screenUsageRangeProvider);
     ref.invalidate(screenUsageTrendProvider);
-    ref.invalidate(screenUsageWeekAvgProvider);
     ref.invalidate(screenUsageEarliestDateProvider);
   }
 
@@ -160,20 +159,22 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
           ),
           const SizedBox(height: 12),
 
-          // 本周概览与逐日趋势合并成一张卡：两者说的是同一件事，拆开后页面长一倍
-          weekAsync.when(
-            loading: () => _buildSkeletonCard(theme, height: 244),
-            error: (err, _) => _buildErrorCard(theme, '读取本周统计失败: $err'),
-            data: (agg) => _buildWeekCard(theme, agg, trendAsync, selectedDate),
-          ),
-          const SizedBox(height: 12),
-
+          // 当日时长排第一：打开这一页最先问的是「今天用了多久」，
+          // 周口径与趋势属于回看背景，放在其后
           dayAsync.when(
             loading: () => _buildSkeletonCard(theme, height: 150),
             error: (err, _) => _buildErrorCard(theme, '读取当日数据失败: $err'),
             data: (day) => day.collected
                 ? _buildDayCard(theme, day)
                 : _buildNotCollectedCard(theme, day.date, earliestAsync.valueOrNull),
+          ),
+          const SizedBox(height: 12),
+
+          // 本周概览与逐日趋势合并成一张卡：两者说的是同一件事，拆开后页面长一倍
+          weekAsync.when(
+            loading: () => _buildSkeletonCard(theme, height: 244),
+            error: (err, _) => _buildErrorCard(theme, '读取本周统计失败: $err'),
+            data: (agg) => _buildWeekCard(theme, agg, trendAsync, selectedDate),
           ),
           const SizedBox(height: 12),
 
@@ -235,8 +236,14 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
     );
   }
 
-  /// 区块标题：图标 + 文案。文案允许被压缩截断，避免与右侧的日期/说明争抢宽度时溢出。
-  Widget _buildSectionLabel(ThemeData theme, String text, {IconData? icon}) {
+  /// 区块标题：图标 + 文案，可选右侧补充说明。文案与说明都允许被压缩截断，
+  /// 避免小屏上互相争抢宽度时溢出。
+  Widget _buildSectionLabel(
+    ThemeData theme,
+    String text, {
+    IconData? icon,
+    String? trailing,
+  }) {
     return Row(
       children: [
         if (icon != null) ...[
@@ -261,6 +268,21 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
             ),
           ),
         ),
+        if (trailing != null) ...[
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              trailing,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontSize: 12,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -325,9 +347,8 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
     );
   }
 
-  /// 所选日概览：大数字 + 较昨日
+  /// 所选日概览：标题行右侧挂环比，大数字独占一行
   Widget _buildDayCard(ThemeData theme, ScreenUsageDayView day) {
-    final isDark = theme.brightness == Brightness.dark;
     final title = day.isToday ? '今日屏幕时长' : '${formatDayLabel(day.date)}屏幕时长';
     final topApps = day.apps.take(5).toList();
     // 历史日回落快照时没有图标字节，按包名回原生补齐
@@ -340,7 +361,12 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
       theme: theme,
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
       children: [
-        _buildSectionLabel(theme, title, icon: Icons.hourglass_bottom_rounded),
+        _buildSectionLabel(
+          theme,
+          title,
+          icon: Icons.hourglass_bottom_rounded,
+          trailing: day.hasRecord ? day.diffText : null,
+        ),
         const SizedBox(height: 10),
         if (!day.hasRecord)
           Padding(
@@ -351,33 +377,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
             ),
           )
         else ...[
-          // 大数字与环比同行，省掉一整行高度
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                day.formattedTotal,
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 26,
-                  letterSpacing: -0.5,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  day.diffText,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontSize: 12,
-                    color: isDark ? Colors.white54 : theme.colorScheme.outline,
-                  ),
-                ),
-              ),
-            ],
-          ),
+          _buildHeroValue(theme, day.formattedTotal),
           // 当日明细：区间应用榜是累计口径，这里保留「这一天用了什么」的原始视角
           if (topApps.isNotEmpty) ...[
             const SizedBox(height: 10),
@@ -423,14 +423,13 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
     );
   }
 
-  /// 本周概览：总时长 / 日均 / 有记录天数 + 较上周 + 逐日趋势，合并成一张卡
+  /// 本周概览：总量做主角，日均与有记录天数各占一格，再往下是逐日趋势
   Widget _buildWeekCard(
     ThemeData theme,
     ScreenUsageAggregate agg,
     AsyncValue<ScreenUsageTrend> trendAsync,
     DateTime selectedDate,
   ) {
-    final isDark = theme.brightness == Brightness.dark;
     final bounds = agg.bounds;
 
     return _buildCard(
@@ -462,29 +461,23 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
             ),
           )
         else ...[
+          _buildCaptionRow(theme, '本周总时长', trailing: agg.diffText),
+          const SizedBox(height: 2),
+          _buildHeroValue(theme, agg.formattedTotal),
+          const SizedBox(height: 12),
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                flex: 3,
-                child: _buildMetric(
-                  theme,
-                  label: '本周总时长',
-                  value: agg.formattedTotal,
-                ),
-              ),
-              Expanded(
-                flex: 3,
-                child: _buildMetric(
+                child: _buildStatTile(
                   theme,
                   label: '日均',
+                  hint: '按 ${agg.recordedDays} 天计',
                   value: agg.formattedAvg,
-                  footnote: '按 ${agg.recordedDays} 天计',
                 ),
               ),
+              const SizedBox(width: 10),
               Expanded(
-                flex: 2,
-                child: _buildMetric(
+                child: _buildStatTile(
                   theme,
                   label: '有记录天数',
                   value: '${agg.recordedDays}/${agg.spanDays}',
@@ -492,15 +485,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            agg.diffText,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: isDark ? Colors.white54 : theme.colorScheme.outline,
-              fontSize: 12,
-            ),
-          ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           const Divider(height: 1),
           const SizedBox(height: 6),
           _buildSectionLabel(theme, '每日趋势', icon: Icons.bar_chart_rounded),
@@ -523,259 +508,121 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
                     child: _buildBarChart(theme, trend, selectedDate),
                   ),
           ),
-          const SizedBox(height: 10),
-          const Divider(height: 1),
-          const SizedBox(height: 6),
-          _buildWeekCompare(theme, selectedDate),
         ],
       ],
     );
   }
 
-  /// 周均时长对比：基准周及其前两次的日均并排成条形，
-  /// 快捷按钮直接跳到本周/上周/上上周，箭头可把整个对比窗口往前挪。
-  Widget _buildWeekCompare(ThemeData theme, DateTime selectedDate) {
-    final colorScheme = theme.colorScheme;
-    final offset = ref.watch(screenUsageCompareWeekProvider);
-    final baseWeekStart = mondayOf(selectedDate).add(Duration(days: 7 * offset));
-    final weeksAsync = ref.watch(screenUsageWeekAvgProvider(baseWeekStart));
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: _buildSectionLabel(
-                theme,
-                '周均时长对比',
-                icon: Icons.timeline_rounded,
-              ),
-            ),
-            _buildWeekArrow(
-              theme,
-              icon: Icons.chevron_left_rounded,
-              enabled: offset > -12,
-              onTap: () => _shiftCompareWeek(-1),
-            ),
-            _buildWeekArrow(
-              theme,
-              icon: Icons.chevron_right_rounded,
-              enabled: offset < 0,
-              onTap: () => _shiftCompareWeek(1),
-            ),
-          ],
-        ),
-        const SizedBox(height: 2),
-        Row(
-          children: [
-            _buildWeekChip(theme, '本周', 0, offset),
-            const SizedBox(width: 6),
-            _buildWeekChip(theme, '上周', -1, offset),
-            const SizedBox(width: 6),
-            _buildWeekChip(theme, '上上周', -2, offset),
-          ],
-        ),
-        weeksAsync.when(
-          loading: () => const SizedBox(height: 72),
-          error: (err, _) => Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text(
-              '读取周均数据失败',
-              style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.error),
-            ),
-          ),
-          data: (weeks) {
-            final maxAvgMs = weeks.fold<int>(
-              0,
-              (m, e) => e.avgMs > m ? e.avgMs : m,
-            );
-            return Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Column(
-                children: [
-                  for (final week in weeks)
-                    _buildWeekAvgRow(theme, week, maxAvgMs, isBase: week.weekStart == baseWeekStart),
-                ],
-              ),
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  /// 一行周均对比：周标签 + 相对最长周的条形 + 日均时长
-  Widget _buildWeekAvgRow(
-    ThemeData theme,
-    ScreenUsageWeekAvg week,
-    int maxAvgMs, {
-    required bool isBase,
-  }) {
-    final colorScheme = theme.colorScheme;
-    final ratio = maxAvgMs > 0 ? week.avgMs / maxAvgMs : 0.0;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 52,
-            child: Text(
-              _weekLabel(week.weekStart),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontSize: 12,
-                fontWeight: isBase ? FontWeight.w700 : FontWeight.w500,
-                color: isBase ? colorScheme.primary : colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          Expanded(
-            child: week.hasData
-                ? _buildShareBar(theme, ratio)
-                : Text(
-                    '无记录',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontSize: 11,
-                      color: colorScheme.outline,
-                    ),
-                  ),
-          ),
-          const SizedBox(width: 10),
-          Text(
-            week.hasData ? week.formattedAvg : '-',
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontSize: 12,
-              fontWeight: isBase ? FontWeight.w700 : FontWeight.w500,
-              color: isBase ? colorScheme.onSurface : colorScheme.outline,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 对比基准周的快捷按钮，样式与日期导航的「前天/昨天/今天」保持同一族
-  Widget _buildWeekChip(ThemeData theme, String label, int targetOffset, int currentOffset) {
-    final colorScheme = theme.colorScheme;
-    final selected = targetOffset == currentOffset;
-    return GestureDetector(
-      onTap: () =>
-          ref.read(screenUsageCompareWeekProvider.notifier).state = targetOffset,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: selected
-              ? colorScheme.primary.withValues(alpha: 0.12)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: selected
-                ? colorScheme.primary.withValues(alpha: 0.5)
-                : colorScheme.outlineVariant,
-            width: 0.8,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            color: selected
-                ? colorScheme.primary
-                : colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// 对比窗口平移箭头
-  Widget _buildWeekArrow(
-    ThemeData theme, {
-    required IconData icon,
-    required bool enabled,
-    required VoidCallback onTap,
-  }) {
-    final colorScheme = theme.colorScheme;
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: enabled ? onTap : null,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-        child: Icon(
-          icon,
-          size: 18,
-          color: enabled ? colorScheme.onSurfaceVariant : colorScheme.outlineVariant,
-        ),
-      ),
-    );
-  }
-
-  void _shiftCompareWeek(int delta) {
-    final next = (ref.read(screenUsageCompareWeekProvider) + delta).clamp(-12, 0);
-    ref.read(screenUsageCompareWeekProvider.notifier).state = next;
-  }
-
-  /// 周标签：以今天所在周为基准说「本周/上周/上上周」，更早的按「N周前」，再远退化成周一日期
-  String _weekLabel(DateTime weekStart) {
-    final now = DateTime.now();
-    final thisWeekStart = mondayOf(DateTime(now.year, now.month, now.day));
-    final weeksAgo = thisWeekStart.difference(weekStart).inDays ~/ 7;
-    switch (weeksAgo) {
-      case <= 0:
-        return '本周';
-      case 1:
-        return '上周';
-      case 2:
-        return '上上周';
-      case < 10:
-        return '$weeksAgo周前';
-      default:
-        return '${weekStart.month}/${weekStart.day}';
-    }
-  }
-
-  Widget _buildMetric(
-    ThemeData theme, {
-    required String label,
-    required String value,
-    String? footnote,
-  }) {
-    final isDark = theme.brightness == Brightness.dark;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  /// 大数字上方的抬头行：左侧指标名，右侧可选的补充说明（如环比），
+  /// 说明靠右对齐并允许截断，不会把左侧挤成两行
+  Widget _buildCaptionRow(ThemeData theme, String label, {String? trailing}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
       children: [
         Text(
           label,
           style: theme.textTheme.bodySmall?.copyWith(
             fontSize: 11,
-            color: isDark ? Colors.white54 : theme.colorScheme.outline,
+            fontWeight: FontWeight.w600,
+            color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-            fontSize: 15,
-          ),
-        ),
-        if (footnote != null) ...[
-          const SizedBox(height: 1),
-          Text(
-            footnote,
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontSize: 10,
-              height: 1.2,
-              color: isDark ? Colors.white38 : theme.colorScheme.outlineVariant,
+        if (trailing != null) ...[
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              trailing,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontSize: 11,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
         ],
       ],
+    );
+  }
+
+  /// 次级指标格：用底色和边框把每个指标隔成一格，标签行左名称右备注，
+  /// 数字单独一行 —— 三个指标硬挤一行时长文案会互相贴在一起
+  Widget _buildStatTile(
+    ThemeData theme, {
+    required String label,
+    required String value,
+    String? hint,
+  }) {
+    final isDark = theme.brightness == Brightness.dark;
+    final colorScheme = theme.colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : colorScheme.surface.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(AppRadius.medium),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.5),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                label,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontSize: 11,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              if (hint != null) ...[
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    hint,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontSize: 10,
+                      color: colorScheme.outline,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              fontSize: 16,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 卡片主数字：独占一行，长时长文案（如「42小时35分钟」）不必和旁边元素争宽度
+  Widget _buildHeroValue(ThemeData theme, String value) {
+    return Text(
+      value,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.headlineSmall?.copyWith(
+        fontWeight: FontWeight.w800,
+        fontSize: 26,
+        letterSpacing: -0.5,
+      ),
     );
   }
 

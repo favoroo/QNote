@@ -64,7 +64,11 @@ class ToolCallProgress {
 class AiService {
   final Dio _dio = Dio(
     BaseOptions(
-      connectTimeout: const Duration(seconds: 30),
+      // 连接超时收紧到 12s：端点为 Cloudflare Quick Tunnel / Tailscale Funnel，
+      // 正常建连在秒级；30s 会让连接类故障在 5 次重试中累积出 ~97 秒的等待
+      // （见 2026-09-20 「对话发送失败」事故复盘）。接收超时保持 2 分钟，
+      // 大模型流式长响应需要足够窗口。
+      connectTimeout: _connectTimeoutForChat,
       receiveTimeout: const Duration(minutes: 2),
       sendTimeout: const Duration(seconds: 30),
     ),
@@ -165,11 +169,31 @@ class AiService {
   /// 总穿越窗口约 15 秒；HTTP 状态码类错误仍走 [_genericMaxRetries]。
   static const int _connectionMaxRetries = 5;
 
+  /// connectTimeout 类故障的重试次数上限（仅限非 SenseNova Key 池）
+  ///
+  /// 与 [_connectionMaxRetries] 的区别：TLS 握手中断是「连上了又断」，重发多半
+  /// 立刻见分晓，成本低故可多试；而 connectTimeout 是「整段窗口毫无响应」，
+  /// 每次重试都要再付一次完整超时，且几乎注定打在同一个坏端点上。给 2 次
+  /// （配合端点刷新切通道）已足够，最坏等待 = 2 × 12s + 3s 退避 ≈ 27 秒。
+  static const int _timeoutMaxRetries = 2;
+
   /// 两次「重试前刷新动态端点」之间的最小间隔
   ///
   /// 刷新会真实发起网络请求（三级源各 3s/4s 超时），用时间节流代替
-  /// 逐请求标记，避免在多个请求方法里各自维护状态
-  static const Duration _endpointRefreshMinInterval = Duration(seconds: 15);
+  /// 逐请求标记，避免在多个请求方法里各自维护状态。
+  ///
+  /// 2026-09-20 从 15s 收窄到 5s：连接握手级故障（TLS / connect timeout）通常
+  /// 需切换端点才能穿越，15s 节流会让 5 次重试中的第 2、4 次直接跳过刷新，
+  /// 白白把请求打在同一个坏端点上。5s 足以避免刷新风暴。
+  static const Duration _endpointRefreshMinInterval = Duration(seconds: 5);
+
+  /// 连接层超时的单次等待上限
+  ///
+  /// 端点是 Cloudflare Quick Tunnel / Tailscale Funnel，正常 RTT 在 1~4 秒级；
+  /// 30 秒 connectTimeout 在故障时会实打实烧满整段时长（5 次重试 ≈ 150 秒纯等待）。
+  /// 收紧到 12 秒，既能容忍隧道冷启动与跨境抖动，又能把最坏情况压缩到
+  /// 5 × 12 ≈ 60 秒 + 退避（约 15 秒）以内。
+  static const Duration _connectTimeoutForChat = Duration(seconds: 12);
 
   /// 瞬时故障重试前刷新动态端点的回调（由 FreeModelService 注册，AiService
   /// 不反向依赖它以避免循环 import）
@@ -204,6 +228,11 @@ class AiService {
   /// 连接层瞬时故障（TLS 握手中断等）走差异化策略：非 SenseNova 池放宽到
   /// [_connectionMaxRetries] 次、1s/2s/4s/8s 退避，且从第 2 次重试起先刷新
   /// 动态 CPA 端点（网关可能已在云端换址）再重发。
+  ///
+  /// [Duration] 类的 connectTimeout 单独降级处理：它意味着该端点在长达
+  /// [AiService._connectTimeoutForChat] 的窗口内**一个 TCP/TLS 包都没回来**，
+  /// 比握手期被打断严重得多，且等长重试的收益远低于等待成本。此类故障只给
+  /// [_timeoutMaxRetries] 次机会（配合端点刷新，通常会切到另一条通道）。
   Future<bool> _shouldRetryAndWait(
     Object error,
     int retryCount, {
@@ -214,16 +243,29 @@ class AiService {
     final isConnectionError =
         FreeModelKeyManager.instance.isConnectionClassError(error);
     final isConnectionScene = isConnectionError && !_isSenseNovaPool;
-    final maxRetries = isConnectionScene ? _connectionMaxRetries : _maxRetries;
+    // connectTimeout 走更浅的重试深度，避免 30s × 5 这类累积等待
+    final isConnectTimeout = error is DioException &&
+        error.type == DioExceptionType.connectionTimeout;
+    final int maxRetries;
+    if (isConnectTimeout && !_isSenseNovaPool) {
+      maxRetries = _timeoutMaxRetries;
+    } else if (isConnectionScene) {
+      maxRetries = _connectionMaxRetries;
+    } else {
+      maxRetries = _maxRetries;
+    }
     if (retryCount >= maxRetries) return false;
     if (!FreeModelKeyManager.instance.isRecoverableError(error)) return false;
 
     final next = retryCount + 1;
     // 仅 SenseNova Key 池会真正轮到新 Key；自定义模型 / 独立端点此处为 no-op
     final switched = switchFreeModelKey();
-    // 连接类故障重试前尝试刷新动态端点：拉到不同地址则切换后重发
+    // 连接类故障重试前尝试刷新动态端点：拉到不同地址则切换后重发。
+    // connectTimeout 从第 1 次重试起就刷新——12 秒无响应已足以判定当前端点不可用
     String? switchedEndpoint;
-    if (isConnectionScene && retryCount >= 1) {
+    if (isConnectTimeout && !_isSenseNovaPool) {
+      switchedEndpoint = await _maybeRefreshDynamicEndpoint();
+    } else if (isConnectionScene && retryCount >= 1) {
       switchedEndpoint = await _maybeRefreshDynamicEndpoint();
     }
     final delay = isConnectionScene

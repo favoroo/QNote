@@ -205,11 +205,36 @@ class FreeModelService {
     return raw.replaceAll(RegExp(r'/+$'), '');
   }
 
+  /// 本轮重试周期内已确认故障的端点（重置时机：隔超过 [Duration(minutes: 2)] 无新失败）
+  ///
+  /// 2026-09-20 踩坑：原实现无条件「优先返回 primary」，导致刚从 primary 切到
+  /// fallback 的下一次刷新又被拽回那个正在故障的 primary，5 次重试在两个地址间
+  /// 反复横跳，白烧掉两份 30s connectTimeout。改为记录失败地址并在切换时避开它——
+  /// primary 可用时仍优先 primary（保持低延迟主通道语义），仅当它刚失败过才让位。
+  final Set<String> _recentlyFailedBaseUrls = <String>{};
+  DateTime? _lastFailureAt;
+
+  /// 记录一个刚发生连接故障的端点，供后续刷新避让
+  void _noteFailedEndpoint(String baseUrl) {
+    if (baseUrl.isEmpty) return;
+    final now = DateTime.now();
+    // 距上次失败超过 2 分钟视为新一轮周期，清空历史避免永久屏蔽
+    if (_lastFailureAt == null ||
+        now.difference(_lastFailureAt!) > const Duration(minutes: 2)) {
+      _recentlyFailedBaseUrls.clear();
+    }
+    _lastFailureAt = now;
+    _recentlyFailedBaseUrls.add(baseUrl);
+  }
+
   /// 注册 AiService 的动态端点刷新钩子
   ///
   /// AiService 不反向依赖本类（避免循环 import），故以静态回调注入：
   /// 连接类瞬时故障重试前由 AiService 调用，拉取云端最新端点并在
   /// primary/fallback 与当前地址不同时返回新地址完成切换。
+  ///
+  /// 选择顺序：primary（若非本轮已故障地址）→ fallback（若非本轮已故障地址）→
+  /// 兜底 Tailscale（若非本轮已故障地址）。三条都试过则返回 null 维持现状。
   void _registerEndpointRefresher() {
     AiService.dynamicEndpointRefresher = (currentBaseUrl) async {
       // 仅当故障端点属于动态 CPA 家族（primary/fallback/兜底 Tailscale 地址）
@@ -223,14 +248,37 @@ class FreeModelService {
       };
       if (!family.contains(currentBaseUrl)) return null;
 
+      // 当前地址已故障，先记账再挑选替代者
+      _noteFailedEndpoint(currentBaseUrl);
+
       await fetchDynamicCpaEndpoint();
-      final primary = BuiltinFreeKeys.dynamicCpaBaseUrl;
-      if (primary.isNotEmpty && primary != currentBaseUrl) {
-        return primary;
+
+      // 候选按偏好排序：云端 primary → 云端 fallback → 内置兜底 Tailscale
+      final candidates = <String>[
+        BuiltinFreeKeys.dynamicCpaBaseUrl,
+        BuiltinFreeKeys.dynamicCpaFallbackBaseUrl,
+        BuiltinFreeKeys.defaultTailscaleBaseUrl,
+      ];
+      for (final candidate in candidates) {
+        if (candidate.isEmpty) continue;
+        if (candidate == currentBaseUrl) continue;
+        // 跳过本轮已确认故障的地址，避免在两个坏端点之间来回横跳
+        if (_recentlyFailedBaseUrls.contains(candidate)) continue;
+        LoggerService.instance.logAI(
+          '端点故障避让生效，改选未故障地址',
+          details: '已故障=${_recentlyFailedBaseUrls.join(", ")}，改选=$candidate',
+        );
+        return candidate;
       }
-      final fallback = BuiltinFreeKeys.dynamicCpaFallbackBaseUrl;
-      if (fallback.isNotEmpty && fallback != currentBaseUrl) {
-        return fallback;
+
+      // 全部候选都在本轮故障名单里：清空名单后回退到 primary，让下一轮重新评估
+      // （否则返回 null 会永远锚死在当前坏地址上）
+      if (_recentlyFailedBaseUrls.length >= candidates.where((c) => c.isNotEmpty).length) {
+        _recentlyFailedBaseUrls.clear();
+        if (BuiltinFreeKeys.dynamicCpaBaseUrl.isNotEmpty &&
+            BuiltinFreeKeys.dynamicCpaBaseUrl != currentBaseUrl) {
+          return BuiltinFreeKeys.dynamicCpaBaseUrl;
+        }
       }
       return null;
     };

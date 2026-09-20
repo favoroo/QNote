@@ -55,7 +55,7 @@ void main() {
       for (final label in <String>[
         '个人信息',
         '小Q设置',
-        'AI 配置',
+        'AI 模型配置',
         '快捷按钮管理',
         '固定事件管理',
         '数据与同步',

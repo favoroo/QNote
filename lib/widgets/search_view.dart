@@ -7,6 +7,7 @@ import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/core/utils/delta_markdown.dart';
+import 'package:qnote_flutter/widgets/search_highlight.dart';
 
 class SearchView extends StatefulWidget {
   final void Function(dynamic result)? onResultSelected;
@@ -245,13 +246,13 @@ class _DiaryResultTile extends StatelessWidget {
     return ListTile(
       leading: Icon(Icons.book_outlined, color: theme.colorScheme.primary),
       title: diary.displayTag.isNotEmpty
-          ? _highlightText(diary.displayTag, query, theme)
-          : _highlightText(diary.title, query, theme),
+          ? highlightSearchMatch(diary.displayTag, query, theme)
+          : highlightSearchMatch(diary.title, query, theme),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 2),
-          _highlightText(contentPreview, query, theme, isSubtitle: true),
+          highlightSearchMatch(contentPreview, query, theme, isSubtitle: true),
           const SizedBox(height: 2),
           Text(
             diary.time.toIso8601String().substring(0, 10),
@@ -284,12 +285,12 @@ class _NoteResultTile extends StatelessWidget {
 
     return ListTile(
       leading: Icon(Icons.note_outlined, color: theme.colorScheme.tertiary),
-      title: _highlightText(note.title, query, theme),
+      title: highlightSearchMatch(note.title, query, theme),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 2),
-          _highlightText(contentPreview, query, theme, isSubtitle: true),
+          highlightSearchMatch(contentPreview, query, theme, isSubtitle: true),
           const SizedBox(height: 2),
           Text(
             note.updatedAt.toIso8601String().substring(0, 10),
@@ -302,55 +303,4 @@ class _NoteResultTile extends StatelessWidget {
       onTap: onTap,
     );
   }
-}
-
-Widget _highlightText(String text, String query, ThemeData theme,
-    {bool isSubtitle = false}) {
-  if (query.isEmpty) {
-    return Text(
-      text,
-      maxLines: isSubtitle ? 2 : 1,
-      overflow: TextOverflow.ellipsis,
-      style: isSubtitle ? theme.textTheme.bodySmall : null,
-    );
-  }
-
-  final lowerText = text.toLowerCase();
-  final lowerQuery = query.toLowerCase();
-  final index = lowerText.indexOf(lowerQuery);
-
-  if (index == -1) {
-    return Text(
-      text,
-      maxLines: isSubtitle ? 2 : 1,
-      overflow: TextOverflow.ellipsis,
-      style: isSubtitle ? theme.textTheme.bodySmall : null,
-    );
-  }
-
-  final before = text.substring(0, index);
-  final match = text.substring(index, index + query.length);
-  final after = text.substring(index + query.length);
-
-  return RichText(
-    maxLines: isSubtitle ? 2 : 1,
-    overflow: TextOverflow.ellipsis,
-    text: TextSpan(
-      style: isSubtitle
-          ? theme.textTheme.bodySmall
-          : theme.textTheme.bodyLarge,
-      children: [
-        TextSpan(text: before),
-        TextSpan(
-          text: match,
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: theme.colorScheme.primary,
-            backgroundColor: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
-          ),
-        ),
-        TextSpan(text: after),
-      ],
-    ),
-  );
 }

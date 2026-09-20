@@ -154,22 +154,6 @@ class _TodoPageState extends ConsumerState<TodoPage> {
 
   @override
   Widget build(BuildContext context) {
-    // 消费小组件「+」的一次性添加标志（仿日记 pendingWidgetActionProvider 双保险模式）：
-    // listen 覆盖页面已存活时的状态变化，postFrame 兜底覆盖标志在首次 build 前已置位的冷启动场景
-    ref.listen<bool>(pendingTodoAddProvider, (previous, next) {
-      if (next) {
-        ref.read(pendingTodoAddProvider.notifier).state = false;
-        _addNewTodo(null);
-      }
-    });
-    if (ref.read(pendingTodoAddProvider)) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        ref.read(pendingTodoAddProvider.notifier).state = false;
-        _addNewTodo(null);
-      });
-    }
-
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final foldersAsync = ref.watch(todoFolderListProvider);

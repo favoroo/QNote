@@ -3,6 +3,7 @@ package com.appone.qnote_flutter
 import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -135,5 +136,52 @@ object WidgetDatabase {
         val df = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", Locale.US)
         df.timeZone = TimeZone.getDefault()
         return df.format(Date())
+    }
+
+    /**
+     * 构造与 Flutter 侧 Todo.toMap() 逐字段一致的 JSON，供 sync_log 记录。
+     * 原生两条待办写路径（小组件勾选、桌面快速添加）共用一份，避免拷贝漂移。
+     *
+     * 必须用 JSONObject 而不是字符串拼接：标题含双引号或换行时拼接会产出非法 JSON 行，
+     * 直接污染 WebDAV 增量包（sync_log_repository 的 buildDeltaJson）。
+     * 字段集合也要跟 Dart 对齐——此前漏了 repeat_rule，而对端 fromMap 缺省会填 'none'，
+     * 在桌面勾选一条重复待办就可能把它的重复规则抹掉。
+     * sort_order 用 Long：Dart addTodo 存毫秒时间戳， getInt 会截断到 32 位。
+     */
+    fun buildTodoJson(
+        id: String,
+        title: String,
+        desc: String,
+        isCompleted: Boolean,
+        priority: String,
+        dueDate: String?,
+        tags: String,
+        folderId: String?,
+        isLongTerm: Boolean,
+        reminderTime: String?,
+        deadline: String?,
+        repeatRule: String,
+        sortOrder: Long,
+        createdAt: String,
+        updatedAt: String
+    ): String {
+        return JSONObject().apply {
+            put("id", id)
+            put("title", title)
+            put("description", desc)
+            put("is_completed", if (isCompleted) 1 else 0)
+            put("priority", priority)
+            put("due_date", dueDate)
+            put("tags", tags)
+            put("folder_id", folderId)
+            put("is_long_term", if (isLongTerm) 1 else 0)
+            put("reminder_time", reminderTime)
+            put("deadline", deadline)
+            put("repeat_rule", repeatRule)
+            put("sort_order", sortOrder)
+            put("created_at", createdAt)
+            put("updated_at", updatedAt)
+            put("is_deleted", 0)
+        }.toString()
     }
 }

@@ -54,8 +54,9 @@ List<AppUsageInfo> _dayApps(int count) => [
 List<ScreenAppUsage> _rankApps(int count) => [
   for (int i = 0; i < count; i++)
     ScreenAppUsage(
+      // 周榜与当日明细用不同的名字，断言才能确定某一行出自哪张卡
       packageName: 'com.demo.app$i',
-      appName: '应用$i',
+      appName: '周榜$i',
       timeMs: 6600000 - i * 300000,
     ),
 ];
@@ -124,26 +125,6 @@ Future<double> pumpView(WidgetTester tester, {DateTime? anchor}) async {
             ],
           );
         }),
-        // 周均对比：基准周 2小时18分/天，前一周 1小时9分/天，再前一周无记录
-        screenUsageWeekAvgProvider.overrideWith((ref, baseWeekStart) async {
-          return [
-            ScreenUsageWeekAvg(
-              weekStart: baseWeekStart,
-              totalMs: 57960000,
-              recordedDays: 7,
-            ),
-            ScreenUsageWeekAvg(
-              weekStart: baseWeekStart.subtract(const Duration(days: 7)),
-              totalMs: 29160000,
-              recordedDays: 7,
-            ),
-            ScreenUsageWeekAvg(
-              weekStart: baseWeekStart.subtract(const Duration(days: 14)),
-              totalMs: 0,
-              recordedDays: 0,
-            ),
-          ];
-        }),
       ],
       child: const MaterialApp(
         home: Scaffold(body: ScreenUsageStatsView()),
@@ -174,74 +155,53 @@ void main() {
     expect(find.textContaining('屏幕时长'), findsNWidgets(2));
   });
 
-  testWidgets('应用榜只渲染前 8 名，当日明细只渲染前 5 名', (tester) async {
+  testWidgets('今日屏幕时长在周卡之前，打开先看当天', (tester) async {
     await pumpView(tester);
 
-    // 顶部可见区：当日明细到应用4为止，应用5 只在下方榜单里出现
-    expect(find.text('应用0'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('今日屏幕时长')).dy,
+      lessThan(tester.getTopLeft(find.text('本周屏幕时长')).dy),
+    );
+  });
+
+  testWidgets('当日明细只列前 5 名，本周应用榜只列前 8 名', (tester) async {
+    await pumpView(tester);
+
+    // 顶部当日卡展开 5 行，应用5 及以后不进榜单也不渲染
     expect(find.text('应用4'), findsOneWidget);
     expect(find.text('应用5'), findsNothing);
 
     await tester.dragUntilVisible(
-      find.text('应用7'),
+      find.text('周榜7'),
       find.byType(ListView),
       const Offset(0, -200),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('应用7'), findsOneWidget);
-    expect(find.text('应用8'), findsNothing);
-    expect(find.text('应用11'), findsNothing);
+    expect(find.text('周榜7'), findsOneWidget);
+    expect(find.text('周榜8'), findsNothing);
+    expect(find.text('周榜11'), findsNothing);
   });
 
   testWidgets('整页高度收敛在 1600 逻辑像素内（360 宽小屏）', (tester) async {
     final contentHeight = await pumpView(tester);
 
-    // 实测约 1454（含周均对比区块）；旧版是「今日 + 区间 + 趋势」三张卡加最多 30 条两列格子
+    // 实测约 1338：周均对比区块下线省出一截，周卡指标改分格排版又补回一些
     expect(contentHeight, lessThan(1600));
   });
 
-  testWidgets('卡内小标题分隔：每日趋势与周均时长对比', (tester) async {
+  testWidgets('周卡指标分格显示，长时长不再挤在一行', (tester) async {
     await pumpView(tester);
 
+    expect(find.text('本周总时长'), findsOneWidget);
+    expect(find.text('日均'), findsOneWidget);
+    expect(find.textContaining('天计'), findsOneWidget);
+    expect(find.text('有记录天数'), findsOneWidget);
     expect(find.text('每日趋势'), findsOneWidget);
-    expect(find.text('周均时长对比'), findsOneWidget);
-    expect(find.text('2小时18分钟'), findsOneWidget);
-    expect(find.text('1小时9分钟'), findsOneWidget);
-    expect(find.text('无记录'), findsOneWidget);
-  });
 
-  testWidgets('点「上上周」按钮把对比窗口整体前移', (tester) async {
-    await pumpView(tester);
-
-    // 按钮与其对应的数据行标签各一处
-    expect(find.text('本周'), findsNWidgets(2));
-    expect(find.text('3周前'), findsNothing);
-
-    await tester.tap(find.widgetWithText(GestureDetector, '上上周'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('3周前'), findsOneWidget);
-    expect(find.text('4周前'), findsOneWidget);
-    expect(find.text('本周'), findsOneWidget); // 只剩快捷按钮
-  });
-
-  testWidgets('左箭头能翻到更早的周，右箭头翻回来且不超过本周', (tester) async {
-    await pumpView(tester);
-
-    await tester.tap(find.byIcon(Icons.chevron_left_rounded));
-    await tester.pumpAndSettle();
-    expect(find.text('上周'), findsNWidgets(2));
-    expect(find.text('3周前'), findsOneWidget);
-
-    // 右箭头翻回本周后应置灰，无法再往前翻
-    await tester.tap(find.byIcon(Icons.chevron_right_rounded));
-    await tester.pumpAndSettle();
-    expect(find.text('本周'), findsNWidgets(2));
-    await tester.tap(find.byIcon(Icons.chevron_right_rounded));
-    await tester.pumpAndSettle();
-    expect(find.text('本周'), findsNWidgets(2));
-    expect(tester.takeException(), isNull);
+    // 周均时长对比整块下线
+    expect(find.text('周均时长对比'), findsNothing);
+    expect(find.text('无记录'), findsNothing);
   });
 
   testWidgets('回看历史周时标题切到「所选周」', (tester) async {

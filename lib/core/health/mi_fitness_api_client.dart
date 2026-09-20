@@ -43,6 +43,42 @@ class MiSleepSummary {
   final List<Map<String, dynamic>> stages;
 }
 
+/// 小米单日步数合并结果（多来源样本按小时选主源后汇总）
+class MiStepSummary {
+  const MiStepSummary({
+    required this.steps,
+    required this.distanceMeters,
+    required this.calories,
+    required this.sampledMinutes,
+  });
+
+  final int steps;
+  final double distanceMeters;
+
+  /// 全来源累加，不走主源口径
+  final double calories;
+
+  /// 有步数采样的分钟数
+  final int sampledMinutes;
+}
+
+/// 单条步数样本的来源、时间桶与取值
+class _MiStepSample {
+  const _MiStepSample({
+    required this.sid,
+    required this.minute,
+    required this.hour,
+    required this.steps,
+    required this.distanceMeters,
+  });
+
+  final String sid;
+  final int minute;
+  final int hour;
+  final int steps;
+  final double distanceMeters;
+}
+
 class MiFitnessApiClient {
   final MiFitnessAuthService _authService;
   static const String host = 'https://hlth.io.mi.com';
@@ -199,30 +235,12 @@ class MiFitnessApiClient {
     final stressData = results[4];
     final standingData = results[5];
 
-    // 1. 步数处理与分钟去重 (解决手表与手机同时计步虚高)
-    int totalSteps = 0;
-    double totalDistance = 0.0;
-    double totalCalories = 0.0;
-    final minuteStepMap = <int, int>{};
-
-    for (final item in stepsData) {
-      final time = (item['time'] as num?)?.toInt() ?? 0;
-      final minuteBucket = time ~/ 60;
-      try {
-        final valStr = item['value'] as String? ?? '{}';
-        final valJson = json.decode(valStr) as Map<String, dynamic>;
-        final st = (valJson['steps'] as num?)?.toInt() ?? 0;
-        final dist = (valJson['distance'] as num?)?.toDouble() ?? 0.0;
-        final cal = (valJson['calories'] as num?)?.toDouble() ?? 0.0;
-
-        if (!minuteStepMap.containsKey(minuteBucket) || st > minuteStepMap[minuteBucket]!) {
-          minuteStepMap[minuteBucket] = st;
-        }
-        totalDistance += dist;
-        totalCalories += cal;
-      } catch (_) {}
-    }
-    totalSteps = minuteStepMap.values.fold(0, (sum, val) => sum + val);
+    // 1. 步数与距离：多来源样本按小时选主源合并（见 parseStepSummary）
+    final stepSummary = parseStepSummary(stepsData);
+    final totalSteps = stepSummary.steps;
+    final totalDistance = stepSummary.distanceMeters;
+    final totalCalories = stepSummary.calories;
+    final sampledMinutes = stepSummary.sampledMinutes;
 
     // 2. 睡眠解析（一天可能多段：时长跨段累加，起止与评分取主睡眠段）
     final sleep = parseSleepSummary(sleepData, date);
@@ -299,7 +317,7 @@ class MiFitnessApiClient {
       steps: totalSteps,
       distanceMeters: totalDistance,
       calories: totalCalories,
-      activeMinutes: minuteStepMap.length,
+      activeMinutes: sampledMinutes,
       standingCount: totalStanding,
       sleepDurationMinutes: sleep.durationMinutes,
       deepSleepMinutes: sleep.deepMinutes,
@@ -323,6 +341,59 @@ class MiFitnessApiClient {
       sleepStagesJson: json.encode(sleep.stages),
       source: 'mi_fitness',
       updatedAt: DateTime.now(),
+    );
+  }
+
+  /// 合并小米云端按分钟切片的步数样本，得到与小米 App 一致的日汇总
+  ///
+  /// 同一段步行会被多条来源各上报一份（`sid` 即来源：手机是 `hlth.gen_*`、手环/手表是设备号），
+  /// 逐分钟跨来源取最大值会把这些重复全天累加，实测比小米首页恒定多算 4.4%。
+  /// 改为逐小时选主源——每小时只统计「该小时步数最多的那条序列」的分钟，与小米的
+  /// 「多数据源融合」对齐后，6 天实测误差 +0.5%，距离日均 4.89 km（官方 4.91 km）。
+  /// 卡路里不走主源：只取单条会偏低约 280 kcal，全来源累加才最接近官方（±9%）。
+  static MiStepSummary parseStepSummary(List<Map<String, dynamic>> stepsData) {
+    final samples = <_MiStepSample>[];
+    double calories = 0;
+
+    for (final item in stepsData) {
+      final time = (item['time'] as num?)?.toInt() ?? 0;
+      try {
+        final val = json.decode(item['value'] as String? ?? '{}') as Map<String, dynamic>;
+        calories += (val['calories'] as num?)?.toDouble() ?? 0.0;
+        samples.add(_MiStepSample(
+          sid: item['sid']?.toString() ?? '',
+          minute: time ~/ 60,
+          hour: time ~/ 3600,
+          steps: (val['steps'] as num?)?.toInt() ?? 0,
+          distanceMeters: (val['distance'] as num?)?.toDouble() ?? 0.0,
+        ));
+      } catch (_) {}
+    }
+
+    // 每小时定主源
+    final hourTotals = <int, Map<String, int>>{};
+    for (final s in samples) {
+      final bySid = hourTotals.putIfAbsent(s.hour, () => <String, int>{});
+      bySid[s.sid] = (bySid[s.sid] ?? 0) + s.steps;
+    }
+    final primarySid = <int, String>{};
+    hourTotals.forEach((hour, bySid) {
+      primarySid[hour] = bySid.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
+    });
+
+    // 只留主源样本，同一分钟重复上报时取步数较大的那条
+    final kept = <int, _MiStepSample>{};
+    for (final s in samples) {
+      if (primarySid[s.hour] != s.sid) continue;
+      final cur = kept[s.minute];
+      if (cur == null || s.steps > cur.steps) kept[s.minute] = s;
+    }
+
+    return MiStepSummary(
+      steps: kept.values.fold(0, (a, b) => a + b.steps),
+      distanceMeters: kept.values.fold<double>(0, (a, b) => a + b.distanceMeters),
+      calories: calories,
+      sampledMinutes: kept.length,
     );
   }
 
