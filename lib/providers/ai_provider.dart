@@ -778,7 +778,15 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       }
 
       // 3. 构建动态环境上下文（时间/用户资料/关联数据），注入 system 尾部而非污染用户消息原文
+      // 个性在对话开始时取一次，本轮中途的修改下轮生效（对齐记忆的冻结快照语义）
+      final personality = await QPersonalityService.instance.getActivePersonality();
+      // 生效人格落一条日志，便于排查「改了性格没生效」是没读到还是读到了没听话
+      LoggerService.instance.logAI(
+        '小Q本轮生效个性: ${personality.id}（${personality.name}），'
+        '人格提示词 ${personality.prompt.length} 字',
+      );
       final dynamicContext = await buildBaseDynamicContext(
+        personality: personality,
         extraSections: [
           if (dataContext != null && dataContext.isNotEmpty)
             '关联数据（用户引用的待办/笔记/日记等）:\n$dataContext',
@@ -810,9 +818,6 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         maxTokens: roleSettings.maxTokens,
       );
 
-      // 读取当前激活个性（对话开始时取一次，本轮中途的修改下轮生效——对齐记忆的冻结快照语义）
-      final personality = await QPersonalityService.instance.getActivePersonality();
-
       final agentLoop = AgentLoop(
         aiService: aiService,
         dispatcher: dispatcher,
@@ -835,6 +840,7 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         conversationHistory: conversationHistory,
         systemPrompt: QSystemPrompt.buildSystemPrompt(
           personalityPrompt: personality.prompt,
+          personalityName: personality.name,
           enabledOptionalTools:
               AgentToolRegistry.optionalToolNames.difference(disabledTools),
         ),

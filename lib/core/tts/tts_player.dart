@@ -51,6 +51,13 @@ class TtsPlayer extends Notifier<TtsPlaybackState> {
   StreamSubscription? _playerErrorSub;
   int _generation = 0;
 
+  /// 正在播放（已把状态置为 playing）的那次任务代际，复位后清空。
+  ///
+  /// 完成信号只来自播放器的 `processingState == completed`，而 just_audio 播完
+  /// 不会自己把 `playing` 置回 false，光看状态流无法区分"这条读完了"和"上一条
+  /// 的迟到事件"，故用代际号把复位精确归位到当前任务。
+  int? _playingGeneration;
+
   /// 播放器最近一次载入/播放失败的描述。
   ///
   /// just_audio 的 `play()` 不会因源载入失败而抛异常（错误只在事件流里报告），
@@ -135,6 +142,9 @@ class TtsPlayer extends Notifier<TtsPlaybackState> {
     }
 
     try {
+      // 走系统语音后 just_audio 不再参与本次朗读，摘掉播放器事件的复位授权，
+      // 避免降级前那次播放的迟到 completed 把系统语音的状态提前打回空闲
+      _playingGeneration = null;
       state = TtsPlaybackState(
         messageId: messageId,
         status: TtsPlaybackStatus.playing,
@@ -156,6 +166,7 @@ class TtsPlayer extends Notifier<TtsPlaybackState> {
   /// 停止当前朗读并复位状态
   Future<void> stop() async {
     _generation++;
+    _playingGeneration = null;
     await _player?.stop();
     await TtsService.stopNative();
     state = TtsPlaybackState.idle;
@@ -192,6 +203,7 @@ class TtsPlayer extends Notifier<TtsPlaybackState> {
       messageId: state.messageId,
       status: TtsPlaybackStatus.playing,
     );
+    _playingGeneration = gen;
     await player.play();
     if (gen != _generation) return;
 
@@ -203,6 +215,12 @@ class TtsPlayer extends Notifier<TtsPlaybackState> {
     if (player.processingState == ProcessingState.idle) {
       throw const TtsException('playback_failed', '音频未能载入播放器');
     }
+    // play() 的 Future 在播完（或被暂停/中断）时才完成，正常情况下复位已由状态流
+    // 的 completed 事件触发；这里再兜一次，防止事件与 Future 的先后时序把状态留在
+    // playing、朗读按钮卡在停止图标。_onPlaybackFinished 幂等，重复调用无副作用。
+    if (player.processingState == ProcessingState.completed || !player.playing) {
+      _onPlaybackFinished();
+    }
   }
 
   AudioPlayer _ensurePlayer() {
@@ -210,9 +228,9 @@ class TtsPlayer extends Notifier<TtsPlaybackState> {
     final player = AudioPlayer();
     _player = player;
     _playerSub = player.playerStateStream.listen((ps) {
-      // 播放自然结束（completed）后复位为空闲；stop() 触发的完成因代际号
+      // 播放自然结束（completed）后复位为空闲。stop() 触发的完成因代际号
       // 已自增而被忽略，不会覆盖新任务状态
-      if (ps.processingState == ProcessingState.completed && !ps.playing) {
+      if (playbackFinished(ps)) {
         _onPlaybackFinished();
       }
     });
@@ -240,8 +258,21 @@ class TtsPlayer extends Notifier<TtsPlaybackState> {
     return player;
   }
 
+  /// 播放器状态是否表示"这一次朗读已经放完"（纯判定，供状态流回调与单测复用）。
+  ///
+  /// 只看 `processingState`：just_audio 的 `playing` 由 `play()` 置为 true 后，
+  /// 要等到 `pause()`/`stop()` 才会回到 false，音频自然播完时它仍是 true。
+  /// 若额外要求 `!playing`，完成判定就永远不成立，朗读按钮会卡在停止图标，
+  /// 用户得点两下（第一下 stop、第二下才重新朗读）才能恢复。
+  static bool playbackFinished(PlayerState ps) =>
+      ps.processingState == ProcessingState.completed;
+
+  /// 本次朗读结束：复位为空闲（保留 messageId，让该条按钮回到"朗读"态）
   void _onPlaybackFinished() {
-    // 仅当没有新任务接管（代际未变）时复位；播放中状态由 stop/speak 主动变更
+    final gen = _playingGeneration;
+    // 代际不匹配说明这是被 stop()/新任务作废的旧播放器事件，忽略以免覆盖新状态
+    if (gen == null || gen != _generation) return;
+    _playingGeneration = null;
     if (state.status == TtsPlaybackStatus.playing) {
       state = TtsPlaybackState(messageId: state.messageId);
     }

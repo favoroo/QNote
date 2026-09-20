@@ -14,6 +14,15 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.65',
+    date: '2026-09-20',
+    notes: [
+      '小Q 人设系统上线：支持多款个性化人设切换，回复语调更加自然贴合，并推荐匹配专属音色',
+      'AI 页面新增常驻自动朗读开关，支持一键切换全局静音/自动播报，优化悬浮窗及对话打断交互体验',
+      '音色设置与人设体系深度联动：配置页提供直观音色试听预览与人设专属推荐，打造个性化智能搭子',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.64',
     date: '2026-09-19',
     notes: [

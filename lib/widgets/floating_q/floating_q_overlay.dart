@@ -13,6 +13,7 @@ import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
+import 'package:qnote_flutter/widgets/ai/auto_read_toggle_button.dart';
 import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
 import 'package:qnote_flutter/widgets/ai/quick_prompt_dialog.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
@@ -264,6 +265,8 @@ class _FloatingQPanelState extends ConsumerState<_FloatingQPanel> {
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          // 自动朗读开关：与语音设置页同一真源，随手切换不必跳设置
+          const AutoReadToggleButton(),
           // 手动开启新对话（会话按界面自动隔离，这里是主动重置）
           Tooltip(
             message: '开启新对话',

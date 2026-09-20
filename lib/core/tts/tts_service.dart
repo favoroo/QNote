@@ -55,6 +55,18 @@ class TtsService {
   /// 停止系统语音朗读
   static Future<void> stopNative() => systemStop();
 
+  /// 颜文字构件符号集：数学符号（≧≦）、几何图形（▽○●）、假名与泰文（常被当眼睛嘴）、
+  /// 项目符号与连接符、组合音标等。「活泼元气」个性会刻意在回复里带 `(≧▽≦)`、`(๑•̀ㅂ•́)✧`，
+  /// 朗读念成「括号 大于等于 三角 括号」纯属噪音；集合宁窄勿宽，避免误判（共3条）这类实义括号。
+  static final RegExp _kaomojiSymbol = RegExp(
+    r'[≧≦≥≤▽▲△○●◎◇◆□■★☆✦✧〜~^＾﹏\-_·•<>⌒Д\u{0E00}-\u{0E7F}'
+    r'\u{3040}-\u{30FF}\u{2500}-\u{25FF}\u{2200}-\u{22FF}\u{0300}-\u{036F}]',
+    unicode: true,
+  );
+
+  /// 括号型颜文字（含全/半角括号，内部不含嵌套括号与换行）
+  static final RegExp _bracketedRun = RegExp(r'[（(][^（）()\n]{1,16}[）)]');
+
   /// 把 markdown 回复清洗成适合朗读的纯文本。
   ///
   /// 聊天回复里的代码块、表格、链接 URL 朗读出来全是噪音，逐一剥离；
@@ -100,6 +112,15 @@ class TtsService {
       ),
       ' ',
     );
+    // 颜文字：只有「括号内符号数 ≥ 2 且占满一半以上」才整体剔除，
+    // 这样 (≧▽≦)、(^_^) 被念掉的尴尬没了，（共3条）（推荐）这类实义括号仍能读出
+    text = text.replaceAllMapped(_bracketedRun, (m) {
+      final bracketed = m.group(0)!;
+      final symbolCount = _kaomojiSymbol.allMatches(bracketed).length;
+      return symbolCount >= 2 && symbolCount * 2 >= bracketed.runes.length
+          ? ' '
+          : bracketed;
+    });
     // markdown 转义符与多余空白
     text = text.replaceAll('\\', ' ');
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();

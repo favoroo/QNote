@@ -9,6 +9,9 @@ import 'package:qnote_flutter/core/utils/toast_utils.dart';
 /// 对齐 Hermes SOUL.md 语义：个性只改变身份与语气，能力规范保持内置不变；
 /// 切换后下轮对话生效（对齐记忆的冻结快照注入时机）。
 /// 与小Q经 VFS `/settings/personality.json` 的自我调整为同一份数据，双向同步。
+///
+/// 顶部「当前生效」卡片直接展示运行时真正注入系统提示词的那段人格文本（[QPersonality.prompt]），
+/// 包括「自定义但内容为空 → 实际回退经典管家」这类静默降级，避免用户设置了却看不出生效没有。
 class QPersonalityPage extends StatefulWidget {
   const QPersonalityPage({super.key, this.embedded = false});
 
@@ -22,6 +25,12 @@ class QPersonalityPage extends StatefulWidget {
 class _QPersonalityPageState extends State<QPersonalityPage> {
   final TextEditingController _customController = TextEditingController();
   String _activeId = QPersonalities.defaultId;
+
+  /// 运行时真正生效的个性（含回退结果），驱动顶部「当前生效」卡片
+  QPersonality? _effective;
+
+  /// 是否发生了「选了自定义却因描述为空而回退」的静默降级（由快照判定，卡片据此提示）
+  bool _degraded = false;
   bool _loading = true;
 
   @override
@@ -36,14 +45,30 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
     super.dispose();
   }
 
+  /// 写操作后重读一次快照：让「选中项」与「实际生效」始终取自同一份存储状态，
+  /// 也顺带刷新降级标记，避免界面显示的和真正注入系统提示词的那段人格脱节
+  Future<QPersonalitySnapshot> _refreshFromStore() async {
+    final snapshot = await QPersonalityService.instance.readSnapshot();
+    if (mounted) {
+      setState(() {
+        _activeId = snapshot.selectedId;
+        _effective = snapshot.effective;
+        _degraded = snapshot.degradedToFallback;
+      });
+    }
+    return snapshot;
+  }
+
   Future<void> _loadConfig() async {
     try {
-      final service = QPersonalityService.instance;
-      final activeId = await service.getActiveId();
-      _customController.text = await service.getCustomPrompt();
+      // 单次快照读：选中态、自定义原文、实际生效个性同源，不会出现三次读取拼出两个版本
+      final snapshot = await QPersonalityService.instance.readSnapshot();
       if (!mounted) return;
+      _customController.text = snapshot.customPrompt;
       setState(() {
-        _activeId = activeId;
+        _activeId = snapshot.selectedId;
+        _effective = snapshot.effective;
+        _degraded = snapshot.degradedToFallback;
         _loading = false;
       });
     } catch (_) {
@@ -57,10 +82,10 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
     setState(() => _activeId = id);
     try {
       await QPersonalityService.instance.setActiveId(id);
+      final snapshot = await _refreshFromStore();
       if (!mounted) return;
-      if (id == QPersonalities.customId &&
-          _customController.text.trim().isEmpty) {
-        Toast.warning(context, '已选择自定义，请在下方填写人格描述');
+      if (snapshot.degradedToFallback) {
+        Toast.warning(context, '已选择自定义，但人格描述为空：当前仍按「经典管家」说话');
       }
     } catch (e) {
       if (!mounted) return;
@@ -68,12 +93,26 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
     }
   }
 
-  Future<void> _saveCustomPrompt() async {
+  /// 保存自定义人格文本；[alsoActivate] 为 true 时顺带切到自定义个性（省一次点击）
+  Future<void> _saveCustomPrompt({bool alsoActivate = false}) async {
     final text = _customController.text.trim();
     try {
       await QPersonalityService.instance.setCustomPrompt(text);
+      if (alsoActivate) {
+        await QPersonalityService.instance.setActiveId(QPersonalities.customId);
+      }
+      final snapshot = await _refreshFromStore();
       if (!mounted) return;
-      Toast.success(context, text.isEmpty ? '已清空自定义人格' : '自定义人格已保存');
+      if (text.isEmpty) {
+        Toast.warning(
+          context,
+          '自定义人格已清空，实际说话风格回退为「${snapshot.effective.name}」',
+        );
+      } else if (alsoActivate) {
+        Toast.success(context, '已保存并启用，下轮对话开始这样说话');
+      } else {
+        Toast.success(context, '自定义人格已保存');
+      }
     } catch (e) {
       if (!mounted) return;
       Toast.error(context, '保存失败：$e');
@@ -87,6 +126,8 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
         : ListView(
             padding: const EdgeInsets.all(20),
             children: [
+              _buildEffectiveCard(context),
+              const SizedBox(height: 12),
               ...QPersonalities.presets.map(
                 (p) => _buildPresetCard(context, p),
               ),
@@ -105,6 +146,108 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('小Q个性'), centerTitle: false),
       body: body,
+    );
+  }
+
+  /// 「当前生效」卡片：直接回显运行时真正注入系统提示词的人格文本，
+  /// 并把「选了自定义却因描述为空而静默回退」这类用户最容易误判成没生效的情况显式标出来
+  Widget _buildEffectiveCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final effective = _effective;
+    if (effective == null) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark
+            ? theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.55)
+            : theme.colorScheme.primary.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: _degraded
+              ? theme.colorScheme.tertiary.withValues(alpha: 0.65)
+              : theme.colorScheme.primary.withValues(alpha: 0.5),
+          width: 1.2,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.auto_awesome_rounded,
+                size: 18,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '当前生效个性',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                effective.name,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          if (_degraded) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.75),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 16,
+                    color: theme.colorScheme.onTertiaryContainer,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '自定义人格描述还是空的，所以小Q实际仍按「${effective.name}」说话。'
+                      '在下方填写描述后点「保存并启用」即可切换。',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onTertiaryContainer,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Text(
+            effective.prompt,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              height: 1.5,
+            ),
+            maxLines: 6,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '这段话每轮对话都会注入小Q的系统提示词：开头作为「人格与身份」小节，'
+            '结尾的环境上下文里再复述一次语气要点。修改后下一条消息生效。',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -279,6 +422,8 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
             minLines: 3,
             maxLength: 400,
             textInputAction: TextInputAction.newline,
+            // 实时回显尾部语气摘要预览，让用户看到这句话将如何被钉在提示词结尾
+            onChanged: (_) => setState(() {}),
             decoration: const InputDecoration(
               hintText:
                   '例如：你是一位说话带点幽默感的极简主义助手，'
@@ -286,13 +431,43 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
               border: OutlineInputBorder(),
             ),
           ),
-          const SizedBox(height: 4),
-          Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton.tonal(
-              onPressed: _saveCustomPrompt,
-              child: const Text('保存'),
+          if (_customController.text.trim().isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.arrow_drop_down_circle_outlined,
+                  size: 18,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '结尾复述句：${QPersonalityService.digestOf(_customController.text)}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      height: 1.45,
+                    ),
+                  ),
+                ),
+              ],
             ),
+          ],
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              OutlinedButton(
+                onPressed: () => _saveCustomPrompt(),
+                child: const Text('保存'),
+              ),
+              const SizedBox(width: 10),
+              FilledButton.tonal(
+                onPressed: () => _saveCustomPrompt(alsoActivate: true),
+                child: const Text('保存并启用'),
+              ),
+            ],
           ),
         ],
       ),

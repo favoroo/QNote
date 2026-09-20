@@ -16,12 +16,14 @@ import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
 import 'package:qnote_flutter/core/agent/services/q_personality_service.dart';
 import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
 import 'package:qnote_flutter/core/agent/services/q_text_quote.dart';
+import 'package:qnote_flutter/core/agent/services/q_voice_config.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
 import 'package:qnote_flutter/core/agent/vfs/virtual_workspace_service.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
 import 'package:qnote_flutter/core/ai/ai_error_explainer.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/tts/tts_player.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/providers/agent_support.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
@@ -580,11 +582,20 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
     final recorderHandle = VirtualWorkspaceService.instance.startRecording();
 
     try {
+      // 读取当前激活个性（对话开始时取一次，本轮中途的修改下轮生效——对齐记忆的冻结快照语义）
+      final personality = await QPersonalityService.instance.getActivePersonality();
+      // 生效人格落一条日志，便于排查「改了性格没生效」到底是没读到还是读到了没听话
+      LoggerService.instance.logAI(
+        '小Q本轮生效个性: ${personality.id}（${personality.name}），'
+        '人格提示词 ${personality.prompt.length} 字',
+      );
+
       // 页面上下文说明块：告诉小Q当前界面与目标文件（无目标页面则省略）；
       // 「给小Q」引用说明块：告诉小Q用户引用了哪段内容、位于哪个文件
       final pageBlock = await ctx?.toPromptBlock();
       final quoteBlock = quote == null ? null : await _quotePromptBlock(quote);
       final dynamicContext = await buildBaseDynamicContext(
+        personality: personality,
         extraSections: [
           ?pageBlock,
           ?quoteBlock,
@@ -605,9 +616,6 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
 
       // 预加载用户技能缓存，保证本次会话系统提示词中的技能索引完整
       await SkillRegistry.instance.ensureLoaded();
-
-      // 读取当前激活个性（对话开始时取一次，本轮中途的修改下轮生效——对齐记忆的冻结快照语义）
-      final personality = await QPersonalityService.instance.getActivePersonality();
 
       // 可选工具按用户配置裁剪：禁用的工具不注册，系统提示词对应准则段也不注入
       final disabledTools = await AgentToolConfig.instance.getDisabledTools();
@@ -632,6 +640,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
         conversationHistory: List.of(_sessionMessages),
         systemPrompt: QSystemPrompt.buildSystemPrompt(
           personalityPrompt: personality.prompt,
+          personalityName: personality.name,
           enabledOptionalTools:
               AgentToolRegistry.optionalToolNames.difference(disabledTools),
         ),
@@ -716,6 +725,17 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
             _sessionMessages.last.content.trim() ==
                 finalResponse.content.trim();
         if (!isDup) _appendSessionMessage(finalResponse, signature);
+
+        // 语音回复：与 AI 主页面共用「小Q语音 → 自动朗读回复」开关。
+        // 只在答复确实落到当前可见会话时朗读（切页丢弃历史/用户主动中止时沉默），
+        // 且必须 unawaited：await 会把 finally 里的状态复位推迟到朗读结束，
+        // 面板会一直挂着「执行中」并让撤回横幅迟到出现
+        if (!_contextSwitchedDuringRun &&
+            !token.isCancelled &&
+            state.contextSignature == signature &&
+            finalResponse.content.trim().isNotEmpty) {
+          unawaited(_autoSpeakReply(finalResponse));
+        }
       }
       if (token.isCancelled && _sessionMessages.isNotEmpty) {
         final last = _sessionMessages.last;
@@ -911,6 +931,23 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
     _sessionMessages = [..._sessionMessages, message];
     if (!_contextSwitchedDuringRun && state.contextSignature == runSignature) {
       state = state.copyWith(messages: List.of(_sessionMessages));
+    }
+  }
+
+  /// 自动朗读面板里的最终答复：与 AI 主页面共用「小Q语音」开关与朗读通道。
+  ///
+  /// 失败只记日志（面板无气泡朗读按钮，不做 Toast 打断），不影响任务收尾。
+  Future<void> _autoSpeakReply(ChatMessage reply) async {
+    try {
+      if (!await QVoiceConfig.instance.isAutoReadEnabled()) return;
+      await ref
+          .read(ttsPlaybackProvider.notifier)
+          .speakMessage(TtsPlayer.messageKeyOf(reply), reply.content);
+    } catch (e) {
+      LoggerService.instance.logAI(
+        '小Q面板自动朗读失败: $e',
+        level: LogLevel.error,
+      );
     }
   }
 

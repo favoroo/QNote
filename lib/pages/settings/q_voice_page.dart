@@ -54,15 +54,20 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
       children: [
         _buildCard(
           context,
-          child: SwitchListTile(
-            value: _current.autoRead,
-            onChanged: _saveAutoRead,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-            title: Text('自动朗读回复', style: theme.textTheme.bodyLarge),
-            subtitle: Text(
-              '小Q回复完成后用语音读出',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
+          // 开关值直接取自配置真源的实时视图：小Q对话界面右上角的图标按钮也能改这个值，
+          // 只听本地副本会导致这边显示滞后
+          child: ValueListenableBuilder<bool>(
+            valueListenable: QVoiceConfig.instance.autoReadState,
+            builder: (context, autoRead, _) => SwitchListTile(
+              value: autoRead,
+              onChanged: _saveAutoRead,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+              title: Text('自动朗读回复', style: theme.textTheme.bodyLarge),
+              subtitle: Text(
+                '小Q回复完成后用语音读出，可在小Q对话界面右上角快速切换',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
           ),

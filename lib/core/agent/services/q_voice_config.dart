@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/tts/tts_service.dart';
 
@@ -82,15 +83,32 @@ class QVoiceConfig {
 
   QVoiceSettings? _cached;
 
+  /// 自动朗读开关的实时视图。
+  ///
+  /// 语音设置页的 Switch 与小Q对话界面右上角的图标按钮都监听它，
+  /// 任一处改动后其它视图同步刷新；真源仍是本类（内存缓存 + app_configs），
+  /// 这里只做广播，冷启动首次 [get] 完成前保持默认值。
+  final ValueNotifier<bool> autoReadState =
+      ValueNotifier<bool>(QVoiceSettings.defaults.autoRead);
+
   /// 读取配置（未加载时从存储拉取）
   Future<QVoiceSettings> get() async {
     if (_cached != null) return _cached!;
     final raw = await ConfigRepository.instance.getAppConfig(storageKey);
-    return _cached = QVoiceSettings.decode(raw);
+    final settings = QVoiceSettings.decode(raw);
+    autoReadState.value = settings.autoRead;
+    return _cached = settings;
   }
 
   /// 自动朗读是否开启（运行时高频查询，走缓存）
   Future<bool> isAutoReadEnabled() async => (await get()).autoRead;
+
+  /// 翻转自动朗读开关，返回翻转后的值（供界面上的开关按钮直接调用）
+  Future<bool> toggleAutoRead() async {
+    final next = !(await get()).autoRead;
+    await setAutoRead(next);
+    return next;
+  }
 
   Future<void> setAutoRead(bool enabled) async =>
       _save((await get()).copyWith(autoRead: enabled));
@@ -101,11 +119,14 @@ class QVoiceConfig {
   Future<void> setRate(double rate) async =>
       _save((await get()).copyWith(rate: rate));
 
+  /// 先落库再更新内存与广播：写失败时界面停留在原状态，不会出现
+  /// 「图标显示已开启、重启后却是关闭」的假象
   Future<void> _save(QVoiceSettings settings) async {
-    _cached = settings;
     await ConfigRepository.instance.setAppConfig(
       storageKey,
       jsonEncode(settings.encode()),
     );
+    _cached = settings;
+    autoReadState.value = settings.autoRead;
   }
 }

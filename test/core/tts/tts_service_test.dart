@@ -55,6 +55,28 @@ void main() {
       expect(text, '好的，完成');
     });
 
+    // 个性为「活泼元气」时小Q会按人格写颜文字，朗读链路必须消掉它，
+    // 否则念成「括号 大于等于 三角 括号」；同时不能顺手删掉实义括号
+    test('括号型颜文字剔除', () {
+      expect(
+        TtsService.cleanSpeechText('太棒啦 (≧▽≦) 继续加油'),
+        '太棒啦 继续加油',
+      );
+      expect(TtsService.cleanSpeechText('给你加分了 (๑•̀ㅂ•́)✧'), '给你加分了');
+      expect(TtsService.cleanSpeechText('好呀（^_^）没问题'), '好呀 没问题');
+    });
+
+    test('实义括号与含符号的数字括号照常读出', () {
+      expect(
+        TtsService.cleanSpeechText('已写入（共3条），分类（推荐）'),
+        '已写入（共3条），分类（推荐）',
+      );
+      expect(
+        TtsService.cleanSpeechText('提醒时间（09-11 19:00）已设'),
+        '提醒时间（09-11 19:00）已设',
+      );
+    });
+
     test('连续空白折叠为单个空格', () {
       expect(TtsService.cleanSpeechText('你好\n\n\n   世界'), '你好 世界');
     });

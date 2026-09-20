@@ -32,6 +32,7 @@ import 'package:qnote_flutter/core/tts/tts_player.dart';
 import 'package:qnote_flutter/widgets/empty_state.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
+import 'package:qnote_flutter/widgets/ai/auto_read_toggle_button.dart';
 import 'package:qnote_flutter/widgets/ai/bubble_action_bar.dart';
 import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
@@ -1179,6 +1180,8 @@ class _AiPageState extends ConsumerState<AiPage> {
         ),
         title: const Text('小Q'),
         actions: [
+          // 自动朗读开关：与语音设置页同一真源，随手切换不必跳设置
+          const AutoReadToggleButton(iconSize: 22),
           IconButton(
             // 圆角气泡+加号造型，线条比 add_comment 更圆润
             icon: const Icon(Icons.maps_ugc_outlined),

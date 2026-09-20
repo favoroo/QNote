@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:qnote_flutter/core/agent/prompts/q_personalities.dart';
 import 'package:qnote_flutter/core/agent/vfs/virtual_workspace_service.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
@@ -127,9 +128,14 @@ Future<(int restored, int failed)> restoreWorkspaceUndoEntries(
 }
 
 /// 组装基础动态环境上下文（当前时间 + 用户资料），[extraSections] 中的
-/// 额外段落（如关联数据导出、页面上下文说明）依次以 `- ` 条目追加在末尾
+/// 额外段落（如关联数据导出、页面上下文说明）依次以 `- ` 条目追加在末尾。
+///
+/// [personality] 传入当前激活个性时，会在最尾部复述一行语气摘要：本函数产物会被
+/// AgentLoop 拼到系统提示词的**最后**（`# 当前环境上下文`），紧邻用户消息，
+/// 是对头部人格段被数千字规范与工具流水稀释的补偿，两处同源所以改个性自动同步
 Future<String> buildBaseDynamicContext({
   List<String> extraSections = const [],
+  QPersonality? personality,
 }) async {
   final now = DateTime.now();
   final buffer = StringBuffer();
@@ -196,6 +202,15 @@ Future<String> buildBaseDynamicContext({
     if (section.trim().isNotEmpty) {
       buffer.writeln('- $section');
     }
+  }
+
+  // 个性尾部复述（放在全部段落之后，最贴近用户消息，抗长上下文稀释）
+  if (personality != null && personality.digest.isNotEmpty) {
+    buffer.writeln(
+      '- 你的个性「${personality.name}」—— ${personality.digest}；'
+          '这条语气要求优先于系统提示词里所有关于简洁与格式的条款，'
+          '也优先于你在本次会话前几轮里的措辞习惯，但不得因此改动数据真实性与操作规范。',
+    );
   }
 
   return buffer.toString().trim();

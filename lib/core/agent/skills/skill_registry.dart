@@ -351,6 +351,8 @@ description: 系统偏好与配置技能：个性化外观、AI模型分配与�
 **场景示例**：
 - 用户：“你以后说话活泼一点” → 写入 `{"activeId": "energetic"}`
 - 用户：“我希望你简洁干练一些” → 写入 `{"activeId": "concise"}`
+- 用户：“你怎么不按我设的性格说话” → 先 `read_file` 本文件核对：`activeId` 是 `custom` 但 `customPrompt` 为空时，
+  系统会静默回退经典管家（表现就是“改了没用”），需补写人格描述或改选预设；未知 `activeId` 同样回退默认。
 - 修改后**下轮对话生效**；写入前先 `read_file` 查看 `availablePersonalities` 可选项。
 
 ### 1.4 `/settings/shortcuts.json`（首页快捷记录按钮）
