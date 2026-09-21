@@ -220,9 +220,20 @@ class HealthDailyMetrics {
   }
 
   /// 辅助解析心率采样点列表
-  List<Map<String, dynamic>> parseHeartRateSamples() {
+  List<Map<String, dynamic>> parseHeartRateSamples() => _parseSamples(heartRateSamplesJson);
+
+  /// 血氧采样点列表（结构与心率一致：`{t: 秒级时间戳, v: 数值}`）
+  List<Map<String, dynamic>> parseSpo2Samples() => _parseSamples(spo2SamplesJson);
+
+  /// 压力采样点列表
+  List<Map<String, dynamic>> parseStressSamples() => _parseSamples(stressSamplesJson);
+
+  /// 睡眠分期采样（`{state, start, end, duration}`，state：1 深睡 2/3 浅睡 4 清醒 5 REM）
+  List<Map<String, dynamic>> parseSleepStages() => _parseSamples(sleepStagesJson);
+
+  static List<Map<String, dynamic>> _parseSamples(String raw) {
     try {
-      final decoded = jsonDecode(heartRateSamplesJson);
+      final decoded = jsonDecode(raw);
       if (decoded is List) {
         return decoded.cast<Map<String, dynamic>>();
       }

@@ -16,6 +16,7 @@ import 'package:qnote_flutter/pages/settings/shortcuts_page.dart';
 import 'package:qnote_flutter/pages/settings/fixed_events_page.dart';
 import 'package:qnote_flutter/pages/settings/data_sync_page.dart';
 import 'package:qnote_flutter/pages/settings/mi_fitness_settings_page.dart';
+import 'package:qnote_flutter/pages/health/health_metric_detail_page.dart';
 import 'package:qnote_flutter/pages/settings/personalization_page.dart';
 import 'package:qnote_flutter/pages/settings/about_page.dart';
 import 'package:qnote_flutter/widgets/diary/diary_editor_view.dart';
@@ -198,6 +199,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final initialDate = state.extra as DateTime?;
           return _fadeTransitionPage(MiFitnessSettingsPage(initialDate: initialDate));
+        },
+      ),
+      GoRoute(
+        // 健康指标二级详情页：数据由主看板通过 extra 带入，不自己查库
+        path: '/health-detail',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) {
+          final args = state.extra as HealthDetailArgs? ??
+              const HealthDetailArgs(kind: HealthMetricKind.vitals, title: '健康详情');
+          return _fadeTransitionPage(HealthMetricDetailPage(args: args));
         },
       ),
       GoRoute(

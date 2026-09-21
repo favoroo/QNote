@@ -1828,7 +1828,7 @@ class _RecordDetailSheetState extends State<_RecordDetailSheet> {
                   if (key == 'step_target') label = '目标步数';
                   if (key == 'calories') label = '卡路里';
                   if (key == 'distance_meters') label = '距离(米)';
-                  if (key == 'active_minutes') label = '有效活动';
+                  if (key == 'active_minutes') label = '计步分钟';
                   if (key == 'sleep_duration_minutes') label = '睡眠时长(分)';
                   if (key == 'sleep_score') label = '睡眠得分';
                   if (key == 'avg_spo2') label = '平均血氧';

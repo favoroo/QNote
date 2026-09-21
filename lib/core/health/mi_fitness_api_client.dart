@@ -226,6 +226,11 @@ class MiFitnessApiClient {
       fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'spo2').catchError((e) => <Map<String, dynamic>>[]),
       fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'stress').catchError((e) => <Map<String, dynamic>>[]),
       _fetchStandingData(startTime: startOfDay, endTime: endOfDay).catchError((e) => <Map<String, dynamic>>[]),
+      fetchFitnessData(
+        startTime: startOfDay,
+        endTime: endOfDay,
+        key: 'resting_heart_rate',
+      ).catchError((e) => <Map<String, dynamic>>[]),
     ]);
 
     final stepsData = results[0];
@@ -234,6 +239,7 @@ class MiFitnessApiClient {
     final spo2Data = results[3];
     final stressData = results[4];
     final standingData = results[5];
+    final restingHrData = results[6];
 
     // 1. 步数与距离：多来源样本按小时选主源合并（见 parseStepSummary）
     final stepSummary = parseStepSummary(stepsData);
@@ -250,7 +256,6 @@ class MiFitnessApiClient {
     int hrSum = 0;
     int? hrMax;
     int? hrMin;
-    int? restingHr;
 
     for (final item in hrData) {
       try {
@@ -264,12 +269,12 @@ class MiFitnessApiClient {
           if (hrMax == null || bpm > hrMax) hrMax = bpm;
           if (hrMin == null || bpm < hrMin) hrMin = bpm;
         }
-        if (valJson.containsKey('resting_bpm')) {
-          restingHr = (valJson['resting_bpm'] as num?)?.toInt();
-        }
       } catch (_) {}
     }
     final avgHr = hrSamples.isNotEmpty ? (hrSum ~/ hrSamples.length) : null;
+    // 静息心率在独立的 resting_heart_rate key 里；heart_rate 样本只有 time/bpm/type，
+    // 旧代码在样本里找一个不存在的 resting_bpm 字段，导致这一格永远显示 --
+    final restingHr = parseRestingHeartRate(restingHrData);
 
     // 4. 血氧数据
     final spo2Samples = <Map<String, dynamic>>[];
@@ -342,6 +347,28 @@ class MiFitnessApiClient {
       source: 'mi_fitness',
       updatedAt: DateTime.now(),
     );
+  }
+
+  /// 解析当日静息心率（云端 `resting_heart_rate` 独立 key，value 为 `{bpm, date_time}`）
+  ///
+  /// 实测每天一条；出现多条时（多设备各报一份、或当天重算）按 `update_time` 取最新那条，
+  /// 与小米「以当日最后一次结算为准」的展示口径一致。
+  static int? parseRestingHeartRate(List<Map<String, dynamic>> data) {
+    int? bpm;
+    int latestWrite = -1;
+    for (final item in data) {
+      try {
+        final valJson = json.decode(item['value'] as String? ?? '{}') as Map<String, dynamic>;
+        final v = (valJson['bpm'] as num?)?.toInt();
+        if (v == null || v <= 20 || v >= 200) continue;
+        final write = (item['update_time'] as num?)?.toInt() ?? (item['time'] as num?)?.toInt() ?? 0;
+        if (bpm == null || write >= latestWrite) {
+          bpm = v;
+          latestWrite = write;
+        }
+      } catch (_) {}
+    }
+    return bpm;
   }
 
   /// 合并小米云端按分钟切片的步数样本，得到与小米 App 一致的日汇总
@@ -486,6 +513,14 @@ class MiFitnessApiClient {
     if (typeStr.contains('walk') || typeStr == '6') return 'walking';
     if (typeStr.contains('swim') || typeStr == '8') return 'swimming';
     if (typeStr.contains('hike')) return 'hiking';
+    // 云端 category 直接用蛇形命名（实测有 strength_training），
+    // 不识别会被兜成「日常运动」，力量训练看起来就像随便一次锻炼
+    if (typeStr.contains('strength') || typeStr.contains('gym')) return 'strength';
+    if (typeStr.contains('interval') || typeStr.contains('circuit')) return 'circuit';
+    if (typeStr.contains('yoga') || typeStr.contains('pilates')) return 'yoga';
+    if (typeStr.contains('elliptical')) return 'elliptical';
+    if (typeStr.contains('rowing')) return 'rowing';
+    if (typeStr.contains('rope')) return 'rope';
     return 'workout';
   }
 
@@ -501,6 +536,18 @@ class MiFitnessApiClient {
         return '游泳训练';
       case 'hiking':
         return '登山徒步';
+      case 'strength':
+        return '力量训练';
+      case 'circuit':
+        return '间歇循环训练';
+      case 'yoga':
+        return '瑜伽';
+      case 'elliptical':
+        return '椭圆机';
+      case 'rowing':
+        return '划船机';
+      case 'rope':
+        return '跳绳';
       default:
         return '日常运动';
     }

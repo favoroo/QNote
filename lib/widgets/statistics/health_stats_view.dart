@@ -309,7 +309,8 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
                 Expanded(
                   child: _buildMetricCol(
                     context,
-                    label: '活动时长',
+                    // 同小米健康页：这是步数采样分钟数，不是小米的中高强度活动时长
+                    label: '计步分钟',
                     value: '${totalActiveMinutes ~/ 60}h${totalActiveMinutes % 60}m',
                     unit: '总计',
                     icon: Icons.timer,

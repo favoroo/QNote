@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -12,6 +13,7 @@ import 'package:qnote_flutter/core/health/health_sync_service.dart';
 import 'package:qnote_flutter/core/storage/health_metric_repository.dart';
 import 'package:qnote_flutter/models/health_daily_metrics.dart';
 import 'package:qnote_flutter/models/health_sport_record.dart';
+import 'package:qnote_flutter/pages/health/health_metric_detail_page.dart';
 
 class MiFitnessSettingsPage extends ConsumerStatefulWidget {
   final DateTime? initialDate;
@@ -399,15 +401,27 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                 const SizedBox(height: 12),
 
                 // 3. 深度作息睡眠卡片（含比例条、阶段明细、作息区间与评分徽标）
-                _buildSleepCard(context),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _openHealthDetail(HealthMetricKind.sleep, '作息睡眠'),
+                  child: _buildSleepCard(context),
+                ),
                 const SizedBox(height: 12),
 
                 // 4. 心率健康深度指标卡片（静息心率、均值与极值范围、状态评估）
-                _buildHeartRateCard(context),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _openHealthDetail(HealthMetricKind.heartRate, '心率健康'),
+                  child: _buildHeartRateCard(context),
+                ),
                 const SizedBox(height: 12),
 
                 // 5. 血氧饱和度与全天压力双联状态卡片
-                _buildSpo2AndStressRow(context),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _openHealthDetail(HealthMetricKind.vitals, '血氧与压力'),
+                  child: _buildSpo2AndStressRow(context),
+                ),
                 const SizedBox(height: 12),
 
                 // 6. 单次运动记录列表
@@ -573,6 +587,28 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
     );
   }
 
+  /// 打开某个健康指标的二级详情页
+  ///
+  /// 直接把当前已加载的 `_selectedMetrics` 带过去，详情页不重复查库；当天没有数据时
+  /// 给提示而不是推进一个空页，避免点半天落在一个什么都没有的界面上。
+  void _openHealthDetail(HealthMetricKind kind, String title, {HealthSportRecord? sport}) {
+    final m = _selectedMetrics;
+    if (sport == null && m == null) {
+      Toast.info(context, '这一天还没有健康数据');
+      return;
+    }
+    context.push(
+      '/health-detail',
+      extra: HealthDetailArgs(
+        kind: kind,
+        title: title,
+        dateLabel: _formatDateLabel(_selectedDate),
+        metrics: m,
+        sport: sport,
+      ),
+    );
+  }
+
   Widget _buildStepsCard(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -706,7 +742,9 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                 Expanded(
                   child: _buildSubMetric(
                     context,
-                    label: '活动时长',
+                    // 云端没有「中高强度活动时长」这个指标（activity/exercise/active_minutes 等
+                    // key 实测全空），此值是当天有步数采样的分钟数，不能冒充小米的「活动时长」
+                    label: '计步分钟',
                     value: '$activeMin',
                     unit: '分钟',
                   ),
@@ -1551,7 +1589,10 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                 ? '${s.calories.toStringAsFixed(0)} kcal'
                 : '';
 
-            return Container(
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _openHealthDetail(HealthMetricKind.sport, s.title, sport: s),
+              child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: colorScheme.surfaceContainerHighest.withValues(
@@ -1611,6 +1652,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                     ),
                 ],
               ),
+            ),
             );
           },
         ),

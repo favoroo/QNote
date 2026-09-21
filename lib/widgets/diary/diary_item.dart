@@ -1571,7 +1571,7 @@ class _DiaryItemState extends State<DiaryItem> {
                         iconColor: const Color(0xFFEAB308),
                         value: '$activeMinutes',
                         unit: '分钟',
-                        label: '活动',
+                        label: '计步',
                       ),
                     ),
                     if (standingCount > 0)
