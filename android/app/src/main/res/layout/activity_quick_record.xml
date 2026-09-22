@@ -118,18 +118,30 @@
 
                 <Button
                     android:id="@+id/btn_dialog_cancel"
-                    style="?android:attr/borderlessButtonStyle"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_height="38dp"
+                    android:minHeight="0dp"
+                    android:minWidth="0dp"
+                    android:background="@drawable/bg_dialog_btn_secondary"
+                    android:paddingLeft="18dp"
+                    android:paddingRight="18dp"
                     android:text="取消"
                     android:textColor="@color/widget_text_secondary"
                     android:textSize="14sp" />
 
+                <Space
+                    android:layout_width="8dp"
+                    android:layout_height="wrap_content" />
+
                 <Button
                     android:id="@+id/btn_dialog_send"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:backgroundTint="@color/widget_accent"
+                    android:layout_height="38dp"
+                    android:minHeight="0dp"
+                    android:minWidth="0dp"
+                    android:background="@drawable/bg_dialog_btn_primary"
+                    android:paddingLeft="20dp"
+                    android:paddingRight="20dp"
                     android:text="发送"
                     android:textColor="#FFFFFF"
                     android:textSize="14sp" />
