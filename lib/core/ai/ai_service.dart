@@ -207,11 +207,13 @@ class AiService {
 
   /// 单次请求的重试深度
   ///
-  /// - SenseNova 免费网关：等于 Key 池容量，每个 Key 各试一次
+  /// - SenseNova 免费网关：轮换 [FreeModelKeyManager.keyRotationAttempts] 把 Key
+  ///   （各把 Key 配额独立，429 后换 Key 只有一次网络往返；整池冷却时由
+  ///   [_shouldRetryAndWait] 提前收手，不会把深度烧满）
   /// - 其它（含用户自定义模型）：[_genericMaxRetries] 次纯退避重试
   int get _maxRetries {
     return _isSenseNovaPool
-        ? FreeModelKeyManager.instance.totalKeysCount
+        ? FreeModelKeyManager.instance.keyRotationAttempts
         : _genericMaxRetries;
   }
 
@@ -258,6 +260,20 @@ class AiService {
     if (!FreeModelKeyManager.instance.isRecoverableError(error)) return false;
 
     final next = retryCount + 1;
+    final isQuotaError = FreeModelKeyManager.instance.isKeyScopedError(error);
+    // 商汤的 TPM 配额按 Key 计、跨模型共享且按分钟滚动恢复：整池都在冷却时，
+    // 换 Key 与换模型都躲不开同一个 429，再发只是白烧请求，直接把限流错误抛给上层。
+    // 注意不能用「是否换到 Key」判断 —— rotateKeyOnFailure 在全冷却时仍会
+    // 强行换到另一把已冷却的 Key，只有 hasAvailableKey 表示「还有新配额」。
+    if (_isSenseNovaPool &&
+        isQuotaError &&
+        !FreeModelKeyManager.instance.hasAvailableKey()) {
+      LoggerService.instance.logAI(
+        '$scene 命中服务商限流且整池 Key 均已冷却，放弃剩余重试',
+        level: LogLevel.warning,
+      );
+      return false;
+    }
     // 仅 SenseNova Key 池会真正轮到新 Key；自定义模型 / 独立端点此处为 no-op
     final switched = switchFreeModelKey();
     // 连接类故障重试前尝试刷新动态端点：拉到不同地址则切换后重发。
@@ -268,9 +284,18 @@ class AiService {
     } else if (isConnectionScene && retryCount >= 1) {
       switchedEndpoint = await _maybeRefreshDynamicEndpoint();
     }
-    final delay = isConnectionScene
-        ? FreeModelKeyManager.instance.getConnectionBackoffDelay(next)
-        : FreeModelKeyManager.instance.getBackoffDelay(next);
+    // 已经换成另一把 Key、且失败原因是这把 Key 自己的配额 —— 各 Key 配额独立
+    // （实测同一时刻一把 200、另一把 429），此时再指数退避就是纯白等，
+    // 只留 40~120ms 抖动避免同一瞬间把整池打满。连接类与 5xx 仍走原退避。
+    final isQuotaRotation = switched && isQuotaError;
+    final Duration delay;
+    if (isQuotaRotation) {
+      delay = FreeModelKeyManager.instance.getQuotaRotationDelay();
+    } else if (isConnectionScene) {
+      delay = FreeModelKeyManager.instance.getConnectionBackoffDelay(next);
+    } else {
+      delay = FreeModelKeyManager.instance.getBackoffDelay(next);
+    }
     final configDesc = switched
         ? '已切换备用 API Key'
         : switchedEndpoint != null

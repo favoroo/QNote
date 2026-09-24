@@ -1564,7 +1564,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
 
     final roles = await AiRoleService.instance.getRoles();
     final currentModelId = roles.timelineOptimizationUseFreeModel
-        ? 'free:${roles.timelineOptimizationFreeModelId ?? 'gemini-3.5-flash-lite'}'
+        ? 'free:${roles.timelineOptimizationFreeModelId ?? 'deepseek-flash'}'
         : roles.timelineOptimization;
 
     if (!mounted) return;

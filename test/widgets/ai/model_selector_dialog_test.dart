@@ -62,10 +62,12 @@ void main() {
     ));
 
     expect(find.text('内置免费模型'), findsOneWidget);
-    expect(find.text('Claude Sonnet 4.6'), findsOneWidget);
-    expect(find.text('Gemini 3.8 Flash Medium Mix'), findsOneWidget);
-    expect(find.text('Gemini 3.8 Flash High Mix'), findsOneWidget);
-    expect(find.text('DeepSeek V4 Flash'), findsOneWidget);
+    expect(find.text('DeepSeek Flash'), findsOneWidget);
+    expect(find.text('SenseNova 6.8'), findsOneWidget);
+    expect(find.text('GLM 5.2'), findsOneWidget);
+    // Gemini 与 Claude 系列内置模型已下线，不应再出现在候选里
+    expect(find.textContaining('Gemini'), findsNothing);
+    expect(find.textContaining('Claude'), findsNothing);
     expect(find.text('自定义模型'), findsOneWidget);
     expect(find.text('我的自定义模型'), findsOneWidget);
     expect(find.text('openai / test-model'), findsOneWidget);
@@ -102,7 +104,7 @@ void main() {
     ));
 
     final row = find.ancestor(
-      of: find.text('Gemini 3.5 Flash Lite Mix'),
+      of: find.text('DeepSeek Flash'),
       matching: find.byType(Row),
     ).first;
     expect(
@@ -132,17 +134,13 @@ void main() {
     expect(customId, 'cfg-1');
   });
 
-  test('内置候选按 3.5 Lite → 3.8 Low → Medium → High 顺序排列', () {
-    final ids = kAssistantBuiltinModels.map((m) => m['id']).toList();
-    final from = ids.indexOf('free:gemini-3.5-flash-lite-mix');
-    final to = ids.indexOf('free:sensenova-flash-lite');
+  test('内置候选只剩商汤网关三个模型，以默认头牌 DeepSeek Flash 打头', () {
     expect(
-      ids.sublist(from, to),
+      kAssistantBuiltinModels.map((m) => m['id']).toList(),
       const [
-        'free:gemini-3.5-flash-lite-mix',
-        'free:gemini-3.8-flash-low-mix',
-        'free:gemini-3.8-flash-medium-mix',
-        'free:gemini-3.8-flash-high-mix',
+        'free:deepseek-flash',
+        'free:sensenova-flash-lite',
+        'free:glm-5.2',
       ],
     );
   });
@@ -159,7 +157,7 @@ void main() {
     );
     expect(
       assistantModelDisplayName('__free_model__', const []),
-      'Gemini 3.5 Flash Lite Mix',
+      'DeepSeek Flash',
     );
     expect(assistantModelDisplayName('missing', const []), 'missing');
     expect(assistantModelDisplayName(null, const []), isNull);

@@ -925,14 +925,14 @@ class VirtualWorkspaceService {
           'assistant': {
             'useFreeModel': roles.assistantUseFreeModel,
             'freeModelId':
-                roles.assistantFreeModelId ?? 'gemini-3.5-flash-lite-mix',
+                roles.assistantFreeModelId ?? 'deepseek-flash',
             'customModelId': roles.assistant,
           },
           'timelineOptimization': {
             'useFreeModel': roles.timelineOptimizationUseFreeModel,
             'freeModelId':
                 roles.timelineOptimizationFreeModelId ??
-                'gemini-3.5-flash-lite-mix',
+                'deepseek-flash',
             'customModelId': roles.timelineOptimization,
           },
         },

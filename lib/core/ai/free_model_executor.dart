@@ -76,6 +76,11 @@ class FreeModelExecutor {
     }
 
     Object? lastError;
+    // 商汤的 TPM 限流是按 Key 计、跨模型共享的（实测同一把 Key 换一个模型仍然 429），
+    // 所以换 Key 的预算在整条模型链上共享：否则 3 个模型会各扫一遍整池，
+    // 白烧两三倍请求还拿不到结果。
+    final quotaBudget = FreeModelKeyManager.instance.keyRotationAttempts;
+    int quotaAttempts = 0;
     for (int i = 0; i < ordered.length; i++) {
       final model = ordered[i];
       LoggerService.instance.logAI(
@@ -84,11 +89,11 @@ class FreeModelExecutor {
 
       final isSenseNovaModel = model.baseUrl.contains('sensenova');
       final maxKeyRetries = isSenseNovaModel
-          ? FreeModelKeyManager.instance.totalKeysCount
+          ? FreeModelKeyManager.instance.keyRotationAttempts
           : 1;
       int keyRetry = 0;
 
-      while (keyRetry < maxKeyRetries) {
+      while (keyRetry < maxKeyRetries && quotaAttempts < quotaBudget) {
         final config = FreeModelService.instance.toAiConfig(model);
         aiService.updateConfig(config,
             temperature: temperature, maxTokens: maxTokens);
@@ -103,8 +108,15 @@ class FreeModelExecutor {
         } catch (e) {
           lastError = e;
           await iterator.cancel();
-          if (FreeModelKeyManager.instance.isRecoverableError(e) &&
-              keyRetry < maxKeyRetries - 1) {
+          final manager = FreeModelKeyManager.instance;
+          final isQuotaError = manager.isKeyScopedError(e);
+          if (isQuotaError) quotaAttempts++;
+          // 限流类还要确认池里仍有没进冷却的 Key，才值得再换一把重试
+          final worthRetrying = manager.isRecoverableError(e) &&
+              keyRetry < maxKeyRetries - 1 &&
+              quotaAttempts < quotaBudget &&
+              (!isQuotaError || manager.hasAvailableKey());
+          if (worthRetrying) {
             keyRetry++;
             final switched = aiService.switchFreeModelKey();
             if (switched) {
@@ -143,6 +155,17 @@ class FreeModelExecutor {
           await iterator.cancel();
           rethrow;
         }
+      }
+
+      // 整池 Key 都因限流试过一遍：后面的模型同网关、TPM 配额按 Key 共享，
+      // 继续降级只会重复撞同一个 429，直接把可读的限流错误抛给上层
+      if (quotaAttempts >= quotaBudget) {
+        LoggerService.instance.logAI(
+          '免费模型限流轮换已用尽预算（$quotaAttempts/$quotaBudget 把 Key），'
+          '停止降级到下一个模型',
+          level: LogLevel.warning,
+        );
+        throw Exception('服务商当前限流中（已轮换 $quotaAttempts 把 Key 仍被拒绝），请稍后重试');
       }
     }
     throw Exception('所有免费模型流式连接失败: $lastError');

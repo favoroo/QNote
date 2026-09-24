@@ -292,7 +292,7 @@ class _AiPageState extends ConsumerState<AiPage> {
   Future<void> _initActiveModelId() async {
     final roles = await ref.read(aiRolesProvider.future);
     if (roles != null && roles.assistantUseFreeModel) {
-      final freeId = roles.assistantFreeModelId ?? 'gemini-3.5-flash-lite-mix';
+      final freeId = roles.assistantFreeModelId ?? 'deepseek-flash';
       if (mounted) setState(() => _activeModelId = 'free:$freeId');
       return;
     }
@@ -1019,7 +1019,7 @@ class _AiPageState extends ConsumerState<AiPage> {
           String? newActiveId;
           if (roles.assistantUseFreeModel) {
             final freeId =
-                roles.assistantFreeModelId ?? 'gemini-3.5-flash-lite';
+                roles.assistantFreeModelId ?? 'deepseek-flash';
             newActiveId = 'free:$freeId';
           } else if (roles.assistant != null) {
             newActiveId = roles.assistant;
@@ -1048,7 +1048,7 @@ class _AiPageState extends ConsumerState<AiPage> {
             setState(() => _activeModelId = defaultCfg.id);
           }
         } else {
-          setState(() => _activeModelId = 'free:gemini-3.5-flash-lite');
+          setState(() => _activeModelId = 'free:deepseek-flash');
         }
       }
     });

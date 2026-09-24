@@ -32,13 +32,13 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   AiTemperatures _roleSettings = const AiTemperatures();
   bool _rolesLoaded = false;
 
-  // 小Q生图模型候选（与 FreeModelService.getImageGenerationModels 保持一致）
+  // 小Q生图模型候选（与 FreeModelService.getImageGenerationModels 保持一致；
+  // Gemini 生图下线后仅剩商汤一个后端）
   static const List<Map<String, String>> _imageGenerationModels = [
-    {'id': 'gemini-3.1-flash-image', 'name': '内置 Gemini 生图（默认）'},
-    {'id': 'sensenova-u1.5-lite', 'name': '内置 SenseNova 生图'},
+    {'id': 'sensenova-u1.5-lite', 'name': '内置 SenseNova 生图（默认）'},
   ];
 
-  /// 当前生图模型下拉选中值（绑定失效时回落默认 Gemini 生图）
+  /// 当前生图模型下拉选中值（绑定失效时回落首位的商汤生图）
   String get _imageModelDropdownValue {
     final bound = _roles.imageGenerationFreeModelId;
     if (bound != null && _imageGenerationModels.any((m) => m['id'] == bound)) {
@@ -99,7 +99,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   Future<void> _loadFreeModels() async {
     final selectedId = await AiRoleService.instance.getPreferredFreeModelId();
     if (selectedId == null) {
-      await AiRoleService.instance.savePreferredFreeModelId('gemini-3.5-flash-lite');
+      await AiRoleService.instance.savePreferredFreeModelId('deepseek-flash');
     }
   }
 
@@ -1381,10 +1381,22 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         ? _roles.assistantFreeModelId
         : _roles.timelineOptimizationFreeModelId;
 
-    // 当前选中的下拉 value：若是免费模型，使用形如 `free:gemini-3.5-flash-lite`；否则为自定义配置 id
+    // 内置免费模型候选列表（Gemini 与 Claude 系列已下线，首位为默认头牌 DeepSeek Flash）
+    final builtinModels = [
+      {'id': 'free:deepseek-flash', 'name': '内置 DeepSeek Flash', 'modelId': 'deepseek-flash'},
+      {'id': 'free:sensenova-flash-lite', 'name': '内置 SenseNova 6.8', 'modelId': 'sensenova-flash-lite'},
+      {'id': 'free:glm-5.2', 'name': '内置 GLM 5.2', 'modelId': 'glm-5.2'},
+    ];
+
+    // 当前选中的下拉 value：若是免费模型，使用形如 `free:deepseek-flash`；否则为自定义配置 id
     String? currentDropdownValue;
     if (useFreeModel) {
-      currentDropdownValue = 'free:${roleFreeModelId ?? 'gemini-3.5-flash-lite'}';
+      currentDropdownValue = 'free:${roleFreeModelId ?? 'deepseek-flash'}';
+      // 绑定指向已下线内置模型时必须回落首位：DropdownButton 的 value 若不在
+      // items 里会直接断言崩掉整页（老设备读到 v4 迁移前的 gemini 绑定即此情形）
+      if (builtinModels.every((m) => m['id'] != currentDropdownValue)) {
+        currentDropdownValue = builtinModels.first['id'];
+      }
     } else {
       final boundValid =
           currentId != null && configs.any((c) => c.id == currentId);
@@ -1395,21 +1407,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
             (configs.where((c) => c.isDefault).firstOrNull ?? configs.first).id;
       } else {
         // 兜底进入内置模型
-        currentDropdownValue = 'free:gemini-3.5-flash-lite';
+        currentDropdownValue = builtinModels.first['id'];
       }
     }
-
-    // 内置免费模型候选列表（包含 Claude Sonnet 4.6、Gemini 3.5 Flash Lite Mix 等）
-    final builtinModels = [
-      {'id': 'free:claude-sonnet-4-6', 'name': '内置 Claude Sonnet 4.6', 'modelId': 'claude-sonnet-4-6'},
-      {'id': 'free:gemini-3.5-flash-lite-mix', 'name': '内置 Gemini 3.5 Flash Lite Mix', 'modelId': 'gemini-3.5-flash-lite-mix'},
-      {'id': 'free:gemini-3.8-flash-low-mix', 'name': '内置 Gemini 3.8 Flash Low Mix', 'modelId': 'gemini-3.8-flash-low-mix'},
-      {'id': 'free:gemini-3.8-flash-medium-mix', 'name': '内置 Gemini 3.8 Flash Medium Mix', 'modelId': 'gemini-3.8-flash-medium-mix'},
-      {'id': 'free:gemini-3.8-flash-high-mix', 'name': '内置 Gemini 3.8 Flash High Mix', 'modelId': 'gemini-3.8-flash-high-mix'},
-      {'id': 'free:sensenova-flash-lite', 'name': '内置 SenseNova 6.8', 'modelId': 'sensenova-flash-lite'},
-      {'id': 'free:glm-5.2', 'name': '内置 GLM 5.2', 'modelId': 'glm-5.2'},
-      {'id': 'free:deepseek-v4-flash', 'name': '内置 DeepSeek V4 Flash', 'modelId': 'deepseek-v4-flash'},
-    ];
 
     // 角色特有视觉属性
     final isAssistant = roleKey == 'assistant';
@@ -1589,7 +1589,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                   isExpanded: true,
                   value: _imageModelDropdownValue,
                   hint: const Text(
-                    '默认 Gemini 生图',
+                    '默认商汤生图',
                     style: TextStyle(fontSize: 11.5),
                     overflow: TextOverflow.ellipsis,
                   ),

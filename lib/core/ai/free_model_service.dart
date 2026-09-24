@@ -284,7 +284,7 @@ class FreeModelService {
     };
   }
 
-  /// 获取内置模型列表（包含 Claude Sonnet 4.6、Gemini 3.5 Flash Lite、Gemini 3.8 Flash Low/Medium/High、SenseNova 6.8、GLM 5.2、DeepSeek V4 Flash）
+  /// 获取内置模型列表（DeepSeek Flash、SenseNova 6.8、GLM 5.2，均走商汤网关）
   Future<List<FreeModelConfig>> getCachedModels() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -301,14 +301,9 @@ class FreeModelService {
     } catch (_) {}
 
     return [
-      BuiltinFreeKeys.createClaudeSonnet46Config(),
-      BuiltinFreeKeys.createGemini35Config(),
-      BuiltinFreeKeys.createGemini38Config(),
-      BuiltinFreeKeys.createGemini38MediumMixConfig(),
-      BuiltinFreeKeys.createGemini38HighMixConfig(),
+      BuiltinFreeKeys.createDeepSeekConfig(),
       BuiltinFreeKeys.createDefaultConfig(),
       BuiltinFreeKeys.createGlmConfig(),
-      BuiltinFreeKeys.createDeepSeekConfig(),
     ];
   }
 
@@ -316,9 +311,10 @@ class FreeModelService {
   ///
   /// 刻意不并入 [getCachedModels]：生图模型不能出现在聊天模型选择器与
   /// 对话 fallback 链中（文本对话端点不支持图片输出模型）。
+  /// Gemini 生图下线后只剩商汤一个后端，`generate_image` 的互补降级
+  /// （`AiRoleService.getImageGenerationFallbackConfig`）因此返回 null，即不再降级。
   List<FreeModelConfig> getImageGenerationModels() {
     return [
-      BuiltinFreeKeys.createGemini31ImageConfig(),
       BuiltinFreeKeys.createSenseNovaU15ImageConfig(),
     ];
   }
@@ -403,25 +399,25 @@ class FreeModelService {
   AiConfig toAiConfig(FreeModelConfig model, {String? explicitApiKey}) {
     final now = DateTime.now();
     // SenseNova 网关下的内置模型共享 4 个商汤轮询 Key
-    final isSenseNovaBuiltinKey = model.id.contains('sensenova') ||
-        model.id == 'glm-5.2' ||
-        model.id == 'deepseek-v4-flash';
-    // Gemini 专用网关的内置模型（含 Claude Sonnet 4.6 与生图模型 gemini-3.1-flash-image）
-    final isGeminiBuiltinKey = model.id == 'claude-sonnet-4-6' ||
-        model.id == 'gemini-3.8-flash-low-mix' ||
-        model.id == 'gemini-3.8-flash-low' ||
-        model.id == 'gemini-3.8-flash-medium-mix' ||
-        model.id == 'gemini-3.8-flash-high-mix' ||
-        model.id == 'gemini-3.5-flash-lite-mix' ||
-        model.id == 'gemini-3.5-flash-lite' ||
-        model.id == 'gemini-3.1-flash-image';
+    // 以 baseUrl 为准而非逐个点名模型 id：网关下新增模型（如 deepseek-flash）时
+    // 不必同步改这里，否则漏改会静默退化成固定单 Key、丢掉轮询
+    final isSenseNovaBuiltinKey =
+        model.baseUrl.toLowerCase().contains('sensenova') ||
+            model.id.contains('sensenova') ||
+            model.id == 'glm-5.2';
+    // CPA 隧道网关的内置模型共用同一把 Key。这里按端点家族判定而非点名模型 id：
+    // Gemini、Claude 先后下线后该通道暂无内置模型消费者，判定留着以便随时回插模型
+    final isCpaBuiltinKey = model.baseUrl == BuiltinFreeKeys.defaultTailscaleBaseUrl ||
+        model.baseUrl == BuiltinFreeKeys.dynamicCpaBaseUrl ||
+        (BuiltinFreeKeys.dynamicCpaFallbackBaseUrl.isNotEmpty &&
+            model.baseUrl == BuiltinFreeKeys.dynamicCpaFallbackBaseUrl);
 
     final String effectiveKey;
     if (explicitApiKey != null && explicitApiKey.isNotEmpty) {
       effectiveKey = explicitApiKey;
     } else if (isSenseNovaBuiltinKey) {
       effectiveKey = FreeModelKeyManager.instance.acquireNextKey();
-    } else if (isGeminiBuiltinKey) {
+    } else if (isCpaBuiltinKey) {
       effectiveKey = BuiltinFreeKeys.getGeminiApiKey();
     } else {
       effectiveKey = model.apiKey;

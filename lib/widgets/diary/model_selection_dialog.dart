@@ -8,7 +8,7 @@ export 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart'
 /// 统一的时间线/日记模型选择弹窗，供日记页 FAB 长按、输入栏长按、编辑器长按共用。
 ///
 /// 返回值为选中的模型 ID 字符串：
-/// - 免费模型返回 `'free:<model-name>'`（例如 `'free:gemini-3.5-flash-lite'`）
+/// - 免费模型返回 `'free:<model-name>'`（例如 `'free:deepseek-flash'`）
 /// - 自定义模型返回对应的配置 id（UUID）
 class ModelSelectionDialog extends StatelessWidget {
   final List<AiConfig> configs;
@@ -27,8 +27,8 @@ class ModelSelectionDialog extends StatelessWidget {
 
     // 解析当前选中的有效 ID（兼容旧的哨兵值 __free_model__）
     final effectiveSelectedId = selectedId == '__free_model__'
-        ? 'free:gemini-3.5-flash-lite'
-        : (selectedId ?? 'free:gemini-3.5-flash-lite');
+        ? 'free:deepseek-flash'
+        : (selectedId ?? 'free:deepseek-flash');
 
     return Dialog(
       backgroundColor: colorScheme.surface,

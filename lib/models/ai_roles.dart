@@ -6,10 +6,10 @@ class AiRoles {
   // 角色是否使用免费模型
   final bool assistantUseFreeModel;
   final bool timelineOptimizationUseFreeModel;
-  // 角色具体使用的免费模型 ID (如 'sensenova-flash-lite', 'glm-5.2', 'deepseek-v4-flash')
+  // 角色具体使用的免费模型 ID (如 'sensenova-flash-lite', 'glm-5.2', 'deepseek-flash')
   final String? assistantFreeModelId;
   final String? timelineOptimizationFreeModelId;
-  // 小Q生图工具绑定的内置生图模型 ID (如 'gemini-3.1-flash-image', 'sensenova-u1.5-lite')
+  // 小Q生图工具绑定的内置生图模型 ID（Gemini 生图下线后目前仅 'sensenova-u1.5-lite'）
   final String? imageGenerationFreeModelId;
 
   const AiRoles({
@@ -17,9 +17,9 @@ class AiRoles {
     this.timelineOptimization,
     this.assistantUseFreeModel = false,
     this.timelineOptimizationUseFreeModel = false,
-    this.assistantFreeModelId = 'gemini-3.5-flash-lite-mix',
-    this.timelineOptimizationFreeModelId = 'gemini-3.5-flash-lite-mix',
-    this.imageGenerationFreeModelId = 'gemini-3.1-flash-image',
+    this.assistantFreeModelId = 'deepseek-flash',
+    this.timelineOptimizationFreeModelId = 'deepseek-flash',
+    this.imageGenerationFreeModelId = 'sensenova-u1.5-lite',
   });
 
   Map<String, dynamic> toMap() {
@@ -43,11 +43,11 @@ class AiRoles {
       assistantUseFreeModel: map['assistantUseFreeModel'] as bool? ?? false,
       timelineOptimizationUseFreeModel:
           map['timelineOptimizationUseFreeModel'] as bool? ?? false,
-      assistantFreeModelId: map['assistantFreeModelId'] as String? ?? 'gemini-3.5-flash-lite-mix',
+      assistantFreeModelId: map['assistantFreeModelId'] as String? ?? 'deepseek-flash',
       timelineOptimizationFreeModelId:
-          map['timelineOptimizationFreeModelId'] as String? ?? 'gemini-3.5-flash-lite-mix',
+          map['timelineOptimizationFreeModelId'] as String? ?? 'deepseek-flash',
       imageGenerationFreeModelId:
-          map['imageGenerationFreeModelId'] as String? ?? 'gemini-3.1-flash-image',
+          map['imageGenerationFreeModelId'] as String? ?? 'sensenova-u1.5-lite',
     );
   }
 

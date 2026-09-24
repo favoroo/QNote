@@ -17,70 +17,81 @@ class AiRoleService {
   static const _selectedFreeModelKey = 'selected_free_model';
   // AI 温度设置迁移版本标记
   static const _aiTempsMigrationVersionKey = 'ai_temps_migration_version';
-  // 默认免费模型升级迁移标记（升级到 gemini-3.5-flash-lite-mix）
-  static const _defaultModelMigrationVersionKey = 'default_model_migration_v3';
+  // 默认免费模型升级迁移标记（升级到 deepseek-flash；换内置头牌或再下线模型时 +1 重跑）
+  static const _defaultModelMigrationVersionKey = 'default_model_migration_v5';
+
+  /// 已下线的内置聊天免费模型 id（含历史裸名变体，统一归位到新头牌）
+  static const Set<String> _deprecatedFreeModelIds = {
+    'gemini-3.5-flash-lite-mix',
+    'gemini-3.5-flash-lite',
+    'gemini-3.8-flash-low-mix',
+    'gemini-3.8-flash-low',
+    'gemini-3.8-flash-medium-mix',
+    'gemini-3.8-flash-high-mix',
+    'claude-sonnet-4-6',
+  };
 
   /// 初始化并确保默认配置
   Future<void> initAndEnsureDefaults() async {
     final existing = await _repo.getAiRoles();
     if (existing == null) {
-      // 初次进入应用：自动配置使用内置模型（开箱即用，默认选用 Gemini 3.5 Flash Lite Mix）
+      // 初次进入应用：自动配置使用内置模型（开箱即用，默认选用 DeepSeek Flash）
       await saveRoles(
         const AiRoles(
           assistantUseFreeModel: true,
           timelineOptimizationUseFreeModel: true,
-          assistantFreeModelId: 'gemini-3.5-flash-lite-mix',
-          timelineOptimizationFreeModelId: 'gemini-3.5-flash-lite-mix',
+          assistantFreeModelId: 'deepseek-flash',
+          timelineOptimizationFreeModelId: 'deepseek-flash',
         ),
       );
     }
 
     // 迁移：将 timelineOptimization.extractImages 默认值从 false 升级为 true
     await _migrateExtractImagesDefault();
-    // 迁移：将旧版默认内置模型顺畅升级为 Gemini 3.5 Flash Lite Mix
-    await _migrateDefaultFreeModel();
+    // 迁移：把绑定在已下线内置模型上的老用户归位到 DeepSeek Flash
+    await _migrateDeprecatedFreeModel();
   }
 
-  /// 迁移默认内置模型至 gemini-3.5-flash-lite-mix
-  Future<void> _migrateDefaultFreeModel() async {
+  /// 迁移已下线的内置模型绑定至 DeepSeek Flash
+  ///
+  /// Gemini 系列（4 个聊天模型 + Gemini 生图）与 Claude Sonnet 4.6 都已从
+  /// BuiltinFreeKeys 删除，内置免费模型现在全部落在商汤网关。老设备上角色仍可能
+  /// 绑着这些 id：不迁移也不会崩（`getOrderedModels` 找不到 preferredId 时按
+  /// priority 兜底），但模型选择器无高亮、界面显示裸 id，实际走的模型与用户看到的
+  /// 不一致。这里一次性归位到新头牌，并把生图绑定落到唯一保留的商汤后端。
+  Future<void> _migrateDeprecatedFreeModel() async {
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool(_defaultModelMigrationVersionKey) == true) return;
 
     final existing = await _repo.getAiRoles();
     if (existing != null) {
-      bool needUpdate = false;
-      String? newAssistantModel = existing.assistantFreeModelId;
-      String? newTimelineModel = existing.timelineOptimizationFreeModelId;
-
-      if (existing.assistantUseFreeModel &&
-          (existing.assistantFreeModelId == null ||
-              existing.assistantFreeModelId == 'sensenova-flash-lite' ||
-              existing.assistantFreeModelId == 'gemini-3.5-flash-lite')) {
-        newAssistantModel = 'gemini-3.5-flash-lite-mix';
-        needUpdate = true;
-      }
-      if (existing.timelineOptimizationUseFreeModel &&
-          (existing.timelineOptimizationFreeModelId == null ||
-              existing.timelineOptimizationFreeModelId == 'sensenova-flash-lite' ||
-              existing.timelineOptimizationFreeModelId == 'gemini-3.5-flash-lite')) {
-        newTimelineModel = 'gemini-3.5-flash-lite-mix';
-        needUpdate = true;
-      }
-      if (needUpdate) {
+      final deprecatedImage = existing.imageGenerationFreeModelId == 'gemini-3.1-flash-image';
+      final needRetarget = _deprecatedFreeModelIds.contains(existing.assistantFreeModelId) ||
+          _deprecatedFreeModelIds.contains(existing.timelineOptimizationFreeModelId) ||
+          deprecatedImage;
+      if (needRetarget) {
         await saveRoles(
           existing.copyWith(
-            assistantFreeModelId: newAssistantModel,
-            timelineOptimizationFreeModelId: newTimelineModel,
+            assistantFreeModelId:
+                _deprecatedFreeModelIds.contains(existing.assistantFreeModelId)
+                    ? 'deepseek-flash'
+                    : existing.assistantFreeModelId,
+            timelineOptimizationFreeModelId:
+                _deprecatedFreeModelIds.contains(
+                        existing.timelineOptimizationFreeModelId)
+                    ? 'deepseek-flash'
+                    : existing.timelineOptimizationFreeModelId,
+            imageGenerationFreeModelId: deprecatedImage
+                ? 'sensenova-u1.5-lite'
+                : existing.imageGenerationFreeModelId,
           ),
         );
       }
     }
 
     final preferred = await getPreferredFreeModelId();
-    if (preferred == null ||
-        preferred == 'sensenova-flash-lite' ||
-        preferred == 'gemini-3.5-flash-lite') {
-      await savePreferredFreeModelId('gemini-3.5-flash-lite-mix');
+    if (preferred == null || _deprecatedFreeModelIds.contains(preferred)) {
+      await savePreferredFreeModelId('deepseek-flash');
     }
 
     await prefs.setBool(_defaultModelMigrationVersionKey, true);
@@ -247,7 +258,7 @@ class AiRoleService {
   /// 获取小Q生图工具的生效配置
   ///
   /// 读取 AiRoles.imageGenerationFreeModelId 绑定的内置生图模型 id，
-  /// 绑定缺失或失效时回落到默认的 Gemini 生图模型。
+  /// 绑定缺失或失效时回落到列表首位的商汤生图模型。
   Future<AiConfig> getImageGenerationModelConfig() async {
     final roles = await getRoles();
     final models = FreeModelService.instance.getImageGenerationModels();

@@ -14,6 +14,15 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.68',
+    date: '2026-09-24',
+    notes: [
+      '内置免费模型扩容：商汤密钥池扩充至 9 把，并发与可用额度大幅提升',
+      'AI 响应更灵敏：限流时极速轮换可用密钥，避免无效退避等待；全池满载时即时提示',
+      '内置模型统一整理：默认主推 DeepSeek Flash，历史模型配置自动平滑迁移',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.67',
     date: '2026-09-21',
     notes: [

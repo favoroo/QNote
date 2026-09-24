@@ -32,13 +32,42 @@ class BuiltinFreeKeys {
     152, 108, 145, 63, 180, 113, 235, 164, 56, 136, 64, 175, 215, 10, 172, 253,
     143, 38, 135
   ];
+  static const List<int> _k4 = [
+    44, 158, 93, 165, 225, 38, 157, 244, 63, 24, 174, 97, 46, 238, 117, 113,
+    194, 80, 215, 35, 140, 73, 237, 155, 31, 144, 74, 146, 240, 76, 133, 235,
+    136, 96, 230
+  ];
+  static const List<int> _k5 = [
+    44, 158, 93, 167, 193, 1, 140, 206, 112, 57, 225, 63, 2, 157, 126, 78,
+    198, 29, 207, 80, 176, 92, 211, 151, 1, 147, 101, 137, 236, 42, 189, 234,
+    173, 38, 231
+  ];
+  static const List<int> _k6 = [
+    44, 158, 93, 133, 212, 59, 167, 196, 72, 0, 171, 74, 121, 223, 85, 103,
+    150, 79, 250, 4, 132, 102, 197, 164, 101, 186, 75, 183, 233, 77, 223, 155,
+    180, 35, 185
+  ];
+  static const List<int> _k7 = [
+    44, 158, 93, 187, 213, 55, 136, 148, 102, 47, 162, 88, 49, 248, 91, 113,
+    157, 16, 213, 38, 144, 67, 173, 183, 0, 153, 77, 142, 223, 46, 134, 221,
+    187, 34, 138
+  ];
+  static const List<int> _k8 = [
+    44, 158, 93, 143, 217, 2, 140, 206, 105, 124, 168, 91, 60, 201, 99, 91,
+    253, 105, 148, 17, 166, 65, 238, 197, 52, 138, 107, 170, 241, 23, 178, 154,
+    205, 32, 152
+  ];
 
-  // 掩码混淆保存的 Gemini 网关 API Key（无任何明文字符串）
+  // 掩码混淆保存的 CPA 网关 API Key（无任何明文字符串；历史名字沿用 Gemini，
+  // 因为该密钥最初就是为 Gemini 通道签发。内置模型全部转投商汤网关后暂无消费者，
+  // 保留给 CPA 隧道端点相关能力与后续回插模型使用）
   static const List<int> _kGemini = [
     44, 158, 93, 189, 194, 114, 220, 145, 63, 116, 233, 62, 123, 155, 7, 47
   ];
 
-  static const List<List<int>> _allEncoded = [_k0, _k1, _k2, _k3];
+  static const List<List<int>> _allEncoded = [
+    _k0, _k1, _k2, _k3, _k4, _k5, _k6, _k7, _k8
+  ];
 
   /// 默认兜底的 Tailscale 永久公网地址
   static const String defaultTailscaleBaseUrl = 'https://1demacbook-pro.tail77f123.ts.net/v1';
@@ -92,7 +121,7 @@ class BuiltinFreeKeys {
     return _allEncoded.map(_decode).toList();
   }
 
-  /// 获取解密后的 Gemini 专用 API Key
+  /// 获取解密后的 CPA 网关专用 API Key（方法名沿用历史 Gemini 称呼）
   static String getGeminiApiKey() {
     return _decode(_kGemini);
   }
@@ -127,105 +156,15 @@ class BuiltinFreeKeys {
     );
   }
 
-  /// 创建内置的 DeepSeek-V4-Flash 模型配置（共享网关与 4 个内置 Key 轮询）
+  /// 创建内置的 DeepSeek Flash 模型配置（共享网关与 4 个内置 Key 轮询，默认推荐）
   static FreeModelConfig createDeepSeekConfig([String? apiKey]) {
     final effectiveKey = apiKey ?? FreeModelKeyManager.instance.acquireNextKey();
     return FreeModelConfig(
-      id: 'deepseek-v4-flash',
-      displayName: 'DeepSeek V4 Flash',
+      id: 'deepseek-flash',
+      displayName: 'DeepSeek Flash',
       provider: 'openai',
       baseUrl: 'https://token.sensenova.cn/v1',
-      modelName: 'deepseek-v4-flash',
-      obfuscatedApiKey: effectiveKey,
-      authType: 'bearer',
-      priority: 4,
-    );
-  }
-
-  /// 创建内置的 Claude Sonnet 4.6 模型配置
-  static FreeModelConfig createClaudeSonnet46Config([String? apiKey]) {
-    final effectiveKey = apiKey ?? getGeminiApiKey();
-    return FreeModelConfig(
-      id: 'claude-sonnet-4-6',
-      displayName: 'Claude Sonnet 4.6',
-      provider: 'openai',
-      baseUrl: dynamicCpaBaseUrl,
-      modelName: 'claude-sonnet-4-6',
-      obfuscatedApiKey: effectiveKey,
-      authType: 'bearer',
-      priority: 0,
-    );
-  }
-
-  /// 创建内置的 Gemini 3.8 Flash Low Mix 模型配置
-  static FreeModelConfig createGemini38Config([String? apiKey]) {
-    final effectiveKey = apiKey ?? getGeminiApiKey();
-    return FreeModelConfig(
-      id: 'gemini-3.8-flash-low-mix',
-      displayName: 'Gemini 3.8 Flash Low',
-      provider: 'openai',
-      baseUrl: dynamicCpaBaseUrl,
-      modelName: 'gemini-3.8-flash-low-mix',
-      obfuscatedApiKey: effectiveKey,
-      authType: 'bearer',
-      priority: 1,
-    );
-  }
-
-  /// 创建内置的 Gemini 3.8 Flash Medium Mix 模型配置
-  static FreeModelConfig createGemini38MediumMixConfig([String? apiKey]) {
-    final effectiveKey = apiKey ?? getGeminiApiKey();
-    return FreeModelConfig(
-      id: 'gemini-3.8-flash-medium-mix',
-      displayName: 'Gemini 3.8 Flash Medium',
-      provider: 'openai',
-      baseUrl: dynamicCpaBaseUrl,
-      modelName: 'gemini-3.8-flash-medium-mix',
-      obfuscatedApiKey: effectiveKey,
-      authType: 'bearer',
-      priority: 1,
-    );
-  }
-
-  /// 创建内置的 Gemini 3.8 Flash High Mix 模型配置
-  static FreeModelConfig createGemini38HighMixConfig([String? apiKey]) {
-    final effectiveKey = apiKey ?? getGeminiApiKey();
-    return FreeModelConfig(
-      id: 'gemini-3.8-flash-high-mix',
-      displayName: 'Gemini 3.8 Flash High',
-      provider: 'openai',
-      baseUrl: dynamicCpaBaseUrl,
-      modelName: 'gemini-3.8-flash-high-mix',
-      obfuscatedApiKey: effectiveKey,
-      authType: 'bearer',
-      priority: 1,
-    );
-  }
-
-  /// 创建内置的 Gemini 3.5 Flash Lite Mix 模型配置（默认推荐）
-  static FreeModelConfig createGemini35Config([String? apiKey]) {
-    final effectiveKey = apiKey ?? getGeminiApiKey();
-    return FreeModelConfig(
-      id: 'gemini-3.5-flash-lite-mix',
-      displayName: 'Gemini 3.5 Flash Lite',
-      provider: 'openai',
-      baseUrl: dynamicCpaBaseUrl,
-      modelName: 'gemini-3.5-flash-lite-mix',
-      obfuscatedApiKey: effectiveKey,
-      authType: 'bearer',
-      priority: 0,
-    );
-  }
-
-  /// 创建内置的 Gemini 3.1 Flash Image 生图模型配置（小Q生图默认模型）
-  static FreeModelConfig createGemini31ImageConfig([String? apiKey]) {
-    final effectiveKey = apiKey ?? getGeminiApiKey();
-    return FreeModelConfig(
-      id: 'gemini-3.1-flash-image',
-      displayName: 'Gemini 生图',
-      provider: 'openai',
-      baseUrl: dynamicCpaBaseUrl,
-      modelName: 'gemini-3.1-flash-image',
+      modelName: 'deepseek-flash',
       obfuscatedApiKey: effectiveKey,
       authType: 'bearer',
       priority: 0,
@@ -278,6 +217,34 @@ class FreeModelKeyManager {
 
   /// 当前 Key 池总容量
   int get totalKeysCount => _keys.length;
+
+  /// 单模型内最多轮换几把 Key
+  ///
+  /// 上限只是护栏，不是日常生效的约束：429 换一把 Key 只有一次网络往返（且各把
+  /// Key 配额独立），逐把扫完整池也就 1~2 秒，比停在第 6 把更早拿到可用 Key。
+  /// 留这个上限是为了将来池扩到十几把时，单次请求不会退化成整池扫描。
+  static const int maxKeyRotationAttempts = 12;
+
+  /// 本次请求允许尝试的 Key 数量（不超过池容量）
+  int get keyRotationAttempts =>
+      totalKeysCount < maxKeyRotationAttempts ? totalKeysCount : maxKeyRotationAttempts;
+
+  /// 当前还有没有未被置入冷却的 Key
+  ///
+  /// 整池都在冷却时继续换 Key 只是重复撞同一批 429（配额按分钟滚动恢复），
+  /// 调用方据此提前收手并给出「服务商限流」文案，而不是把请求预算烧光。
+  bool hasAvailableKey() {
+    if (_keys.isEmpty) return false;
+    _cleanExpiredCooldowns();
+    return _keys.any((k) => !_rateLimitedKeys.containsKey(k));
+  }
+
+  /// 未被冷却的 Key 数量（诊断与日志用）
+  int get availableKeyCount {
+    if (_keys.isEmpty) return 0;
+    _cleanExpiredCooldowns();
+    return _keys.where((k) => !_rateLimitedKeys.containsKey(k)).length;
+  }
 
   /// 轮询获取下一个 API Key
   String acquireNextKey() {
@@ -511,6 +478,73 @@ class FreeModelKeyManager {
         text.contains('超时') ||
         text.contains('握手') ||
         text.contains('网络') ||
+        text.contains('繁忙');
+  }
+
+  /// 换到新 Key 后的极短间隔（40~120ms 抖动）
+  ///
+  /// 仅用于 [isKeyScopedError] 且确实换成了另一把 Key 的场景：配额按 Key 独立，
+  /// 指数退避在这里是纯白等；留一点抖动避免同一瞬间把整个池一起打满。
+  Duration getQuotaRotationDelay() {
+    return Duration(milliseconds: 40 + Random().nextInt(80));
+  }
+
+  /// 判定该错误是否「Key 自身配额」造成 —— 换一把 Key 就有独立额度，可立即重试
+  ///
+  /// 与 [isRecoverableError] 的关系是本函数的严格子集：只覆盖 429/401/403 与
+  /// 限流、配额、并发超限类文案。5xx 与 TLS/连接抖动不在此列 —— 那是端点侧问题，
+  /// 换 Key 无意义，仍应走指数退避。
+  ///
+  /// 之所以要单独区分：商汤免费网关几乎每个请求都会撞 TPM/RPM，若按通用退避
+  /// （300ms 起步、逐次翻倍）连试多把 Key，光等退避就要十几秒；而每把 Key 的
+  /// 配额互相独立（实测同一时刻一把 200、另一把 429），换到新 Key 后几乎不需要等。
+  bool isKeyScopedError(dynamic error) {
+    if (error == null) return false;
+
+    if (error is DioException) {
+      final statusCode = error.response?.statusCode;
+      if (statusCode == 429 || statusCode == 401 || statusCode == 403) {
+        return true;
+      }
+      if (_hasQuotaKeywords(error.response?.statusMessage?.toLowerCase() ?? '')) {
+        return true;
+      }
+      if (_hasQuotaKeywords(error.message?.toLowerCase() ?? '')) {
+        return true;
+      }
+      final respData = error.response?.data;
+      if (respData != null && respData is! ResponseBody) {
+        if (_hasQuotaKeywords(respData.toString().toLowerCase())) {
+          return true;
+        }
+      }
+    }
+
+    return _hasQuotaKeywords(error.toString().toLowerCase());
+  }
+
+  /// 限流/配额/并发超限/Key 失效类关键词（[isKeyScopedError] 的文案判据）
+  ///
+  /// 数字只保留 429：401/403 由上面的状态码分支精确命中，把它们当子串匹配
+  /// 会被「token 数里带 401」这类无关文本误伤。
+  bool _hasQuotaKeywords(String text) {
+    if (text.isEmpty) return false;
+    return text.contains('429') ||
+        text.contains('rate limit') ||
+        text.contains('rate_limit') ||
+        text.contains('ratelimit') ||
+        text.contains('too many requests') ||
+        text.contains('tpm') ||
+        text.contains('rpm') ||
+        text.contains('qps') ||
+        text.contains('quota') ||
+        text.contains('concurrency') ||
+        text.contains('insufficient') ||
+        text.contains('forbidden') ||
+        text.contains('配额') ||
+        text.contains('超限') ||
+        text.contains('并发') ||
+        text.contains('频率') ||
         text.contains('繁忙');
   }
 

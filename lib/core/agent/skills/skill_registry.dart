@@ -314,12 +314,12 @@ description: 系统偏好与配置技能：个性化外观、AI模型分配与�
   "roles": {
     "assistant": {
       "useFreeModel": true,
-      "freeModelId": "gemini-3.5-flash-lite-mix",
+      "freeModelId": "deepseek-flash",
       "customModelId": null
     },
     "timelineOptimization": {
       "useFreeModel": true,
-      "freeModelId": "gemini-3.5-flash-lite-mix",
+      "freeModelId": "deepseek-flash",
       "customModelId": null
     }
   },
