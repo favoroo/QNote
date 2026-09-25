@@ -2,10 +2,14 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qnote_flutter/core/ai/builtin_free_keys.dart';
 import 'package:qnote_flutter/core/ai/free_model_service.dart';
+import 'package:qnote_flutter/core/ai/sensenova_quota_policy.dart';
 import 'package:qnote_flutter/models/free_model_config.dart';
 
 void main() {
   group('BuiltinFreeKeys & FreeModelKeyManager Tests', () {
+    // 冷却表与游标是进程内单例状态，逐用例清场，避免靠「本条必须排在最后」维持顺序
+    setUp(() => FreeModelKeyManager.instance.resetForTest());
+
     test('9把内置密钥解密后与预期一致且不为空', () {
       final keys = BuiltinFreeKeys.getDecryptedKeys();
       expect(keys.length, equals(9));
@@ -67,8 +71,7 @@ void main() {
       final manager = FreeModelKeyManager.instance;
       final pool = BuiltinFreeKeys.getDecryptedKeys();
 
-      // 取满一轮：应无重复地覆盖整池，再多取一把则回到本轮起点。
-      // 本用例必须排在故障转移用例之前 —— 那会把一把 Key 置入 1 分钟冷却并被跳过
+      // 取满一轮：应无重复地覆盖整池，再多取一把则回到本轮起点
       final round = List<String>.generate(pool.length, (_) => manager.acquireNextKey());
       expect(round.every(pool.contains), isTrue);
       expect(round.toSet().length, equals(pool.length), reason: '一轮内不得重复取同一把');
@@ -171,15 +174,19 @@ void main() {
       expect(manager.isKeyScopedError(null), isFalse);
     });
 
-    test('getQuotaRotationDelay 远短于通用指数退避', () {
+    test('配额类等待由策略层给，且远短于通用指数退避', () {
       final manager = FreeModelKeyManager.instance;
-      final quotaDelay = manager.getQuotaRotationDelay();
-      expect(quotaDelay.inMilliseconds, greaterThanOrEqualTo(40));
-      expect(quotaDelay.inMilliseconds, lessThan(40 + 80));
-      // 同一失败次数下，通用退避至少是它的 4 倍起步（第 1 次 300ms+）
+      final quotaDelay = SensenovaQuotaPolicy.rotationDelay(QuotaSignal.tpm, 1);
+      final rpsDelay = SensenovaQuotaPolicy.rotationDelay(QuotaSignal.rpsBurst, 1);
+
+      expect(quotaDelay.inMilliseconds, inInclusiveRange(150, 349));
+      // rps 层是「0.6 秒内连发」，等待必须跨过它，因此比 TPM 更慢才对
+      expect(rpsDelay > quotaDelay, isTrue);
+      // 通用退避（第 3 次 1200ms 起）明显重于逐请求换 Key 的节奏（TPM 150~349、rps 350~649）
+      expect(rpsDelay.inMilliseconds, lessThan(700));
       expect(
-        manager.getBackoffDelay(1).inMilliseconds,
-        greaterThan(quotaDelay.inMilliseconds * 2),
+        manager.getBackoffDelay(3).inMilliseconds,
+        greaterThan(rpsDelay.inMilliseconds + 400),
       );
     });
 
@@ -231,7 +238,6 @@ void main() {
     });
 
     test('整池冷却后 hasAvailableKey 转 false，acquireNextKey 仍兜底给出一把', () {
-      // 必须排在最后：会把整池置入 1 分钟冷却，污染前面的轮询与预算断言
       final manager = FreeModelKeyManager.instance;
       final pool = BuiltinFreeKeys.getDecryptedKeys();
 
@@ -248,6 +254,34 @@ void main() {
       final fallback = manager.acquireNextKey();
       expect(fallback, isNotEmpty);
       expect(pool.contains(fallback), isTrue);
+    });
+
+    test('rps 突发只锁刚用过的那把 2 秒，不把整池锁死', () {
+      final manager = FreeModelKeyManager.instance;
+      final pool = BuiltinFreeKeys.getDecryptedKeys();
+
+      manager.markKeyLimited(pool.first, cooldown: SensenovaQuotaPolicy.keyCooldown(QuotaSignal.rpsBurst));
+
+      expect(manager.availableKeyCount, equals(pool.length - 1));
+      expect(manager.hasAvailableKey(), isTrue, reason: '一次秒级限流不该让整池不可用');
+      // 冷却时长要真的落在 2 秒档，而不是历史的 60 秒
+      expect(
+        manager.cooldownRemaining(pool.first).inMilliseconds,
+        lessThanOrEqualTo(SensenovaQuotaPolicy.keyCooldown(QuotaSignal.rpsBurst).inMilliseconds),
+      );
+      expect(
+        manager.cooldownRemaining(pool.last), equals(Duration.zero),
+        reason: '没被归因的 Key 不该带冷却',
+      );
+    });
+
+    test('网关 5xx / 非配额错误不归因到 Key', () {
+      final manager = FreeModelKeyManager.instance;
+      final pool = BuiltinFreeKeys.getDecryptedKeys();
+
+      manager.markKeyLimited(pool.first, cooldown: SensenovaQuotaPolicy.keyCooldown(QuotaSignal.server));
+
+      expect(manager.availableKeyCount, equals(pool.length));
     });
   });
 }

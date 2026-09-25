@@ -14,6 +14,15 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.69',
+    date: '2026-09-25',
+    notes: [
+      '小Q提问再次编辑优化：点击仅回填内容到输入框，发送时才撤回原会话，防止手滑误删记录',
+      'AI请求与限流策略升级：新增逐请求耗时与限流观测，支持云端动态调优策略与并发排队，提升对话成功率',
+      '新增内置模型发信诊断面板：在设置中可直观查看内置 Key 与模型的限流率、首字延迟等调用指标',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.68',
     date: '2026-09-24',
     notes: [

@@ -32,6 +32,7 @@ class MockAiService extends AiService {
     required List<ChatMessage> messages,
     List<Map<String, dynamic>>? tools,
     void Function(List<ToolCall> toolCalls)? onToolCallsReady,
+    void Function(Duration hold)? onQuotaHold,
     CancelToken? cancelToken,
   }) async* {
     for (final progress in progressChunks) {
@@ -53,6 +54,7 @@ class MidStreamCancelAiService extends AiService {
     required List<ChatMessage> messages,
     List<Map<String, dynamic>>? tools,
     void Function(List<ToolCall> toolCalls)? onToolCallsReady,
+    void Function(Duration hold)? onQuotaHold,
     CancelToken? cancelToken,
   }) async* {
     yield const AiToolStreamChunk.text('第一段');

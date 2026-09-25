@@ -62,9 +62,21 @@ class AiErrorExplainer {
     } else if (statusCode == 404) {
       problem = '请求的接口或模型不存在（HTTP 404）';
       advice = '请检查 Base URL 与模型名称拼写是否正确。';
-    } else if (statusCode == 429) {
-      problem = '请求过于频繁，被服务端限流（HTTP 429）';
-      advice = '稍等片刻后重试；若使用免费额度模型，可能是当日配额已用尽。';
+    } else if (statusCode == 429 ||
+        raw.contains('EndpointTPMExceeded') ||
+        // SSE 带内错误没有 HTTP 状态码可提取（HTTP 本身是 200），只能靠原文里的
+        // 服务商错误标识判定，否则用户看到的是一句无信息量的「未知错误」
+        raw.contains('AI Stream Error')) {
+      // 网关有两层限流，文案要分开：rps 是「你自己发太快了、几秒自愈」，
+      // TPM 是「共享额度用完了、要等回填」，混成一句「请求过于频繁」会让人反复重发
+      final isBurst = raw.contains('rps') || raw.contains('exhausted');
+      problem = isBurst
+          ? '短时间内请求太密集，被服务端的排队保护挡下（HTTP 429 · rps）'
+          : '内置免费模型的额度暂时用满（HTTP 429 · 限流）';
+      advice = isBurst
+          ? '小Q 已自动换 Key 重发，通常几秒内自愈；连续追问时可以等上一条回复出来再发。'
+          : '内置 Key 是全 App 用户共享的免费额度，按分钟滚动恢复，等十几秒重发即可。'
+              '若要稳定不限流，可在「设置 → AI 配置」里绑定自己的模型 API Key。';
     } else if (statusCode != null && statusCode >= 500) {
       problem = '服务器内部故障（HTTP $statusCode）';
       advice = '服务端暂时不可用，请稍后重试。';

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -6,9 +7,12 @@ import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:qnote_flutter/core/agent/models/agent_tool.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/builtin_free_keys.dart';
+import 'package:qnote_flutter/core/ai/sensenova_quota_policy.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/storage/ai_request_stats_repository.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
+import 'package:qnote_flutter/models/ai_request_stat.dart';
 
 /// 生图工具：让小Q 具备 AI 文生图能力
 ///
@@ -367,24 +371,28 @@ class GenerateImageTool extends AgentTool {
 
   /// SenseNova 生图：POST /images/generations，显式 watermark:false 生成无水印图
   ///
-  /// 商汤内置 Key 为 4 Key 轮询池，遇到限速/鉴权类可恢复错误时自动冷却换 Key 重试一次；
-  /// 但**接收超时不在重试范围**——换 Key 不会让慢请求变快，只会把耗时翻倍。
+  /// 与文本链路共用同一套发信策略：**每次尝试现取一把 Key 并逐请求覆写 header**
+  /// （成功也换，不再一把 Key 走到底），失败时按限流形态给「刚用过的那把」打不同冷却
+  /// （rps 2 秒 / TPM 与鉴权 60 秒，见 [SensenovaQuotaPolicy.keyCooldown]），再换下一把。
+  /// 尝试深度取 [SensenovaQuotaPolicy.poolMaxAttempts]（可被云端 `quota_policy` 下发覆盖，
+  /// 所以是运行时读取而非编译期常量）。
+  ///
+  /// **接收超时不重试** —— 换 Key 不会让慢请求变快，只会把耗时翻倍。
   Future<ImageParseOutcome> _requestSenseNova(
     Dio dio,
     AiConfig config,
     String prompt,
     String size,
   ) async {
-    var apiKey = config.apiKey;
+    final manager = FreeModelKeyManager.instance;
     Object? lastError;
+    final maxAttempts = SensenovaQuotaPolicy.poolMaxAttempts;
 
-    for (var attempt = 0; attempt < 2; attempt++) {
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+      // 逐请求现取：不用 rotateKeyOnFailure，成功路径也要把游标推下去
+      final sentKey = manager.acquireNextKey();
+      final startedAt = DateTime.now();
       try {
-        if (attempt > 0) {
-          await Future<void>.delayed(
-              FreeModelKeyManager.instance.getBackoffDelay(attempt));
-        }
-        dio.options.headers['Authorization'] = 'Bearer $apiKey';
         final response = await dio.post<Map<String, dynamic>>(
           '${config.baseUrl}/images/generations',
           data: {
@@ -395,6 +403,14 @@ class GenerateImageTool extends AgentTool {
             // 公测期间无水印生成免费；显式传递避免官方默认值变化影响线上
             'watermark': false,
           },
+          options: Options(headers: {'Authorization': 'Bearer $sentKey'}),
+        );
+        _recordStat(
+          sentKey: sentKey,
+          modelId: config.modelName,
+          outcome: AiRequestOutcomes.ok,
+          startedAt: startedAt,
+          httpStatus: response.statusCode,
         );
         final body = response.data;
         if (body == null) {
@@ -409,17 +425,66 @@ class GenerateImageTool extends AgentTool {
         return parseGenerationImagesDetailed(body);
       } on DioException catch (e) {
         lastError = e;
-        final recoverable = _isKeyRotableError(e);
+        final verdict = await _classifyQuota(e);
+        manager.markKeyLimited(sentKey, cooldown: verdict.keyCooldown);
+        _recordStat(
+          sentKey: sentKey,
+          modelId: config.modelName,
+          outcome: SensenovaQuotaPolicy.outcomeOf(verdict.signal),
+          startedAt: startedAt,
+          httpStatus: e.response?.statusCode,
+        );
+        // receiveTimeout 单独排除：慢请求换 Key 无意义（见方法文档）
+        final recoverable = e.type != DioExceptionType.receiveTimeout &&
+            manager.isRecoverableError(e);
         LoggerService.instance.logAI(
-          'SenseNova 生图请求失败（第 ${attempt + 1} 次）',
-          details: '${e.message}, 可换Key重试=$recoverable',
+          'SenseNova 生图请求失败（第 ${attempt + 1}/$maxAttempts 次，'
+          'Key=${FreeModelKeyManager.maskKey(sentKey)}）',
+          details: '${e.message}, 限流形态=${verdict.signal}, 可换Key重试=$recoverable',
           level: LogLevel.warning,
         );
-        if (!recoverable || attempt == 1) rethrow;
-        apiKey = FreeModelKeyManager.instance.rotateKeyOnFailure(apiKey);
+        if (!recoverable || attempt == maxAttempts - 1) rethrow;
+        await Future<void>.delayed(
+          SensenovaQuotaPolicy.rotationDelay(verdict.signal, attempt + 1),
+        );
       }
     }
     throw lastError ?? Exception('SenseNova 生图请求失败');
+  }
+
+  /// 把生图请求的失败归类为限流判据（读得到响应体就读，读不到按状态码降级）
+  static Future<QuotaVerdict> _classifyQuota(DioException error) async {
+    final body = await SensenovaQuotaPolicy.readErrorBody(error);
+    return SensenovaQuotaPolicy.verdict(
+      statusCode: error.response?.statusCode,
+      bodyText: body,
+    );
+  }
+
+  /// 生图也进观测表：它与聊天共用同一个 Key 池，却走自己的 Dio 实例，
+  /// 不上报的话诊断卡就会把「生图把 TPM 打满」这条真实路径漏掉。
+  /// 与聊天侧同样是 fire-and-forget，观测失败不能影响出图。
+  void _recordStat({
+    required String sentKey,
+    required String modelId,
+    required String outcome,
+    required DateTime startedAt,
+    int? httpStatus,
+  }) {
+    final now = DateTime.now();
+    unawaited(
+      AiRequestStatsRepository().record(
+        AiRequestStat(
+          scene: '生图',
+          modelId: modelId,
+          keyMask: FreeModelKeyManager.maskKey(sentKey),
+          outcome: outcome,
+          httpStatus: httpStatus,
+          latencyMs: now.difference(startedAt).inMilliseconds,
+          createdAt: now,
+        ),
+      ),
+    );
   }
 
   /// Gemini/网关生图：POST /chat/completions，图片以 data URI 附在 message.images 里
@@ -479,12 +544,6 @@ class GenerateImageTool extends AgentTool {
         e.type == DioExceptionType.badResponse) {
       return false;
     }
-    return FreeModelKeyManager.instance.isRecoverableError(e);
-  }
-
-  /// SenseNova 专用：换 Key 是否有意义（限速/鉴权/瞬时网络），接收超时与 4xx 业务错除外
-  static bool _isKeyRotableError(DioException e) {
-    if (e.type == DioExceptionType.receiveTimeout) return false;
     return FreeModelKeyManager.instance.isRecoverableError(e);
   }
 

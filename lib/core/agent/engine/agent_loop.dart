@@ -32,6 +32,13 @@ class AgentLoop {
   final FutureOr<bool> Function(ChatMessage lastAssistantMessage, int turn)? shouldStopAfterTurn;
   final List<ChatMessage> Function(List<ChatMessage> messages)? transformContext;
 
+  /// 整池限流、排队等额度回填时的回调（入参为预计等待时长）
+  ///
+  /// 刻意走旁路回调而不是新增 `AgentEvent`：等待发生在流式 `moveNext()` 内部，
+  /// 此时事件流是阻塞的，新事件类型只能等排队结束才发得出，用户看到的仍是静止的
+  /// 「思考中」；回调则能立刻把「服务商限流 · 排队 Ns」写进状态行。
+  final void Function(Duration hold)? onQuotaHold;
+
   AgentLoop({
     required this.aiService,
     required this.dispatcher,
@@ -41,6 +48,7 @@ class AgentLoop {
     this.afterToolCall,
     this.shouldStopAfterTurn,
     this.transformContext,
+    this.onQuotaHold,
   });
 
   /// 运行 ReAct 循环
@@ -135,6 +143,7 @@ class AgentLoop {
             onToolCallsReady: (calls) {
               streamedToolCalls.addAll(calls);
             },
+            onQuotaHold: onQuotaHold,
             cancelToken: httpCancelToken,
           );
 

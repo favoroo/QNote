@@ -20,17 +20,22 @@ Widget _harness(UserBubbleReeditTap tap) => MaterialApp(
 
 UserBubbleReeditTap _tapWidget({
   bool enabled = true,
+  bool active = false,
   required VoidCallback onTap,
 }) => UserBubbleReeditTap(
   enabled: enabled,
+  active: active,
   onTap: onTap,
+  // 气泡定宽右对齐，复刻真实行布局：用户气泡 maxWidth 恒小于屏宽，行左必留空档，
+  // 「点空档算不算命中」这条用例才有地方下指
   child: const Align(
     alignment: Alignment.centerRight,
-    child: ColoredBox(
-      color: Color(0xFF0000AA),
-      child: SizedBox(
-        key: _bubbleKey,
-        height: 40,
+    child: SizedBox(
+      key: _bubbleKey,
+      width: 160,
+      height: 40,
+      child: ColoredBox(
+        color: Color(0xFF0000AA),
         child: Center(child: Text('帮我记一条待办')),
       ),
     ),
@@ -60,25 +65,31 @@ void main() {
         .setMockMethodCallHandler(SystemChannels.platform, null);
   });
 
-  testWidgets('气泡左侧常驻编辑图标与悬浮提示', (tester) async {
+  testWidgets('不再挂编辑图标：点击已不具破坏性，常驻图标会误导成撤回按钮', (tester) async {
     await tester.pumpWidget(_harness(_tapWidget(onTap: () {})));
 
-    expect(find.byIcon(Icons.edit_note_rounded), findsOneWidget);
-    // Tooltip 的文案只在悬停/长按时上屏，这里断承载层挂上了提示
+    expect(find.byIcon(Icons.edit_note_rounded), findsNothing);
     expect(
       find.descendant(
         of: find.byType(UserBubbleReeditTap),
         matching: find.byType(Tooltip),
       ),
-      findsOneWidget,
+      findsNothing,
     );
+  });
+
+  testWidgets('编辑态常驻淡底色，非编辑态未按下无背景', (tester) async {
+    await tester.pumpWidget(_harness(_tapWidget(active: true, onTap: () {})));
+    expect(_highlightColor(tester), isNotNull);
+
+    await tester.pumpWidget(_harness(_tapWidget(active: false, onTap: () {})));
+    await tester.pumpAndSettle();
+    expect(_highlightColor(tester), isNull);
   });
 
   testWidgets('点击气泡上抛回调并轻震动一次', (tester) async {
     var taps = 0;
-    await tester.pumpWidget(
-      _harness(_tapWidget(onTap: () => taps++)),
-    );
+    await tester.pumpWidget(_harness(_tapWidget(onTap: () => taps++)));
 
     await tester.tap(find.byKey(_bubbleKey));
     await tester.pumpAndSettle();
@@ -121,9 +132,7 @@ void main() {
   });
 
   testWidgets('禁用态按下不给高亮反馈', (tester) async {
-    await tester.pumpWidget(
-      _harness(_tapWidget(enabled: false, onTap: () {})),
-    );
+    await tester.pumpWidget(_harness(_tapWidget(enabled: false, onTap: () {})));
 
     final gesture = await tester.startGesture(
       tester.getCenter(find.byKey(_bubbleKey)),
@@ -137,9 +146,7 @@ void main() {
 
   testWidgets('在气泡上起手滚动列表不算点击、不震动', (tester) async {
     var taps = 0;
-    await tester.pumpWidget(
-      _harness(_tapWidget(onTap: () => taps++)),
-    );
+    await tester.pumpWidget(_harness(_tapWidget(onTap: () => taps++)));
 
     final gesture = await tester.startGesture(
       tester.getCenter(find.byKey(_bubbleKey)),
@@ -156,5 +163,20 @@ void main() {
     expect(taps, 0);
     expect(hapticCount, 0);
     expect(_highlightColor(tester), isNull);
+  });
+
+  testWidgets('删掉图标没有缩小命中面：原图标所在的行左留白依旧可点', (tester) async {
+    var taps = 0;
+    await tester.pumpWidget(_harness(_tapWidget(onTap: () => taps++)));
+
+    final bubbleLeft = tester.getTopLeft(find.byKey(_bubbleKey)).dx;
+    final bubbleCenter = tester.getCenter(find.byKey(_bubbleKey));
+    // 行背景是矩形 BoxDecoration，hitTest 对整个行无条件为 true（并非 deferToChild
+    // 只管气泡本体）。点击已不具破坏性，宽命中面换来好点中，这里锁住别被改窄
+    await tester.tapAt(Offset(bubbleLeft - 40, bubbleCenter.dy));
+    await tester.pumpAndSettle();
+
+    expect(taps, 1);
+    expect(hapticCount, 1);
   });
 }

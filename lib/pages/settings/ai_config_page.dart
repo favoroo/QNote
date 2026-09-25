@@ -14,7 +14,9 @@ import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/builtin_free_keys.dart';
 import 'package:qnote_flutter/core/ai/free_model_service.dart';
 import 'package:qnote_flutter/core/ai/model_fetch_service.dart';
+import 'package:qnote_flutter/core/ai/free_lane_diagnostics.dart';
 import 'package:qnote_flutter/core/agent/services/agent_tool_config.dart';
+import 'package:qnote_flutter/core/storage/ai_request_stats_repository.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/widgets/app_error_state.dart';
@@ -70,6 +72,12 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   final Set<String> _disabledTools = {};
   bool _toolsLoaded = false;
 
+  // 免费网关发信诊断（读 ai_request_stats 观测表，聚合口径见 FreeLaneDiagnostics）
+  bool _statsLoaded = false;
+  bool _statsClearing = false;
+  int _statsWindowHours = 24;
+  FreeLaneSummary _laneSummary = const FreeLaneSummary.empty();
+
   Future<SharedPreferences> _getPrefs() async {
     _prefs ??= await SharedPreferences.getInstance();
     return _prefs!;
@@ -83,6 +91,51 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     _loadAllCachedModels();
     _loadFreeModels();
     _loadDisabledTools();
+    _loadRequestStats();
+  }
+
+  /// 读取近 [_statsWindowHours] 小时的发信事实并聚合
+  Future<void> _loadRequestStats() async {
+    final rows = await AiRequestStatsRepository().recent(
+      hours: _statsWindowHours,
+    );
+    if (!mounted) return;
+    setState(() {
+      _laneSummary = FreeLaneDiagnostics.summarize(rows);
+      _statsLoaded = true;
+    });
+  }
+
+  /// 清空观测数据（破坏性操作，确认后执行）
+  Future<void> _clearRequestStats() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('清空发信诊断数据'),
+        content: Text(
+          '将删除本机记录的 ${_laneSummary.total} 条内置模型发信事实（限流分布、首字延迟、'
+          'token 消耗），历史窗口会重新开始累积。不影响任何笔记与对话数据。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('清空'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _statsClearing = true);
+    await AiRequestStatsRepository().clear();
+    if (!mounted) return;
+    setState(() => _statsClearing = false);
+    Toast.info(context, '已清空发信诊断数据');
+    await _loadRequestStats();
   }
 
   Future<void> _loadDisabledTools() async {
@@ -127,7 +180,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           BuiltinFreeKeys.createDefaultConfig(key),
           explicitApiKey: key,
         );
-        service.updateConfig(config);
+        service.updateConfig(config, pinApiKey: true);
         final sw = Stopwatch()..start();
         await service.chat([
           ChatMessage(role: 'user', content: 'Hi', timestamp: DateTime.now()),
@@ -930,11 +983,201 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
               ],
               const SizedBox(height: 24),
               if (_toolsLoaded) _buildToolSwitchCard(context),
+              const SizedBox(height: 24),
+              _buildRequestStatsCard(context),
             ],
           ),
         ),
       ),
     );
+  }
+
+  /// 「内置模型发信诊断」区块：把 9 把内置 Key 的真实撞墙分布摊开给人看
+  ///
+  /// 这一卡的存在理由是**调参不能靠猜**：免费网关的额度是全体安装共享的，
+  /// 换 Key 深度、冷却时长、排队预算该设多少，只能从「本机上这一小时里哪把 Key
+  /// 撞了几次墙、首包等了多久」里读出来。数据由 `AiService` 逐请求写入
+  /// `ai_request_stats`，聚合口径全在 `FreeLaneDiagnostics`（纯函数、有单测）。
+  Widget _buildRequestStatsCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final summary = _laneSummary;
+
+    Widget row(String label, String value, {bool muted = false}) {
+      final style = theme.textTheme.bodySmall?.copyWith(
+        color: muted ? theme.disabledColor : null,
+      );
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+        child: Row(
+          children: [
+            Expanded(child: Text(label, style: style)),
+            Text(value, style: style?.copyWith(fontWeight: FontWeight.w600)),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              '内置模型发信诊断',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const Spacer(),
+            for (final hours in const [6, 24, 72]) ...[
+              _StatsWindowChip(
+                label: hours == 6 ? '6小时' : (hours == 24 ? '24小时' : '3天'),
+                selected: _statsWindowHours == hours,
+                onTap: () {
+                  if (_statsWindowHours == hours) return;
+                  setState(() => _statsWindowHours = hours);
+                  _loadRequestStats();
+                },
+              ),
+              const SizedBox(width: 6),
+            ],
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+            ),
+          ),
+          child: !_statsLoaded
+              ? const Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Center(
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                )
+              : summary.isEmpty
+                  // 还没攒到数据时不摆空表：直接说明它什么时候会有内容
+                  ? Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        '暂无发信记录。用内置模型发几条消息后回到本页即可看到各把 Key 的'
+                        '限流分布与平均首字延迟。',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.disabledColor,
+                        ),
+                      ),
+                    )
+                  : Column(
+                      children: [
+                        row(
+                          '发信次数（含每次换 Key 的重发）',
+                          '${summary.total}',
+                        ),
+                        row('成功', '${summary.okCount} · ${FreeLaneFormats.percent(summary.successRate)}'),
+                        row(
+                          '限流',
+                          '${summary.limitedCount} · ${FreeLaneFormats.percent(summary.limitRate)}'
+                          '（秒级 ${summary.rpsCount} / 额度 ${summary.tpmCount}）',
+                        ),
+                        row(
+                          '其它失败',
+                          '鉴权 ${summary.authCount} · 网关 ${summary.serverCount}'
+                          ' · 其它 ${summary.otherCount}',
+                        ),
+                        row('平均首字延迟', FreeLaneFormats.duration(summary.avgTtftMs)),
+                        row('平均总耗时', FreeLaneFormats.duration(summary.avgLatencyMs)),
+                        row(
+                          'token 消耗',
+                          summary.hasTokenData
+                              ? '${FreeLaneFormats.tokens(summary.promptTokens)} in /'
+                                ' ${FreeLaneFormats.tokens(summary.cachedTokens)} 缓存命中'
+                              : '未上报（网关侧开关）',
+                        ),
+                        if (summary.byKey.isNotEmpty) ...[
+                          const Divider(height: 1, indent: 16, endIndent: 16),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
+                            child: Text(
+                              '按 Key',
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: theme.disabledColor,
+                              ),
+                            ),
+                          ),
+                          for (final bucket in summary.byKey.take(9))
+                            row(
+                              bucket.label,
+                              '限流 ${FreeLaneFormats.percent(bucket.limitRate)}'
+                              ' · 成功 ${bucket.okCount}/${bucket.total}'
+                              ' · 首字 ${FreeLaneFormats.duration(bucket.avgTtftMs)}',
+                            ),
+                        ],
+                        if (summary.byModel.length > 1) ...[
+                          const Divider(height: 1, indent: 16, endIndent: 16),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
+                            child: Text(
+                              '按模型',
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: theme.disabledColor,
+                              ),
+                            ),
+                          ),
+                          for (final bucket in summary.byModel)
+                            row(
+                              bucket.label,
+                              '限流 ${FreeLaneFormats.percent(bucket.limitRate)}'
+                              ' · 成功 ${bucket.okCount}/${bucket.total}',
+                            ),
+                        ],
+                        const Divider(height: 1, indent: 16, endIndent: 16),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(8, 2, 8, 4),
+                          child: Row(
+                            children: [
+                              TextButton(
+                                onPressed: _loadRequestStats,
+                                child: const Text('刷新'),
+                              ),
+                              TextButton(
+                                onPressed: _statsClearing ? null : _clearRequestStats,
+                                style: TextButton.styleFrom(
+                                  foregroundColor: theme.colorScheme.error,
+                                ),
+                                child: const Text('清空'),
+                              ),
+                              const Spacer(),
+                              Text(
+                                summary.lastAt == null
+                                    ? ''
+                                    : '至 ${_formatStatTime(summary.lastAt!)}',
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: theme.disabledColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+        ),
+      ],
+    );
+  }
+
+  /// 诊断窗口右下角的时间标注（只到分钟，秒对观测窗口没意义）
+  String _formatStatTime(DateTime time) {
+    final local = time.toLocal();
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${two(local.month)}-${two(local.day)} ${two(local.hour)}:${two(local.minute)}';
   }
 
   /// 「小Q工具能力」区块：可选工具启停，关闭后小Q不再调用该工具
@@ -3141,6 +3384,53 @@ class _ModelPickerBottomSheetState extends State<_ModelPickerBottomSheet> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 诊断时间窗切换胶囊（6小时 / 24小时 / 3天）
+///
+/// 用一个只渲染文本的小组件而不是 `FilterChip`：本卡的语义是「换个窗口重读一次」，
+/// 不需要 FilterChip 自带的删除位与 Material 3 描边，且这样在深浅色下都跟着主题走。
+class _StatsWindowChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _StatsWindowChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: selected
+              ? colorScheme.primary.withValues(alpha: 0.12)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: selected
+                ? colorScheme.primary.withValues(alpha: 0.5)
+                : colorScheme.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
+        child: Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: selected ? colorScheme.primary : theme.disabledColor,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+          ),
         ),
       ),
     );

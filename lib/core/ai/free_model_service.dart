@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/builtin_free_keys.dart';
+import 'package:qnote_flutter/core/ai/sensenova_quota_policy.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/free_model_config.dart';
@@ -40,6 +41,9 @@ class FreeModelService {
   static const _lastUpdateKey = 'free_models_last_update';
   static const _dynamicBaseUrlCacheKey = 'cpa_dynamic_base_url';
   static const _dynamicFallbackCacheKey = 'cpa_dynamic_fallback_base_url';
+
+  /// 云端下发的限流策略原文缓存（离线启动时立刻重放，避免第一次对话用旧默认值）
+  static const _quotaPolicyCacheKey = 'cpa_quota_policy_cache';
 
   final Dio _dio = Dio(
     BaseOptions(
@@ -99,14 +103,24 @@ class FreeModelService {
     if (parsed == null) return null;
     BuiltinFreeKeys.updateDynamicCpaBaseUrl(parsed.primary);
     BuiltinFreeKeys.updateDynamicCpaFallbackBaseUrl(parsed.fallback);
+    // 策略下发与端点下发同一条通道：老 JSON 没这段就是 null，apply 直接返回，
+    // 行为完全等同升级前（不新增故障面是关键，这条通道同时承担着换端点的职责）。
+    SensenovaQuotaPolicy.apply(parsed.quotaPolicy);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_dynamicBaseUrlCacheKey, parsed.primary);
     await prefs.setString(_dynamicFallbackCacheKey, parsed.fallback ?? '');
+    if (parsed.quotaPolicy != null) {
+      await prefs.setString(
+        _quotaPolicyCacheKey,
+        jsonEncode(parsed.quotaPolicy),
+      );
+    }
     LoggerService.instance.logAI(
       'CPA 动态端点拉取成功',
       details: '有效URL=${parsed.primary}'
           '${parsed.fallback != null ? ', 备用URL=${parsed.fallback}' : ''}'
-          '${parsed.updatedAt != null ? ', 云端更新时间=${parsed.updatedAt}' : ''}',
+          '${parsed.updatedAt != null ? ', 云端更新时间=${parsed.updatedAt}' : ''}'
+          '${parsed.quotaPolicy != null ? ', 已应用云端限流策略(${parsed.quotaPolicy!.length}项)' : ''}',
     );
     return parsed.primary;
   }
@@ -166,7 +180,21 @@ class FreeModelService {
       primary: primary,
       fallback: fallback == primary ? null : fallback,
       updatedAt: (updatedAt == null || updatedAt.isEmpty) ? null : updatedAt,
+      quotaPolicy: _sanitizeQuotaPolicy(data['quota_policy']),
     );
+  }
+
+  /// 取出可选的 `quota_policy` 对象（限流策略下发，见 `SensenovaQuotaPolicy.apply`）
+  ///
+  /// 缺失、非对象、或键全非字符串时返回 null —— 载荷里地址字段才是必需项，
+  /// 老版本 JSON 没有这一段属于正常情况，必须静默走内置默认策略。
+  static Map<String, dynamic>? _sanitizeQuotaPolicy(dynamic raw) {
+    if (raw is! Map) return null;
+    final map = <String, dynamic>{};
+    for (final entry in raw.entries) {
+      if (entry.key is String) map[entry.key as String] = entry.value;
+    }
+    return map.isEmpty ? null : map;
   }
 
   /// 从多个源的成功载荷中选出 updated_at 最新的一个
@@ -285,6 +313,10 @@ class FreeModelService {
   }
 
   /// 获取内置模型列表（DeepSeek Flash、SenseNova 6.8、GLM 5.2，均走商汤网关）
+  ///
+  /// 同时是**限流策略的离线生效点**：先用上次缓存的 `quota_policy` 立刻覆盖策略，
+  /// 再后台拉一次云端最新值。这样断网首包也带得上一次调参结果，
+  /// 而「改了阈值要发版」的老问题就此解除（详见 `SensenovaQuotaPolicy.apply`）。
   Future<List<FreeModelConfig>> getCachedModels() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -295,6 +327,17 @@ class FreeModelService {
       final cachedFallback = prefs.getString(_dynamicFallbackCacheKey);
       if (cachedFallback != null) {
         BuiltinFreeKeys.updateDynamicCpaFallbackBaseUrl(cachedFallback);
+      }
+      final cachedPolicyJson = prefs.getString(_quotaPolicyCacheKey);
+      if (cachedPolicyJson != null && cachedPolicyJson.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(cachedPolicyJson);
+          if (decoded is Map) {
+            SensenovaQuotaPolicy.apply(Map<String, dynamic>.from(decoded));
+          }
+        } catch (_) {
+          // 缓存被写坏：保持内置默认策略，不打扰用户
+        }
       }
       // 触发一次后台轻量异步探测更新（不阻塞当前返回）
       unawaited(fetchDynamicCpaEndpoint());
@@ -459,15 +502,19 @@ class FreeModelService {
 ///
 /// [primary] 必有（已通过 https/host 校验），[fallback] 为云端备用地址，
 /// 缺失、无效或与 primary 相同时为 null；[updatedAt] 为云端标记的配置更新
-/// 时间（ISO 8601 串），用于多源并行拉取时择新，缺失时为 null。
+/// 时间（ISO 8601 串），用于多源并行拉取时择新，缺失时为 null；
+/// [quotaPolicy] 为可选的限流策略对象（原样透传给 `SensenovaQuotaPolicy.apply`），
+/// 老版本 JSON 没这一段时为 null。
 class CpaEndpointPair {
   final String primary;
   final String? fallback;
   final String? updatedAt;
+  final Map<String, dynamic>? quotaPolicy;
 
   const CpaEndpointPair({
     required this.primary,
     this.fallback,
     this.updatedAt,
+    this.quotaPolicy,
   });
 }

@@ -19,7 +19,6 @@ import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/agent/agent_tool_labels.dart';
-import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
 import 'package:qnote_flutter/core/utils/chat_reedit.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
@@ -89,6 +88,20 @@ class _AiPageState extends ConsumerState<AiPage> {
   final Map<String, String> _journalTitles = {};
   final Map<String, String> _noteTitles = {};
   final Map<String, String> _todoTitles = {};
+
+  // 再次编辑态：被点中的那条提问在会话态里的下标，null 表示不在编辑态。
+  // 进入编辑态只回填输入框，撤回（删除该轮并撤销数据修改）推迟到点发送才做。
+  int? _reeditIndex;
+
+  // 进入编辑态时的消息对象引用：ChatMessage 无主键，只能靠 identical 认人，
+  // 防止会话被重载或后面又冒出新提问后，仍按老下标撤回错的那一轮
+  ChatMessage? _reeditAnchor;
+
+  // 回填瞬间的输入区快照：据此区分「原样回填没动过」与「用户自己新写的草稿」
+  ReeditDraft? _reeditDraftSnapshot;
+
+  // 回填与撤回共用的忙窗口：期间不得再触发第二次进入或发送
+  bool _reeditBusy = false;
 
   // 输入增强状态：斜杠命令 / @ 引用浮层（非 null 即展示对应面板）
   String? _slashQuery;
@@ -171,6 +184,10 @@ class _AiPageState extends ConsumerState<AiPage> {
 
   /// 输入变化时检测光标处是否有激活的斜杠命令或 @ 引用命令词
   void _onInputChanged() {
+    // 编辑态下输入框被清空（点了清除键）：提示条不该悬空挂着，静默退出编辑态
+    if (_reeditIndex != null && !_reeditBusy && _currentDraft().isEmpty) {
+      _exitReeditMode(clearInput: false);
+    }
     final text = _inputController.text;
     final selection = _inputController.selection;
     if (!selection.isValid || selection.baseOffset < 0) {
@@ -373,7 +390,7 @@ class _AiPageState extends ConsumerState<AiPage> {
         !hasJournals) {
       return;
     }
-    if (_isTyping) {
+    if (_isTyping || _reeditBusy) {
       return;
     }
     // 当前会话已有任务在后台生成（如切走后再切回）：拦截发送，避免同会话并发两轮任务
@@ -400,6 +417,13 @@ class _AiPageState extends ConsumerState<AiPage> {
     final journalsToSend = hasJournals
         ? List<String>.from(_attachedJournalIds)
         : null;
+
+    // 编辑态下点发送才是撤回时机：确认与回退全部发生在清空输入框之前，
+    // 任何一步没过（用户取消、回退被拒）就原样退回，改过的字一个字都不会丢
+    if (_reeditIndex != null) {
+      if (!await _consumeReeditBeforeSend()) return;
+      if (!mounted) return;
+    }
 
     HapticFeedback.lightImpact();
     _inputController.clear();
@@ -464,71 +488,186 @@ class _AiPageState extends ConsumerState<AiPage> {
   // 最后一条用户提问：点击直达再次编辑
   // ==========================================
 
-  /// 点击我最后发的那条提问：立即回退本轮（含恢复本轮数据修改）并把提问完整填回输入框。
+  /// 点击我最后发的那条提问：把提问完整填回输入框进入编辑态，**对话一字不动**。
   ///
-  /// 零二次确认是产品决策——命中面已收窄到最后一条提问本体、按下有震动与高亮的事前反馈，
-  /// 但回退本身仍是不可恢复的删除，所以生成中与未发送草稿这两道拒绝门必须留着。
-  Future<void> _reopenLastUserMessage(int stateIndex) async {
+  /// 撤回（删除该轮并撤销本轮数据修改）推迟到用户点发送时才做：点击本身不该是破坏性
+  /// 操作，点开看一眼又改主意是常态。生成中仍要拒——那会儿列表正在长，回填的内容与
+  /// 下标都会对不上。
+  Future<void> _beginReedit(int stateIndex) async {
+    if (_reeditBusy) return;
     if (_isTyping ||
         ref.read(aiStreamingMessageProvider) != null ||
         ref.read(aiStreamingStatusProvider) != null) {
       Toast.warning(context, '小Q正在生成中，请等待完成后再操作');
       return;
     }
-    if (_hasUnsentDraft()) {
-      Toast.warning(context, '输入框还有未发送的内容，先清空或发送后再改');
+    if (_draftBlocksReedit()) {
+      Toast.warning(context, '输入框已改过，先清空或发送后再改');
       return;
     }
-    await _executeRollback(stateIndex);
+
+    final messages =
+        ref.read(currentChatProvider)?.messages ?? const <ChatMessage>[];
+    if (stateIndex < 0 ||
+        stateIndex >= messages.length ||
+        messages[stateIndex].role != 'user') {
+      return;
+    }
+    final message = messages[stateIndex];
+    // 已经在这条上且没动过：再点一次什么都不做，别把光标和附件条折腾一遍
+    if (_reeditIndex == stateIndex && identical(_reeditAnchor, message)) return;
+
+    await _enterReeditMode(message, stateIndex);
   }
 
-  /// 输入框是否已有未发送内容。
+  /// 进入编辑态：先置锚点，再把提问原样填回输入区。
   ///
-  /// 回退后「最后一条提问」会落到更早一轮，此时输入框正躺着刚回填的草稿，
-  /// 再点一次会被静默覆盖，因此必须先拒。
-  bool _hasUnsentDraft() =>
-      _inputController.text.trim().isNotEmpty ||
-      _quotedChatText != null ||
-      _attachedImages.isNotEmpty ||
-      _attachedJournalIds.isNotEmpty ||
-      _attachedNoteIds.isNotEmpty ||
-      _attachedTodoIds.isNotEmpty;
+  /// 不套 `_isTyping`：那个标志会把发送按钮换成停止按钮，回填的一瞬按钮乱跳；
+  /// 重入由 `_reeditBusy` 挡。快照要等回填落地后再取，才知道「原样」长什么样。
+  Future<void> _enterReeditMode(ChatMessage message, int index) async {
+    _reeditBusy = true;
+    setState(() {
+      _reeditIndex = index;
+      _reeditAnchor = message;
+      _reeditDraftSnapshot = null;
+    });
+    try {
+      await _refillInputFromMessage(message);
+      if (!mounted) return;
+      setState(() => _reeditDraftSnapshot = _currentDraft());
+    } finally {
+      _reeditBusy = false;
+    }
+  }
 
-  /// 执行回退：删除该轮起的消息并恢复本轮数据修改，随后把提问完整填回输入区
-  Future<void> _executeRollback(int stateIndex) async {
-    final session = ref.read(currentChatProvider);
-    // 回退会把这条提问从会话态里移除，先取一份快照供回填用
-    final message = (session != null && stateIndex < session.messages.length)
-        ? session.messages[stateIndex]
-        : null;
+  /// 读出输入区当前这份待发送内容的形态。
+  ReeditDraft _currentDraft() => ReeditDraft(
+    text: _inputController.text,
+    images: List.of(_attachedImages),
+    noteIds: List.of(_attachedNoteIds),
+    todoIds: List.of(_attachedTodoIds),
+    journalIds: List.of(_attachedJournalIds),
+    hasQuote: _quotedChatText != null && _quotedChatText!.isNotEmpty,
+  );
 
-    // 复用生成中状态禁用输入区，防止回退与回填期间插入新消息
+  /// 输入框里是否躺着一份「不是本次回填」的草稿。
+  ///
+  /// 回填本身就会让输入框非空，若仍按「非空即拒」处理，第二次点气泡就永远点不动；
+  /// 因此只拒用户自己写过的那份。
+  bool _draftBlocksReedit() {
+    final draft = _currentDraft();
+    if (draft.isEmpty) return false;
+    final snapshot = _reeditDraftSnapshot;
+    return snapshot == null || !draft.matches(snapshot);
+  }
+
+  /// 发送前消费编辑态：走到这一步才真正撤回被编辑的那一轮。
+  ///
+  /// 返回 false 表示调用方必须原样保留输入框（用户取消、回退被拒）。
+  /// 锚点已失效时不撤回、也不拦发送：编辑态当场退出，这条降级成一条普通新提问，
+  /// 失败方向是「多一条」而不是「少一条」。
+  Future<bool> _consumeReeditBeforeSend() async {
+    final index = _reeditIndex;
+    final anchor = _reeditAnchor;
+    if (index == null || anchor == null) return true;
+
+    final messages =
+        ref.read(currentChatProvider)?.messages ?? const <ChatMessage>[];
+    if (!isReeditAnchorValid(
+          messages: messages,
+          index: index,
+          anchor: anchor,
+        ) ||
+        reeditableUserIndex(messages) != index) {
+      _exitReeditMode(clearInput: false);
+      Toast.warning(context, '原提问已不在末轮，未撤回；这条将作为新提问发送');
+      return true;
+    }
+
+    // 只有真的要撤销数据修改时才拦一次确认，纯文字问答直接放行
+    final changeCount = countTurnUndoChanges(messages, fromUserIndex: index);
+    if (changeCount > 0) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogCtx) => AlertDialog(
+          title: const Text('撤回这条提问？'),
+          content: Text('本轮已产生 $changeCount 处数据修改，发送前会先撤销这些修改。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogCtx, true),
+              child: const Text('撤回并发送'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return false;
+    }
+    if (!mounted) return false;
+
+    // 复用生成中状态禁用输入区，防止回退与随后发送之间插入新消息
+    _reeditBusy = true;
     setState(() => _isTyping = true);
     try {
       final result = await ref
           .read(currentChatProvider.notifier)
-          .rollbackToMessage(stateIndex);
-      if (!mounted) return;
+          .rollbackToMessage(index);
+      if (!mounted) return false;
       if (result == null) {
         Toast.error(context, '当前状态无法重新编辑');
-        return;
+        return false;
       }
+      // 回退后该下标已越界，必须当场消费掉编辑态，否则后续路径会按错下标再撤一次
+      _exitReeditMode(clearInput: false);
       final (restored, failed) = result;
       if (failed > 0) {
         Toast.warning(context, '已回退对话，但 $failed 处数据恢复失败，详情请查看日志');
       } else if (restored > 0) {
         Toast.success(context, '已回退对话并恢复 $restored 处数据修改');
-      } else {
-        Toast.success(context, '已回退对话');
       }
-      // 附件标题回查是异步的，必须留在忙窗口内完成：窗口内发送按钮本身就是「中止」，
-      // 因此回填期间不存在用户又点了发送的竞态
-      if (message != null) {
-        await _refillInputFromMessage(message);
-      }
-      _scrollToBottom();
+      return true;
     } finally {
+      _reeditBusy = false;
       if (mounted) setState(() => _isTyping = false);
+    }
+  }
+
+  /// 退出编辑态：唯一出口，幂等。
+  ///
+  /// 先清编辑态字段再清输入框：清输入框会同步回调 `_onInputChanged`，那里的
+  /// 「草稿空了就退出」判断若此时仍看得到 `_reeditIndex`，就会反过来再调一次本方法。
+  void _exitReeditMode({bool clearInput = true}) {
+    if (_reeditIndex == null) return;
+    setState(() {
+      _reeditIndex = null;
+      _reeditAnchor = null;
+      _reeditDraftSnapshot = null;
+      if (clearInput) {
+        _inputController.clear();
+        _attachedImages.clear();
+        _attachedNoteIds.clear();
+        _attachedTodoIds.clear();
+        _attachedJournalIds.clear();
+        _quotedChatText = null;
+      }
+    });
+  }
+
+  /// 会话流变化后校验编辑态是否还成立：切了会话、或那条提问已被换掉/已不在末轮，
+  /// 就退出编辑态，输入框里的草稿留着不动（降级成一条普通草稿）。
+  ///
+  /// 编辑态与撤回下标是绑死的一对，放着不管，下一次发送就会按错下标删对话。
+  void _invalidateReeditIfNeeded(ChatSession? session) {
+    final index = _reeditIndex;
+    final anchor = _reeditAnchor;
+    if (index == null || anchor == null || _reeditBusy) return;
+    final messages = session?.messages ?? const <ChatMessage>[];
+    if (!isReeditAnchorValid(messages: messages, index: index, anchor: anchor) ||
+        reeditableUserIndex(messages) != index) {
+      _exitReeditMode(clearInput: false);
     }
   }
 
@@ -624,10 +763,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     final userMessage = messages[userIndex];
 
     // 该轮（含其后轮次）记录过数据修改时需二次确认：重试前的回退会撤销这些修改
-    int changeCount = 0;
-    for (final m in messages.skip(userIndex).where((m) => m.role == 'user')) {
-      changeCount += WorkspaceUndoEntry.decodeList(m.undoLog).length;
-    }
+    final changeCount = countTurnUndoChanges(messages, fromUserIndex: userIndex);
     if (changeCount > 0) {
       final confirmed = await showDialog<bool>(
         context: context,
@@ -1061,6 +1197,8 @@ class _AiPageState extends ConsumerState<AiPage> {
       if (prev != null && next?.id != prev.id && _isTyping && mounted) {
         setState(() => _isTyping = false);
       }
+      // 会话被换掉或那条提问已不在末轮：编辑态随之作废，否则下一次发送会按错下标撤回
+      _invalidateReeditIfNeeded(next);
     });
     ref.listen(aiStreamingMessageProvider, (prev, next) {
       if (next != null) {
@@ -1381,7 +1519,8 @@ class _AiPageState extends ConsumerState<AiPage> {
                     .read(currentChatProvider.notifier)
                     .pauseAfterTurnLimit(),
               );
-              // 我最后发的那条提问：点一下直达再次编辑；失败气泡仍走长按弹重试菜单
+              // 我最后发的那条提问：点一下把提问填回输入框慢慢改，撤回留到点发送时；
+              // 失败气泡仍走长按弹重试菜单
               final canReedit =
                   currentIsUser &&
                   reeditIndex != null &&
@@ -1390,7 +1529,8 @@ class _AiPageState extends ConsumerState<AiPage> {
                 child: canReedit
                     ? UserBubbleReeditTap(
                         enabled: !_isTyping && !hasStreaming,
-                        onTap: () => _reopenLastUserMessage(entry.stateIndex!),
+                        active: _reeditIndex == entry.stateIndex,
+                        onTap: () => _beginReedit(entry.stateIndex!),
                         child: bubble,
                       )
                     : !currentIsUser &&
@@ -1480,6 +1620,12 @@ class _AiPageState extends ConsumerState<AiPage> {
               ],
               if (_atQuery != null) ...[
                 AtReferencePanel(onSelected: _applyAtSelection),
+                const SizedBox(height: 6),
+              ],
+
+              // 0.4 再次编辑提示条：说明框里这份提问来自哪条气泡、点发送会撤回什么
+              if (_reeditIndex != null) ...[
+                _buildReeditBanner(theme),
                 const SizedBox(height: 6),
               ],
 
@@ -1710,6 +1856,49 @@ class _AiPageState extends ConsumerState<AiPage> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// 再次编辑提示条：点发送其实是「撤回原对话 + 重发」两步，不写出来用户只会以为
+  /// 又补发了一条新提问；右侧取消给一条不改动对话就能退出的路。
+  Widget _buildReeditBanner(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.edit_rounded, size: 16, color: theme.colorScheme.primary),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              '编辑这条提问 · 发送后会撤回原对话',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          InkWell(
+            onTap: () => _exitReeditMode(),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(2),
+              child: Icon(
+                Icons.close_rounded,
+                size: 16,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

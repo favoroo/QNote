@@ -5,9 +5,12 @@ import 'package:dio/dio.dart';
 import 'package:qnote_flutter/config/defaults.dart';
 import 'package:qnote_flutter/config/models.dart';
 import 'package:qnote_flutter/core/ai/builtin_free_keys.dart';
+import 'package:qnote_flutter/core/ai/sensenova_quota_policy.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/storage/ai_request_stats_repository.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
+import 'package:qnote_flutter/models/ai_request_stat.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/models/daily_score.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
@@ -78,6 +81,12 @@ class AiService {
   int _maxTokens = 2048;
   String? _reasoningEffort;
 
+  /// 是否锁定用 [_config] 里的 Key 发请求（不参与内置池逐请求轮换）
+  ///
+  /// 由 [updateConfig] 每次按入参重置，不传即 false —— 忘记重置会让上一次
+  /// 「逐把测连通」的锁定语义泄漏到后续真实对话请求里。
+  bool _pinApiKey = false;
+
   AiConfig? get config => _config;
 
   /// 规范化与升级模型名称（自动防御已下线废弃模型，避免网关 404 等故障）
@@ -94,7 +103,22 @@ class AiService {
     return trimmed;
   }
 
-  void updateConfig(AiConfig config, {double? temperature, int? maxTokens}) {
+  /// 更新当前生效的 AI 配置
+  ///
+  /// [pinApiKey] 为 true 时**锁定**用 [config.apiKey] 发请求，不参与内置池轮换。
+  /// 唯一合法用途是「逐把 Key 测连通性」（设置页内置模型测试），否则池轮换会把
+  /// 指定 Key 的测试语义静默吃掉。
+  ///
+  /// 注意：内置商汤池的请求**不使用**这里写入的全局 Authorization header ——
+  /// Key 在每次真正发信时由 [_beforeSend] 现取并用逐请求 header 覆写（见
+  /// `_authOptions`），因此池场景下 [_config] 的 apiKey 只是占位值，
+  /// 排查要以请求日志里的 `Key=<掩码>` 为准。
+  void updateConfig(
+    AiConfig config, {
+    double? temperature,
+    int? maxTokens,
+    bool pinApiKey = false,
+  }) {
     String cleanedBaseUrl = _cleanUrl(config.baseUrl);
 
     // If Gemini and baseUrl is empty, default to official Gemini API endpoint
@@ -123,6 +147,7 @@ class AiService {
         : config;
 
     _config = effectiveConfig;
+    _pinApiKey = pinApiKey;
     if (temperature != null) _temperature = temperature;
     if (maxTokens != null) _maxTokens = maxTokens;
     _dio.options.baseUrl = cleanedBaseUrl.endsWith('/')
@@ -207,14 +232,27 @@ class AiService {
 
   /// 单次请求的重试深度
   ///
-  /// - SenseNova 免费网关：轮换 [FreeModelKeyManager.keyRotationAttempts] 把 Key
-  ///   （各把 Key 配额独立，429 后换 Key 只有一次网络往返；整池冷却时由
-  ///   [_shouldRetryAndWait] 提前收手，不会把深度烧满）
+  /// - SenseNova 免费网关：[_isSenseNovaPool] 下每个请求本身就在换 Key
+  ///   （见 [_beforeSend]），深度只需承担「穿越偶发抖动」，取总发信次数
+  ///   [SensenovaQuotaPolicy.poolMaxAttempts]（含首发，故重试次数为它减 1）；
+  ///   整池都在冷却时不再直接放弃，而是由 [_waitPoolSlot] 排队等最早解锁回填。
   /// - 其它（含用户自定义模型）：[_genericMaxRetries] 次纯退避重试
   int get _maxRetries {
     return _isSenseNovaPool
-        ? FreeModelKeyManager.instance.keyRotationAttempts
+        ? SensenovaQuotaPolicy.poolMaxAttempts - 1
         : _genericMaxRetries;
+  }
+
+  /// 本次请求真正下发的 `max_tokens`
+  ///
+  /// App 里 assistant 角色的预算被 `AiTemperatures` 强制抬到 ≥32000（为长文分析
+  /// 防截断），但商汤免费网关按 token 额度限流，32000 的预留对内置池是纯浪费。
+  /// 只对内置池生效：用户自配模型与「逐把测连通」的锁定场景保持原预算。
+  int get _effectiveMaxTokens {
+    if (_pinApiKey || !_isSenseNovaPool) return _maxTokens;
+    return _maxTokens > SensenovaQuotaPolicy.freeGatewayMaxTokens
+        ? SensenovaQuotaPolicy.freeGatewayMaxTokens
+        : _maxTokens;
   }
 
   /// 当前配置是否属于 SenseNova Key 池（其故障以限流/Key 失效为主，重试策略独立）
@@ -222,9 +260,14 @@ class AiService {
       _config?.vendorId == 'free_model' &&
       _config?.baseUrl.contains('sensenova') == true;
 
-  /// 统一的重试决策：判断本次失败是否值得重试，值得则切换可用 Key（若有）并退避等待
+  /// 统一的重试决策：判断本次失败是否值得重试，值得则按限流形态等待并给出冷却归因
+  ///
+  /// Key 的更换不在这里发生 —— 每个请求在发出前已由 [_beforeSend] 现取一把，
+  /// 本函数只负责：把失败归类（[QuotaSignal]）、把冷却打在**本次真正发出去的**
+  /// [sentKey] 上、以及决定这次重试前等多久。
   ///
   /// [hasYielded] 供流式场景使用 —— 首包已产出后不再重试，否则调用方会收到重复内容。
+  /// [onQuotaHold] 在整池限流、需要排队等回填时回调预计等待时长。
   /// 返回 `true` 时调用方应 `retryCount++` 后 `continue` 重发本轮请求。
   ///
   /// 连接层瞬时故障（TLS 握手中断等）走差异化策略：非 SenseNova 池放宽到
@@ -239,9 +282,13 @@ class AiService {
     Object error,
     int retryCount, {
     bool hasYielded = false,
-    required String scene,
+    required _SendTrace trace,
+    CancelToken? cancelToken,
+    void Function(Duration hold)? onQuotaHold,
   }) async {
     if (hasYielded) return false;
+    final scene = trace.scene;
+    final sentKey = trace.sentKey;
     final isConnectionError =
         FreeModelKeyManager.instance.isConnectionClassError(error);
     final isConnectionScene = isConnectionError && !_isSenseNovaPool;
@@ -256,26 +303,40 @@ class AiService {
     } else {
       maxRetries = _maxRetries;
     }
-    if (retryCount >= maxRetries) return false;
-    if (!FreeModelKeyManager.instance.isRecoverableError(error)) return false;
-
-    final next = retryCount + 1;
-    final isQuotaError = FreeModelKeyManager.instance.isKeyScopedError(error);
-    // 商汤的 TPM 配额按 Key 计、跨模型共享且按分钟滚动恢复：整池都在冷却时，
-    // 换 Key 与换模型都躲不开同一个 429，再发只是白烧请求，直接把限流错误抛给上层。
-    // 注意不能用「是否换到 Key」判断 —— rotateKeyOnFailure 在全冷却时仍会
-    // 强行换到另一把已冷却的 Key，只有 hasAvailableKey 表示「还有新配额」。
-    if (_isSenseNovaPool &&
-        isQuotaError &&
-        !FreeModelKeyManager.instance.hasAvailableKey()) {
-      LoggerService.instance.logAI(
-        '$scene 命中服务商限流且整池 Key 均已冷却，放弃剩余重试',
-        level: LogLevel.warning,
-      );
+    if (retryCount >= maxRetries) {
+      // 深度用尽也要先归类：这把 Key 确实被限流了，不记冷却就会被下一轮请求
+      // 立刻再次端上来，白撞同一个 429。
+      await _classifyAndCooldown(error, trace);
       return false;
     }
-    // 仅 SenseNova Key 池会真正轮到新 Key；自定义模型 / 独立端点此处为 no-op
-    final switched = switchFreeModelKey();
+    if (!FreeModelKeyManager.instance.isRecoverableError(error)) {
+      // 不可重试（业务 4xx 等）同样要留下一行事实，否则诊断卡里「失败次数」会偏少
+      await _classifyAndCooldown(error, trace);
+      return false;
+    }
+
+    final next = retryCount + 1;
+    final verdict = await _classifyAndCooldown(error, trace);
+    final signal = verdict.signal;
+
+    // 整池都在冷却**不等于**该放弃：实测额度按分钟滚动回填，等到最早解锁的那把
+    // Key 再发就行。原来的「整池冷却即熔断」会让一次提问的下一轮第一次 429 就
+    // 把整条任务判死（用户日志里反复出现的那条 WARNING 就是这个路径）。
+    if (_isSenseNovaPool &&
+        signal == QuotaSignal.tpm &&
+        !FreeModelKeyManager.instance.hasAvailableKey()) {
+      final held = await _waitPoolSlot(
+        cancelToken: cancelToken,
+        onQuotaHold: onQuotaHold,
+        scene: scene,
+      );
+      if (held == null) return false;
+      LoggerService.instance.logAI(
+        '$scene 排队 ${held.inMilliseconds}ms 等到 Key 回填，重发请求（新 Key 由 _beforeSend 现取）',
+      );
+      return true;
+    }
+
     // 连接类故障重试前尝试刷新动态端点：拉到不同地址则切换后重发。
     // connectTimeout 从第 1 次重试起就刷新——12 秒无响应已足以判定当前端点不可用
     String? switchedEndpoint;
@@ -284,31 +345,313 @@ class AiService {
     } else if (isConnectionScene && retryCount >= 1) {
       switchedEndpoint = await _maybeRefreshDynamicEndpoint();
     }
-    // 已经换成另一把 Key、且失败原因是这把 Key 自己的配额 —— 各 Key 配额独立
-    // （实测同一时刻一把 200、另一把 429），此时再指数退避就是纯白等，
-    // 只留 40~120ms 抖动避免同一瞬间把整池打满。连接类与 5xx 仍走原退避。
-    final isQuotaRotation = switched && isQuotaError;
+    // 配额类形态用策略层给的短等待（rps 要跨过 0.6 秒突发窗口、TPM 只需换个发信时机），
+    // 连接类与 5xx 仍走原有的指数退避。
     final Duration delay;
-    if (isQuotaRotation) {
-      delay = FreeModelKeyManager.instance.getQuotaRotationDelay();
+    if (signal != QuotaSignal.none) {
+      delay = SensenovaQuotaPolicy.rotationDelay(signal, next);
     } else if (isConnectionScene) {
       delay = FreeModelKeyManager.instance.getConnectionBackoffDelay(next);
     } else {
       delay = FreeModelKeyManager.instance.getBackoffDelay(next);
     }
-    final configDesc = switched
-        ? '已切换备用 API Key'
-        : switchedEndpoint != null
-            ? '已切换动态端点: $switchedEndpoint'
+    final configDesc = switchedEndpoint != null
+        ? '已切换动态端点: $switchedEndpoint'
+        : _isSenseNovaPool
+            ? '本次 Key ${sentKey == null ? '?' : FreeModelKeyManager.maskKey(sentKey)} '
+                '进入 ${verdict.keyCooldown.inSeconds}s 冷却'
             : '保持当前配置';
     LoggerService.instance.logAI(
       '$scene 遭遇瞬时故障（${_briefError(error)}），'
-      '$configDesc，退避 ${delay.inMilliseconds}ms 后发起第 $next/$maxRetries 次重试',
+      '$configDesc，等待 ${delay.inMilliseconds}ms 后发起第 $next/$maxRetries 次重试',
       level: LogLevel.warning,
     );
     await Future.delayed(delay);
     return true;
   }
+
+  /// 每次真正发信前的准备：全池节流 + 现取一把 Key
+  ///
+  /// 返回 null 表示「不覆写 header、沿用 [updateConfig] 写入的全局 Authorization」，
+  /// 对应三种情况：非内置池端点、锁定 Key 的连通性测试（[pinApiKey]）、
+  /// 以及 [SensenovaQuotaPolicy.perRequestKeyRotation] 被关掉时的回退。
+  ///
+  /// 这就是「即使成功了也要换下一把」的落点：取 Key 发生在请求发出前的一瞬，
+  /// 与成功失败无关，所以整条 AgentLoop 的每一轮、以及并发的日记提取/每日评分
+  /// 都各自拿一把，不再共享同一把、也不再互相覆写 Dio 的全局 header。
+  Future<String?> _beforeSend() async {
+    if (!_isSenseNovaPool || _pinApiKey || !SensenovaQuotaPolicy.perRequestKeyRotation) {
+      return null;
+    }
+    final manager = FreeModelKeyManager.instance;
+    // 节流放在取 Key 之前：先排到队首再占 Key，冷却判定才不会被等待污染
+    final wait = manager.nextSendWait();
+    if (wait > Duration.zero) {
+      await Future.delayed(wait);
+    }
+    final key = manager.acquireNextKey();
+    manager.noteRequestSent();
+    LoggerService.instance.logAI(
+      '内置池本次发信 Key: ${FreeModelKeyManager.maskKey(key)}',
+      details: '未冷却 Key ${manager.availableKeyCount}/${manager.totalKeysCount}',
+    );
+    return key;
+  }
+
+  /// 由本次真实使用的 Key 生成逐请求 header 覆写（null 交给 Dio 用全局 header）
+  static Map<String, dynamic>? _authOverride(String? key) {
+    if (key == null) return null;
+    return {'Authorization': 'Bearer $key'};
+  }
+
+  // ── 逐请求观测（借 CPA 的 usage.db 思路）──────────────────────────
+
+  /// 开始一次发信：取 Key + 起表，返回可直接透传给重试决策的上下文
+  ///
+  /// 计时点放在 [_beforeSend] 之后，因此全池节流与排队等待**不**计入 `latency`：
+  /// 观测表要回答的是「这把 Key 多久给回应」，把自家护栏的等待混进去就没法比较了。
+  Future<_SendTrace> _beginSend(String scene) async {
+    final sentKey = await _beforeSend();
+    return _SendTrace(scene: scene, sentKey: sentKey, startedAt: DateTime.now());
+  }
+
+  /// 把一次发信结果写进观测表（fire-and-forget，绝不影响对话）
+  ///
+  /// 记录范围刻意只含内置池：用户自配模型的性能不是这套策略层的调参对象，
+  /// 把两类流量混在一张表里，「9 把 Key 谁的撞墙率高」就答不出来了。
+  /// 连通性测试（[_pinApiKey]）也不记：那是人为制造的单 Key 请求，会污染分布。
+  void _recordSend(
+    _SendTrace trace, {
+    required String outcome,
+    int? httpStatus,
+    int? ttftMs,
+    Object? usageFrom,
+  }) {
+    final modelId = _config?.modelName;
+    if (modelId == null || !_isSenseNovaPool || _pinApiKey) return;
+    final usage = _usageOf(usageFrom);
+    final now = DateTime.now();
+    // 写入是 fire-and-forget（record 内部吞异常），但保留 future 句柄：
+    // 单测里「发完就查表」会读到还没落库的行，需要一个确定性的等待点而不是 sleep。
+    final write = AiRequestStatsRepository().record(
+      AiRequestStat(
+        scene: trace.scene,
+        modelId: modelId,
+        keyMask: trace.sentKey == null
+            ? ''
+            : FreeModelKeyManager.maskKey(trace.sentKey!),
+        outcome: outcome,
+        httpStatus: httpStatus,
+        latencyMs: now.difference(trace.startedAt).inMilliseconds,
+        ttftMs: ttftMs ?? trace.ttftMs,
+        promptTokens: usage.prompt,
+        completionTokens: usage.completion,
+        cachedTokens: usage.cached,
+        createdAt: now,
+      ),
+    );
+    _pendingStatWrites.add(write);
+    write.whenComplete(() => _pendingStatWrites.remove(write));
+  }
+
+  final List<Future<void>> _pendingStatWrites = [];
+
+  /// 等全部观测写入落库（仅测试用）
+  ///
+  /// 先快照一份：`whenComplete` 回调会在等待期间从原列表里移除元素，
+  /// 直接把活列表交给 `Future.wait` 属于边遍历边改。
+  @visibleForTesting
+  Future<void> flushRequestStatsForTest() =>
+      Future.wait(List<Future<void>>.from(_pendingStatWrites));
+
+  /// 从响应体里取 `usage`（网关没上报时三个字段都是 null）
+  ///
+  /// 流式路径只有开了 `quota_policy` 的 `send_stream_usage` 才会在末帧带 usage，
+  /// 所以「token 消耗」这一列大面积为空是**预期行为**，不是 bug。
+  static _TokenUsage _usageOf(Object? data) {
+    if (data is! Map) return const _TokenUsage();
+    final usage = data['usage'];
+    if (usage is! Map) return const _TokenUsage();
+    int? read(String key) {
+      final raw = usage[key];
+      if (raw is int) return raw;
+      if (raw is num) return raw.toInt();
+      return int.tryParse(raw?.toString() ?? '');
+    }
+    // OpenAI 兼容口径的缓存命中数藏在 prompt_tokens_details 里，取不到再退到顶层
+    final details = usage['prompt_tokens_details'];
+    final cached = details is Map
+        ? (int.tryParse('${details['cached_tokens']}') ?? 0)
+        : read('cached_tokens');
+    return _TokenUsage(
+      prompt: read('prompt_tokens'),
+      completion: read('completion_tokens'),
+      cached: (cached == null || cached == 0) ? null : cached,
+    );
+  }
+
+  /// 把请求头里的凭证换成掩码后再打印（失败诊断用）
+  static Map<String, dynamic> _maskedHeaders(Map<String, dynamic> headers) {
+    return headers.map((name, value) {
+      final lower = name.toLowerCase();
+      if (lower == 'authorization' || lower == 'x-goog-api-key') {
+        final raw = value?.toString() ?? '';
+        final token = raw.startsWith('Bearer ') ? raw.substring(7) : raw;
+        return MapEntry(name, 'Bearer ${FreeModelKeyManager.maskKey(token)}');
+      }
+      return MapEntry(name, value);
+    });
+  }
+
+  /// 替换底层 HTTP adapter（仅测试用）
+  ///
+  /// 有了它就能在不联网、也不改构造函数签名的前提下，断言「每次请求实际发出的
+  /// Authorization」—— 这正是「成功也换 Key」这条需求的直接回归锁。
+  /// 刻意不给构造函数加 `Dio?` 参数：那会让「传入未配 BaseOptions 的 Dio」成为
+  /// 一种合法的错误用法，而换 adapter 能保持超时/BaseOptions 语义与生产一致。
+  @visibleForTesting
+  set httpClientAdapterForTest(HttpClientAdapter adapter) {
+    _dio.httpClientAdapter = adapter;
+  }
+
+  /// 单次 POST + 内置池逐请求换 Key + 统一重试决策
+  ///
+  /// 给「原本没有自己的 while 循环、一次失败即抛」的长方法用（每日评分、设置页识图测试）：
+  /// 它们此前既拿不到换 Key 也拿不到退避，现在与主链路共用同一套发信策略，
+  /// 又不必把整段方法体重排一遍。
+  Future<Response<T>> _postWithKeyRotation<T>(
+    String endpoint, {
+    required Object? data,
+    required String scene,
+    CancelToken? cancelToken,
+  }) async {
+    var retryCount = 0;
+    while (true) {
+      final trace = await _beginSend(scene);
+      try {
+        final response = await _dio.post<T>(
+          endpoint,
+          data: data,
+          options: Options(headers: _authOverride(trace.sentKey)),
+          cancelToken: cancelToken,
+        );
+        _recordSend(trace, outcome: AiRequestOutcomes.ok, usageFrom: response.data);
+        return response;
+      } catch (e) {
+        if (await _shouldRetryAndWait(
+          e,
+          retryCount,
+          trace: trace,
+          cancelToken: cancelToken,
+        )) {
+          retryCount++;
+          continue;
+        }
+        rethrow;
+      }
+    }
+  }
+
+  /// 把失败归一成限流判据：能读到响应体就读，读不到按状态码降级
+  ///
+  /// 返回 [QuotaVerdict] 而不是裸 [QuotaSignal]：云端下发的规则可以携带自己的冷却时长
+  /// （见 `SensenovaQuotaPolicy.apply` 的 `error_rules`），只回形态会把它丢掉。
+  Future<QuotaVerdict> _classifyFailure(Object error) async {
+    if (error is! DioException) {
+      final text = error.toString();
+      // 带内 SSE 错误（HTTP 200、帧里塞 error 对象）才有判定价值；
+      // 模型正文里复述「tpm/rpm」之类的字串不能算限流证据。
+      if (!text.contains('AI Stream Error')) return const QuotaVerdict.none();
+      return SensenovaQuotaPolicy.verdict(bodyText: text);
+    }
+    final body = await SensenovaQuotaPolicy.readErrorBody(error);
+    return SensenovaQuotaPolicy.verdict(
+      statusCode: error.response?.statusCode,
+      bodyText: body,
+    );
+  }
+
+  /// 归类失败，并把冷却**归因给本次真正发出去的那把 Key**，同时落一行观测事实
+  ///
+  /// 只有配额/鉴权形态才配冷却（见 `QuotaVerdict.keyCooldown`）：旧实现是
+  /// 「任何可恢复错误都换 Key 并关它一分钟」，于是网关 5xx、TLS 抖动、乃至一次业务
+  /// 参数 400 都会把健康 Key 锁死，池子被自己的非配额故障掏空。
+  /// 反过来「不可重试的错误」（401/403 也在其中）现在也会归类打冷却 ——
+  /// 失效 Key 逐请求轮换下每 9 个请求就会被再端上来一次，不锁死就是把失败率固定抬高。
+  Future<QuotaVerdict> _classifyAndCooldown(Object error, _SendTrace trace) async {
+    final verdict = await _classifyFailure(error);
+    if (_isSenseNovaPool && trace.sentKey != null) {
+      FreeModelKeyManager.instance.markKeyLimited(
+        trace.sentKey!,
+        cooldown: verdict.keyCooldown,
+      );
+    }
+    final status = error is DioException ? error.response?.statusCode : null;
+    _recordSend(
+      trace,
+      outcome: verdict.signal == QuotaSignal.none
+          ? AiRequestOutcomes.other
+          : SensenovaQuotaPolicy.outcomeOf(verdict.signal),
+      httpStatus: status,
+    );
+    return verdict;
+  }
+
+  /// 排队等整池里最早解锁的那把 Key 可用
+  ///
+  /// 返回实际等待时长；预算内等不到（最早解锁时刻已超出
+  /// [SensenovaQuotaPolicy.maxQuotaHold]）、或用户已点停止时返回 null，由调用方
+  /// 放弃重试并把限流错误交给上层。
+  ///
+  /// 按 [_poolPollInterval] 切片轮询而不是 `Future.delayed(整段)`：一次提问有 3+ 轮
+  /// 请求，不可中断的排队会把「停止」响应拖到分钟级。
+  Future<Duration?> _waitPoolSlot({
+    CancelToken? cancelToken,
+    void Function(Duration hold)? onQuotaHold,
+    required String scene,
+  }) async {
+    final manager = FreeModelKeyManager.instance;
+    final startedAt = DateTime.now();
+    final budgetEnd = startedAt.add(SensenovaQuotaPolicy.maxQuotaHold);
+    var announced = false;
+
+    while (true) {
+      if (cancelToken?.isCancelled == true) return null;
+      // 判据必须是「还有没被冷却的 Key 可以用」，而不是「最早解锁的时刻」——
+      // 整池里只要有一把是自由的就能立刻发信；拿解锁时刻做判据会被刚失败的这把
+      // （60 秒冷却）顶到预算之外，明明有可用 Key 却误判成等不到。
+      if (manager.hasAvailableKey()) {
+        return DateTime.now().difference(startedAt);
+      }
+      final endAt = manager.earliestCooldownEndAt();
+      if (endAt == null) {
+        // 池子已回填（或本来就没有 Key 在冷却）
+        return DateTime.now().difference(startedAt);
+      }
+      final remaining = endAt.difference(DateTime.now());
+      if (remaining <= Duration.zero) continue;
+      if (endAt.isAfter(budgetEnd)) {
+        LoggerService.instance.logAI(
+          '$scene 整池限流，最早解锁还需 ${remaining.inSeconds}s，'
+          '超出排队预算 ${SensenovaQuotaPolicy.maxQuotaHold.inSeconds}s，放弃剩余重试',
+          level: LogLevel.warning,
+        );
+        return null;
+      }
+      if (!announced) {
+        announced = true;
+        onQuotaHold?.call(remaining);
+        LoggerService.instance.logAI(
+          '$scene 整池限流，排队 ${remaining.inSeconds}s 等待额度回填',
+          level: LogLevel.warning,
+        );
+      }
+      await Future.delayed(_poolPollInterval);
+    }
+  }
+
+  /// 整池排队时的轮询切片
+  static const Duration _poolPollInterval = Duration(milliseconds: 200);
 
   /// 连接类瞬时故障重试前刷新动态 CPA 端点
   ///
@@ -354,7 +697,12 @@ class AiService {
     return text.length > 160 ? '${text.substring(0, 160)}…' : text;
   }
 
-  /// 为免费模型自动切换下一个备用 Key，并更新请求头
+  /// 【历史遗留】把实例级全局 header 换成下一把备用 Key
+  ///
+  /// 逐请求现取 Key（[_beforeSend] + [_authOverride]）落地后，本方法**不再参与任何主链路**：
+  /// 它改的是 Dio 的实例级 header，并发消费者会互相覆写，正是本次要消灭的串台来源；
+  /// 冷却记账也已改由 `_shouldRetryAndWait` 按限流形态打在 `sentKey` 上。
+  /// 目前仅被零调用方的 [FreeModelExecutor] 引用，随该降级链一起删除即可。
   bool switchFreeModelKey() {
     if (_config?.vendorId != 'free_model') return false;
     // 仅针对属于 SenseNova Key 池的模型进行 Key 轮换，避免污染其他独立网关端点
@@ -398,6 +746,9 @@ class AiService {
     int retryCount = 0;
 
     while (true) {
+      // 每次真正发信前现取一把 Key（成功也换）；非内置池端点返回 null，沿用全局 header
+      final trace = await _beginSend('对话请求');
+      final sentKey = trace.sentKey;
       try {
         String endpoint = _chatEndpoint;
         final bodyMap = await _prepareChatRequestBody(messages, stream: false, tools: tools);
@@ -408,11 +759,18 @@ class AiService {
 
         final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
         LoggerService.instance.logAI(
-          'AI请求 [${_config!.provider}] [${_config!.modelName}] $endpoint:\n${_formatJsonForLogging(sanitizedBody)}',
+          'AI请求 [${_config!.provider}] [${_config!.modelName}] $endpoint'
+          '${sentKey == null ? '' : ' [Key=${FreeModelKeyManager.maskKey(sentKey)}]'}:'
+          '\n${_formatJsonForLogging(sanitizedBody)}',
         );
 
-        final response = await _dio.post(endpoint, data: requestBody, cancelToken: cancelToken);
-
+        final response = await _dio.post(
+          endpoint,
+          data: requestBody,
+          options: Options(headers: _authOverride(sentKey)),
+          cancelToken: cancelToken,
+        );
+        _recordSend(trace, outcome: AiRequestOutcomes.ok, usageFrom: response.data);
         final duration = DateTime.now().difference(startTime).inMilliseconds;
         final data = response.data;
         LoggerService.instance.logAI('AI响应:\n${_formatJsonForLogging(data)}');
@@ -450,7 +808,12 @@ class AiService {
       } catch (e, stackTrace) {
         // 用户主动中止（Dio CancelToken 触发）：直接抛出，禁止进入重试退避
         if (cancelToken?.isCancelled == true) rethrow;
-        if (await _shouldRetryAndWait(e, retryCount, scene: '对话请求')) {
+        if (await _shouldRetryAndWait(
+          e,
+          retryCount,
+          trace: trace,
+          cancelToken: cancelToken,
+        )) {
           retryCount++;
           continue;
         }
@@ -463,7 +826,9 @@ class AiService {
           final sanitizedReqData = _sanitizeRequestBodyForLogging(reqData);
           debugPrint('=== AI REQUEST ERROR DIAGNOSTICS ===');
           debugPrint('URL: ${e.requestOptions.uri}');
-          debugPrint('Headers: $reqHeaders');
+          // 明文 Bearer Key 绝不能进日志：LoggerService 的敏感信息过滤器只管 base64 图片，
+          // 而这里打的是 debugPrint 原始通道（内置池逐请求换 Key 后更要有掩码口径）
+          debugPrint('Headers: ${_maskedHeaders(reqHeaders)}');
           debugPrint('Payload: ${_formatJsonForLogging(sanitizedReqData)}');
           debugPrint('Response Status: ${e.response?.statusCode}');
           if (respData != null) {
@@ -490,10 +855,13 @@ class AiService {
   /// - 当模型生成 tool_calls 时，在内部聚合其参数碎片并周期性 yield 参数生成进度，
   ///   避免大参数（如 write_file 写大文件）生成期间 UI 无任何状态更新而形似卡死；
   ///   聚合完成后在 onToolCallsReady 回调中一次性交付完整对象
+  /// [onQuotaHold] 在「整池限流、排队等额度回填」时回调预计等待时长，
+  /// 供上层把它显示成状态行而不是让用户对着静止的「思考中」发呆。
   Stream<AiToolStreamChunk> chatStreamWithTools({
     required List<ChatMessage> messages,
     List<Map<String, dynamic>>? tools,
     void Function(List<ToolCall> toolCalls)? onToolCallsReady,
+    void Function(Duration hold)? onQuotaHold,
     CancelToken? cancelToken,
   }) async* {
     if (_config == null) throw Exception('AI config not set');
@@ -508,6 +876,11 @@ class AiService {
 
     while (true) {
       bool hasYielded = false;
+      // 每轮（含重试）都重新取一把 Key：这就是「成功也换」在 AgentLoop 每轮推理上的效果
+      final trace = await _beginSend('带工具流式对话');
+      final sentKey = trace.sentKey;
+      // 网关在末帧补的 usage 对象（仅当云端下发 send_stream_usage 时才有）
+      Object? streamUsage;
       try {
         final dynamic bodyMap = await _prepareChatRequestBody(messages, stream: true, tools: tools);
         final dynamic requestBody = jsonEncode(bodyMap);
@@ -515,7 +888,10 @@ class AiService {
         final response = await _dio.post<ResponseBody>(
           _chatEndpoint,
           data: requestBody,
-          options: Options(responseType: ResponseType.stream),
+          options: Options(
+            responseType: ResponseType.stream,
+            headers: _authOverride(sentKey),
+          ),
           cancelToken: cancelToken,
         );
 
@@ -546,21 +922,41 @@ class AiService {
               LoggerService.instance.logAI(
                 'AI带工具流式响应完成 [耗时=${duration}ms]:\n$accumulatedResponse',
               );
+              _recordSend(
+                trace,
+                outcome: AiRequestOutcomes.ok,
+                usageFrom: streamUsage == null ? null : {'usage': streamUsage},
+              );
               _deliverToolCalls(toolCallBuilders, onToolCallsReady);
               return;
             }
 
             try {
               final json = jsonDecode(data) as Map<String, dynamic>;
-              // 捕获商汤等服务商在流式第一包中下发的 JSON 错误对象
+              // 捕获商汤等服务商在流式第一包中下发的 JSON 错误对象。
+              // 必须保留**整个** error 对象而不是只取 message：网关的 `code: 8`
+              // （rps 突发）与 `EndpointTPMExceeded`（额度耗尽）要靠 code 分流，
+              // 只留 message 会让两种形态长得一模一样。
               if (json.containsKey('error')) {
-                final errObj = json['error'];
-                final errMsg = errObj is Map ? (errObj['message'] ?? errObj.toString()) : errObj.toString();
-                throw Exception('AI Stream Error: $errMsg');
+                throw Exception('AI Stream Error: ${json['error']}');
               }
+
+              // usage 末帧（choices 为空数组）：只在带得起来的时候记一次
+              if (json['usage'] is Map) streamUsage = json['usage'];
 
               final choice = json['choices']?[0];
               final delta = choice?['delta'] as Map<String, dynamic>?;
+
+              // 首个可见增量即为「用户等了多久才开始看到东西」，是换 Key 策略
+              // 最关心的指标（前缀缓存被轮换打掉时会首先反映在这里）
+              if ((delta?['content'] is String && (delta!['content'] as String).isNotEmpty) ||
+                  (delta?['reasoning_content'] is String &&
+                      (delta!['reasoning_content'] as String).isNotEmpty) ||
+                  (delta?['reasoning'] is String &&
+                      (delta!['reasoning'] as String).isNotEmpty) ||
+                  delta?['tool_calls'] is List) {
+                trace.ttftMs ??= DateTime.now().difference(trace.startedAt).inMilliseconds;
+              }
 
               // 0. 思考/推理增量：智谱 GLM、DeepSeek reasoner 等用 reasoning_content，
               //    SenseNova 用 reasoning；供「思考中」状态卡实时滚动展示
@@ -634,6 +1030,12 @@ class AiService {
           }
         }
 
+        // 流自然结束但没有 [DONE]（部分网关会这样收流）：同样算一次成功发信
+        _recordSend(
+          trace,
+          outcome: AiRequestOutcomes.ok,
+          usageFrom: streamUsage == null ? null : {'usage': streamUsage},
+        );
         _deliverToolCalls(toolCallBuilders, onToolCallsReady);
         return;
       } catch (e, stackTrace) {
@@ -643,7 +1045,9 @@ class AiService {
           e,
           retryCount,
           hasYielded: hasYielded,
-          scene: '带工具流式对话',
+          trace: trace,
+          cancelToken: cancelToken,
+          onQuotaHold: onQuotaHold,
         )) {
           retryCount++;
           continue;
@@ -694,19 +1098,26 @@ class AiService {
 
     while (true) {
       bool hasYielded = false;
+      final trace = await _beginSend('普通流式对话');
+      final sentKey = trace.sentKey;
       try {
         final dynamic bodyMap = await _prepareChatRequestBody(messages, stream: true);
         final dynamic requestBody = jsonEncode(bodyMap);
 
         final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
         LoggerService.instance.logAI(
-          'AI流式请求 [${_config!.provider}] [${_config!.modelName}] $_chatEndpoint:\n${_formatJsonForLogging(sanitizedBody)}',
+          'AI流式请求 [${_config!.provider}] [${_config!.modelName}] $_chatEndpoint'
+          '${sentKey == null ? '' : ' [Key=${FreeModelKeyManager.maskKey(sentKey)}]'}:'
+          '\n${_formatJsonForLogging(sanitizedBody)}',
         );
 
         final response = await _dio.post<ResponseBody>(
           _chatEndpoint,
           data: requestBody,
-          options: Options(responseType: ResponseType.stream),
+          options: Options(
+            responseType: ResponseType.stream,
+            headers: _authOverride(sentKey),
+          ),
         );
 
         final stream = response.data?.stream;
@@ -734,6 +1145,7 @@ class AiService {
               LoggerService.instance.logAI(
                 'AI流式响应完成 [总输出=$totalChars字符] [耗时=${duration}ms]:\n$accumulatedResponse',
               );
+              _recordSend(trace, outcome: AiRequestOutcomes.ok);
               return;
             }
 
@@ -752,6 +1164,8 @@ class AiService {
                 text = json['choices']?[0]?['delta']?['content'];
               }
               if (text != null) {
+                trace.ttftMs ??=
+                    DateTime.now().difference(trace.startedAt).inMilliseconds;
                 totalChars += text.length;
                 accumulatedResponse.write(text);
                 hasYielded = true;
@@ -769,13 +1183,14 @@ class AiService {
         LoggerService.instance.logAI(
           'AI流式响应结束 [总输出=$totalChars字符] [耗时=${duration}ms]:\n$accumulatedResponse',
         );
+        _recordSend(trace, outcome: AiRequestOutcomes.ok);
         return;
       } catch (e, stackTrace) {
         if (await _shouldRetryAndWait(
           e,
           retryCount,
           hasYielded: hasYielded,
-          scene: '普通流式对话',
+          trace: trace,
         )) {
           retryCount++;
           continue;
@@ -1014,9 +1429,16 @@ class AiService {
       'model': _config!.modelName,
       'messages': messages,
       'temperature': _temperature,
-      'max_tokens': _maxTokens,
+      'max_tokens': _effectiveMaxTokens,
     };
     if (stream) body['stream'] = true;
+    // 让网关在流的最后一帧补一个 usage 对象（观测表需要每把 Key 的真实 token 消耗）。
+    // 默认关闭：`stream_options` 在商汤网关上未实测，未知参数导致的 400 是确定性错误，
+    // 会把每一次对话都打死；确认接受后由云端 quota_policy 的 send_stream_usage 打开。
+    // 只对内置池生效：用户自配端点的参数集合不受本 App 策略层影响。
+    if (stream && _isSenseNovaPool && SensenovaQuotaPolicy.sendStreamUsage) {
+      body['stream_options'] = {'include_usage': true};
+    }
     if (responseFormat != null) body['response_format'] = responseFormat;
     if (tools != null && tools.isNotEmpty) {
       body['tools'] = tools;
@@ -1299,17 +1721,23 @@ class AiService {
     int retryCount = 0;
 
     while (true) {
+      // 每次发信前现取一把 Key：日记提取与主聊天共用同一个 AiService 单例，
+      // 只有逐请求覆写 header 才不会互相串台
+      final trace = await _beginSend('日记统一提取');
+      final sentKey = trace.sentKey;
       try {
         final response = await _dio.post(
           _generateContentEndpoint,
           data: requestBody,
+          options: Options(headers: _authOverride(sentKey)),
           cancelToken: cancelToken,
         );
+        _recordSend(trace, outcome: AiRequestOutcomes.ok, usageFrom: response.data);
         // 检测推理模型是否因 max_tokens 不足导致输出截断
         final finishReason = _extractFinishReason(response.data);
         if (finishReason == 'length') {
           LoggerService.instance.logAI(
-            '⚠️ AI响应被截断 (finish_reason: length)，当前 max_tokens=$_maxTokens 可能不够推理模型使用',
+            '⚠️ AI响应被截断 (finish_reason: length)，当前 max_tokens=$_effectiveMaxTokens 可能不够推理模型使用',
             level: LogLevel.warning,
           );
         }
@@ -1372,7 +1800,12 @@ class AiService {
 
         return results.map(_convertSimplifiedExtractResult).toList();
       } catch (e, stackTrace) {
-        if (await _shouldRetryAndWait(e, retryCount, scene: '日记统一提取')) {
+        if (await _shouldRetryAndWait(
+          e,
+          retryCount,
+          trace: trace,
+          cancelToken: cancelToken,
+        )) {
           retryCount++;
           continue;
         }
@@ -1421,12 +1854,16 @@ class AiService {
     int retryCount = 0;
 
     while (true) {
+      final trace = await _beginSend('图片识别');
+      final sentKey = trace.sentKey;
       try {
         final response = await _dio.post(
           _generateContentEndpoint,
           data: requestBody,
+          options: Options(headers: _authOverride(sentKey)),
           cancelToken: cancelToken,
         );
+        _recordSend(trace, outcome: AiRequestOutcomes.ok, usageFrom: response.data);
         final result = _extractTextFromResponse(response.data);
         LoggerService.instance.logAI(
           '图片识别响应:\n${_formatJsonForLogging(response.data)}',
@@ -1437,7 +1874,12 @@ class AiService {
         );
         return result;
       } catch (e, stackTrace) {
-        if (await _shouldRetryAndWait(e, retryCount, scene: '图片识别')) {
+        if (await _shouldRetryAndWait(
+          e,
+          retryCount,
+          trace: trace,
+          cancelToken: cancelToken,
+        )) {
           retryCount++;
           continue;
         }
@@ -1523,7 +1965,7 @@ class AiService {
           },
         ],
         'temperature': _temperature,
-        'max_tokens': _maxTokens,
+        'max_tokens': _effectiveMaxTokens,
         'sessionId': DateTime.now().millisecondsSinceEpoch.toString(),
         'output_modalities': ['text'],
       };
@@ -1607,7 +2049,7 @@ class AiService {
           },
         ],
         'temperature': _temperature,
-        'max_tokens': _maxTokens,
+        'max_tokens': _effectiveMaxTokens,
         'sessionId': DateTime.now().millisecondsSinceEpoch.toString(),
         'output_modalities': ['text'],
       };
@@ -2072,7 +2514,7 @@ class AiService {
       lines.add('- 单次运动记录:');
       for (final s in sports) {
         final durMin = s.durationSeconds ~/ 60;
-        lines.add('  - ${s.title} (${s.category}): ${durMin}分钟, ${(s.distanceMeters / 1000).toStringAsFixed(2)}km, ${s.calories}kcal${s.avgHeartRate != null ? ', 均心率${s.avgHeartRate}' : ''}');
+        lines.add('  - ${s.title} (${s.category}): $durMin分钟, ${(s.distanceMeters / 1000).toStringAsFixed(2)}km, ${s.calories}kcal${s.avgHeartRate != null ? ', 均心率${s.avgHeartRate}' : ''}');
       }
     }
 
@@ -2207,7 +2649,11 @@ class AiService {
       'AI评分分析请求 [${_config!.provider}] [${_config!.modelName}] $endpoint:\n${_formatJsonForLogging(sanitizedBody)}',
     );
 
-    final response = await _dio.post(endpoint, data: requestBody);
+    final response = await _postWithKeyRotation<dynamic>(
+      endpoint,
+      data: requestBody,
+      scene: 'AI评分分析',
+    );
     final responseContent = _extractTextFromResponse(response.data);
     LoggerService.instance.logAI(
       'AI评分分析响应:\n${_formatJsonForLogging(response.data)}',
@@ -2305,7 +2751,11 @@ class AiService {
       '图片识别测试请求 [${config.provider}] [${config.modelName}] $endpoint:\n${_formatJsonForLogging(sanitizedBody)}',
     );
 
-    final response = await _dio.post(endpoint, data: requestBody);
+    final response = await _postWithKeyRotation<dynamic>(
+      endpoint,
+      data: requestBody,
+      scene: '图片识别测试',
+    );
     final data = response.data;
     LoggerService.instance.logAI('图片识别测试响应:\n${_formatJsonForLogging(data)}');
 
@@ -2315,4 +2765,41 @@ class AiService {
     final cleanResult = result.trim().replaceAll(' ', '');
     return cleanResult.contains('11') || cleanResult.contains('十一');
   }
+}
+
+/// 一次发信的观测上下文：本次真正用的 Key、起算时刻、以及流式首字时刻
+///
+/// 之所以要把这三样捆在一起透传，而不是各站点各自记：`AiService` 是单例，
+/// 主聊天、悬浮小Q、日记提取、每日评分并发用它，任何「上次取到的 Key」这种
+/// 实例字段都会串台（历史上 Dio 全局 header 串台就是同一类问题）。
+/// 观测行必须归因到**真正发出这个请求的那把 Key**，所以只能随请求走。
+class _SendTrace {
+  /// 发信场景，直接用作观测表的 `scene` 列（`chat_tools_stream` 等）
+  final String scene;
+
+  /// 本次真正使用的 Key（非内置池 / 锁定 Key / 轮换开关关闭时为 null）
+  final String? sentKey;
+
+  /// 起表时刻（不含全池节流与整池排队）
+  final DateTime startedAt;
+
+  /// 流式首个可见增量的毫秒数；非流式路径保持 null
+  ///
+  /// 由各流式站点用 `??=` 打点（只记第一次），因此不进构造函数。
+  int? ttftMs;
+
+  _SendTrace({
+    required this.scene,
+    required this.sentKey,
+    required this.startedAt,
+  });
+}
+
+/// 响应 `usage` 的三个关注字段
+class _TokenUsage {
+  final int? prompt;
+  final int? completion;
+  final int? cached;
+
+  const _TokenUsage({this.prompt, this.completion, this.cached});
 }

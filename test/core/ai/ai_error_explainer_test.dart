@@ -56,11 +56,30 @@ void main() {
       expect(text, contains('API Key 无效或没有访问权限（HTTP 401）'));
     });
 
-    test('HTTP 429：从字符串化文本识别限流', () {
-      final text = AiErrorExplainer.describe(
+    test('HTTP 429：区分「秒级突发」与「额度耗尽」两种限流', () {
+      final tpm = AiErrorExplainer.describe(
         'DioException [bad response]: The request returned an invalid status code of 429',
       );
-      expect(text, contains('限流（HTTP 429）'));
+      expect(tpm, contains('额度暂时用满（HTTP 429 · 限流）'));
+      expect(tpm, contains('共享的免费额度'));
+
+      final rpsOptions = RequestOptions(path: '/v1/chat/completions');
+      final rpsError = AiErrorExplainer.describe(
+        DioException(
+          requestOptions: rpsOptions,
+          type: DioExceptionType.badResponse,
+          message: 'status code of 429, rps exhausted',
+          response: Response(requestOptions: rpsOptions, statusCode: 429),
+        ),
+      );
+      expect(rpsError, contains('被服务端的排队保护挡下（HTTP 429 · rps）'));
+
+      // SSE 带内错误：HTTP 是 200，状态码提取不到，只能靠服务商错误标识判定
+      final inBand = AiErrorExplainer.describe(
+        'Exception: 请求模型失败: AI Stream Error: '
+        '{message: inference exceeds tpm/rpm limit, code: RateLimitExceeded.EndpointTPMExceeded}',
+      );
+      expect(inBand, contains('额度暂时用满（HTTP 429 · 限流）'));
     });
 
     test('HTTP 502：从网关包装文案识别服务端故障', () {

@@ -12,6 +12,12 @@ import 'package:qnote_flutter/models/free_model_config.dart';
 /// 封装"主模型失败自动切换"的重试逻辑。
 /// - 非流式调用：按顺序尝试模型，全部失败才抛异常
 /// - 流式调用：在首个 chunk 接收前可切换；首个 chunk 后不再切换
+///
+/// 【现状：lib/ 与 test/ 内均无调用方】小Q 主链路走 `AgentLoop` +
+/// `AiService.chatStreamWithTools`，而 `AiService` 现在**每个请求现取一把 Key**
+/// （见 `AiService._beforeSend`）、并按限流形态排队等回填，已自带完整的换 Key 语义。
+/// 本类的「跨模型降级 + 共享换 Key 预算」因此既用不上、也不会被验证到；
+/// 后续单独一次改动整体删除（连带 `AiService.chatStream` 与 `switchFreeModelKey`）。
 class FreeModelExecutor {
   /// 非流式调用：按顺序尝试模型，全部失败才抛异常
   static Future<String> chatWithFallback({

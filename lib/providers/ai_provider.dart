@@ -875,6 +875,8 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         aiService: aiService,
         dispatcher: dispatcher,
         maxTurns: 60,
+        // 整池限流时不报错、不静默：把排队秒数写到状态行，用户知道还在等
+        onQuotaHold: (hold) => _setRunStatus(run, '服务商限流 · 排队 ${hold.inSeconds}s 后重试'),
         afterToolCall: (call, result) async {
           // 按 VFS 路径前缀联动刷新对应业务数据
           refreshWorkspaceSideEffects(

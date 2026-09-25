@@ -1,6 +1,8 @@
 import 'dart:math';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:qnote_flutter/core/ai/sensenova_quota_policy.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/models/free_model_config.dart';
 
@@ -202,11 +204,21 @@ class FreeModelKeyManager {
   /// 轮询游标
   int _cursor = 0;
 
-  /// Key 冷却记录（记录被标记限速的时间戳）
-  final Map<String, DateTime> _rateLimitedKeys = {};
+  /// Key 冷却记录 —— value 存的是**解锁时刻**而不是标记时刻
+  ///
+  /// 限流分两层且代价差两个数量级（rps 突发 2 秒即可复用、TPM 额度要等一分钟回填），
+  /// 所以冷却时长必须由调用方按形态传入；存终点还让 [earliestCooldownEndAt] 能直接
+  /// 回答「整池最早什么时候能用」，供上层排队而不是直接报错。
+  final Map<String, DateTime> _cooldownUntil = {};
 
-  /// 冷却时间（1分钟后自动解除冷却状态，避免瞬时限速导致 Key 长期锁定）
+  /// 默认冷却时长（1 分钟）—— 对齐商汤 TPM 按分钟滚动的回填窗口
   static const Duration _cooldownDuration = Duration(minutes: 1);
+
+  /// 全池最近一次「真正发出请求」的时刻，用于 [nextSendWait] 的跨消费者节流
+  ///
+  /// 主聊天 / 悬浮小Q / 日记提取 / 每日评分 / 生图共用这一个进程内单例，
+  /// 没有这道闸会在同一次事件循环里把请求叠出去撞网关的 `rps exhausted`。
+  DateTime? _lastSendAt;
 
   /// 更新 Key 池（支持与外部远程清单扩展融合）
   void updateKeys(List<String> newKeys) {
@@ -218,32 +230,35 @@ class FreeModelKeyManager {
   /// 当前 Key 池总容量
   int get totalKeysCount => _keys.length;
 
-  /// 单模型内最多轮换几把 Key
+  /// 单模型内最多轮换几把 Key（护栏，不再是单次请求的重试深度）
   ///
-  /// 上限只是护栏，不是日常生效的约束：429 换一把 Key 只有一次网络往返（且各把
-  /// Key 配额独立），逐把扫完整池也就 1~2 秒，比停在第 6 把更早拿到可用 Key。
-  /// 留这个上限是为了将来池扩到十几把时，单次请求不会退化成整池扫描。
+  /// 2026-09-25 实测推翻了这个常量的原始依据：原本认为「各把 Key 配额独立，逐把扫完
+  /// 整池也就 1~2 秒」，实际是 9 把 Key 在 1 秒内各发一次 → 0/9 全 TPM 拒绝、两把 Key
+  /// 在同一秒恢复，额度更像整池共享、按分钟回填。所以单次请求的深度改由
+  /// `SensenovaQuotaPolicy.poolMaxAttempts`（4 把）决定；这里保留池容量口径，
+  /// 供诊断日志与 [FreeModelExecutor] 的换 Key 预算使用。
   static const int maxKeyRotationAttempts = 12;
 
-  /// 本次请求允许尝试的 Key 数量（不超过池容量）
+  /// 池容量口径的轮换预算（不超过 [maxKeyRotationAttempts]）
   int get keyRotationAttempts =>
       totalKeysCount < maxKeyRotationAttempts ? totalKeysCount : maxKeyRotationAttempts;
 
   /// 当前还有没有未被置入冷却的 Key
   ///
-  /// 整池都在冷却时继续换 Key 只是重复撞同一批 429（配额按分钟滚动恢复），
-  /// 调用方据此提前收手并给出「服务商限流」文案，而不是把请求预算烧光。
+  /// 调用方（`AiService._shouldRetryAndWait`）用它判断「现在换 Key 还有没有意义」：
+  /// 一把都不剩时不再连发，而是按 [earliestCooldownEndAt] 排队等回填 —— 实测额度
+  /// 按分钟滚动恢复，换 Key 与换模型都躲不开同一个 429。
   bool hasAvailableKey() {
     if (_keys.isEmpty) return false;
     _cleanExpiredCooldowns();
-    return _keys.any((k) => !_rateLimitedKeys.containsKey(k));
+    return _keys.any((k) => !_cooldownUntil.containsKey(k));
   }
 
   /// 未被冷却的 Key 数量（诊断与日志用）
   int get availableKeyCount {
     if (_keys.isEmpty) return 0;
     _cleanExpiredCooldowns();
-    return _keys.where((k) => !_rateLimitedKeys.containsKey(k)).length;
+    return _keys.where((k) => !_cooldownUntil.containsKey(k)).length;
   }
 
   /// 轮询获取下一个 API Key
@@ -256,7 +271,7 @@ class FreeModelKeyManager {
     // 优先选择未处于冷却状态的 Key
     for (int i = 0; i < _keys.length; i++) {
       final key = _keys[(_cursor + i) % _keys.length];
-      if (!_rateLimitedKeys.containsKey(key)) {
+      if (!_cooldownUntil.containsKey(key)) {
         _cursor = (_cursor + i + 1) % _keys.length;
         return key;
       }
@@ -268,19 +283,69 @@ class FreeModelKeyManager {
     return key;
   }
 
+  /// 把某把 Key 按指定时长置入冷却
+  ///
+  /// [cooldown] 为 [Duration.zero] 时什么都不做 —— 网关 5xx、TLS 抖动、业务参数错误都不该
+  /// 记到 Key 头上（历史行为是「任何可恢复错误都关它一分钟」，结果池子被自己的非配额故障
+  /// 掏空，而配额本身是按分钟回填的，锁着也没用）。
+  void markKeyLimited(String key, {required Duration cooldown}) {
+    if (key.isEmpty || cooldown <= Duration.zero) return;
+    _cooldownUntil[key] = DateTime.now().add(cooldown);
+  }
+
+  /// 某把 Key 距离解锁还有多久（不在冷却中返回 [Duration.zero]）
+  Duration cooldownRemaining(String key) {
+    _cleanExpiredCooldowns();
+    final endAt = _cooldownUntil[key];
+    if (endAt == null) return Duration.zero;
+    final remaining = endAt.difference(DateTime.now());
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
+
+  /// 整池中**最早**解锁的时刻；一把都没在冷却时返回 null
+  ///
+  /// 这是「排队等回填」而不是「整池冷却就报错」的数据来源：额度按分钟滚动恢复，
+  /// 等到这个时刻再发，比换 Key 重复撞同一批 429 有用得多。
+  DateTime? earliestCooldownEndAt() {
+    _cleanExpiredCooldowns();
+    if (_cooldownUntil.isEmpty) return null;
+    return _cooldownUntil.values.reduce((a, b) => a.isBefore(b) ? a : b);
+  }
+
+  /// 距离「全池允许再发一次请求」还需等待多久（[Duration.zero] 表示可立即发）
+  ///
+  /// 与 [acquireNextKey] 分开成两个方法，是为了让取 Key 保持**无副作用的纯游标推进**
+  /// （既有单测依赖它的顺序语义），节流只在发信侧这一层生效。
+  Duration nextSendWait() {
+    final last = _lastSendAt;
+    if (last == null) return Duration.zero;
+    final wait = SensenovaQuotaPolicy.minSendInterval - DateTime.now().difference(last);
+    return wait.isNegative ? Duration.zero : wait;
+  }
+
+  /// 记录一次真正发出去的请求，作为 [nextSendWait] 的节流锚点
+  void noteRequestSent() {
+    _lastSendAt = DateTime.now();
+  }
+
   /// 标记某个 Key 发生限速或故障，并返回下一个备用 Key
-  String rotateKeyOnFailure(String failedKey) {
-    _rateLimitedKeys[failedKey] = DateTime.now();
+  ///
+  /// [cooldown] 由调用方按限流形态给出（见 `SensenovaQuotaPolicy.keyCooldown`）；
+  /// 不传时沿用默认的 1 分钟，保持历史调用点语义不变。
+  String rotateKeyOnFailure(String failedKey, {Duration? cooldown}) {
+    final effectiveCooldown = cooldown ?? _cooldownDuration;
+    markKeyLimited(failedKey, cooldown: effectiveCooldown);
     LoggerService.instance.logAI(
-      '免费 Key 发生限速或调用失败，自动加入冷却并轮换下一个 Key',
+      '免费 Key 发生限速或调用失败，已置入冷却并轮换下一个 Key',
       level: LogLevel.warning,
-      details: '受限 Key: ${_maskKey(failedKey)}, 当前受限总数: ${_rateLimitedKeys.length}/${_keys.length}',
+      details: '受限 Key: ${maskKey(failedKey)}, 冷却 ${effectiveCooldown.inSeconds}s, '
+          '当前受限总数: ${_cooldownUntil.length}/${_keys.length}',
     );
 
     // 1. 优先寻找下一个未处于冷却状态且不等于 failedKey 的 Key
     for (int i = 0; i < _keys.length; i++) {
       final key = _keys[(_cursor + i) % _keys.length];
-      if (key != failedKey && !_rateLimitedKeys.containsKey(key)) {
+      if (key != failedKey && !_cooldownUntil.containsKey(key)) {
         _cursor = (_cursor + i + 1) % _keys.length;
         return key;
       }
@@ -306,10 +371,10 @@ class FreeModelKeyManager {
     return failedKey;
   }
 
-  /// 清理已过期的限速冷却记录
+  /// 清理已到期的冷却记录（解锁时刻已过即视为可用）
   void _cleanExpiredCooldowns() {
     final now = DateTime.now();
-    _rateLimitedKeys.removeWhere((_, time) => now.difference(time) > _cooldownDuration);
+    _cooldownUntil.removeWhere((_, endAt) => !endAt.isAfter(now));
   }
 
   /// 计算指数退避延迟时间（含随机抖动 Jitter），避免并发重试瞬时撞墙
@@ -447,6 +512,9 @@ class FreeModelKeyManager {
         text.contains('400') ||
         text.contains('502') ||
         text.contains('503') ||
+        // 网关的秒级突发保护（`rps exhausted`）与配额耗尽同样是瞬时故障
+        text.contains('rps') ||
+        text.contains('exhausted') ||
         text.contains('rate limit') ||
         text.contains('rate_limit') ||
         text.contains('ratelimit') ||
@@ -481,23 +549,16 @@ class FreeModelKeyManager {
         text.contains('繁忙');
   }
 
-  /// 换到新 Key 后的极短间隔（40~120ms 抖动）
-  ///
-  /// 仅用于 [isKeyScopedError] 且确实换成了另一把 Key 的场景：配额按 Key 独立，
-  /// 指数退避在这里是纯白等；留一点抖动避免同一瞬间把整个池一起打满。
-  Duration getQuotaRotationDelay() {
-    return Duration(milliseconds: 40 + Random().nextInt(80));
-  }
-
-  /// 判定该错误是否「Key 自身配额」造成 —— 换一把 Key 就有独立额度，可立即重试
+  /// 判定该错误是否「Key 自身配额」造成 —— 换一把 Key 值得立刻再试
   ///
   /// 与 [isRecoverableError] 的关系是本函数的严格子集：只覆盖 429/401/403 与
   /// 限流、配额、并发超限类文案。5xx 与 TLS/连接抖动不在此列 —— 那是端点侧问题，
   /// 换 Key 无意义，仍应走指数退避。
   ///
-  /// 之所以要单独区分：商汤免费网关几乎每个请求都会撞 TPM/RPM，若按通用退避
-  /// （300ms 起步、逐次翻倍）连试多把 Key，光等退避就要十几秒；而每把 Key 的
-  /// 配额互相独立（实测同一时刻一把 200、另一把 429），换到新 Key 后几乎不需要等。
+  /// 注：本方法只回答「是不是配额问题」。**该不该等、等多久**改由
+  /// `SensenovaQuotaPolicy.classify` + `rotationDelay` 决定 —— 因为实测网关有两层
+  /// 限流（TPM 额度与 `rps exhausted` 秒级突发），而额度更像整池共享、按分钟回填，
+  /// 「换到 Key 就能零等待」的旧结论已经不成立。
   bool isKeyScopedError(dynamic error) {
     if (error == null) return false;
 
@@ -533,6 +594,11 @@ class FreeModelKeyManager {
         text.contains('rate limit') ||
         text.contains('rate_limit') ||
         text.contains('ratelimit') ||
+        // 商汤两层限流的原话：`RateLimitExceeded.EndpointTPMExceeded` 与 `rps exhausted`
+        // （历史上没有 rps 字样，导致带内 SSE 错误既不算可恢复也不算配额，一次都不重试）
+        text.contains('ratelimitexceeded') ||
+        text.contains('rps') ||
+        text.contains('exhausted') ||
         text.contains('too many requests') ||
         text.contains('tpm') ||
         text.contains('rpm') ||
@@ -548,8 +614,19 @@ class FreeModelKeyManager {
         text.contains('繁忙');
   }
 
-  /// 密钥脱敏显示（用于日志）
-  String _maskKey(String key) {
+  /// 重置轮询游标与全部冷却记录（仅测试用）
+  ///
+  /// 冷却表是进程内单例状态，既有用例靠「本条必须排在最后」维持顺序，非常脆；
+  /// 有了这个方法测试可以在 setUp 里自行清场。
+  @visibleForTesting
+  void resetForTest() {
+    _cooldownUntil.clear();
+    _lastSendAt = null;
+    _cursor = 0;
+  }
+
+  /// 密钥脱敏显示（用于日志），保证明文 Key 不落盘、不进日志文件
+  static String maskKey(String key) {
     if (key.length <= 8) return '***';
     return '${key.substring(0, 4)}...${key.substring(key.length - 4)}';
   }

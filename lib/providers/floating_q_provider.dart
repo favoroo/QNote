@@ -626,6 +626,8 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
         aiService: aiService,
         dispatcher: dispatcher,
         maxTurns: 60,
+        // 整池限流时不报错、不静默：与主聊天一致，把排队秒数写到悬浮窗状态行
+        onQuotaHold: (hold) => _setStatus('服务商限流 · 排队 ${hold.inSeconds}s 后重试'),
         afterToolCall: (call, result) async {
           // 按 VFS 路径前缀联动刷新对应业务数据
           refreshWorkspaceSideEffects(
