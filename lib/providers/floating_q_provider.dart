@@ -22,6 +22,7 @@ import 'package:qnote_flutter/core/agent/vfs/virtual_workspace_service.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
 import 'package:qnote_flutter/core/ai/ai_error_explainer.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/ai/model_vision_capability.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/tts/tts_player.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
@@ -608,6 +609,9 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       );
       final assistantConfig = await AiRoleService.instance
           .getEffectiveConfigForRole('assistant');
+      // 当前模型能否看图：同时决定提示词措辞与本轮图片是否进上下文
+      final supportsVisionInput =
+          ModelVisionCapability.supportsVision(assistantConfig);
       aiService.updateConfig(
         assistantConfig,
         temperature: roleSettings.temperature,
@@ -626,6 +630,8 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
         aiService: aiService,
         dispatcher: dispatcher,
         maxTurns: 60,
+        // 当前模型看不了图时，本轮图片在发请求前就换成 describe_image 引导（与主聊天一致）
+        supportsImageInput: supportsVisionInput,
         // 整池限流时不报错、不静默：与主聊天一致，把排队秒数写到悬浮窗状态行
         onQuotaHold: (hold) => _setStatus('服务商限流 · 排队 ${hold.inSeconds}s 后重试'),
         afterToolCall: (call, result) async {
@@ -645,6 +651,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
           personalityName: personality.name,
           enabledOptionalTools:
               AgentToolRegistry.optionalToolNames.difference(disabledTools),
+          supportsVisionInput: supportsVisionInput,
         ),
         dynamicContext: dynamicContext,
         cancellationToken: token,

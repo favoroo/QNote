@@ -7,6 +7,7 @@ import 'package:qnote_flutter/core/ai/ai_error_explainer.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/free_model_service.dart';
+import 'package:qnote_flutter/core/ai/model_vision_capability.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/refresh/refresh_failure_notice.dart';
 import 'package:qnote_flutter/core/agent/agent_tool_labels.dart';
@@ -865,6 +866,9 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       // 预先配置好 AiService：统一使用角色绑定的生效模型配置
       final assistantConfig = await AiRoleService.instance
           .getEffectiveConfigForRole('assistant');
+      // 当前模型能否看图：同时决定提示词措辞与本轮图片是否进上下文
+      final supportsVisionInput =
+          ModelVisionCapability.supportsVision(assistantConfig);
       aiService.updateConfig(
         assistantConfig,
         temperature: roleSettings.temperature,
@@ -875,6 +879,8 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         aiService: aiService,
         dispatcher: dispatcher,
         maxTurns: 60,
+        // 模型看不了图时，图片在发请求前就被换成 describe_image 引导，避免它编造画面
+        supportsImageInput: supportsVisionInput,
         // 整池限流时不报错、不静默：把排队秒数写到状态行，用户知道还在等
         onQuotaHold: (hold) => _setRunStatus(run, '服务商限流 · 排队 ${hold.inSeconds}s 后重试'),
         afterToolCall: (call, result) async {
@@ -898,6 +904,7 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
           personalityName: personality.name,
           enabledOptionalTools:
               AgentToolRegistry.optionalToolNames.difference(disabledTools),
+          supportsVisionInput: supportsVisionInput,
         ),
         dynamicContext: dynamicContext,
         cancellationToken: run.token,

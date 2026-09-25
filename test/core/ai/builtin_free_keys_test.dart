@@ -237,6 +237,30 @@ void main() {
       );
     });
 
+    test('内置聊天降级链首位为头牌，且与 kDefaultFreeModelId 同口径', () {
+      // preferredId 命中不了任何模型（老设备绑了已下线 id）时，实际走的顺序完全
+      // 由 priority 决定 —— 头牌换了这里必须跟着换，否则「默认」只是界面口径。
+      final chatModels = [
+        BuiltinFreeKeys.createDeepSeekConfig(),
+        BuiltinFreeKeys.createDefaultConfig(),
+        BuiltinFreeKeys.createGlmConfig(),
+      ];
+      final ordered = FreeModelService.instance.getOrderedModels(
+        chatModels,
+        'no-such-model',
+      );
+
+      expect(
+        ordered.map((m) => m.id).toList(),
+        equals([kDefaultFreeModelId, 'deepseek-flash', 'sensenova-flash-lite']),
+      );
+      expect(
+        BuiltinFreeKeys.createGlmConfig().priority,
+        equals(0),
+        reason: 'priority 0 是降级链首位的唯一实现口径',
+      );
+    });
+
     test('整池冷却后 hasAvailableKey 转 false，acquireNextKey 仍兜底给出一把', () {
       final manager = FreeModelKeyManager.instance;
       final pool = BuiltinFreeKeys.getDecryptedKeys();

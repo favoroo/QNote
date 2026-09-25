@@ -21,33 +21,32 @@ void main() {
       expect(p.streakDays, 0);
       expect(p.isFull, isFalse);
       expect(p.ratio, 0);
-      expect(p.remaining, 5);
+      expect(p.remaining, 3);
       expect(p.todayPending, isTrue);
     });
 
-    test('今天3条：计数正确、未满环、还差2条', () {
+    test('今天2条：计数正确、未满环、还差1条', () {
       final now = DateTime(2026, 9, 25, 12);
       final records = [
         _record('1', DateTime(2026, 9, 25, 8)),
         _record('2', DateTime(2026, 9, 25, 12)),
-        _record('3', DateTime(2026, 9, 25, 18)),
       ];
       final p = computeDiaryProgress(records, now);
-      expect(p.todayCount, 3);
+      expect(p.todayCount, 2);
       expect(p.isFull, isFalse);
-      expect(p.remaining, 2);
+      expect(p.remaining, 1);
       expect(p.streakDays, 1);
       expect(p.todayPending, isFalse);
     });
 
-    test('今天5条即满环，超目标后ratio封顶为1', () {
+    test('今天3条即满环，超目标后ratio封顶为1', () {
       final now = DateTime(2026, 9, 25, 12);
       final records = List.generate(
-        7,
+        5,
         (i) => _record('$i', DateTime(2026, 9, 25, 8, i)),
       );
       final p = computeDiaryProgress(records, now);
-      expect(p.todayCount, 7);
+      expect(p.todayCount, 5);
       expect(p.isFull, isTrue);
       expect(p.ratio, 1);
       expect(p.remaining, 0);
@@ -133,6 +132,59 @@ void main() {
       ];
       final p = computeDiaryProgress(records, now);
       expect(p.maxPerDay, 3);
+    });
+
+    test('运动健康自动同步的日结卡不计入今天', () {
+      final now = DateTime(2026, 9, 25, 12);
+      final healthCard = DiaryRecord(
+        id: 'health',
+        title: '运动健康',
+        time: DateTime(2026, 9, 25, 23),
+        bodyState: const {'source': 'mi_fitness', 'type': 'daily_summary'},
+        createdAt: DateTime(2026, 9, 25, 23),
+        updatedAt: DateTime(2026, 9, 25, 23),
+      );
+      final p = computeDiaryProgress([healthCard], now);
+      expect(p.todayCount, 0);
+      expect(p.todayPending, isTrue);
+      expect(isSystemSyncedHealthRecord(healthCard), isTrue);
+    });
+
+    test('只有健康卡的日子不能续上streak', () {
+      final now = DateTime(2026, 9, 25, 12);
+      final healthCard = DiaryRecord(
+        id: 'health',
+        title: '运动健康',
+        time: DateTime(2026, 9, 24, 23),
+        bodyState: const {'source': 'mi_fitness', 'type': 'daily_summary'},
+        createdAt: DateTime(2026, 9, 24, 23),
+        updatedAt: DateTime(2026, 9, 24, 23),
+      );
+      final records = [
+        healthCard,
+        _record('1', DateTime(2026, 9, 25, 8)),
+      ];
+      final p = computeDiaryProgress(records, now);
+      // 24号只有自动同步，不算连续，streak 只有今天
+      expect(p.streakDays, 1);
+    });
+
+    test('健康卡不计入maxPerDay，不触发假破纪录', () {
+      final now = DateTime(2026, 9, 25, 12);
+      final records = [
+        _record('1', DateTime(2026, 9, 25, 8)),
+        DiaryRecord(
+          id: 'health',
+          title: '运动健康',
+          time: DateTime(2026, 9, 25, 23),
+          bodyState: const {'source': 'mi_fitness', 'type': 'daily_summary'},
+          createdAt: DateTime(2026, 9, 25, 23),
+          updatedAt: DateTime(2026, 9, 25, 23),
+        ),
+      ];
+      final p = computeDiaryProgress(records, now);
+      expect(p.todayCount, 1);
+      expect(p.maxPerDay, 1);
     });
   });
 }

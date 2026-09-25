@@ -39,6 +39,13 @@ class AgentLoop {
   /// 「思考中」；回调则能立刻把「服务商限流 · 排队 Ns」写进状态行。
   final void Function(Duration hold)? onQuotaHold;
 
+  /// 当前对话模型能否接收图片输入；false 时本轮图片在**发请求前**就被剥掉并换成引导
+  ///
+  /// 为什么要前置判定而不是等报错：网关对不支持图片的模型并不会拒收 —— 实测商汤网关的
+  /// `glm-5.2` 收到图片仍返回 200，只是把左红右蓝答成「左=黑色，右=白色」，即**编造**。
+  /// 下面 catch 里「抛异常才剥图重试」的兜底对这类模型永远不会触发。
+  final bool supportsImageInput;
+
   AgentLoop({
     required this.aiService,
     required this.dispatcher,
@@ -49,6 +56,7 @@ class AgentLoop {
     this.shouldStopAfterTurn,
     this.transformContext,
     this.onQuotaHold,
+    this.supportsImageInput = true,
   });
 
   /// 运行 ReAct 循环
@@ -102,6 +110,12 @@ class AgentLoop {
         ...compactedHistory,
       ];
 
+      // 模型看不了图时，首轮开讲前就把图片换成「看不见 + 该调哪个工具」的说明，
+      // 既省掉把 base64 灌进请求体的带宽，也更关键：不给它一个可以编造的素材
+      if (!supportsImageInput) {
+        _stripAllImages(activeMessages);
+      }
+
       final toolDefinitions = dispatcher.toFunctionDefinitions();
       int currentTurn = 0;
       // 图片降级重试只允许一次，避免纯文本模型下反复重试浪费请求
@@ -131,10 +145,13 @@ class AgentLoop {
         // 模型原生思考增量（reasoning_content 等）累积，轮末回填 ChatMessage.thought
         final accumulatedReasoning = StringBuffer();
         final List<ToolCall> streamedToolCalls = [];
-        final thoughtFilter = _ThoughtTagFilter();
+        var thoughtFilter = _ThoughtTagFilter();
         // 工具参数生成进度的去重锚点（每轮重建，避免跨轮抑制同参数工具的状态更新）
         String? lastCallingTool;
         String? lastCallingDetail;
+        // 网关在只吐思考/工具参数时掐流，AiService 会原地重发：置位后由下一个片段
+        // 触发复位，让新旧两段的碎片不叠加（正文流出后不会再重发）
+        bool streamResetPending = false;
 
         try {
           final stream = aiService.chatStreamWithTools(
@@ -144,6 +161,7 @@ class AgentLoop {
               streamedToolCalls.addAll(calls);
             },
             onQuotaHold: onQuotaHold,
+            onStreamRetry: () => streamResetPending = true,
             cancelToken: httpCancelToken,
           );
 
@@ -153,6 +171,18 @@ class AgentLoop {
               yield AgentEvent.finished(_cancelledMessage(accumulatedContent.toString()));
               yield AgentEvent.agentEnd();
               return;
+            }
+
+            // 重发前的碎片作废：再发一次 turnStart 复用两条对话链路里既有的「本轮从零
+            // 开始」语义（provider 会清 contentBuffer / thoughtBuffer 并重挂状态行），
+            // 不必为此新增事件类型
+            if (streamResetPending) {
+              streamResetPending = false;
+              accumulatedReasoning.clear();
+              thoughtFilter = _ThoughtTagFilter();
+              lastCallingTool = null;
+              lastCallingDetail = null;
+              yield AgentEvent.turnStart(currentTurn);
             }
 
             // 模型正在流式生成工具调用参数：提取关键信息去重后通知 UI，
@@ -204,8 +234,10 @@ class AgentLoop {
           }
           LoggerService.instance.logAI('AgentLoop 流式发生错误: $e', level: LogLevel.error);
 
-          // 降级兜底：本轮上下文注入过图片时，可能是纯文本模型或网关拒收图片导致请求失败，
-          // 剥离全部图片后原地重试一次，避免整轮对话直接中断
+          // 降级兜底：本轮上下文注入过图片时，可能是网关直接拒收图片（返回错误），
+          // 剥离全部图片后原地重试一次，避免整轮对话直接中断。
+          // 注意：像 glm-5.2 那样「收图不报错、直接编造」的模型走不到这里，
+          // 由构造参数 supportsImageInput 在发请求前就完成剥离。
           if (!imageFallbackTried &&
               activeMessages.any((m) => m.images != null && m.images!.isNotEmpty)) {
             imageFallbackTried = true;
@@ -401,6 +433,18 @@ class AgentLoop {
 
     if (images != null && images.isNotEmpty) {
       final source = resultMsg.uiDetails?['path'] as String? ?? '未知路径';
+      if (!supportsImageInput) {
+        // 工具已经把画面读成文字（如 describe_image 的返回），图片本体不必也不该进上下文：
+        // 当前模型收到只会编造。这里只留路径，让模型自己决定是否再调识图工具
+        activeMessages.add(ChatMessage(
+          role: 'user',
+          content: '[系统注入] 工具 ${resultMsg.toolName ?? "tool"} 的结果涉及图片（来源: $source）。'
+              '当前模型不支持图片输入，图片**未**附加到本轮上下文中，你看不到它的画面；'
+              '需要图片内容请调用 describe_image(path: "$source", question: "你的具体问题")。',
+          timestamp: DateTime.now(),
+        ));
+        return contextMsg;
+      }
       activeMessages.add(ChatMessage(
         role: 'user',
         content: '[系统注入] 工具 ${resultMsg.toolName ?? "tool"} 的结果附带 ${images.length} 张图片'
@@ -435,13 +479,44 @@ class AgentLoop {
       if (m.images == null || m.images!.isEmpty) continue;
       String content = m.content;
       if (m.role == 'user' && content.startsWith('[系统注入]')) {
-        content = '[系统注入] 图片已剥离：当前模型不支持图片输入，无法查看图片内容，'
-            '请如实告知用户当前模型无法看图，或改用文字方式处理。';
+        // 循环内自己注入的合成消息：整条换成「看不见 + 怎么补救」
+        content = '[系统注入] 图片已剥离：当前模型不支持图片输入，你看不到任何画面。'
+            '需要图片内容请调用 describe_image(path: "<图片路径>", question: "你的具体问题")，'
+            '未调用工具前严禁描述图片内容。';
       } else if (m.role == 'tool' && m.toolName == 'view_image') {
-        content = '图片加载失败：当前模型不支持图片输入，无法查看图片内容。';
+        content = '图片未能加载：当前模型不支持图片输入，无法通过 view_image 看图。'
+            '请改用 describe_image 工具（传入同一路径与你的具体问题）获取文字版识图结果。';
+      } else {
+        // 用户真实消息带附件：原文一个字都不能改，只在尾部追加说明，
+        // 否则模型会把「图片被剥离」误当成用户没说话，或继续假装自己看到了画面
+        content = '${m.content}\n\n${_imageUnavailableNote(m.images!)}'.trim();
       }
       messages[i] = _stripImages(m).copyWith(content: content);
     }
+  }
+
+  /// 图片被剥离时追加给模型看的说明：列出还能回传给工具的图片标识
+  ///
+  /// 内联图片（`data:` 开头的 base64）刻意不写进列表：几百 KB 的字符串既塞不进上下文，
+  /// 也没法指望模型原样回传成 describe_image 的 path 参数 —— 这种场景直接说明不可用。
+  static String _imageUnavailableNote(List<String> images) {
+    final buf = StringBuffer()
+      ..writeln('[系统提示] 本条消息附带 ${images.length} 张图片，'
+          '但当前对话模型不支持图片输入，你看不到任何画面内容。')
+      ..writeln('需要识图时请调用 describe_image 工具，并传入你的具体问题；工具会返回文字版识别结果。');
+    final usable = images.where((p) => !p.startsWith('data:')).toList();
+    if (usable.isNotEmpty) {
+      buf.writeln('可传给 describe_image 的图片：');
+      for (final path in usable) {
+        buf.writeln('- $path');
+      }
+    }
+    if (usable.length < images.length) {
+      buf.writeln('（有 ${images.length - usable.length} 张内联图片无法以路径形式回传，'
+          '这类图片请如实告知用户当前无法识别。）');
+    }
+    buf.write('严禁在未调用工具前描述、猜测或复述图片里的内容。');
+    return buf.toString();
   }
 
   /// 长会话上下文压缩（简化版 pi compaction）

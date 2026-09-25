@@ -9,6 +9,7 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'package:qnote_flutter/config/app_version.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/ai/model_vision_capability.dart';
 import 'package:qnote_flutter/core/health/health_sync_service.dart';
 import 'package:qnote_flutter/core/health/screen_usage_snapshot_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
@@ -50,6 +51,8 @@ Future<void> preInitializeApp() async {
     configRepo.ensureDefaultAiConfigs(),
     AiRoleService.instance.initAndEnsureDefaults(),
     NotificationService.instance.init(),
+    // 识图能力判定的同步查表依赖这份缓存，必须在首帧前预热
+    ModelVisionCapability.loadFromPrefs(),
   ]);
 }
 

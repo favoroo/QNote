@@ -33,6 +33,7 @@ class MockAiService extends AiService {
     List<Map<String, dynamic>>? tools,
     void Function(List<ToolCall> toolCalls)? onToolCallsReady,
     void Function(Duration hold)? onQuotaHold,
+    void Function()? onStreamRetry,
     CancelToken? cancelToken,
   }) async* {
     for (final progress in progressChunks) {
@@ -55,12 +56,35 @@ class MidStreamCancelAiService extends AiService {
     List<Map<String, dynamic>>? tools,
     void Function(List<ToolCall> toolCalls)? onToolCallsReady,
     void Function(Duration hold)? onQuotaHold,
+    void Function()? onStreamRetry,
     CancelToken? cancelToken,
   }) async* {
     yield const AiToolStreamChunk.text('第一段');
     // 模拟用户点停止后 Dio CancelToken 断连：流挂起片刻后抛出取消异常
     await Future<void>.delayed(const Duration(milliseconds: 20));
     throw Exception('请求已被用户取消');
+  }
+}
+
+/// 模拟网关在**只吐过思考**的阶段掐流、AiService 原地重发一次后成功的桩
+///
+/// 商汤网关会在一半把 TCP 关掉（dart:io HttpException），推理模型思考期最长、
+/// 最容易撞上；这种重发不能把新旧两段的碎片叠进同一张「思考中」卡。
+class InterruptedThenRetriedAiService extends AiService {
+  @override
+  Stream<AiToolStreamChunk> chatStreamWithTools({
+    required List<ChatMessage> messages,
+    List<Map<String, dynamic>>? tools,
+    void Function(List<ToolCall> toolCalls)? onToolCallsReady,
+    void Function(Duration hold)? onQuotaHold,
+    void Function()? onStreamRetry,
+    CancelToken? cancelToken,
+  }) async* {
+    yield const AiToolStreamChunk.reasoning('被掐断的半截思考');
+    // 相当于 AiService 决定重发时发出的复位通知
+    onStreamRetry?.call();
+    yield const AiToolStreamChunk.reasoning('重发后的完整思考');
+    yield const AiToolStreamChunk.text('最终回答');
   }
 }
 
@@ -213,6 +237,55 @@ void main() {
       expect(callingEvents[0].toolCall!.arguments['path'], '/notes/a.md');
       expect(callingEvents[1].toolCall!.name, 'read_file');
       expect(callingEvents[1].toolCall!.arguments['path'], '/notes/b.md');
+    });
+
+    test('7. 只吐过思考时断流重发 → 旧碎片作废，不与新片段叠加', () async {
+      final loop = AgentLoop(
+        aiService: InterruptedThenRetriedAiService(),
+        dispatcher: ToolDispatcher(),
+      );
+
+      final trace = <String>[];
+      String? finalThought;
+      await for (final event in loop.run(
+        conversationHistory: [],
+        systemPrompt: '系统提示词',
+      )) {
+        switch (event.type) {
+          case AgentEventType.turnStart:
+            trace.add('turnStart');
+            break;
+          case AgentEventType.reasoningDelta:
+            trace.add('reasoning:${event.text}');
+            break;
+          case AgentEventType.contentDelta:
+            trace.add('content:${event.text}');
+            break;
+          case AgentEventType.thoughtUpdate:
+            finalThought = event.text;
+            break;
+          default:
+            break;
+        }
+      }
+
+      // 复位必须落在两段思考之间：provider 收到第二个 turnStart 就清空自己的
+      // contentBuffer / thoughtBuffer（两条对话链路已有的语义），旧碎片不再续接
+      expect(
+        trace,
+        equals([
+          'turnStart',
+          'reasoning:被掐断的半截思考',
+          'turnStart',
+          'reasoning:重发后的完整思考',
+          'content:最终回答',
+        ]),
+      );
+      expect(
+        finalThought,
+        equals('重发后的完整思考'),
+        reason: '落库的 thought 取自本轮累积，不能带上被掐断的旧碎片',
+      );
     });
   });
 }

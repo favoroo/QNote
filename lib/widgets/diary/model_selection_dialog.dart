@@ -8,7 +8,7 @@ export 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart'
 /// 统一的时间线/日记模型选择弹窗，供日记页 FAB 长按、输入栏长按、编辑器长按共用。
 ///
 /// 返回值为选中的模型 ID 字符串：
-/// - 免费模型返回 `'free:<model-name>'`（例如 `'free:deepseek-flash'`）
+/// - 免费模型返回 `'free:<model-name>'`（例如 `'free:glm-5.2'`）
 /// - 自定义模型返回对应的配置 id（UUID）
 class ModelSelectionDialog extends StatelessWidget {
   final List<AiConfig> configs;
@@ -25,10 +25,11 @@ class ModelSelectionDialog extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    // 解析当前选中的有效 ID（兼容旧的哨兵值 __free_model__）
-    final effectiveSelectedId = selectedId == '__free_model__'
-        ? 'free:deepseek-flash'
-        : (selectedId ?? 'free:deepseek-flash');
+    // 解析当前选中的有效 ID：空值与旧哨兵值一律归位到候选首位（即内置头牌）
+    final effectiveSelectedId =
+        (selectedId == null || selectedId == '__free_model__')
+            ? kAssistantBuiltinModels.first['id']!
+            : selectedId;
 
     return Dialog(
       backgroundColor: colorScheme.surface,

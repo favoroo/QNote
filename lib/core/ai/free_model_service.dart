@@ -312,7 +312,9 @@ class FreeModelService {
     };
   }
 
-  /// 获取内置模型列表（DeepSeek Flash、SenseNova 6.8、GLM 5.2，均走商汤网关）
+  /// 获取内置模型列表（GLM 5.2、DeepSeek Flash、SenseNova 6.8，均走商汤网关）
+  ///
+  /// 书写顺序不表达优先级（降级链由 priority 排），改头牌要同步改 priority。
   ///
   /// 同时是**限流策略的离线生效点**：先用上次缓存的 `quota_policy` 立刻覆盖策略，
   /// 再后台拉一次云端最新值。这样断网首包也带得上一次调参结果，
@@ -344,9 +346,9 @@ class FreeModelService {
     } catch (_) {}
 
     return [
+      BuiltinFreeKeys.createGlmConfig(),
       BuiltinFreeKeys.createDeepSeekConfig(),
       BuiltinFreeKeys.createDefaultConfig(),
-      BuiltinFreeKeys.createGlmConfig(),
     ];
   }
 

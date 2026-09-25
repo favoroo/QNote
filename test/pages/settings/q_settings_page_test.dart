@@ -36,8 +36,8 @@ void main() {
     expect(find.text('技能'), findsOneWidget);
     expect(find.text('记忆'), findsOneWidget);
 
-    // 初始处于「个性」Tab，渲染预设个性卡片
-    expect(find.text('经典管家'), findsOneWidget);
+    // 初始处于「个性」Tab，渲染预设个性卡片（顶部「当前生效」与卡片均包含「经典管家」）
+    expect(find.text('经典管家'), findsAtLeastNWidgets(1));
     expect(find.textContaining('沉稳可靠的全能终端管家'), findsOneWidget);
 
     // 点击切换到「技能」Tab

@@ -12,6 +12,7 @@ import 'package:qnote_flutter/providers/user_profile_provider.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
+import 'package:qnote_flutter/models/free_model_config.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/models/todo.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
@@ -310,7 +311,7 @@ class _AiPageState extends ConsumerState<AiPage> {
   Future<void> _initActiveModelId() async {
     final roles = await ref.read(aiRolesProvider.future);
     if (roles != null && roles.assistantUseFreeModel) {
-      final freeId = roles.assistantFreeModelId ?? 'deepseek-flash';
+      final freeId = roles.assistantFreeModelId ?? kDefaultFreeModelId;
       if (mounted) setState(() => _activeModelId = 'free:$freeId');
       return;
     }
@@ -1147,7 +1148,7 @@ class _AiPageState extends ConsumerState<AiPage> {
           String? newActiveId;
           if (roles.assistantUseFreeModel) {
             final freeId =
-                roles.assistantFreeModelId ?? 'deepseek-flash';
+                roles.assistantFreeModelId ?? kDefaultFreeModelId;
             newActiveId = 'free:$freeId';
           } else if (roles.assistant != null) {
             newActiveId = roles.assistant;
@@ -1176,7 +1177,7 @@ class _AiPageState extends ConsumerState<AiPage> {
             setState(() => _activeModelId = defaultCfg.id);
           }
         } else {
-          setState(() => _activeModelId = 'free:deepseek-flash');
+          setState(() => _activeModelId = 'free:$kDefaultFreeModelId');
         }
       }
     });

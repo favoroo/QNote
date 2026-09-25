@@ -14,6 +14,16 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.71',
+    date: '2026-09-25',
+    notes: [
+      '内置默认模型换成 GLM 5.2：新用户默认绑定更快更稳，已手动绑定其他模型的老用户不受影响',
+      '小Q不再编造图片内容：不支持看图的模型会自动调用识图工具，日记图片提取同样自动兜底',
+      '弱网对话更稳：只吐出思考就被掐断时会自动重发，不再让整轮工具成果作废',
+      '日记今日目标调整为 3 条，健康自动同步的运动/睡眠卡不再计入连续记录',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.70',
     date: '2026-09-25',
     notes: [

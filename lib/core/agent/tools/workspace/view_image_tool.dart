@@ -1,7 +1,10 @@
 import 'package:flutter/foundation.dart';
 
 import 'package:qnote_flutter/core/agent/models/agent_tool.dart';
+import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/ai/model_vision_capability.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
+import 'package:qnote_flutter/models/ai_config.dart';
 
 /// 查看图片工具：把本地图片加载为多模态输入注入本轮 Agent 上下文
 ///
@@ -20,7 +23,8 @@ class ViewImageTool extends AgentTool {
   @override
   String get description =>
       '查看（读取）本地图片文件的内容。仅当时间线/日记记录的「- 图片:」字段或笔记中的图片链接'
-      '出现真实存在的本地图片路径（如 "/images/xxx.jpg"）时调用，用于加载并"看到"画面内容（需当前模型支持图片输入）。'
+      '出现真实存在的本地图片路径（如 "/images/xxx.jpg"）时调用，用于加载并"看到"画面内容'
+      '（需当前模型支持图片输入；不支持时请改用 describe_image 获取文字版识别结果）。'
       '注意：用户在消息中直接附带/发送的图片已随消息注入上下文，你已能直接看到画面，'
       '严禁再调用本工具读取，也不要为其虚构路径。';
 
@@ -45,6 +49,18 @@ class ViewImageTool extends AgentTool {
     final path = arguments['path'] as String? ?? '';
     if (path.trim().isEmpty) {
       return ToolResult.error('图片路径为空，请提供时间线/日记/笔记中列出的图片路径');
+    }
+
+    // 当前模型看不了图时，压一张 base64 注入上下文只会喂给一个读不懂它的请求
+    // （实测网关对不支持图片的模型照常返回 200，模型于是凭空编画面），
+    // 因此在这里就改指 describe_image，别让它拿到一份可被编造的素材
+    final boundConfig = await _assistantConfig();
+    if (boundConfig != null && !ModelVisionCapability.supportsVision(boundConfig)) {
+      return ToolResult.error(
+        '当前对话模型不支持图片输入，view_image 加载了也看不到画面。'
+        '请改用识图工具：describe_image(path: "$path", question: "写下你要问的具体问题")，'
+        '它会把图片交给内置识图模型并返回文字结果。',
+      );
     }
 
     // ImageRepository 依赖 dart:io 本地文件系统，Web 端无法读取本地图片
@@ -79,6 +95,18 @@ class ViewImageTool extends AgentTool {
       );
     } catch (e) {
       return ToolResult.error('读取图片失败: $e（当前模型或平台可能不支持图片输入）');
+    }
+  }
+
+  /// 读当前小Q绑定的生效配置，用于判断能不能看图；读不到时返回 null（按原流程继续）
+  ///
+  /// 刻意不因配置读取失败就拒绝执行：那是比"模型看不了图"更罕见的故障，
+  /// 拦掉一次正常的看图反而更糟。
+  Future<AiConfig?> _assistantConfig() async {
+    try {
+      return await AiRoleService.instance.getEffectiveConfigForRole('assistant');
+    } catch (_) {
+      return null;
     }
   }
 }

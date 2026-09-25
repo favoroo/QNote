@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
+import 'package:qnote_flutter/models/free_model_config.dart';
 import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
 
 AiConfig _config(String id, String name) => AiConfig(
@@ -104,7 +105,7 @@ void main() {
     ));
 
     final row = find.ancestor(
-      of: find.text('DeepSeek Flash'),
+      of: find.text('GLM 5.2'),
       matching: find.byType(Row),
     ).first;
     expect(
@@ -134,15 +135,17 @@ void main() {
     expect(customId, 'cfg-1');
   });
 
-  test('内置候选只剩商汤网关三个模型，以默认头牌 DeepSeek Flash 打头', () {
+  test('内置候选只剩商汤网关三个模型，以默认头牌 GLM 5.2 打头', () {
     expect(
       kAssistantBuiltinModels.map((m) => m['id']).toList(),
       const [
+        'free:glm-5.2',
         'free:deepseek-flash',
         'free:sensenova-flash-lite',
-        'free:glm-5.2',
       ],
     );
+    // 候选首位必须与代码里的头牌常量同口径，否则选择器高亮与实际默认会分叉
+    expect(kAssistantBuiltinModels.first['id'], 'free:$kDefaultFreeModelId');
   });
 
   test('assistantModelDisplayName：内置映射/裸 id 回退/自定义配置/哨兵/空值', () {
@@ -157,7 +160,7 @@ void main() {
     );
     expect(
       assistantModelDisplayName('__free_model__', const []),
-      'DeepSeek Flash',
+      'GLM 5.2',
     );
     expect(assistantModelDisplayName('missing', const []), 'missing');
     expect(assistantModelDisplayName(null, const []), isNull);

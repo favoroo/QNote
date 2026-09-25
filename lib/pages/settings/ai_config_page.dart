@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import 'package:dio/dio.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
+import 'package:qnote_flutter/models/free_model_config.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/config/models.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
@@ -14,6 +15,7 @@ import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/builtin_free_keys.dart';
 import 'package:qnote_flutter/core/ai/free_model_service.dart';
 import 'package:qnote_flutter/core/ai/model_fetch_service.dart';
+import 'package:qnote_flutter/core/ai/model_vision_capability.dart';
 import 'package:qnote_flutter/core/ai/free_lane_diagnostics.dart';
 import 'package:qnote_flutter/core/agent/services/agent_tool_config.dart';
 import 'package:qnote_flutter/core/storage/ai_request_stats_repository.dart';
@@ -53,7 +55,13 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   final Map<String, String> _latencyMap = {};
   bool _batchTesting = false;
   bool _testingImageRecognition = false;
-  String? _imageTestResult;
+
+  /// 各角色的「识图检测」结论（roleKey → 文案），刚测完的结果与从缓存回显的历史结果同源
+  ///
+  /// 刻意按角色分开而不是共用一个字符串：小Q 与时间线可以绑不同模型，共用会让一张卡片的
+  /// 结果串到另一张卡片上。进页面时按当前绑定模型名从 [ModelVisionCapability] 回显
+  /// （见 `_restoreImageTestResults`），否则用户每次都要重发一张探测图才能看到结论。
+  final Map<String, String> _imageTestByRole = {};
   final ValueNotifier<bool> _isBatchTestingNotifier = ValueNotifier(false);
   final ValueNotifier<Map<String, String>> _modelLatencyNotifier =
       ValueNotifier({});
@@ -92,6 +100,37 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     _loadFreeModels();
     _loadDisabledTools();
     _loadRequestStats();
+    _restoreImageTestResults();
+  }
+
+  /// 从探测缓存回显各角色当前绑定模型的「识图检测」结论
+  ///
+  /// 按角色而不是按配置 id 存：改绑模型时该角色的旧结论已被清掉，重进页面后这里会按
+  /// 新绑定的模型名重新取，不会把上一个模型的结论挂在当前模型上。
+  Future<void> _restoreImageTestResults() async {
+    for (final role in const ['assistant', 'timelineOptimization']) {
+      AiConfig config;
+      try {
+        config = await AiRoleService.instance.getEffectiveConfigForRole(role);
+      } catch (_) {
+        continue;
+      }
+      final label = _imageTestLabelFor(config.modelName);
+      if (!mounted) return;
+      // 本次会话里刚测过的结果优先，别被缓存里的旧值盖掉
+      setState(() {
+        if (label != null && !_imageTestByRole.containsKey(role)) {
+          _imageTestByRole[role] = label;
+        }
+      });
+    }
+  }
+
+  /// 已知结论 → 徽标文案（未知返回 null，不显示徽标）
+  static String? _imageTestLabelFor(String modelName) {
+    final known = ModelVisionCapability.probeConclusion(modelName);
+    if (known == null) return null;
+    return known ? '支持识别' : '不支持图片识别';
   }
 
   /// 读取近 [_statsWindowHours] 小时的发信事实并聚合
@@ -152,7 +191,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   Future<void> _loadFreeModels() async {
     final selectedId = await AiRoleService.instance.getPreferredFreeModelId();
     if (selectedId == null) {
-      await AiRoleService.instance.savePreferredFreeModelId('deepseek-flash');
+      await AiRoleService.instance.savePreferredFreeModelId(kDefaultFreeModelId);
     }
   }
 
@@ -733,46 +772,22 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     return base64Encode(bytes);
   }
 
-  Future<void> _testModelImageRecognition(
-    String roleKey,
-    List<AiConfig> configs,
-  ) async {
-    final useFreeModel = roleKey == 'assistant'
-        ? _roles.assistantUseFreeModel
-        : _roles.timelineOptimizationUseFreeModel;
-
-    AiConfig? config;
-
-    if (useFreeModel) {
-      config = FreeModelService.instance.toAiConfig(
-        BuiltinFreeKeys.createDefaultConfig(),
-      );
-    } else {
-      String? currentId;
-      switch (roleKey) {
-        case 'assistant':
-          currentId = _roles.assistant;
-          break;
-        case 'timelineOptimization':
-          currentId = _roles.timelineOptimization;
-          break;
-      }
-
-      if (currentId == null) {
-        Toast.warning(context, '请先绑定并保存模型');
-        return;
-      }
-
-      config = configs.firstWhere(
-        (c) => c.id == currentId,
-        orElse: () => configs.first,
-      );
+  Future<void> _testModelImageRecognition(String roleKey) async {
+    // 按该角色**实际生效**的配置来测。过去这里在「使用内置免费模型」时固定测
+    // SenseNova 6.8，于是小Q 明明绑着不支持图片的模型也能测出「支持识别」，
+    // 而检测结论现在会按模型名持久化，测错对象会被一直显示在徽标上。
+    final AiConfig config;
+    try {
+      config = await AiRoleService.instance.getEffectiveConfigForRole(roleKey);
+    } catch (e) {
+      if (mounted) Toast.warning(context, '读取当前绑定模型失败：$e');
+      return;
     }
 
     if (mounted) {
       setState(() {
         _testingImageRecognition = true;
-        _imageTestResult = null;
+        _imageTestByRole.remove(roleKey);
       });
     }
 
@@ -780,21 +795,20 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       final imgBase64 = await _generateTestImageBase64();
       final service = AiService();
       final success = await service.checkImageRecognition(config, imgBase64);
+      // 结论按模型名落盘：下次进页面直接回显，不必重发这张探测图
+      await ModelVisionCapability.recordProbeResult(config.modelName, success);
 
       if (mounted) {
         setState(() {
-          if (success) {
-            _imageTestResult = '支持识别';
-          } else {
-            _imageTestResult = '不支持图片识别';
-          }
+          _imageTestByRole[roleKey] = success ? '支持识别' : '不支持图片识别';
         });
       }
     } catch (e) {
       final errMsg = _formatTestError(e);
+      // 失败**不写缓存**：网络断、额度耗尽、端点故障都不说明该模型没有视觉能力
       if (mounted) {
         setState(() {
-          _imageTestResult = '测试失败: $errMsg';
+          _imageTestByRole[roleKey] = '测试失败: $errMsg';
         });
       }
     } finally {
@@ -1187,6 +1201,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       'fetch_url': '网页阅读',
       'web_search': '网页搜索',
       'generate_image': '图片生成',
+      'describe_image': '图片识别',
     };
 
     return Column(
@@ -1624,17 +1639,17 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         ? _roles.assistantFreeModelId
         : _roles.timelineOptimizationFreeModelId;
 
-    // 内置免费模型候选列表（Gemini 与 Claude 系列已下线，首位为默认头牌 DeepSeek Flash）
+    // 内置免费模型候选列表（Gemini 与 Claude 系列已下线，首位为默认头牌 GLM 5.2）
     final builtinModels = [
+      {'id': 'free:$kDefaultFreeModelId', 'name': '内置 GLM 5.2', 'modelId': kDefaultFreeModelId},
       {'id': 'free:deepseek-flash', 'name': '内置 DeepSeek Flash', 'modelId': 'deepseek-flash'},
       {'id': 'free:sensenova-flash-lite', 'name': '内置 SenseNova 6.8', 'modelId': 'sensenova-flash-lite'},
-      {'id': 'free:glm-5.2', 'name': '内置 GLM 5.2', 'modelId': 'glm-5.2'},
     ];
 
-    // 当前选中的下拉 value：若是免费模型，使用形如 `free:deepseek-flash`；否则为自定义配置 id
+    // 当前选中的下拉 value：若是免费模型，使用形如 `free:<modelId>`；否则为自定义配置 id
     String? currentDropdownValue;
     if (useFreeModel) {
-      currentDropdownValue = 'free:${roleFreeModelId ?? 'deepseek-flash'}';
+      currentDropdownValue = 'free:${roleFreeModelId ?? kDefaultFreeModelId}';
       // 绑定指向已下线内置模型时必须回落首位：DropdownButton 的 value 若不在
       // items 里会直接断言崩掉整页（老设备读到 v4 迁移前的 gemini 绑定即此情形）
       if (builtinModels.every((m) => m['id'] != currentDropdownValue)) {
@@ -1664,7 +1679,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         : Colors.purple.shade600;
 
     // 识图检测结果拆分：行内徽标只放短文案，长失败原因降级为标签下的副行小字
-    final rawImageTest = _imageTestResult;
+    final rawImageTest = _imageTestByRole[roleKey];
     final imageTestOk = rawImageTest == '支持识别';
     final String? imageTestChip = switch (rawImageTest) {
       null => null,
@@ -1809,9 +1824,8 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                   if (mounted) {
                     setState(() {
                       _roles = newRoles;
-                      if (roleKey == 'timelineOptimization') {
-                        _imageTestResult = null;
-                      }
+                      // 换绑模型后上一个模型的识图结论就作废了，等重进页面按新模型回显
+                      _imageTestByRole.remove(roleKey);
                     });
                   }
                 },
@@ -1999,7 +2013,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                     OutlinedButton.icon(
                       onPressed: _testingImageRecognition
                           ? null
-                          : () => _testModelImageRecognition(roleKey, configs),
+                          : () => _testModelImageRecognition(roleKey),
                       style: OutlinedButton.styleFrom(
                         visualDensity: VisualDensity.compact,
                         minimumSize: const Size(0, 32),
@@ -2042,7 +2056,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                     value: settings.extractImages,
                     onChanged: (value) {
                       // 关闭时清掉旧结果，避免重新打开残留上一次的徽标
-                      if (!value) setState(() => _imageTestResult = null);
+                      if (!value) setState(() => _imageTestByRole.remove(roleKey));
                       _updateRoleSettings(
                         roleKey,
                         settings.copyWith(extractImages: value),

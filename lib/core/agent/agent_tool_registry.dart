@@ -1,6 +1,7 @@
 import 'package:qnote_flutter/core/agent/engine/tool_dispatcher.dart';
 import 'package:qnote_flutter/core/agent/models/agent_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/general/ask_user_tool.dart';
+import 'package:qnote_flutter/core/agent/tools/general/describe_image_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/general/fetch_url_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/general/generate_image_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/general/grep_tool.dart';
@@ -27,6 +28,8 @@ class AgentToolRegistry {
     'fetch_url',
     'web_search',
     'generate_image',
+    // 关掉它不会让模型突然会看图：图片仍会按能力被剥离，只是小Q 从此只能如实说看不到画面
+    'describe_image',
   };
 
   /// 创建默认工具分发器
@@ -58,6 +61,7 @@ class AgentToolRegistry {
       if (!disabled.contains('fetch_url')) FetchUrlTool(),
       if (!disabled.contains('web_search')) WebSearchTool(),
       if (!disabled.contains('generate_image')) GenerateImageTool(),
+      if (!disabled.contains('describe_image')) DescribeImageTool(),
       AskUserTool(),
     ];
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
+import 'package:qnote_flutter/models/free_model_config.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 
 /// 小Q可用的内置免费模型（id 带 free: 前缀，裸名即网关侧的模型 ID：
@@ -10,16 +11,16 @@ import 'package:qnote_flutter/providers/ai_provider.dart';
 /// 名称只写模型本身，「内置」语义由选择器的分组标题承载，避免重复。
 /// Gemini 与 Claude 系列内置模型已下线，候选全部走商汤网关，首位即默认头牌。
 const List<Map<String, String>> kAssistantBuiltinModels = [
+  {'id': 'free:$kDefaultFreeModelId', 'name': 'GLM 5.2'},
   {'id': 'free:deepseek-flash', 'name': 'DeepSeek Flash'},
   {'id': 'free:sensenova-flash-lite', 'name': 'SenseNova 6.8'},
-  {'id': 'free:glm-5.2', 'name': 'GLM 5.2'},
 ];
 
 /// 模型 id → 显示名：free: 前缀查内置表，未收录时回退裸 id；自定义配置查 name
 String? assistantModelDisplayName(String? id, List<AiConfig> configs) {
   if (id == null) return null;
   // 哨兵值：未绑定任何模型时视为使用默认免费模型
-  if (id == '__free_model__') return 'DeepSeek Flash';
+  if (id == '__free_model__') return kAssistantBuiltinModels.first['name'];
   if (id.startsWith('free:')) {
     for (final m in kAssistantBuiltinModels) {
       if (m['id'] == id) return m['name'];
@@ -47,7 +48,7 @@ Future<({String id, String name})?> showAssistantModelSelector(
   if (!context.mounted) return null;
   // 从角色绑定推导当前选中模型 id；均未绑定时用哨兵值高亮默认免费模型
   final activeModelId = (roles?.assistantUseFreeModel ?? false)
-      ? 'free:${roles!.assistantFreeModelId ?? 'deepseek-flash'}'
+      ? 'free:${roles!.assistantFreeModelId ?? kDefaultFreeModelId}'
       : roles?.assistant ?? '__free_model__';
   final selected = await showDialog<String>(
     context: context,
@@ -102,7 +103,7 @@ class ModelSelectorDialog extends StatelessWidget {
         ...kAssistantBuiltinModels.map((m) {
           final isSelected = activeModelId == m['id'] ||
               (activeModelId == '__free_model__' &&
-                  m['id'] == 'free:deepseek-flash');
+                  m['id'] == kAssistantBuiltinModels.first['id']);
           return SimpleDialogOption(
             onPressed: () => Navigator.pop(context, m['id']),
             child: Row(

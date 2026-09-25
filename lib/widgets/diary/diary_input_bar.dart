@@ -15,12 +15,14 @@ import 'package:qnote_flutter/models/shortcut_field.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/models/fixed_event_template.dart';
+import 'package:qnote_flutter/models/free_model_config.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/providers/fixed_event_provider.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/ai/model_vision_capability.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/widgets/time_picker.dart';
@@ -1093,8 +1095,21 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       final roleSettings = await AiRoleService.instance.getSettingsForRole(
         'timelineOptimization',
       );
-      aiService.updateConfig(
+      // 要发图而绑定模型看不了图时（实测这类模型收图不报错、直接把内容编出来），
+      // 本次提取改走内置识图链路，温度与 token 预算仍沿用角色设置
+      final effectiveConfig = ModelVisionCapability.withVisionFallback(
         roleConfig,
+        sendingImage: extractImages && draft.selectedPhotos.isNotEmpty,
+      );
+      if (!identical(effectiveConfig, roleConfig)) {
+        LoggerService.instance.logAI(
+          '快捷记录的图片提取已改走内置识图链路',
+          details: '原绑定模型=${roleConfig.modelName} 不支持图片输入，'
+              '改用 ${effectiveConfig.modelName}',
+        );
+      }
+      aiService.updateConfig(
+        effectiveConfig,
         temperature: roleSettings.temperature,
         maxTokens: roleSettings.maxTokens,
       );
@@ -1564,7 +1579,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
 
     final roles = await AiRoleService.instance.getRoles();
     final currentModelId = roles.timelineOptimizationUseFreeModel
-        ? 'free:${roles.timelineOptimizationFreeModelId ?? 'deepseek-flash'}'
+        ? 'free:${roles.timelineOptimizationFreeModelId ?? kDefaultFreeModelId}'
         : roles.timelineOptimization;
 
     if (!mounted) return;

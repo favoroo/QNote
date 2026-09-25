@@ -31,6 +31,7 @@ import 'package:qnote_flutter/models/date_color_mark.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/fixed_event_template.dart';
 import 'package:qnote_flutter/models/folder.dart';
+import 'package:qnote_flutter/models/free_model_config.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
@@ -827,8 +828,10 @@ class VirtualWorkspaceService {
         buffer.writeln('- 天气: ${r.weather}');
       }
       if (r.photos.isNotEmpty) {
-        // 仅路径文本模型无法感知画面，附提示引导其调用 view_image 工具加载图片
-        buffer.writeln('- 图片: ${r.photos.join(', ')}（可调用 view_image 工具查看图片内容）');
+        // 仅路径文本模型无法感知画面，附提示引导其调用工具加载图片
+        // （行尾括注由写回解析按「（可调用…）」剥离，改措辞要保持这个前缀）
+        buffer.writeln('- 图片: ${r.photos.join(', ')}'
+            '（可调用 view_image 查看画面；当前模型不支持看图时用 describe_image 取文字识别结果）');
       }
       for (final entry in r.tagEntries) {
         for (final entryField in entry.fields.entries) {
@@ -925,14 +928,14 @@ class VirtualWorkspaceService {
           'assistant': {
             'useFreeModel': roles.assistantUseFreeModel,
             'freeModelId':
-                roles.assistantFreeModelId ?? 'deepseek-flash',
+                roles.assistantFreeModelId ?? kDefaultFreeModelId,
             'customModelId': roles.assistant,
           },
           'timelineOptimization': {
             'useFreeModel': roles.timelineOptimizationUseFreeModel,
             'freeModelId':
                 roles.timelineOptimizationFreeModelId ??
-                'deepseek-flash',
+                kDefaultFreeModelId,
             'customModelId': roles.timelineOptimization,
           },
         },

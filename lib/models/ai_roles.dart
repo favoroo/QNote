@@ -1,12 +1,14 @@
 import 'dart:convert';
 
+import 'package:qnote_flutter/models/free_model_config.dart';
+
 class AiRoles {
   final String? assistant;
   final String? timelineOptimization;
   // 角色是否使用免费模型
   final bool assistantUseFreeModel;
   final bool timelineOptimizationUseFreeModel;
-  // 角色具体使用的免费模型 ID (如 'sensenova-flash-lite', 'glm-5.2', 'deepseek-flash')
+  // 角色具体使用的免费模型 ID（默认头牌见 `kDefaultFreeModelId`）
   final String? assistantFreeModelId;
   final String? timelineOptimizationFreeModelId;
   // 小Q生图工具绑定的内置生图模型 ID（Gemini 生图下线后目前仅 'sensenova-u1.5-lite'）
@@ -17,8 +19,8 @@ class AiRoles {
     this.timelineOptimization,
     this.assistantUseFreeModel = false,
     this.timelineOptimizationUseFreeModel = false,
-    this.assistantFreeModelId = 'deepseek-flash',
-    this.timelineOptimizationFreeModelId = 'deepseek-flash',
+    this.assistantFreeModelId = kDefaultFreeModelId,
+    this.timelineOptimizationFreeModelId = kDefaultFreeModelId,
     this.imageGenerationFreeModelId = 'sensenova-u1.5-lite',
   });
 
@@ -43,9 +45,9 @@ class AiRoles {
       assistantUseFreeModel: map['assistantUseFreeModel'] as bool? ?? false,
       timelineOptimizationUseFreeModel:
           map['timelineOptimizationUseFreeModel'] as bool? ?? false,
-      assistantFreeModelId: map['assistantFreeModelId'] as String? ?? 'deepseek-flash',
+      assistantFreeModelId: map['assistantFreeModelId'] as String? ?? kDefaultFreeModelId,
       timelineOptimizationFreeModelId:
-          map['timelineOptimizationFreeModelId'] as String? ?? 'deepseek-flash',
+          map['timelineOptimizationFreeModelId'] as String? ?? kDefaultFreeModelId,
       imageGenerationFreeModelId:
           map['imageGenerationFreeModelId'] as String? ?? 'sensenova-u1.5-lite',
     );

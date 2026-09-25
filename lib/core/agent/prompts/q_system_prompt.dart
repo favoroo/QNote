@@ -24,11 +24,15 @@ class QSystemPrompt {
   /// [enabledOptionalTools] 当前启用的可选工具名集合（被禁用的工具对应准则不注入）；
   /// `/skills/` 索引段由 [SkillRegistry] 动态生成（内置 + 用户自定义技能），
   /// 调用前需先 `await SkillRegistry.instance.ensureLoaded()` 保证用户技能已加载
+  /// [supportsVisionInput] 当前绑定的对话模型能否接收图片输入：false 时必须明确告知
+  /// 模型「你看不到画面」并把识图需求导向 `describe_image` —— 网关对不支持图片的模型
+  /// 不会报错（实测 glm-5.2 收图仍返回 200，只是把内容编出来），只靠报错兜底拦不住编造
   static String buildSystemPrompt({
     String personalityPrompt =
         '你是 QNote 应用内置的全能终端管家与专属助理 —— **小Q**。',
     String personalityName = '',
     Set<String> enabledOptionalTools = AgentToolRegistry.optionalToolNames,
+    bool supportsVisionInput = true,
   }) {
     final optionalRules = <String>[];
     if (enabledOptionalTools.contains('fetch_url')) {
@@ -40,6 +44,20 @@ class QSystemPrompt {
     if (enabledOptionalTools.contains('generate_image')) {
       optionalRules.add(_generateImageRule);
     }
+    if (enabledOptionalTools.contains('describe_image')) {
+      optionalRules.add(
+        supportsVisionInput ? _describeImageWhenCapableRule : _describeImageRule,
+      );
+    }
+    // 附件图片条款必须跟着能力走：模型其实看不见时还写「你已能直接看到画面」，
+    // 等于授意它照着用户的提问编一段图片描述
+    final attachmentImageRule = supportsVisionInput
+        ? '   - 对话附件图片：用户消息中直接附带/发送的图片已随消息注入上下文、'
+              '你已能直接看到画面，直接分析作答即可，**严禁**调用 `view_image` 或为其虚构路径；'
+        : '   - 对话附件图片：当前对话模型不支持图片输入，附件图片在进入上下文前已被剥离，'
+              '**你看不到任何画面**；需要识图时必须调用 `describe_image`'
+              '（把系统提示里列出的图片路径与你的具体问题传入），'
+              '未拿到工具回显前严禁描述、猜测或复述图片内容；';
 
     // 人格段单独成节：篇幅占不上 AGENTS.md 的零头，就靠优先级声明和"管辖范围"
     // 划分来保证语气不被下文的能力规范条款吞成公文体
@@ -160,7 +178,7 @@ is_long_term: false      # 是否为长期待办(选填)
    - 续写一段：`write_file(mode: "append")`（时间线流水、记忆、日记、笔记末尾），不要「先读再整篇覆盖」；
    - 多条目一次写：`write_files`（如从笔记提取多条待办）；
    - 换分类/改名：`move_file` 一步完成，**严禁**用「新建一条 + 删掉旧的」；
-   - 对话附件图片：用户消息中直接附带/发送的图片已随消息注入上下文、你已能直接看到画面，直接分析作答即可，**严禁**调用 `view_image` 或为其虚构路径；
+$attachmentImageRule
    - 只读与检索类工具可与其他只读工具在同一条回复里并列调用（并行执行更快）。
 8. **回复风格**（语气与篇幅倾向**服从开头的「人格与身份」小节**）：默认最终答复简洁（通常 2~5 句），用 Markdown 列表总结关键变更（如分类、优先级、提醒时间），不要复述工具的原始输出。
    - 人格决定情绪浓度：个性要求热情夸奖、先接情绪、带个颜文字时，就在上述篇幅里自然带上，这不算啰嗦；个性要求极简时，一句话足矣。**五种个性不该读出同一种腔调**。
@@ -209,7 +227,23 @@ ${optionalRules.isEmpty ? '' : '\n## 5. 联网与媒体工具准则\n${optionalR
       '  - 插入时间线：在对应时间块内写 `- 图片: <路径>`；\n'
       '  - 插入笔记/日记：只在**对应文件**的正文独立成行写 `![image](<路径>)`；\n'
       '  - 仅在对话中展示：严禁在回复正文里写 `![image](<路径>)` 或任何图片语法（生图卡片会自动展示这张图，正文再写会重复显示两遍），只用文字说明生成了什么；\n'
-      '  - 生成失败时如实告知（如限速、网络问题），严禁编造图片路径；不要用 generate_image 查看已有图片（用 view_image）或搜索网络图片（用 web_search）。';
+      '  - 生成失败时如实告知（如限速、网络问题），严禁编造图片路径；不要用 generate_image 查看已有图片'
+      '（能看图用 view_image，当前模型看不了图用 describe_image）或搜索网络图片（用 web_search）。';
+
+  /// 识图工具准则（describe_image 启用、且当前对话模型**不支持**图片输入时注入）
+  static const String _describeImageRule =
+      '- **图片识别（describe_image）**：当前对话模型不支持图片输入，**你看不到任何画面**——'
+      '日记/笔记/时间线里记录的图片只是路径文本，用户发来的附件图片也会在进入上下文前被剥离。'
+      '因此任何「图里是什么」「图上写了什么」「识别一下这张图」的需求，都必须先调用 '
+      '`describe_image(path: ..., question: ...)`，把系统提示里列出的图片路径原样传入并写清问题；'
+      '工具返回的是另一个识图模型给出的**文字**结论，转述时说明这是识图结果，不要假装自己看到了画面；'
+      '工具失败或没有返回内容时如实告知用户，**严禁**凭文件名、路径、上下文线索或想象描述图片内容。';
+
+  /// 识图工具准则（describe_image 启用、且当前模型**能**看图时注入：不抢 view_image 的活）
+  static const String _describeImageWhenCapableRule =
+      '- **图片识别（describe_image）**：当前模型已能直接看到注入的图片，一般无需调用本工具；'
+      '它适用于需要**精确抄录图中文字**（票据、截图、白板、表格），或画面细节在上下文里看不清的场景；'
+      'path 支持图片路径、内联图片与 http(s) 链接，question 写具体问题。';
 
   /// 生成 `/skills/` 技能索引行：内置技能按注册顺序在前，用户自定义技能追加在后
   static String _skillIndexLines() {

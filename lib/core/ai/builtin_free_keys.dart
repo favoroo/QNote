@@ -128,7 +128,8 @@ class BuiltinFreeKeys {
     return _decode(_kGemini);
   }
 
-  /// 创建内置的默认 SenseNova 6.8 模型配置
+  /// 创建内置的 SenseNova 6.8 模型配置（降级链末位，同时是内置识图视觉链路；
+  /// 历史方法名沿用 default）
   static FreeModelConfig createDefaultConfig([String? apiKey]) {
     final effectiveKey = apiKey ?? FreeModelKeyManager.instance.acquireNextKey();
     return FreeModelConfig(
@@ -143,7 +144,17 @@ class BuiltinFreeKeys {
     );
   }
 
-  /// 创建内置的 GLM-5.2 模型配置（共享网关与 4 个内置 Key 轮询）
+  /// 内置识图（图片输入）链路的模型名，与 [createVisionConfig] 同口径
+  ///
+  /// 之所以单独常量化模型名：`ModelVisionCapability` 的能力白名单要按**发给网关的
+  /// modelName** 判定，而不是按配置 id 或方法名猜。
+  static const String visionModelName = 'sensenova-6.8-flash-lite';
+
+  /// 创建内置识图视觉链路配置（对话模型不支持图片输入时，由 `describe_image`
+  /// 工具与日记图片提取兜底使用）
+  static FreeModelConfig createVisionConfig([String? apiKey]) => createDefaultConfig(apiKey);
+
+  /// 创建内置的 GLM-5.2 模型配置（共享网关与内置 Key 轮询，内置默认头牌）
   static FreeModelConfig createGlmConfig([String? apiKey]) {
     final effectiveKey = apiKey ?? FreeModelKeyManager.instance.acquireNextKey();
     return FreeModelConfig(
@@ -154,11 +165,11 @@ class BuiltinFreeKeys {
       modelName: 'glm-5.2',
       obfuscatedApiKey: effectiveKey,
       authType: 'bearer',
-      priority: 3,
+      priority: 0,
     );
   }
 
-  /// 创建内置的 DeepSeek Flash 模型配置（共享网关与 4 个内置 Key 轮询，默认推荐）
+  /// 创建内置的 DeepSeek Flash 模型配置（共享网关与内置 Key 轮询，头牌之后的次选）
   static FreeModelConfig createDeepSeekConfig([String? apiKey]) {
     final effectiveKey = apiKey ?? FreeModelKeyManager.instance.acquireNextKey();
     return FreeModelConfig(
@@ -169,7 +180,7 @@ class BuiltinFreeKeys {
       modelName: 'deepseek-flash',
       obfuscatedApiKey: effectiveKey,
       authType: 'bearer',
-      priority: 0,
+      priority: 1,
     );
   }
 
@@ -184,7 +195,7 @@ class BuiltinFreeKeys {
       modelName: 'sensenova-u1.5-lite',
       obfuscatedApiKey: effectiveKey,
       authType: 'bearer',
-      priority: 1,
+      priority: 3,
     );
   }
 }

@@ -266,7 +266,9 @@ class AiService {
   /// 本函数只负责：把失败归类（[QuotaSignal]）、把冷却打在**本次真正发出去的**
   /// [sentKey] 上、以及决定这次重试前等多久。
   ///
-  /// [hasYielded] 供流式场景使用 —— 首包已产出后不再重试，否则调用方会收到重复内容。
+  /// [hasDeliveredText] / [partiallyStreamed] 供流式场景使用：前者为「正文已吐给用户」，
+  /// 是禁止重发的唯一条件；后者包含只吐过思考或工具参数的情况，重发前用 [onStreamRetry]
+  /// 通知消费方作废本轮碎片（否则新旧两段会在「思考中」卡里首尾相接）。
   /// [onQuotaHold] 在整池限流、需要排队等回填时回调预计等待时长。
   /// 返回 `true` 时调用方应 `retryCount++` 后 `continue` 重发本轮请求。
   ///
@@ -281,12 +283,24 @@ class AiService {
   Future<bool> _shouldRetryAndWait(
     Object error,
     int retryCount, {
-    bool hasYielded = false,
+    bool hasDeliveredText = false,
+    bool partiallyStreamed = false,
+    void Function()? onStreamRetry,
     required _SendTrace trace,
     CancelToken? cancelToken,
     void Function(Duration hold)? onQuotaHold,
   }) async {
-    if (hasYielded) return false;
+    // 只有**正文**已交付才禁止重发（重发=重复回答）。思考增量与工具参数不是交付物：
+    // onToolCallsReady 还没被调用、UI 只有一张瞬态状态卡，而推理模型恰恰在这两段
+    // 上流式时间最长，网关掐流也因此最常发生在这里。
+    if (hasDeliveredText) {
+      LoggerService.instance.logAI(
+        '${trace.scene} 已输出正文后中断（${_briefError(error)}），'
+        '重发会得到重复回答，放弃重试',
+        level: LogLevel.warning,
+      );
+      return false;
+    }
     final scene = trace.scene;
     final sentKey = trace.sentKey;
     final isConnectionError =
@@ -331,6 +345,7 @@ class AiService {
         scene: scene,
       );
       if (held == null) return false;
+      if (partiallyStreamed) onStreamRetry?.call();
       LoggerService.instance.logAI(
         '$scene 排队 ${held.inMilliseconds}ms 等到 Key 回填，重发请求（新 Key 由 _beforeSend 现取）',
       );
@@ -366,6 +381,9 @@ class AiService {
       '$configDesc，等待 ${delay.inMilliseconds}ms 后发起第 $next/$maxRetries 次重试',
       level: LogLevel.warning,
     );
+    // 决定要重发了，才通知消费方作废本轮碎片：放在等待之前，让状态行立刻回到
+    // 「小Q思考中」，而不是继续挂着上一段的半截思考
+    if (partiallyStreamed) onStreamRetry?.call();
     await Future.delayed(delay);
     return true;
   }
@@ -857,11 +875,14 @@ class AiService {
   ///   聚合完成后在 onToolCallsReady 回调中一次性交付完整对象
   /// [onQuotaHold] 在「整池限流、排队等额度回填」时回调预计等待时长，
   /// 供上层把它显示成状态行而不是让用户对着静止的「思考中」发呆。
+  /// [onStreamRetry] 在**已经吐过思考或工具参数**、但本轮决定原地重发时回调一次，
+  /// 供消费方作废本轮已渲染的碎片；正文一旦流出就不再重发，因此不会触发回调。
   Stream<AiToolStreamChunk> chatStreamWithTools({
     required List<ChatMessage> messages,
     List<Map<String, dynamic>>? tools,
     void Function(List<ToolCall> toolCalls)? onToolCallsReady,
     void Function(Duration hold)? onQuotaHold,
+    void Function()? onStreamRetry,
     CancelToken? cancelToken,
   }) async* {
     if (_config == null) throw Exception('AI config not set');
@@ -875,7 +896,10 @@ class AiService {
     int retryCount = 0;
 
     while (true) {
-      bool hasYielded = false;
+      // 两个口径分开记：正文决定**能不能**重发，是否流出过任何碎片决定重发前
+      // 要不要通知消费方复位（网关掐流最常发生在只吐思考的阶段）
+      bool hasDeliveredText = false;
+      bool partiallyStreamed = false;
       // 每轮（含重试）都重新取一把 Key：这就是「成功也换」在 AgentLoop 每轮推理上的效果
       final trace = await _beginSend('带工具流式对话');
       final sentKey = trace.sentKey;
@@ -963,7 +987,7 @@ class AiService {
               final reasoning =
                   (delta?['reasoning_content'] ?? delta?['reasoning']) as String?;
               if (reasoning != null && reasoning.isNotEmpty) {
-                hasYielded = true;
+                partiallyStreamed = true;
                 yield AiToolStreamChunk.reasoning(reasoning);
               }
 
@@ -971,7 +995,8 @@ class AiService {
               final text = delta?['content'] as String?;
               if (text != null && text.isNotEmpty) {
                 accumulatedResponse.write(text);
-                hasYielded = true;
+                hasDeliveredText = true;
+                partiallyStreamed = true;
                 yield AiToolStreamChunk.text(text);
               }
 
@@ -1011,6 +1036,7 @@ class AiService {
                         now.difference(lastProgressAt!).inMilliseconds >= 500) {
                       builder['progressNotified'] = true;
                       lastProgressAt = now;
+                      partiallyStreamed = true;
                       yield AiToolStreamChunk.toolProgress(
                         ToolCallProgress(
                           toolName: name,
@@ -1044,7 +1070,9 @@ class AiService {
         if (await _shouldRetryAndWait(
           e,
           retryCount,
-          hasYielded: hasYielded,
+          hasDeliveredText: hasDeliveredText,
+          partiallyStreamed: partiallyStreamed,
+          onStreamRetry: onStreamRetry,
           trace: trace,
           cancelToken: cancelToken,
           onQuotaHold: onQuotaHold,
@@ -1097,7 +1125,7 @@ class AiService {
     int retryCount = 0;
 
     while (true) {
-      bool hasYielded = false;
+      bool hasDeliveredText = false;
       final trace = await _beginSend('普通流式对话');
       final sentKey = trace.sentKey;
       try {
@@ -1168,7 +1196,7 @@ class AiService {
                     DateTime.now().difference(trace.startedAt).inMilliseconds;
                 totalChars += text.length;
                 accumulatedResponse.write(text);
-                hasYielded = true;
+                hasDeliveredText = true;
                 yield text;
               }
             } catch (e) {
@@ -1189,7 +1217,7 @@ class AiService {
         if (await _shouldRetryAndWait(
           e,
           retryCount,
-          hasYielded: hasYielded,
+          hasDeliveredText: hasDeliveredText,
           trace: trace,
         )) {
           retryCount++;

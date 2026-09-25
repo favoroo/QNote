@@ -17,7 +17,10 @@ class AiRoleService {
   static const _selectedFreeModelKey = 'selected_free_model';
   // AI 温度设置迁移版本标记
   static const _aiTempsMigrationVersionKey = 'ai_temps_migration_version';
-  // 默认免费模型升级迁移标记（升级到 deepseek-flash；换内置头牌或再下线模型时 +1 重跑）
+  // 默认免费模型升级迁移标记（升级到当时的内置头牌；再下线模型时 +1 重跑）
+  //
+  // 换头牌**故意不升版**：升版会把已显式选了旧头牌的老用户一起改写，
+  // 而头牌迁移只应作用于「从未设过值」的设备（见 `_migrateDeprecatedFreeModel`）。
   static const _defaultModelMigrationVersionKey = 'default_model_migration_v5';
 
   /// 已下线的内置聊天免费模型 id（含历史裸名变体，统一归位到新头牌）
@@ -35,24 +38,24 @@ class AiRoleService {
   Future<void> initAndEnsureDefaults() async {
     final existing = await _repo.getAiRoles();
     if (existing == null) {
-      // 初次进入应用：自动配置使用内置模型（开箱即用，默认选用 DeepSeek Flash）
+      // 初次进入应用：自动配置使用内置模型（开箱即用，头牌见 `kDefaultFreeModelId`）
       await saveRoles(
         const AiRoles(
           assistantUseFreeModel: true,
           timelineOptimizationUseFreeModel: true,
-          assistantFreeModelId: 'deepseek-flash',
-          timelineOptimizationFreeModelId: 'deepseek-flash',
+          assistantFreeModelId: kDefaultFreeModelId,
+          timelineOptimizationFreeModelId: kDefaultFreeModelId,
         ),
       );
     }
 
     // 迁移：将 timelineOptimization.extractImages 默认值从 false 升级为 true
     await _migrateExtractImagesDefault();
-    // 迁移：把绑定在已下线内置模型上的老用户归位到 DeepSeek Flash
+    // 迁移：把绑定在已下线内置模型上的老用户归位到当前头牌
     await _migrateDeprecatedFreeModel();
   }
 
-  /// 迁移已下线的内置模型绑定至 DeepSeek Flash
+  /// 迁移已下线的内置模型绑定至当前头牌
   ///
   /// Gemini 系列（4 个聊天模型 + Gemini 生图）与 Claude Sonnet 4.6 都已从
   /// BuiltinFreeKeys 删除，内置免费模型现在全部落在商汤网关。老设备上角色仍可能
@@ -74,12 +77,12 @@ class AiRoleService {
           existing.copyWith(
             assistantFreeModelId:
                 _deprecatedFreeModelIds.contains(existing.assistantFreeModelId)
-                    ? 'deepseek-flash'
+                    ? kDefaultFreeModelId
                     : existing.assistantFreeModelId,
             timelineOptimizationFreeModelId:
                 _deprecatedFreeModelIds.contains(
                         existing.timelineOptimizationFreeModelId)
-                    ? 'deepseek-flash'
+                    ? kDefaultFreeModelId
                     : existing.timelineOptimizationFreeModelId,
             imageGenerationFreeModelId: deprecatedImage
                 ? 'sensenova-u1.5-lite'
@@ -91,7 +94,7 @@ class AiRoleService {
 
     final preferred = await getPreferredFreeModelId();
     if (preferred == null || _deprecatedFreeModelIds.contains(preferred)) {
-      await savePreferredFreeModelId('deepseek-flash');
+      await savePreferredFreeModelId(kDefaultFreeModelId);
     }
 
     await prefs.setBool(_defaultModelMigrationVersionKey, true);

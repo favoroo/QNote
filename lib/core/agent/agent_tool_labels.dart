@@ -3,9 +3,10 @@
 /// 仅用于 UI 展示（执行中状态、反馈卡标题等），不改动发给模型的工具定义
 /// 与会话持久化里的原始工具名，历史消息在渲染时读此映射做转换。
 abstract final class AgentToolLabels {
-  /// 各工具的执行中文案（进行时措辞），覆盖 14 个注册工具。
+  /// 各工具的执行中文案（进行时措辞），覆盖 15 个注册工具。
   static const Map<String, String> _progressLabels = {
     'generate_image': '正在生成图片',
+    'describe_image': '正在识别图片',
     'web_search': '正在联网搜索',
     'fetch_url': '正在读取网页',
     'read_file': '正在读取文件',
@@ -24,6 +25,7 @@ abstract final class AgentToolLabels {
   /// 各工具的完成反馈卡标题（名词化措辞）。
   static const Map<String, String> _resultLabels = {
     'generate_image': '生成图片',
+    'describe_image': '识别图片',
     'web_search': '联网搜索',
     'fetch_url': '读取网页',
     'read_file': '读取文件',
@@ -75,7 +77,8 @@ abstract final class AgentToolLabels {
       'edit_file' ||
       'delete_file' ||
       'list_dir' ||
-      'view_image' => const ['path'],
+      'view_image' ||
+      'describe_image' => const ['path'],
       'move_file' => const ['from', 'to'],
       'grep' => const ['pattern', 'query', 'keyword'],
       'web_search' => const ['query'],
@@ -147,6 +150,11 @@ abstract final class AgentToolLabels {
       case 'delete_file':
       case 'list_dir':
       case 'view_image':
+        return _stringOf(data, const ['path']);
+      case 'describe_image':
+        // 识图工具常收到 data: 内联图片，直接截断会显示成「data:image/…」的噪声
+        final path = data['path'];
+        if (path is String && path.startsWith('data:')) return '内联图片';
         return _stringOf(data, const ['path']);
       case 'write_files':
         final files = data['files'];

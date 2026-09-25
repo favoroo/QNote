@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/ai/model_vision_capability.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
@@ -46,8 +47,24 @@ Future<AiExtractResult?> extractExistingRecord({
     final aiService = ref.read(aiServiceProvider);
     final roleConfig = await AiRoleService.instance.getEffectiveConfigForRole('timelineOptimization');
     final roleSettings = await AiRoleService.instance.getSettingsForRole('timelineOptimization');
-    aiService.updateConfig(
+    final aiTempsAsync = ref.read(aiTemperaturesProvider);
+    final extractImages = aiTempsAsync.valueOrNull?.timelineOptimization.extractImages ?? false;
+    final bool shouldSendImage = extractImages && photos.isNotEmpty;
+    // 要发图而绑定模型看不了图时（实测这类模型收图不报错、直接把内容编出来），
+    // 本次提取改走内置识图链路；温度与 token 预算仍沿用角色原值，保证输出格式不变
+    final effectiveConfig = ModelVisionCapability.withVisionFallback(
       roleConfig,
+      sendingImage: shouldSendImage,
+    );
+    if (!identical(effectiveConfig, roleConfig)) {
+      LoggerService.instance.logAI(
+        '时间线提取的图片已改走内置识图链路',
+        details: '原绑定模型=${roleConfig.modelName} 不支持图片输入，'
+            '改用 ${effectiveConfig.modelName}',
+      );
+    }
+    aiService.updateConfig(
+      effectiveConfig,
       temperature: roleSettings.temperature,
       maxTokens: roleSettings.maxTokens,
     );
@@ -90,10 +107,6 @@ Future<AiExtractResult?> extractExistingRecord({
     if (userSelectedTimeStr != null) {
       contextMap['userSelectedTime'] = userSelectedTimeStr;
     }
-
-    final aiTempsAsync = ref.read(aiTemperaturesProvider);
-    final extractImages = aiTempsAsync.valueOrNull?.timelineOptimization.extractImages ?? false;
-    final bool shouldSendImage = extractImages && photos.isNotEmpty;
 
     String? imageBase64;
     if (shouldSendImage) {

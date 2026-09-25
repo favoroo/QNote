@@ -2,6 +2,11 @@ import 'dart:convert';
 
 import 'package:qnote_flutter/core/utils/obfuscation_utils.dart';
 
+/// 内置免费模型的默认头牌：新装默认绑定、各类兜底与选择器首位的唯一口径。
+///
+/// 换头牌改这里 + `BuiltinFreeKeys` 各模型的 priority，不要再散落字面量。
+const String kDefaultFreeModelId = 'glm-5.2';
+
 /// 免费模型配置
 ///
 /// 描述单个免费模型的配置信息，从远程清单加载。
