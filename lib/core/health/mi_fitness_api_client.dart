@@ -70,6 +70,7 @@ class _MiStepSample {
     required this.hour,
     required this.steps,
     required this.distanceMeters,
+    required this.calories,
   });
 
   final String sid;
@@ -77,6 +78,7 @@ class _MiStepSample {
   final int hour;
   final int steps;
   final double distanceMeters;
+  final double calories;
 }
 
 class MiFitnessApiClient {
@@ -219,19 +221,34 @@ class MiFitnessApiClient {
     final sleepQueryStart = startOfDay.subtract(const Duration(hours: 12));
 
     // 并行拉取各维度的指标（站立优先使用多候选 Key 容灾拉取）
+    //
+    // 单个指标报错容忍为空（设备可能不支持 spo2/stress），但 6 个直接请求一起抛异常绝不是「这天没数据」——
+    // 真没数据时云端回 code=0 + 空列表、不走异常。这种情况是登录态或网络故障，必须抛出而不是返回全 0，
+    // 否则会把库里已有的真实数据抹成空白（历史踩坑：serviceToken 过期后整周同步成 0 步）。
+    final failures = <Object>[];
+    Future<List<Map<String, dynamic>>> guarded(
+      Future<List<Map<String, dynamic>>> Function() fetch,
+    ) async {
+      try {
+        return await fetch();
+      } catch (e) {
+        failures.add(e);
+        return <Map<String, dynamic>>[];
+      }
+    }
+
+    // 不含站立：站立链内部已多 Key 容灾，不会向外抛
+    const directFetchCount = 6;
     final results = await Future.wait([
-      fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'steps').catchError((e) => <Map<String, dynamic>>[]),
-      fetchFitnessData(startTime: sleepQueryStart, endTime: endOfDay, key: 'sleep').catchError((e) => <Map<String, dynamic>>[]),
-      fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'heart_rate').catchError((e) => <Map<String, dynamic>>[]),
-      fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'spo2').catchError((e) => <Map<String, dynamic>>[]),
-      fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'stress').catchError((e) => <Map<String, dynamic>>[]),
-      _fetchStandingData(startTime: startOfDay, endTime: endOfDay).catchError((e) => <Map<String, dynamic>>[]),
-      fetchFitnessData(
-        startTime: startOfDay,
-        endTime: endOfDay,
-        key: 'resting_heart_rate',
-      ).catchError((e) => <Map<String, dynamic>>[]),
+      guarded(() => fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'steps')),
+      guarded(() => fetchFitnessData(startTime: sleepQueryStart, endTime: endOfDay, key: 'sleep')),
+      guarded(() => fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'heart_rate')),
+      guarded(() => fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'spo2')),
+      guarded(() => fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'stress')),
+      _fetchStandingData(startTime: startOfDay, endTime: endOfDay),
+      guarded(() => fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'resting_heart_rate')),
     ]);
+    if (failures.length >= directFetchCount) throw failures.first;
 
     final stepsData = results[0];
     final sleepData = results[1];
@@ -380,19 +397,18 @@ class MiFitnessApiClient {
   /// 卡路里不走主源：只取单条会偏低约 280 kcal，全来源累加才最接近官方（±9%）。
   static MiStepSummary parseStepSummary(List<Map<String, dynamic>> stepsData) {
     final samples = <_MiStepSample>[];
-    double calories = 0;
 
     for (final item in stepsData) {
       final time = (item['time'] as num?)?.toInt() ?? 0;
       try {
         final val = json.decode(item['value'] as String? ?? '{}') as Map<String, dynamic>;
-        calories += (val['calories'] as num?)?.toDouble() ?? 0.0;
         samples.add(_MiStepSample(
           sid: item['sid']?.toString() ?? '',
           minute: time ~/ 60,
           hour: time ~/ 3600,
           steps: (val['steps'] as num?)?.toInt() ?? 0,
           distanceMeters: (val['distance'] as num?)?.toDouble() ?? 0.0,
+          calories: (val['calories'] as num?)?.toDouble() ?? 0.0,
         ));
       } catch (_) {}
     }
@@ -419,7 +435,9 @@ class MiFitnessApiClient {
     return MiStepSummary(
       steps: kept.values.fold(0, (a, b) => a + b.steps),
       distanceMeters: kept.values.fold<double>(0, (a, b) => a + b.distanceMeters),
-      calories: calories,
+      // 卡路里刻意保持「全来源累加」，与步数/距离的逐小时选主源不同口径：
+      // 见 test/core/health/mi_fitness_steps_test.dart 的既定用例。是否应按主源去重尚未定案。
+      calories: samples.fold<double>(0, (a, b) => a + b.calories),
       sampledMinutes: kept.length,
     );
   }
@@ -607,6 +625,10 @@ class MiFitnessApiClient {
           continue;
         }
 
+        int segDeep = 0;
+        int segLight = 0;
+        int segRem = 0;
+        int segAwake = 0;
         int segmentStageMinutes = 0;
         if (valJson['items'] is List) {
           for (final stg in valJson['items']) {
@@ -615,10 +637,17 @@ class MiFitnessApiClient {
               final st = (stg['start_time'] as num?)?.toInt() ?? 0;
               final et = (stg['end_time'] as num?)?.toInt() ?? 0;
               final durMin = (et - st) ~/ 60;
-              if (state == 1) deepSleep += durMin;
-              if (state == 2 || state == 3) lightSleep += durMin;
-              if (state == 4) awakeTime += durMin;
-              if (state == 5) remSleep += durMin;
+              // 小米云端 state 枚举实测为 2=深睡 3=浅睡 4=快速眼动 5=清醒（state=1 从不出现）。
+              // 旧代码按 1=深睡/2,3=浅睡/4=清醒/5=REM 映射，结果深睡恒为 0、REM 与清醒互换。
+              if (state == 2) {
+                segDeep += durMin;
+              } else if (state == 3) {
+                segLight += durMin;
+              } else if (state == 4) {
+                segRem += durMin;
+              } else if (state == 5) {
+                segAwake += durMin;
+              }
               segmentStageMinutes += durMin;
               sleepStages.add({
                 'state': state,
@@ -628,6 +657,23 @@ class MiFitnessApiClient {
               });
             }
           }
+        }
+
+        // 四期时长以云端自己算好的聚合值为权威口径，直接取用；整段都没带这些字段时
+        // （如未结算的小睡段）才退回上面按 items 反推的结果。
+        if (valJson.containsKey('sleep_deep_duration') ||
+            valJson.containsKey('sleep_light_duration') ||
+            valJson.containsKey('sleep_rem_duration') ||
+            valJson.containsKey('sleep_awake_duration')) {
+          deepSleep += (valJson['sleep_deep_duration'] as num?)?.toInt() ?? 0;
+          lightSleep += (valJson['sleep_light_duration'] as num?)?.toInt() ?? 0;
+          remSleep += (valJson['sleep_rem_duration'] as num?)?.toInt() ?? 0;
+          awakeTime += (valJson['sleep_awake_duration'] as num?)?.toInt() ?? 0;
+        } else {
+          deepSleep += segDeep;
+          lightSleep += segLight;
+          remSleep += segRem;
+          awakeTime += segAwake;
         }
 
         // duration 单位是分钟；缺失时退回该段分期之和，让总时长与分期口径保持一致

@@ -4,12 +4,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
 import 'package:qnote_flutter/widgets/statistics/date_navigation_header.dart';
 
-/// 日期导航头测试。
+/// 日期导航条测试。
 ///
 /// 这个组件从评分 tab 抽出后被评分与屏幕时长共用，一旦行为漂移会同时
-/// 影响两个页面，所以把「未来不可选」「回调已归一化到 00:00」这两条锁住。
+/// 影响两个页面，所以把「未来不可选」「回调已归一化到 00:00」「整条高度」
+/// 这三条锁住。
 void main() {
   Widget wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
+
+  /// 「今天」胶囊的可点击节点（Key 就打在 InkWell 上，文本在其内的 Ink 里）
+  final todayPill = find.byKey(const ValueKey('date_nav_today_pill'));
 
   IconButton navButton(WidgetTester tester, IconData icon) {
     return tester.widget<IconButton>(
@@ -71,7 +75,9 @@ void main() {
   testWidgets('enabled 为 false 时整条禁用', (tester) async {
     await tester.pumpWidget(wrap(
       DateNavigationHeader(
-        selectedDate: DateTime(2026, 9, 10),
+        // 用远离今天的过去日期：右箭头本就可点，禁用后必须变灰；
+        // 同时胶囊会出现，验证它只是置灰而非消失（避免宽度跳动）
+        selectedDate: DateTime(2020, 1, 1),
         onDateChanged: (_) {},
         enabled: false,
       ),
@@ -79,9 +85,11 @@ void main() {
 
     expect(navButton(tester, Icons.chevron_left).onPressed, isNull);
     expect(navButton(tester, Icons.chevron_right).onPressed, isNull);
+    expect(find.byKey(const ValueKey('date_nav_today_text')), findsOneWidget);
+    expect(tester.widget<InkWell>(todayPill).onTap, isNull);
   });
 
-  testWidgets('快捷胶囊把日期设为今天/昨天/前天', (tester) async {
+  testWidgets('点「今天」胶囊把日期设为今天 00:00', (tester) async {
     DateTime? changed;
     await tester.pumpWidget(wrap(
       DateNavigationHeader(
@@ -90,17 +98,24 @@ void main() {
       ),
     ));
 
-    await tester.tap(find.widgetWithText(OutlinedButton, '今天'));
+    await tester.tap(todayPill);
     await tester.pump();
     final now = DateTime.now();
     expect(changed, DateTime(now.year, now.month, now.day));
-
-    await tester.tap(find.widgetWithText(OutlinedButton, '前天'));
-    await tester.pump();
-    expect(changed, DateTime(now.year, now.month, now.day).subtract(const Duration(days: 2)));
   });
 
-  testWidgets('当前选中日的胶囊处于选中态', (tester) async {
+  testWidgets('选中日期不是今天时显示「今天」胶囊', (tester) async {
+    await tester.pumpWidget(wrap(
+      DateNavigationHeader(
+        selectedDate: DateTime(2026, 1, 1),
+        onDateChanged: (_) {},
+      ),
+    ));
+
+    expect(find.byKey(const ValueKey('date_nav_today_text')), findsOneWidget);
+  });
+
+  testWidgets('已选中今天时不显示「今天」胶囊', (tester) async {
     final today = DateTime.now();
     await tester.pumpWidget(wrap(
       DateNavigationHeader(
@@ -109,20 +124,18 @@ void main() {
       ),
     ));
 
-    final button = tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '今天'));
-    expect(button.style?.backgroundColor, isNotNull);
+    expect(find.byKey(const ValueKey('date_nav_today_text')), findsNothing);
   });
 
-  testWidgets('showQuickDates 为 false 时隐藏胶囊行', (tester) async {
+  testWidgets('整条收进单行 48 高，不再挤占内容空间', (tester) async {
     await tester.pumpWidget(wrap(
       DateNavigationHeader(
-        selectedDate: DateTime(2026, 9, 19),
+        selectedDate: DateTime(2026, 1, 1),
         onDateChanged: (_) {},
-        showQuickDates: false,
       ),
     ));
 
-    expect(find.widgetWithText(OutlinedButton, '今天'), findsNothing);
+    expect(tester.getRect(find.byType(DateNavigationHeader)).height, 48);
   });
 
   test('formatDayLabel 覆盖今天/昨天/前天与完整日期', () {

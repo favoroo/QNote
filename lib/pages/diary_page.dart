@@ -15,6 +15,7 @@ import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/date_color_mark.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
+import 'package:qnote_flutter/providers/diary_progress_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
@@ -27,6 +28,8 @@ import 'package:qnote_flutter/widgets/search_view.dart';
 import 'package:qnote_flutter/widgets/diary/diary_item.dart';
 import 'package:qnote_flutter/widgets/diary/model_selection_dialog.dart';
 import 'package:qnote_flutter/widgets/diary/diary_input_bar.dart';
+import 'package:qnote_flutter/widgets/diary/record_cheer_toast.dart';
+import 'package:qnote_flutter/widgets/diary/today_progress_strip.dart';
 import 'package:qnote_flutter/widgets/diary/journal_editor_view.dart';
 import 'package:qnote_flutter/widgets/diary/custom_date_picker.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
@@ -92,6 +95,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
   bool _showBatchConfirmButton = false;
   final Set<String> _batchExtractedRecordIds = {};
+
+  // 记完即时庆祝胶囊状态：todayCount 变大时才浮现，1s 内连记只展示最后一次
+  CheerEvent? _cheerEvent;
+  Timer? _cheerTimer;
+  int _cheerSeq = 0;
 
   static String _dateKey(DateTime date) {
     final y = date.year.toString().padLeft(4, '0');
@@ -680,6 +688,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     } catch (_) {}
     WidgetsBinding.instance.removeObserver(this);
     _stopAutoScrollTimer();
+    _cheerTimer?.cancel();
     _itemContexts.clear();
     _itemHeights.clear();
     _scrollController.removeListener(_onScroll);
@@ -1068,6 +1077,39 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
   void _navigateToBatchManage() {
     context.push('/diary/batch');
+  }
+
+  /// 记完一条后的轻量庆祝：输入条上方浮现胶囊，短暂停留后自动消失。
+  ///
+  /// 满环/破纪录时配稍强样式与触感（调用方已触发），平时保持极轻；
+  /// 1 秒内连记多条只展示最后一次，避免胶囊排队刷屏。
+  void _showCheer({
+    required String title,
+    String? sub,
+    required bool celebrate,
+    String? actionLabel,
+  }) {
+    _cheerTimer?.cancel();
+    _cheerSeq++;
+    setState(() {
+      _cheerEvent = CheerEvent(
+        id: _cheerSeq,
+        title: title,
+        sub: sub,
+        celebrate: celebrate,
+        actionLabel: actionLabel,
+      );
+    });
+    _cheerTimer = Timer(
+      Duration(milliseconds: celebrate ? 2500 : 1500),
+      () {
+        if (mounted) {
+          setState(() {
+            _cheerEvent = null;
+          });
+        }
+      },
+    );
   }
 
   /// 正在播放退场动画的记录集合
@@ -1867,6 +1909,38 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       }
     });
 
+    // 今日完整度庆祝：todayCount 变大才触发（首次加载 prev 为 null 不弹；
+    // 补记旧日期不计入今天，同样不会误触）。
+    ref.listen(diaryProgressProvider, (prev, next) {
+      if (prev == null || next.todayCount <= prev.todayCount) {
+        return;
+      }
+      final justFull = !prev.isFull && next.isFull;
+      final isRecord = prev.maxPerDay > 0 && next.todayCount > prev.maxPerDay;
+      final celebrate = justFull || isRecord;
+      if (celebrate) {
+        HapticFeedback.mediumImpact();
+      }
+      final String title;
+      final String? sub;
+      if (justFull) {
+        title = '今日完整！连续${next.streakDays}天';
+        sub = '共${next.todayCount}条，太棒了';
+      } else if (isRecord) {
+        title = '新纪录！今天第${next.todayCount}条';
+        sub = next.streakDays > 0 ? '已连续记录${next.streakDays}天' : null;
+      } else {
+        title = '今日第${next.todayCount}条';
+        sub = '再记${next.remaining}条就完整了';
+      }
+      _showCheer(
+        title: title,
+        sub: sub,
+        celebrate: celebrate,
+        actionLabel: celebrate ? '看看统计' : null,
+      );
+    });
+
     final theme = Theme.of(context);
     final diaryListAsync = ref.watch(diaryListProvider);
     final selectEvent = ref.watch(diaryInputTimeProvider);
@@ -2004,6 +2078,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
             },
           ),
           const Divider(height: 1),
+          const TodayProgressStrip(),
           Expanded(
             child: Stack(
               children: [
@@ -2493,6 +2568,19 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                   bottom: 12,
                   child: _buildSmartExtractFAB(theme),
                 ),
+                // 记完即时庆祝胶囊：输入条上方居中浮现，不挡时间线主体
+                if (_cheerEvent != null)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 64,
+                    child: Center(
+                      child: RecordCheerToast(
+                        event: _cheerEvent!,
+                        onAction: () => context.go('/statistics'),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),

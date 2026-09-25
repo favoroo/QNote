@@ -184,9 +184,10 @@ class _AiPageState extends ConsumerState<AiPage> {
 
   /// 输入变化时检测光标处是否有激活的斜杠命令或 @ 引用命令词
   void _onInputChanged() {
-    // 编辑态下输入框被清空（点了清除键）：提示条不该悬空挂着，静默退出编辑态
+    // 输入框被清空（点了它自带的清除 X）就顺带退出编辑态：不留一个谁也看不见、
+    // 却会在下次发送时撤回对话的挂起状态
     if (_reeditIndex != null && !_reeditBusy && _currentDraft().isEmpty) {
-      _exitReeditMode(clearInput: false);
+      _exitReeditMode();
     }
     final text = _inputController.text;
     final selection = _inputController.selection;
@@ -579,7 +580,7 @@ class _AiPageState extends ConsumerState<AiPage> {
           anchor: anchor,
         ) ||
         reeditableUserIndex(messages) != index) {
-      _exitReeditMode(clearInput: false);
+      _exitReeditMode();
       Toast.warning(context, '原提问已不在末轮，未撤回；这条将作为新提问发送');
       return true;
     }
@@ -621,7 +622,7 @@ class _AiPageState extends ConsumerState<AiPage> {
         return false;
       }
       // 回退后该下标已越界，必须当场消费掉编辑态，否则后续路径会按错下标再撤一次
-      _exitReeditMode(clearInput: false);
+      _exitReeditMode();
       final (restored, failed) = result;
       if (failed > 0) {
         Toast.warning(context, '已回退对话，但 $failed 处数据恢复失败，详情请查看日志');
@@ -635,24 +636,15 @@ class _AiPageState extends ConsumerState<AiPage> {
     }
   }
 
-  /// 退出编辑态：唯一出口，幂等。
+  /// 退出编辑态：挂起的撤回归口随之作废，输入框里的草稿原样留着（降级成普通草稿）。
   ///
-  /// 先清编辑态字段再清输入框：清输入框会同步回调 `_onInputChanged`，那里的
-  /// 「草稿空了就退出」判断若此时仍看得到 `_reeditIndex`，就会反过来再调一次本方法。
-  void _exitReeditMode({bool clearInput = true}) {
+  /// 幂等——`_onInputChanged`、发送链路与会话切换三处都会调它。
+  void _exitReeditMode() {
     if (_reeditIndex == null) return;
     setState(() {
       _reeditIndex = null;
       _reeditAnchor = null;
       _reeditDraftSnapshot = null;
-      if (clearInput) {
-        _inputController.clear();
-        _attachedImages.clear();
-        _attachedNoteIds.clear();
-        _attachedTodoIds.clear();
-        _attachedJournalIds.clear();
-        _quotedChatText = null;
-      }
     });
   }
 
@@ -667,7 +659,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     final messages = session?.messages ?? const <ChatMessage>[];
     if (!isReeditAnchorValid(messages: messages, index: index, anchor: anchor) ||
         reeditableUserIndex(messages) != index) {
-      _exitReeditMode(clearInput: false);
+      _exitReeditMode();
     }
   }
 
@@ -1623,12 +1615,6 @@ class _AiPageState extends ConsumerState<AiPage> {
                 const SizedBox(height: 6),
               ],
 
-              // 0.4 再次编辑提示条：说明框里这份提问来自哪条气泡、点发送会撤回什么
-              if (_reeditIndex != null) ...[
-                _buildReeditBanner(theme),
-                const SizedBox(height: 6),
-              ],
-
               // 0.5 框选对话引用卡片（框选「给小Q」或点击悬浮球挂起）
               if (_quotedChatText != null) ...[
                 _buildQuotePreviewCard(theme),
@@ -1856,49 +1842,6 @@ class _AiPageState extends ConsumerState<AiPage> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  /// 再次编辑提示条：点发送其实是「撤回原对话 + 重发」两步，不写出来用户只会以为
-  /// 又补发了一条新提问；右侧取消给一条不改动对话就能退出的路。
-  Widget _buildReeditBanner(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.edit_rounded, size: 16, color: theme.colorScheme.primary),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              '编辑这条提问 · 发送后会撤回原对话',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          InkWell(
-            onTap: () => _exitReeditMode(),
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.all(2),
-              child: Icon(
-                Icons.close_rounded,
-                size: 16,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

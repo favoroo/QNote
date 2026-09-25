@@ -12,6 +12,7 @@ import 'package:qnote_flutter/models/screen_usage_info.dart';
 import 'package:qnote_flutter/providers/screen_usage_provider.dart';
 import 'package:qnote_flutter/providers/selected_date_provider.dart';
 import 'package:qnote_flutter/widgets/statistics/screen_usage_stats_view.dart';
+import 'package:qnote_flutter/widgets/time_range_selector.dart';
 
 /// 1x1 透明 PNG，用于走通 Image.memory 的真实渲染分支
 final Uint8List _kIconPng = base64Decode(
@@ -149,9 +150,9 @@ void main() {
   testWidgets('周/月/年切换条已移除，只保留周口径', (tester) async {
     await pumpView(tester);
 
-    expect(find.text('周'), findsNothing);
-    expect(find.text('月'), findsNothing);
-    expect(find.text('年'), findsNothing);
+    // 按类型断言而非按文本：图标加载完成前，应用榜首字母兜底色块会渲染出
+    // 「周」单字（测试数据叫「周榜N」），文本断言会与其撞车而偶发失败
+    expect(find.byType(TimeRangeSelector), findsNothing);
     expect(find.textContaining('屏幕时长'), findsNWidgets(2));
   });
 

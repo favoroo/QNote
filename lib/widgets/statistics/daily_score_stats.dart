@@ -91,7 +91,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
           onDateChanged: _onDateChanged,
           enabled: !_isScoring,
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
 
         // Core scoring display
         if (_isScoring)

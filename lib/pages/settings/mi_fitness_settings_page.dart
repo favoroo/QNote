@@ -14,6 +14,7 @@ import 'package:qnote_flutter/core/storage/health_metric_repository.dart';
 import 'package:qnote_flutter/models/health_daily_metrics.dart';
 import 'package:qnote_flutter/models/health_sport_record.dart';
 import 'package:qnote_flutter/pages/health/health_metric_detail_page.dart';
+import 'package:qnote_flutter/widgets/statistics/date_navigation_header.dart';
 
 class MiFitnessSettingsPage extends ConsumerStatefulWidget {
   final DateTime? initialDate;
@@ -510,7 +511,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                   visualDensity: VisualDensity.compact,
                 ),
                 onPressed: _showQrLoginDialog,
-                child: const Text('扫码绑定'),
+                child: const Text('登录'),
               ),
           ],
         ),
@@ -518,71 +519,83 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
     );
   }
 
+  /// 日期导航条。视觉规格与统计页的 DateNavigationHeader 保持一致，
+  /// 两处看起来是同一个组件，只是这里仍由本页 setState 驱动取数。
   Widget _buildDateNavBar(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     final isToday =
-        _selectedDate.year == now.year &&
-        _selectedDate.month == now.month &&
-        _selectedDate.day == now.day;
+        _selectedDate.year == today.year &&
+        _selectedDate.month == today.month &&
+        _selectedDate.day == today.day;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      clipBehavior: Clip.antiAlias,
+      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.4),
+        side: BorderSide(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
         ),
       ),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.chevron_left, size: 22),
-            tooltip: '前一天',
-            onPressed: () => _changeDate(-1),
-          ),
-          Expanded(
-            child: InkWell(
-              borderRadius: BorderRadius.circular(8),
-              onTap: _pickDate,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.calendar_today_outlined, size: 15),
-                    const SizedBox(width: 6),
-                    Text(
-                      _formatDateLabel(_selectedDate),
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: Row(
+          children: [
+            DateNavArrow(
+              icon: Icons.chevron_left,
+              tooltip: '前一天',
+              onPressed: () => _changeDate(-1),
+            ),
+            // Flexible 而非 Expanded：Expanded 会把日期区撑满整行，
+            // 把「今天」胶囊推到最右侧，脱离标签
+            Flexible(
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: _pickDate,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 3,
+                  ),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          _formatDateLabel(_selectedDate),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Icon(
+                          Icons.calendar_month,
+                          size: 16,
+                          color: colorScheme.primary,
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
-          ),
-          if (!isToday) ...[
-            TextButton(
-              style: TextButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-              ),
-              onPressed: () =>
-                  _loadDateData(DateTime(now.year, now.month, now.day)),
-              child: const Text('今天', style: TextStyle(fontSize: 12)),
-            ),
-            IconButton(
-              icon: const Icon(Icons.chevron_right, size: 22),
+            if (!isToday) DateTodayPill(onPressed: () => _loadDateData(today)),
+            DateNavArrow(
+              icon: Icons.chevron_right,
               tooltip: '后一天',
-              onPressed: () => _changeDate(1),
+              // 健康数据最多到今天，再往前翻没有来源；置灰而不是点了没反应
+              onPressed: isToday ? null : () => _changeDate(1),
             ),
-          ] else
-            const SizedBox(width: 48),
-        ],
+          ],
+        ),
       ),
     );
   }

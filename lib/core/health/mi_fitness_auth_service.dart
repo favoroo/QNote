@@ -93,6 +93,8 @@ class MiFitnessAuthService {
   final Dio _dio = Dio(BaseOptions(
     connectTimeout: const Duration(seconds: 15),
     receiveTimeout: const Duration(seconds: 15),
+    // passport 系接口一律按纯文本收，再用 parsePassportResponse 剥壳，理由见该方法注释。
+    responseType: ResponseType.plain,
     headers: {
       'User-Agent':
           'APP/com.xiaomi.wearable APPV/2.12.0 iosPassportSDK/3.9.0 iOS/17.4',
@@ -100,6 +102,30 @@ class MiFitnessAuthService {
   ));
 
   MiAuthCredentials? _cachedCredentials;
+
+  /// 解析 passport 系接口的响应体
+  ///
+  /// 小米为防 JSON 劫持，会在正文外包一层 `&&&START&&&` / `&&&END&&&`，而
+  /// `serviceLoginAuth2` 又把 Content-Type 标成 `application/json`——交给 Dio 默认的
+  /// JSON transformer 会在 offset 0 直接抛 FormatException（历史踩坑：静默刷新登录态
+  /// 因此从来没成功过一次，serviceToken 一过期就再也拿不到数据）。
+  static Map<String, dynamic> parsePassportResponse(dynamic body) {
+    var text = body == null ? '' : (body is String ? body : body.toString());
+    text = text.trim();
+    const prefix = '&&&START&&&';
+    const suffix = '&&&END&&&';
+    if (text.startsWith(prefix)) text = text.substring(prefix.length);
+    if (text.endsWith(suffix)) {
+      text = text.substring(0, text.length - suffix.length);
+    }
+    text = text.trim();
+
+    final decoded = json.decode(text);
+    if (decoded is! Map<String, dynamic>) {
+      throw FormatException('小米 passport 响应不是 JSON 对象', text);
+    }
+    return decoded;
+  }
 
   /// 初始化并加载已存储凭据
   Future<MiAuthCredentials?> loadCredentials() async {
@@ -145,10 +171,7 @@ class MiFitnessAuthService {
       },
     );
 
-    // 小米接口通常返回 "&&&START&&&{"code":0,...}"
-    final bodyStr = res.data.toString();
-    final jsonStr = bodyStr.replaceFirst('&&&START&&&', '').trim();
-    final jsonMap = json.decode(jsonStr) as Map<String, dynamic>;
+    final jsonMap = parsePassportResponse(res.data);
 
     final loginUrl = jsonMap['loginUrl'] as String;
     final lp = jsonMap['lp'] as String;
@@ -172,9 +195,7 @@ class MiFitnessAuthService {
         options: Options(receiveTimeout: const Duration(seconds: 40)),
       );
 
-      final bodyStr = res.data.toString();
-      final jsonStr = bodyStr.replaceFirst('&&&START&&&', '').trim();
-      final jsonMap = json.decode(jsonStr) as Map<String, dynamic>;
+      final jsonMap = parsePassportResponse(res.data);
 
       final code = jsonMap['code'] as int? ?? -1;
 
@@ -301,7 +322,8 @@ class MiFitnessAuthService {
       throw Exception('本地缺少 passToken，无法静默刷新小米登录态，请重新扫码授权');
     }
 
-    // 仅捕获网络/解析异常：此时不确定凭据是否失效，不清凭据，保留 passToken 下次再试
+    // 只把「服务端明确回了业务错误」当作凭据作废：请求失败或响应读不懂时凭据状态未知，
+    // 不清本地凭据，保留 passToken 下次再试（HTTP 非 200 与 code != 0 在下面各自判定）。
     Response res;
     Map<String, dynamic> jsonMap;
     try {
@@ -309,6 +331,7 @@ class MiFitnessAuthService {
         '$accountBase/pass/serviceLoginAuth2',
         data: {
           'sid': sid,
+          'qs': '%3Fsid%3D$sid',
           '_json': 'true',
           'passToken': passToken,
           'userId': creds.userId,
@@ -320,14 +343,12 @@ class MiFitnessAuthService {
           validateStatus: (status) => status != null && status < 500,
         ),
       );
-      final bodyStr = res.data.toString();
-      final jsonStr = bodyStr.replaceFirst('&&&START&&&', '').trim();
-      jsonMap = json.decode(jsonStr) as Map<String, dynamic>;
+      jsonMap = parsePassportResponse(res.data);
     } catch (e) {
-      throw Exception('刷新小米登录态失败（网络异常）：$e');
+      throw Exception('刷新小米登录态失败（请求异常）：$e');
     }
 
-    // 走到这里说明网络通、响应可解析，后续失败均为确定性拒绝：清理本地凭据
+    // 走到这里说明拿到了可解析的 passport 响应，后续失败均为确定性拒绝：清理本地凭据
     if (res.statusCode != 200) {
       await clearCredentials();
       throw Exception('小米登录态已失效（serviceLoginAuth2 HTTP ${res.statusCode}），请重新扫码授权');
@@ -356,6 +377,8 @@ class MiFitnessAuthService {
       throw Exception('刷新小米登录态失败：未换取到新的 serviceToken，请重新扫码授权');
     }
 
+    // 必须落盘：否则下次冷启动读到的还是过期 serviceToken，每个指标都要先吃一次 401 再刷新
+    await saveCredentials(newCreds);
     LoggerService.instance.info('MiFitness serviceToken refreshed silently via passToken');
     return newCreds;
   }

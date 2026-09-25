@@ -380,7 +380,6 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                         );
                       }
                     },
-                    onAddFolder: () => _showAddFolderDialog(context),
                   ),
                   Expanded(
                     child: PageView.builder(
@@ -1119,14 +1118,12 @@ class _TodoFolderTabBar extends StatelessWidget {
   final String selectedFolderId;
   final List<Todo> todos;
   final ValueChanged<String> onSelect;
-  final VoidCallback onAddFolder;
 
   const _TodoFolderTabBar({
     required this.folders,
     required this.selectedFolderId,
     required this.todos,
     required this.onSelect,
-    required this.onAddFolder,
   });
 
   @override
@@ -1137,102 +1134,85 @@ class _TodoFolderTabBar extends StatelessWidget {
     return Container(
       height: 46,
       margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              itemCount: folders.length,
-              separatorBuilder: (context, index) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
-                final folder = folders[index];
-                final isSelected = folder.id == selectedFolderId;
-                // 计算未完成待办数
-                final count = todos.where((t) {
-                  if (t.isCompleted || t.title.trim().isEmpty) return false;
-                  if (t.folderId == folder.id) return true;
-                  if (t.folderId == null || t.folderId!.isEmpty) {
-                    if (folder.id == 'todo_default_longterm' || folder.name == '长期') {
-                      return t.isLongTerm;
-                    }
-                    if (folder.id == 'todo_default_today' || index == 0) {
-                      return !t.isLongTerm;
-                    }
-                  }
-                  return false;
-                }).length;
+      // 分类栏不再提供快捷新建入口，避免与右下角新增待办混淆；新建分类请走右上角分类管理
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: folders.length,
+        separatorBuilder: (context, index) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final folder = folders[index];
+          final isSelected = folder.id == selectedFolderId;
+          // 计算未完成待办数
+          final count = todos.where((t) {
+            if (t.isCompleted || t.title.trim().isEmpty) return false;
+            if (t.folderId == folder.id) return true;
+            if (t.folderId == null || t.folderId!.isEmpty) {
+              if (folder.id == 'todo_default_longterm' || folder.name == '长期') {
+                return t.isLongTerm;
+              }
+              if (folder.id == 'todo_default_today' || index == 0) {
+                return !t.isLongTerm;
+              }
+            }
+            return false;
+          }).length;
 
-                return GestureDetector(
-                  onTap: () => onSelect(folder.id),
-                  child: AnimatedContainer(
-                    duration: AppDurations.normal,
-                    curve: Curves.easeInOut,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
+          return GestureDetector(
+            onTap: () => onSelect(folder.id),
+            child: AnimatedContainer(
+              duration: AppDurations.normal,
+              curve: Curves.easeInOut,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? colorScheme.primary
+                    : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(AppRadius.large),
+                border: Border.all(
+                  color: isSelected
+                      ? colorScheme.primary
+                      : colorScheme.outlineVariant.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    folder.name,
+                    style: TextStyle(
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                      fontSize: 13.5,
                       color: isSelected
-                          ? colorScheme.primary
-                          : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(AppRadius.large),
-                      border: Border.all(
-                        color: isSelected
-                            ? colorScheme.primary
-                            : colorScheme.outlineVariant.withValues(alpha: 0.3),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          folder.name,
-                          style: TextStyle(
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                            fontSize: 13.5,
-                            color: isSelected
-                                ? colorScheme.onPrimary
-                                : colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-                          ),
-                        ),
-                        if (count > 0) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? colorScheme.onPrimary.withValues(alpha: 0.2)
-                                  : colorScheme.primary.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              '$count',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: isSelected ? colorScheme.onPrimary : colorScheme.primary,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
+                          ? colorScheme.onPrimary
+                          : colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
                     ),
                   ),
-                );
-              },
+                  if (count > 0) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? colorScheme.onPrimary.withValues(alpha: 0.2)
+                            : colorScheme.primary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '$count',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: isSelected ? colorScheme.onPrimary : colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 6),
-          IconButton(
-            icon: const Icon(Icons.add, size: 20),
-            tooltip: '新建分类',
-            style: IconButton.styleFrom(
-              backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.large)),
-              padding: const EdgeInsets.all(8),
-              minimumSize: const Size(36, 36),
-            ),
-            onPressed: onAddFolder,
-          ),
-        ],
+          );
+        },
       ),
     );
   }

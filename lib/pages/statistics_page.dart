@@ -209,7 +209,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     // score tab 不依赖 statsProvider，由 DailyScoreStats 内部独立处理
     if (_activeTab == StatTab.score) {
       return const SingleChildScrollView(
-        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: DailyScoreStats(),
       );
     }

@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:fl_chart/fl_chart.dart';
 
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/storage/health_metric_repository.dart';
 import 'package:qnote_flutter/core/health/health_sync_service.dart';
+import 'package:qnote_flutter/core/utils/health_step_trend.dart';
 import 'package:qnote_flutter/models/health_daily_metrics.dart';
 import 'package:qnote_flutter/models/health_sport_record.dart';
 import 'package:qnote_flutter/widgets/empty_state.dart';
+import 'package:qnote_flutter/widgets/statistics/steps_trend_chart.dart';
 
 class HealthStatsView extends ConsumerStatefulWidget {
   final DateTime startDate;
@@ -81,7 +82,6 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
 
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final isDark = theme.brightness == Brightness.dark;
 
     if (!_isAuthed && _metricsList.isEmpty) {
       return SingleChildScrollView(
@@ -199,7 +199,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
           const SizedBox(height: 16),
 
           // 2. 步数柱状趋势图
-          _buildStepsChartCard(context, isDark: isDark),
+          _buildStepsChartCard(),
           const SizedBox(height: 16),
 
           // 3. 生理体征指标汇总 (心率/血氧/压力/睡眠)
@@ -370,113 +370,25 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
     );
   }
 
-  Widget _buildStepsChartCard(BuildContext context, {required bool isDark}) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    final barGroups = <BarChartGroupData>[];
-    for (int i = 0; i < _metricsList.length; i++) {
-      final m = _metricsList[i];
-      barGroups.add(
-        BarChartGroupData(
-          x: i,
-          barRods: [
-            BarChartRodData(
-              toY: m.steps.toDouble(),
-              color: m.steps >= _stepTarget ? Colors.green : colorScheme.primary,
-              width: 12,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
-            ),
-          ],
-        ),
-      );
+  Widget _buildStepsChartCard() {
+    // 月/年区间下逐日出柱会挤成一团，先按区间长度选粒度再交给图表组件
+    final stepsByDay = <DateTime, int>{};
+    for (final m in _metricsList) {
+      final day = DateTime.tryParse(m.date);
+      if (day != null) {
+        stepsByDay[DateTime(day.year, day.month, day.day)] = m.steps;
+      }
     }
+    final trend = buildStepTrend(
+      startDate: widget.startDate,
+      endDate: widget.endDate,
+      stepsByDay: stepsByDay,
+    );
 
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadius.large),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '步数趋势',
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  '目标 8,000 步',
-                  style: theme.textTheme.bodySmall?.copyWith(color: Colors.green),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              height: 180,
-              child: BarChart(
-                BarChartData(
-                  alignment: BarChartAlignment.spaceAround,
-                  maxY: _metricsList.map((m) => m.steps.toDouble()).fold(10000.0, (a, b) => a > b ? a : b) * 1.1,
-                  barGroups: barGroups,
-                  titlesData: FlTitlesData(
-                    show: true,
-                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    leftTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 40,
-                        getTitlesWidget: (val, meta) {
-                          if (val == 0) return const SizedBox.shrink();
-                          return Text(
-                            '${(val / 1000).toStringAsFixed(0)}k',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        getTitlesWidget: (val, meta) {
-                          final idx = val.toInt();
-                          if (idx >= 0 && idx < _metricsList.length) {
-                            final date = _metricsList[idx].date;
-                            final parts = date.split('-');
-                            final label = parts.length == 3 ? '${parts[1]}/${parts[2]}' : date;
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Text(
-                                label,
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            );
-                          }
-                          return const SizedBox.shrink();
-                        },
-                      ),
-                    ),
-                  ),
-                  gridData: const FlGridData(show: false),
-                  borderData: FlBorderData(show: false),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+    return StepsTrendChart(
+      buckets: trend.buckets,
+      caption: trend.caption,
+      dailyTarget: _stepTarget,
     );
   }
 
