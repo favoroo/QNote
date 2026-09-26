@@ -122,6 +122,7 @@ doc/api/
 
 # ---- ZCode 本地会话文件 ----
 .zcode/
+.zcodeignore
 
 # ---- Python 缓存 ----
 __pycache__/

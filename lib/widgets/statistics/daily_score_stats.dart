@@ -9,9 +9,14 @@ import 'package:qnote_flutter/models/daily_score.dart';
 import 'package:qnote_flutter/providers/daily_score_provider.dart';
 import 'package:qnote_flutter/widgets/statistics/date_navigation_header.dart';
 import 'package:qnote_flutter/widgets/statistics/score_heatmap.dart';
+import 'package:qnote_flutter/widgets/statistics/streak_summary_strip.dart';
 
 class DailyScoreStats extends ConsumerStatefulWidget {
-  const DailyScoreStats({super.key});
+  const DailyScoreStats({super.key, this.streakCardKey});
+
+  /// 「记录坚持与评分热力图」卡片的定位锚点，由统计页持有，
+  /// 用于从日记页圆环跳过来时把这张卡滚进视口。
+  final GlobalKey? streakCardKey;
 
   @override
   ConsumerState<DailyScoreStats> createState() => _DailyScoreStatsState();
@@ -384,8 +389,9 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
           ),
 
         const SizedBox(height: 24),
-        // 评分热力图卡片
+        // 记录坚持度 + 评分热力图卡片
         Card(
+          key: widget.streakCardKey,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
             side: BorderSide(
@@ -412,11 +418,14 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                     ),
                     const SizedBox(width: 8),
                     const Text(
-                      '评分热力图 (近3个月)',
+                      '记录坚持与评分热力图 (近3个月)',
                       style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
+                const SizedBox(height: 12),
+                const StreakSummaryStrip(),
+                const Divider(height: 24, thickness: 0.5),
                 const SizedBox(height: 16),
                 heatmapAsync.when(
                   loading: () => const SizedBox(

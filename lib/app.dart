@@ -23,6 +23,7 @@ import 'package:qnote_flutter/core/storage/sync_log_repository.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/database_init.dart'
     if (dart.library.io) 'package:qnote_flutter/database_init_io.dart';
+import 'package:qnote_flutter/providers/diary_progress_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/theme_provider.dart';
@@ -215,6 +216,15 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
         return;
       }
       final changes = await SyncLogRepository.instance.getChangesSince(baseline);
+      final now = DateTime.now();
+      // 完整度与坚持度把 DateTime.now() 缓存在 Provider 里，列表不变就不重算：
+      // 跨零点回前台且期间无数据变更时不主动失效，圆环会一直显示昨天的条数。
+      if (now.year != baseline.year ||
+          now.month != baseline.month ||
+          now.day != baseline.day) {
+        ref.invalidate(diaryProgressProvider);
+        ref.invalidate(streakSummaryProvider);
+      }
       if (changes.isEmpty) {
         return;
       }

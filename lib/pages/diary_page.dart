@@ -30,7 +30,7 @@ import 'package:qnote_flutter/widgets/diary/diary_item.dart';
 import 'package:qnote_flutter/widgets/diary/model_selection_dialog.dart';
 import 'package:qnote_flutter/widgets/diary/diary_input_bar.dart';
 import 'package:qnote_flutter/widgets/diary/record_cheer_toast.dart';
-import 'package:qnote_flutter/widgets/diary/today_progress_strip.dart';
+import 'package:qnote_flutter/widgets/diary/today_progress_ring.dart';
 import 'package:qnote_flutter/widgets/diary/journal_editor_view.dart';
 import 'package:qnote_flutter/widgets/diary/custom_date_picker.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
@@ -2079,7 +2079,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
             },
           ),
           const Divider(height: 1),
-          const TodayProgressStrip(),
           Expanded(
             child: Stack(
               children: [
@@ -2578,7 +2577,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                     child: Center(
                       child: RecordCheerToast(
                         event: _cheerEvent!,
-                        onAction: () => context.go('/statistics'),
+                        onAction: () => goStreakFocus(context, ref),
                       ),
                     ),
                   ),

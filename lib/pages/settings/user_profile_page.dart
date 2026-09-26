@@ -1,6 +1,7 @@
 import 'dart:convert' show base64Encode;
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -475,118 +476,202 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     );
   }
 
-  /// 顶部紧凑名片区（头像 + 昵称大字号 + 快捷信息胶囊）
+  /// 顶部紧凑名片区（头像 + 毛玻璃昵称条 + 主题色柔光背景）
   Widget _buildProfileHeader(ThemeData theme) {
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    // 深色底会吞噬低透明度色彩，光斑/渐变/描边整体上调补偿
+    final double blobAlpha = isDark ? 0.14 : 0.10;
+    final double ringAlpha = isDark ? 0.35 : 0.28;
+
     return Container(
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+          color: colorScheme.outlineVariant.withValues(alpha: 0.4),
         ),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // 头像
-          GestureDetector(
-            onTap: _pickAvatar,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  width: 60,
-                  height: 60,
+      // 先裁剪再画背景层，避免渐变与光斑溢出圆角；描边留在裁剪外不被吃掉
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(15),
+        child: Stack(
+          children: [
+            // 背景层：surface 底 + 左上到右下的主题色淡渐变，打破纯平观感
+            Positioned.fill(
+              child: ColoredBox(
+                color: colorScheme.surface,
+                child: DecoratedBox(
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-                      width: 1.5,
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        colorScheme.primary.withValues(alpha: isDark ? 0.10 : 0.07),
+                        colorScheme.tertiary.withValues(alpha: isDark ? 0.06 : 0.04),
+                        colorScheme.surface.withValues(alpha: 0),
+                      ],
+                      stops: const [0.0, 0.5, 1.0],
                     ),
                   ),
-                  child: ClipOval(
-                    child: _avatarPath.isNotEmpty
-                        ? UnifiedImage(
-                            imagePath: _avatarPath,
-                            width: 60,
-                            height: 60,
-                            borderRadius: BorderRadius.circular(30),
-                            fit: BoxFit.cover,
-                          )
-                        : Container(
-                            color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
-                            child: Icon(
-                              Icons.person_rounded,
-                              size: 32,
-                              color: theme.colorScheme.primary,
+                ),
+              ),
+            ),
+            // 光斑一：右上 primary 柔光
+            Positioned(
+              top: -48,
+              right: -28,
+              child: _softBlob(colorScheme.primary, 132, blobAlpha),
+            ),
+            // 光斑二：刻意压在昵称毛玻璃条正后方（tertiary），让虚化效果真实可感知；
+            // 主体藏在条后、只露出少量边缘，避免在条下方拖出一块「污渍感」色斑
+            Positioned(
+              top: 2,
+              left: 66,
+              child: _softBlob(colorScheme.tertiary, 96, blobAlpha),
+            ),
+            // 内容层
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // 头像
+                  GestureDetector(
+                    onTap: _pickAvatar,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            // 描边带一点主色调，与卡片渐变底呼应，避免灰色环把头像「切」出来
+                            border: Border.all(
+                              color: colorScheme.primary.withValues(alpha: ringAlpha),
+                              width: 1.5,
                             ),
                           ),
+                          child: ClipOval(
+                            child: _avatarPath.isNotEmpty
+                                ? UnifiedImage(
+                                    imagePath: _avatarPath,
+                                    width: 48,
+                                    height: 48,
+                                    borderRadius: BorderRadius.circular(24),
+                                    fit: BoxFit.cover,
+                                  )
+                                : Container(
+                                    color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+                                    child: Icon(
+                                      Icons.person_rounded,
+                                      size: 26,
+                                      color: theme.colorScheme.primary,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                        Positioned(
+                          right: -2,
+                          bottom: -2,
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: theme.colorScheme.surface,
+                                width: 1.5,
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.camera_alt_rounded,
+                              size: 9,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                Positioned(
-                  right: -2,
-                  bottom: -2,
-                  child: Container(
-                    padding: const EdgeInsets.all(3),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primary,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: theme.colorScheme.surface,
-                        width: 1.5,
+                  const SizedBox(width: 12),
+
+                  // 昵称与简介：半透明毛玻璃条浮在光斑之上
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                          decoration: BoxDecoration(
+                            // 浅色用 surface 白纱、深色用 onSurface 亮纱，保证两种主题下
+                            // 都能读到「磨砂」质感而非一块死色
+                            color: isDark
+                                ? colorScheme.onSurface.withValues(alpha: 0.06)
+                                : colorScheme.surface.withValues(alpha: 0.55),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.25 : 0.35),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              TextField(
+                                controller: _nicknameController,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.2,
+                                ),
+                                decoration: InputDecoration(
+                                  hintText: '点击输入姓名 / 昵称',
+                                  hintStyle: theme.textTheme.titleMedium?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                                    fontWeight: FontWeight.normal,
+                                  ),
+                                  isDense: true,
+                                  contentPadding: EdgeInsets.zero,
+                                  border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
+                                  filled: false,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '完善个人档案，便于小Q提供定制化建议',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                    child: const Icon(
-                      Icons.camera_alt_rounded,
-                      size: 11,
-                      color: Colors.white,
-                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 14),
+          ],
+        ),
+      ),
+    );
+  }
 
-          // 昵称与简介
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: _nicknameController,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.2,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: '点击输入姓名 / 昵称',
-                    hintStyle: theme.textTheme.titleMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
-                      fontWeight: FontWeight.normal,
-                    ),
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    filled: false,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '完善个人档案，便于小Q提供定制化建议',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-                    fontSize: 11,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+  /// 柔光圆斑：径向渐变淡出到透明，比真实高斯模糊渲染成本低得多
+  Widget _softBlob(Color color, double size, double alpha) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(
+          colors: [color.withValues(alpha: alpha), color.withValues(alpha: 0)],
+        ),
       ),
     );
   }

@@ -31,6 +31,7 @@ import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/widgets/animated_gradient_border.dart';
 import 'package:qnote_flutter/widgets/diary/edit_tag_time_sheet.dart';
+import 'package:qnote_flutter/widgets/diary/today_progress_ring.dart';
 
 class _Draft {
   final String id;
@@ -2352,14 +2353,19 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         bottom: false,
         top: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                '展开记录菜单',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+              // 收起态也保留今日指示，圆环不会时有时无（环自带 44 命中区，
+              // 且吃掉点击，不会误触发外层的「展开记录菜单」手势）
+              const TodayProgressRing(),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '展开记录菜单',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
               Container(
@@ -3866,6 +3872,9 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
+          // 今日完整度：环内条数/目标，右下角连续天数；点它跳统计页
+          const TodayProgressRing(),
+          const SizedBox(width: 8),
           Expanded(
             child: AnimatedGradientBorder(
               isAnimating: _isExtracting,

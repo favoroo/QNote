@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
+import 'package:qnote_flutter/providers/diary_progress_provider.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/providers/stats_provider.dart';
 import 'package:qnote_flutter/widgets/empty_state.dart';
@@ -58,6 +59,55 @@ class StatisticsPage extends ConsumerStatefulWidget {
 class _StatisticsPageState extends ConsumerState<StatisticsPage> {
   StatTab _activeTab = StatTab.score;
   TimeRangeType _timeRange = TimeRangeType.week;
+
+  /// 日记页圆环跳来的定位锚点：「记录坚持与评分热力图」卡片。
+  final GlobalKey _streakCardKey = GlobalKey();
+  bool _streakFocusPending = false;
+
+  /// 逐帧等卡片 RenderObject 就绪的上限，超了就放弃滚动只清意图。
+  static const int _kStreakFocusMaxFrames = 10;
+
+  /// 消费「看记录坚持」意图：必要时先切到评分 tab，再把卡片滚进视口。
+  ///
+  /// go_router 的分支容器是 IndexedStack + Offstage，非激活分支不参与 layout、
+  /// ticker 也被冻结，此时对卡片调 ensureVisible 会静默失效；
+  /// 所以这里逐帧重试，而不是在卡片组件内部自己滚。
+  void _consumeStreakFocus() {
+    if (_streakFocusPending) {
+      return;
+    }
+    _streakFocusPending = true;
+    _revealStreakCard(_kStreakFocusMaxFrames);
+  }
+
+  void _revealStreakCard(int framesLeft) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      final cardContext = _streakCardKey.currentContext;
+      final box = cardContext?.findRenderObject();
+      if (cardContext != null &&
+          box is RenderBox &&
+          box.attached &&
+          box.hasSize &&
+          TickerMode.valuesOf(cardContext).enabled) {
+        Scrollable.ensureVisible(
+          cardContext,
+          alignment: 0.12,
+          duration: AppDurations.slow,
+          curve: AppCurves.emphasized,
+        );
+      } else if (framesLeft <= 0) {
+        debugPrint('统计页定位 streak 卡片超时，跳过滚动');
+      } else {
+        _revealStreakCard(framesLeft - 1);
+        return;
+      }
+      _streakFocusPending = false;
+      ref.read(streakFocusProvider.notifier).state = null;
+    });
+  }
 
   void _onTabChanged(StatTab tab) {
     if (tab == _activeTab) return;
@@ -142,6 +192,18 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     final theme = Theme.of(context);
     final (startDate, endDate) = _getDateRange();
 
+    // 日记页圆环与庆祝胶囊「看看统计」都走这里：streak 指标在评分 tab，
+    // 停在别的 tab 时先切过去再定位。
+    ref.listen(streakFocusProvider, (previous, next) {
+      if (next == null) {
+        return;
+      }
+      if (_activeTab != StatTab.score) {
+        setState(() => _activeTab = StatTab.score);
+      }
+      _consumeStreakFocus();
+    });
+
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -208,9 +270,9 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
   Widget _buildContent(DateTime startDate, DateTime endDate) {
     // score tab 不依赖 statsProvider，由 DailyScoreStats 内部独立处理
     if (_activeTab == StatTab.score) {
-      return const SingleChildScrollView(
-        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: DailyScoreStats(),
+      return SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: DailyScoreStats(streakCardKey: _streakCardKey),
       );
     }
     // healthDevice tab 呈现小米运动健康全量体征监测仪表盘
