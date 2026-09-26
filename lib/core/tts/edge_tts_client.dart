@@ -25,7 +25,9 @@ class EdgeTtsClient {
       '(KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0';
   static const String _wssUrl =
       'wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1';
-  static const Duration _synthesisTimeout = Duration(seconds: 45);
+  /// 帧间空闲超时。分段朗读后单段只有一两百字，45 秒只会把失败感知拖得更久，
+  /// 让用户在前一段播完前都等不到降级/报错，故收短到 15 秒。
+  static const Duration _synthesisTimeout = Duration(seconds: 15);
 
   /// 合成一段文本为 mp3 字节（24kHz 48kbit 单声道）。
   ///

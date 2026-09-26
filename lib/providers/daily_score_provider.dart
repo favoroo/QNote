@@ -107,6 +107,7 @@ class DailyScoreNotifier extends AsyncNotifier<DailyScore?> {
     await _repository.insert(score);
     await refresh();
     ref.invalidate(dailyScoreHistoryProvider);
+    ref.invalidate(dailyScoreHeatmapProvider);
     return score;
   }
 

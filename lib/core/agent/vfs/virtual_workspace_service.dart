@@ -14,19 +14,20 @@ import 'package:qnote_flutter/core/notification/notification_service.dart';
 import 'package:qnote_flutter/core/storage/color_mark_repository.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/storage/daily_score_repository.dart';
+import 'package:qnote_flutter/core/storage/daily_score_service.dart';
 import 'package:qnote_flutter/core/storage/database_helper.dart';
 import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/core/storage/fixed_event_repository.dart';
 import 'package:qnote_flutter/core/storage/folder_repository.dart';
 import 'package:qnote_flutter/core/storage/health_metric_repository.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
+import 'package:qnote_flutter/core/utils/daily_score_adjust.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/core/utils/reminder_utils.dart';
 import 'package:qnote_flutter/models/agent_memory.dart';
 import 'package:qnote_flutter/models/agent_skill.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
-import 'package:qnote_flutter/models/daily_score.dart';
 import 'package:qnote_flutter/models/date_color_mark.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/fixed_event_template.dart';
@@ -66,6 +67,12 @@ class VirtualWorkspaceService {
   /// 录制句柄 → 该任务捕获的变更缓冲；句柄制使 AI 主会话与悬浮小Q任务可并发录制互不污染
   final Map<int, List<WorkspaceUndoEntry>> _recorders = {};
   int _recorderSeq = 0;
+
+  /// 范围批量调整历史评分的只写端点
+  static const String kStatsAdjustPath = '/stats/adjust.json';
+
+  /// 精简评分索引：只含分值与维度、不含评语，供跨较长区间快速定位
+  static const String kStatsScoreIndexPath = '/stats/score_index.json';
 
   /// 可录制的业务路径前缀；/chats/ 涉及会话自身（撤回时消息正在截断落库），跳过录制
   static const List<String> _recordablePrefixes = [
@@ -199,6 +206,10 @@ class VirtualWorkspaceService {
     }
 
     if (!_recordablePrefixes.any(path.startsWith)) return;
+
+    // 范围调整端点自身读不出内容，快照挂在它上面会让撤回尝试删除一个不存在的
+    // 虚拟文件；该端点的撤回由写库前逐天补捕的 /stats/scores/ 快照承担
+    if (path == kStatsAdjustPath) return;
 
     // 捕获路径统一规范化，保证同一实体在一轮内多次操作（先按标题写入、又被目录连坐删除
     // 按 id 捕获）只保留最旧快照：
@@ -404,7 +415,7 @@ class VirtualWorkspaceService {
 - `/timeline/`: 时间线流水日志（按日期归档，如 `/timeline/2026-09-11.md`，支持单点打卡与时间段打卡）。
 - `/journal/`: 每日深度长篇日记与复盘（如 `/journal/2026-09-11.md`）。
 - `/folders/`: 分类与笔记本层级管理（`todos.json` 待办分类、`notes.json` 笔记本目录，支持增删改查与重命名）。
-- `/stats/`: 数据洞察与生活评分（`summary.json` 综合统计与完成率、`daily_scores.json` 每日AI生活评分与建议）。
+- `/stats/`: 数据洞察与生活评分（`summary.json` 综合统计与完成率、`daily_scores.json` 近两周评分与建议、`score_index.json` 近一年评分索引（只有分值无评语）、`adjust.json` 按日期区间批量调整历史评分（只写）、`scores/YYYY-MM-DD.json` 单日评分读写）。
 - `/health/`: 小米运动健康数据（`summary.json` 近期汇总、`YYYY-MM-DD.json` 单日步数/睡眠分期/心率曲线/血氧/压力/运动详情；撰写每日健康复盘与生活评分时可主动读取）。
 - `/chats/`: 对话会话管理（`sessions.json` 历史会话查看、标题重命名与软删除）。
 - `/settings/`: 系统偏好与个性化配置（包含 `appearance.json`、`ai.json`、`shortcuts.json`、`fixed_events.json`、`profile.json`、`weight.json`、`color_marks.json`、`webdav.json`）。
@@ -468,7 +479,14 @@ class VirtualWorkspaceService {
     }
 
     if (path == '/stats' || path == '/stats/') {
-      return ['summary.json', 'screen_time.json', 'daily_scores.json', 'scores/'];
+      return [
+        'summary.json',
+        'screen_time.json',
+        'daily_scores.json',
+        'score_index.json',
+        'adjust.json',
+        'scores/',
+      ];
     }
 
     if (path == '/health' || path == '/health/') {
@@ -486,8 +504,8 @@ class VirtualWorkspaceService {
         now.year,
         now.month,
         now.day,
-      ).subtract(const Duration(days: 30));
-      final scores = await _dailyScoreRepo.getByDateRange(startDate, now);
+      ).subtract(const Duration(days: DailyScoreService.maxAdjustRangeDays));
+      final scores = await _dailyScoreRepo.getLatestByDateRange(startDate, now);
       return scores
           .map((s) => '${s.date.toIso8601String().substring(0, 10)}.json')
           .toList();
@@ -1253,6 +1271,27 @@ class VirtualWorkspaceService {
         'weeklyFormattedAverage': weeklyAvgText,
       };
       return const JsonEncoder.withIndent('  ').convert(data);
+    } else if (name == 'score_index.json') {
+      final now = DateTime.now();
+      final startDate = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).subtract(const Duration(days: 366));
+      final scores = await _dailyScoreRepo.getLatestByDateRange(startDate, now);
+      // 刻意省略 summary/suggestions：单日评语就要几百 token，一年的索引会把上下文灌满；
+      // 要看评语原文再按天读 /stats/scores/YYYY-MM-DD.json
+      final list = scores
+          .map(
+            (s) => {
+              'date': s.date.toIso8601String().substring(0, 10),
+              'totalScore': s.totalScore,
+              'dimensionScores': s.dimensionScores,
+              'recordCount': s.recordCount,
+            },
+          )
+          .toList();
+      return const JsonEncoder.withIndent('  ').convert(list);
     } else if (name == 'daily_scores.json') {
       final now = DateTime.now();
       final startDate = DateTime(
@@ -3032,6 +3071,9 @@ class VirtualWorkspaceService {
     String path,
     String content,
   ) async {
+    if (path == kStatsAdjustPath) {
+      return await _writeStatsAdjustFile(content);
+    }
     if (!path.startsWith('/stats/scores/')) {
       throw Exception(
         '当前统计路径不支持直接覆写: $path（宏观汇总 summary.json / daily_scores.json 仅供读取，若要给某天评分或修改分数，请写入单日路径: /stats/scores/YYYY-MM-DD.json）',
@@ -3060,15 +3102,11 @@ class VirtualWorkspaceService {
       throw Exception('评分数据必须是 JSON 对象');
     }
 
-    // 解析总分 totalScore（0-100）
+    // 未出现的字段一律不改：缺省的总分不再兜成 60，缺失的维度不再被总分覆盖
     final rawTotal =
         decoded['totalScore'] ?? decoded['total_score'] ?? decoded['score'];
-    int totalScore = 60;
-    if (rawTotal is num) {
-      totalScore = rawTotal.toInt().clamp(0, 100);
-    }
+    final int? totalScore = rawTotal is num ? rawTotal.toInt() : null;
 
-    // 解析维度分 dimensionScores
     final rawDims =
         decoded['dimensionScores'] ??
         decoded['dimension_scores'] ??
@@ -3079,16 +3117,10 @@ class VirtualWorkspaceService {
         final key = entry.key.toString().trim();
         final val = entry.value;
         if (val is num) {
-          dimensionScores[key] = val.toInt().clamp(0, 100);
+          dimensionScores[key] = val.toInt();
         }
       }
     }
-    // 默认兜底常用维度
-    dimensionScores.putIfAbsent('sleep', () => totalScore);
-    dimensionScores.putIfAbsent('diet', () => totalScore);
-    dimensionScores.putIfAbsent('activity', () => totalScore);
-    dimensionScores.putIfAbsent('health', () => totalScore);
-    dimensionScores.putIfAbsent('screen', () => totalScore);
 
     // 总结与建议
     final summary = (decoded['summary'] ?? '').toString().trim();
@@ -3096,73 +3128,142 @@ class VirtualWorkspaceService {
         .toString()
         .trim();
 
-    // 记录数量
-    int recordCount = 0;
+    // 记录数量：payload 未给时按当天流水数；0 视为未提供，保留库里原值
+    int? recordCount;
     final rawCount = decoded['recordCount'] ?? decoded['record_count'];
     if (rawCount is num) {
       recordCount = rawCount.toInt();
     } else {
-      // 若未指定，自动根据当天流水记录数计算
       final records = await _diaryRepo.getByDate(date);
-      recordCount = records.length;
+      if (records.isNotEmpty) recordCount = records.length;
     }
 
-    final existing = await _dailyScoreRepo.getByDate(date);
-    DailyScore savedScore;
-    String op = 'created';
-    if (existing != null) {
-      savedScore = existing.copyWith(
-        totalScore: totalScore,
-        dimensionScores: dimensionScores,
-        summary: summary.isNotEmpty ? summary : existing.summary,
-        suggestions: suggestions.isNotEmpty
-            ? suggestions
-            : existing.suggestions,
-        recordCount: recordCount > 0 ? recordCount : existing.recordCount,
-        updatedAt: DateTime.now(),
-      );
-      await _dailyScoreRepo.update(savedScore);
-      op = 'updated';
-    } else {
-      final now = DateTime.now();
-      savedScore = DailyScore(
-        id: const Uuid().v4(),
-        date: date,
-        totalScore: totalScore,
-        dimensionScores: dimensionScores,
-        summary: summary,
-        suggestions: suggestions,
-        recordCount: recordCount,
-        createdAt: now,
-        updatedAt: now,
-      );
-      await _dailyScoreRepo.insert(savedScore);
-      op = 'created';
-    }
-
-    // 触发工作区总线广播（通知 UI 刷新每日评分图表）
-    WorkspaceEventBus.instance.emit(
-      path,
-      op == 'created'
-          ? WorkspaceChangeType.created
-          : WorkspaceChangeType.updated,
-      savedScore,
-    );
-    WorkspaceEventBus.instance.emit(
-      '/stats/daily_scores.json',
-      WorkspaceChangeType.updated,
-      savedScore,
+    final result = await DailyScoreService.instance.upsertFromPayload(
+      date: date,
+      totalScore: totalScore,
+      dimensionScores: dimensionScores,
+      summary: summary,
+      suggestions: suggestions,
+      recordCount: recordCount,
     );
 
+    // 回显刻意不含 summary：批量改分时逐日评语原文会白白吃掉大量上下文
     return {
-      'status': op,
+      'status': result.status,
       'path': path,
-      'id': savedScore.id,
+      'id': result.saved.id,
       'date': dateStr,
-      'totalScore': savedScore.totalScore,
-      'dimensionScores': savedScore.dimensionScores,
-      'summary': savedScore.summary,
+      'totalScore': result.saved.totalScore,
+      'dimensionScores': result.saved.dimensionScores,
     };
+  }
+
+  /// 范围批量调整历史评分：一次调用改完一段日期区间。
+  ///
+  /// 为什么不逐天 write_file：那等于把上百个整数加减交给模型心算，算错了既不
+  /// 报错也看不出来；加减分统一由 [applyScoreAdjust] 计算并钳位。
+  Future<Map<String, dynamic>> _writeStatsAdjustFile(String content) async {
+    dynamic decoded;
+    try {
+      decoded = jsonDecode(content);
+    } catch (e) {
+      throw Exception('评分调整指令必须是合法的 JSON 格式: $e');
+    }
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception('评分调整指令必须是 JSON 对象');
+    }
+
+    final from = _parseStatsDate(
+      decoded['dateFrom'] ?? decoded['from'] ?? decoded['start'],
+      'dateFrom',
+    );
+    final to = _parseStatsDate(
+      decoded['dateTo'] ?? decoded['to'] ?? decoded['end'],
+      'dateTo',
+    );
+    final fields = _parseScoreFields(decoded['fields']);
+
+    final rawDelta = decoded['delta'] ?? decoded['offset'];
+    final rawSet = decoded['setValue'] ?? decoded['set'];
+    if ((rawDelta is num) == (rawSet is num)) {
+      throw Exception('delta（加减分）与 setValue（设为固定值）必须且只能提供一个');
+    }
+    final spec = rawDelta is num
+        ? ScoreAdjustSpec(delta: rawDelta.toInt(), fields: fields)
+        : ScoreAdjustSpec(setValue: (rawSet as num).toInt(), fields: fields);
+    final dryRun = decoded['dryRun'] == true;
+
+    final service = DailyScoreService.instance;
+    if (!dryRun) {
+      // 先算一遍拿到「实际会变更的日期」，逐天补捕撤回快照
+      final preview = await service.adjustRange(
+        from: from,
+        to: to,
+        spec: spec,
+        dryRun: true,
+      );
+      for (final outcome in preview.outcomes) {
+        await _captureUndoState(
+          '/stats/scores/${_statsDateKey(outcome.before.date)}.json',
+        );
+      }
+    }
+
+    final adjusted = await service.adjustRange(
+      from: from,
+      to: to,
+      spec: spec,
+      dryRun: dryRun,
+    );
+    return {
+      'status': dryRun ? 'preview' : 'adjusted',
+      'range': '${_statsDateKey(from)} ~ ${_statsDateKey(to)}',
+      'applied': adjusted.applied,
+      'scoredDays': adjusted.scoredDays,
+      'missingDays': adjusted.missingDays,
+      'clampedDays': adjusted.clamped,
+      'summary': adjusted.preview,
+      'changes': adjusted.outcomes
+          .take(8)
+          .map(
+            (o) => {
+              'date': _statsDateKey(o.before.date),
+              'fields': o.changes
+                  .map((c) => '${c.field.label} ${c.before ?? '—'}→${c.after}')
+                  .toList(),
+            },
+          )
+          .toList(),
+    };
+  }
+
+  /// 评分端点里的日期归一化为 `YYYY-MM-DD`
+  String _statsDateKey(DateTime date) => date.toIso8601String().split('T').first;
+
+  DateTime _parseStatsDate(dynamic raw, String label) {
+    final text = (raw ?? '').toString().trim();
+    if (text.isEmpty) {
+      throw Exception('缺少 $label（格式 YYYY-MM-DD）');
+    }
+    try {
+      final parsed = DateTime.parse(text);
+      return DateTime(parsed.year, parsed.month, parsed.day);
+    } catch (_) {
+      throw Exception('$label 日期格式无效: $text（应为 YYYY-MM-DD）');
+    }
+  }
+
+  Set<ScoreField> _parseScoreFields(dynamic raw) {
+    if (raw is! List || raw.isEmpty) return kAllScoreFields;
+    final fields = <ScoreField>{};
+    for (final entry in raw) {
+      final field = ScoreField.fromKey(entry.toString());
+      if (field == null) {
+        throw Exception('未知的评分字段: $entry（可选 total/sleep/diet/activity/health/screen）');
+      }
+      fields.add(field);
+    }
+    return fields;
   }
 
   /// 颜色解析辅助方法（支持 hex #RRGGBB、#AARRGGBB 与常见颜色别名）

@@ -51,9 +51,17 @@ Future<FlutterTts> _sharedSystemTts() async {
 ///
 /// 语速映射：flutter_tts 的 setSpeechRate 在 Android/iOS 上均为 0.0~1.0，
 /// 0.5 约等于正常语速，故按倍率×0.5 换算。上限须大于最长朗读时长
-/// （600 字正常要 2 分多钟），超时不再被当作成功而是明确报错。
-Future<void> systemSpeakImpl(String text, {required double rate}) async {
+/// （分段后单段只有一两分钟量级），超时不再被当作成功而是明确报错。
+///
+/// [resetQueue] 只在分段朗读的首段为 true：先掐掉可能残留的上一场朗读。
+/// 分段之间靠 `awaitSpeakCompletion(true)` 天然串行排队，无需也不应再 stop。
+Future<void> systemSpeakImpl(
+  String text, {
+  required double rate,
+  bool resetQueue = true,
+}) async {
   final tts = await _sharedSystemTts();
+  if (resetQueue) await tts.stop().catchError((_) {});
   await tts.setLanguage('zh-CN');
   await tts.setSpeechRate((rate * 0.5).clamp(0.0, 1.0));
   await tts.setPitch(1.0);

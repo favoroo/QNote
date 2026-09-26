@@ -1,5 +1,7 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:qnote_flutter/core/tts/tts_player.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
@@ -75,6 +77,47 @@ void main() {
       expect(
         TtsPlayer.messageKeyOf(a),
         isNot(TtsPlayer.messageKeyOf(b)),
+      );
+    });
+  });
+
+  group('TtsPlayer.retagMessage', () {
+    test('流式临时 key 换成正式 key 后状态不变，气泡按钮才对得上', () {
+      SharedPreferences.setMockInitialValues({});
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final player = container.read(ttsPlaybackProvider.notifier);
+
+      player.beginSpeech(
+        'stream#0',
+        voice: 'zh-CN-XiaoxiaoNeural',
+        rate: 1.0,
+      );
+      expect(
+        container.read(ttsPlaybackProvider).status,
+        TtsPlaybackStatus.synthesizing,
+      );
+
+      player.retagMessage('stream#0', 'msg_assistant_final');
+      final retagged = container.read(ttsPlaybackProvider);
+      expect(retagged.messageId, 'msg_assistant_final');
+      // 状态必须原样保留：换 key 期间朗读没停，按钮不该闪回"朗读"态
+      expect(retagged.status, TtsPlaybackStatus.synthesizing);
+    });
+
+    test('旧 key 已被新任务取代时换名不生效', () {
+      SharedPreferences.setMockInitialValues({});
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final player = container.read(ttsPlaybackProvider.notifier);
+
+      player.beginSpeech('stream#0', voice: 'v', rate: 1.0);
+      player.retagMessage('stream#0', 'msg_assistant_first');
+      // 上一轮的迟到收尾不能把这一轮的朗读改错名字
+      player.retagMessage('stream#0', 'msg_assistant_stale');
+      expect(
+        container.read(ttsPlaybackProvider).messageId,
+        'msg_assistant_first',
       );
     });
   });

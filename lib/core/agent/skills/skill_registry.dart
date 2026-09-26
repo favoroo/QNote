@@ -473,7 +473,7 @@ description: 分类与笔记本目录管理技能：查看待办/笔记分类树
 
   static const String statsAnalystDoc = '''---
 name: stats-analyst
-description: 数据洞察与生活评分分析技能：调阅待办完成率、近期作息生活统计、每日AI生活健康评分与改进建议、支持评分与修改
+description: 数据洞察与生活评分分析技能：调阅待办完成率、近期作息生活统计、每日AI生活健康评分与改进建议、支持评分、改分与按日期区间批量调整历史分值
 ---
 
 # 数据洞察与生活评分分析技能 (Stats Analyst)
@@ -486,7 +486,9 @@ description: 数据洞察与生活评分分析技能：调阅待办完成率、�
   - `timeline`: `recent7DaysRecordCount` 打卡总数 / `averageMood` 平均情绪 / `categoryDistribution` 分类分布
   - `timeRange`: 统计区间
 - `/stats/daily_scores.json`（近 14 天评分数组，只读）：每项含 `date`、`totalScore`（0-100）、`dimensionScores`、`summary`、`suggestions`、`recordCount`
-- `/stats/scores/YYYY-MM-DD.json`（单日评分数据，**可读可写可修改**）：
+- `/stats/score_index.json`（近一年评分索引，只读）：每项只含 `date`、`totalScore`、`dimensionScores`、`recordCount`，**不带评语**，适合跨较长区间快速定位；要看某天的 `summary`/`suggestions` 原文再按天读下面的单日文件
+- `/stats/adjust.json`（按日期区间批量调整历史分值，**只写**）：用法见「批量调整历史分值」小节
+- `/stats/scores/YYYY-MM-DD.json`（单日评分数据，**可读可写可修改**）：payload 里未出现的键保持库里的原值——只给 `dimensionScores.diet` 时，其余四维与总分都不会被改写；写入没有评分的日期则新建当天记录：
   ```json
   {
     "date": "2026-09-14",
@@ -516,6 +518,20 @@ description: 数据洞察与生活评分分析技能：调阅待办完成率、�
 - **给当天评分**：先读取 `/timeline/YYYY-MM-DD.md` 提取全天打卡与流水，再读取 `/health/YYYY-MM-DD.json` 小米运动健康客观数据与 `/stats/screen_time.json` 屏幕使用时间作为评分依据；综合评出总分与各维度分（含 sleep/diet/activity/health/screen 五维），调用 `write_file(path: "/stats/scores/YYYY-MM-DD.json", content: ...)` 写入。写入后应用内的环形分值与图表会自动热刷新。
 - **微调分数或评语**：用户要求修改某项分数或重新生成评语时，使用 `edit_file` 精准替换对应键值，或用 `write_file` 覆写更新。
 - **重置评分**：调用 `delete_file(path: "/stats/scores/YYYY-MM-DD.json")` 删除该天评分记录。
+- **批量调整历史分值**：跨日期区间的统一改分（「上周整体降 5 分」「那几天屏幕分都改成 40」）写 `/stats/adjust.json`，一次调用完成整段区间：
+  ```json
+  {
+    "dateFrom": "2026-09-01",
+    "dateTo": "2026-09-10",
+    "delta": -5,
+    "fields": ["total", "sleep", "diet", "activity", "health", "screen"],
+    "dryRun": true
+  }
+  ```
+  - `delta`（加减分，可为负）与 `setValue`（设为固定值）二选一；`fields` 可省略，省略即对总分与五维全部作用。
+  - **先带 `dryRun: true` 预览**，把回显的「命中 N 天 · 该区间无评分 M 天 · K 天已到上下限」报给用户，得到认可后再去掉 dryRun 正式写。
+  - 区间内没有评分的天会被跳过，**不会**被补造成记录；各字段独立按 0~100 钳位；总分不随维度重算；`summary`/`suggestions` 评语文字保持不变。
+  - 单次跨度上限 92 天，更久历史请缩小范围分批调用。禁止逐天 `write_file` 代替，也不要自己心算改后的分值。
 
 ## 4. 空数据处理
 - 流水数据完全为空、完成率为 0 或时间线事件不足 3 条时，如实告知「记录不足，暂无法有效分析打分」，并建议用户先记录时间线/待办；**严禁编造数据或评分**，必须基于真实流水依据。
@@ -524,7 +540,8 @@ description: 数据洞察与生活评分分析技能：调阅待办完成率、�
 - 用户：“给今天的生活打个分吧” → 先读 `/timeline/YYYY-MM-DD.md` 分析全天记录，计算得分后写入 `/stats/scores/YYYY-MM-DD.json`
 - 用户：“总结下我这周的工作和生活” → 查阅 `/stats/summary.json`，根据客观数据总结
 - 用户：“我最近作息健康吗？有什么建议？” → 查阅 `/stats/daily_scores.json`，给出基于评分的专业建议
-- 用户：“把今天饮食分改成85分” → 读取或直接编辑 `/stats/scores/YYYY-MM-DD.json` 更新分值
+- 用户：“把今天饮食分改成85分” → `write_file("/stats/scores/YYYY-MM-DD.json", ...)` 时只给 `{"dimensionScores":{"diet":85}}` 这一个键，其余四维与总分会自动保持原值，无需先读全文再回写
+- 用户：“上周评分整体降 5 分” → 先 `write_file("/stats/adjust.json", { ..., "dryRun": true })` 取预览、把命中天数报给用户，认可后去掉 dryRun 正式写入
 - 用户：“根据完成率调整下周计划” → 读 `summary.json` 与待办列表，给出调整建议，用户认可后再写入新待办
 
 ## 6. 个性化分析联动

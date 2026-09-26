@@ -61,13 +61,22 @@ void main() {
       expect(doc.contains('/timeline/YYYY-MM-DD.md'), isTrue, reason: '应引导先读时间线取素材');
     });
 
-    test('stats-analyst 含四个评分维度与空数据处理', () {
+    test('stats-analyst 含五个评分维度、批量调整指引与空数据处理', () {
       final doc = registry.getSkillContent('stats-analyst')!;
-      for (final dim in ['sleep', 'diet', 'activity', 'health']) {
+      for (final dim in ['sleep', 'diet', 'activity', 'health', 'screen']) {
         expect(doc.contains(dim), isTrue, reason: '应包含维度 $dim');
       }
       expect(doc.contains('严禁编造'), isTrue, reason: '应含空数据处理禁令');
       expect(doc.contains('weight.json'), isTrue, reason: '应含个性化分析联动');
+      expect(doc.contains('/stats/adjust.json'), isTrue, reason: '应指引按区间批量调整');
+      expect(doc.contains('score_index.json'), isTrue, reason: '应给出跨长区间的精简评分索引端点');
+      expect(doc.contains('dryRun'), isTrue, reason: '批量调整须先预览再落库');
+      expect(doc.contains('禁止逐天'), isTrue, reason: '不得用逐天 write_file 代替批量端点');
+      expect(
+        doc.contains('未出现的键保持库里的原值'),
+        isTrue,
+        reason: '必须写明部分更新语义，否则只改一个维度会把其余四维覆盖掉',
+      );
     });
 
     test('folder-manager 说明系统默认分类', () {

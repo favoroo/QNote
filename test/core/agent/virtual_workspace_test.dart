@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -9,6 +11,19 @@ import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
+
+/// 距今 [daysAgo] 天的日期键（`YYYY-MM-DD`）。评分端点按相对日期取，
+/// 避免用例里的固定日期跨过 92 天窗口后失效。
+String _dayKey(int daysAgo) {
+  final date = DateTime.now().subtract(Duration(days: daysAgo));
+  final m = date.month.toString().padLeft(2, '0');
+  final d = date.day.toString().padLeft(2, '0');
+  return '${date.year}-$m-$d';
+}
+
+/// 解码 readFile 的回显：readFile 会给每行加 `行号\t` 前缀，直接 jsonDecode 会失败
+dynamic _decodeEchoed(String echoed) =>
+    jsonDecode(VirtualWorkspaceService.stripLineNumbers(echoed));
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -638,6 +653,214 @@ tags: "运动,健康"
       // 清理测试数据
       await vfs.deleteFile('/memory/agent.md');
     });
+
+    test('25. stats: 部分维度写入不清空其余四维与总分', () async {
+      final path = '/stats/scores/${_dayKey(3)}.json';
+      await vfs.writeFile(
+        path,
+        jsonEncode({
+          'totalScore': 88,
+          'dimensionScores': {
+            'sleep': 90,
+            'diet': 70,
+            'activity': 65,
+            'health': 80,
+            'screen': 55,
+          },
+          'summary': '作息规律',
+        }),
+      );
+
+      // 只改饮食分，且不携带 totalScore
+      await vfs.writeFile(
+        path,
+        jsonEncode({'dimensionScores': {'diet': 40}}),
+      );
+
+      final read = _decodeEchoed(await vfs.readFile(path)) as Map<String, dynamic>;
+      expect(read['totalScore'], 88, reason: '缺省总分不能被重置为基线值');
+      final dims = read['dimensionScores'] as Map<String, dynamic>;
+      expect(dims['diet'], 40);
+      expect(dims['sleep'], 90, reason: '未提及的维度不能被总分覆盖');
+      expect(dims['activity'], 65);
+      expect(dims['health'], 80);
+      expect(dims['screen'], 55);
+      expect(read['summary'], '作息规律');
+    });
+
+    test('26. stats: score_index.json 只给分值不给评语', () async {
+      await vfs.writeFile(
+        '/stats/scores/${_dayKey(20)}.json',
+        jsonEncode({
+          'totalScore': 77,
+          'dimensionScores': {'sleep': 60, 'diet': 90},
+          'summary': '这段评语不应该出现在索引里',
+        }),
+      );
+
+      final index = _decodeEchoed(await vfs.readFile('/stats/score_index.json'));
+      expect(index, isA<List>());
+      expect(index.toString(), contains('dimensionScores'));
+      expect(index.toString(), isNot(contains('这段评语不应该出现在索引里')));
+    });
+
+    test('27. stats: adjust.json 区间批量调整，缺评分的天不被补造', () async {
+      for (final ago in [10, 9, 8]) {
+        await vfs.writeFile(
+          '/stats/scores/${_dayKey(ago)}.json',
+          jsonEncode({
+            'totalScore': 80,
+            'dimensionScores': {
+              'sleep': 80,
+              'diet': 80,
+              'activity': 80,
+              'health': 80,
+              'screen': 80,
+            },
+            'summary': '原评语',
+          }),
+        );
+      }
+
+      final res = await vfs.writeFile(
+        '/stats/adjust.json',
+        jsonEncode({
+          'dateFrom': _dayKey(10),
+          'dateTo': _dayKey(6),
+          'delta': -5,
+        }),
+      );
+
+      expect(res['status'], 'adjusted');
+      expect(res['applied'], 3);
+      expect(res['missingDays'], 2);
+      expect(res['summary'], contains('命中 3 天'));
+
+      final day = _decodeEchoed(
+        await vfs.readFile('/stats/scores/${_dayKey(10)}.json'),
+      ) as Map<String, dynamic>;
+      expect(day['totalScore'], 75);
+      expect(day['dimensionScores']['sleep'], 75);
+      expect(day['summary'], '原评语', reason: '评语文字不随分值变化');
+
+      // 区间内没有评分的两天必须仍然是空态
+      expect(
+        await vfs.readFile('/stats/scores/${_dayKey(7)}.json'),
+        contains('not_scored'),
+      );
+      expect(
+        await vfs.readFile('/stats/scores/${_dayKey(6)}.json'),
+        contains('not_scored'),
+      );
+    });
+
+    test('28. stats: adjust.json 支持字段子集与 dryRun 预览', () async {
+      await vfs.writeFile(
+        '/stats/scores/${_dayKey(4)}.json',
+        jsonEncode({
+          'totalScore': 86,
+          'dimensionScores': {
+            'sleep': 90,
+            'diet': 70,
+            'activity': 65,
+            'health': 80,
+            'screen': 55,
+          },
+        }),
+      );
+
+      final preview = await vfs.writeFile(
+        '/stats/adjust.json',
+        jsonEncode({
+          'dateFrom': _dayKey(4),
+          'dateTo': _dayKey(4),
+          'setValue': 40,
+          'fields': ['screen'],
+          'dryRun': true,
+        }),
+      );
+      expect(preview['status'], 'preview');
+      expect(preview['applied'], 1);
+
+      final unchanged = _decodeEchoed(
+        await vfs.readFile('/stats/scores/${_dayKey(4)}.json'),
+      ) as Map<String, dynamic>;
+      expect(unchanged['dimensionScores']['screen'], 55, reason: '预览不得写库');
+
+      // 字段名写错时要明确报错，不能静默按全选执行
+      await expectLater(
+        () => vfs.writeFile(
+          '/stats/adjust.json',
+          jsonEncode({
+            'dateFrom': _dayKey(4),
+            'dateTo': _dayKey(4),
+            'delta': -5,
+            'fields': ['mood'],
+          }),
+        ),
+        throwsA(
+          isA<Exception>().having((e) => e.toString(), 'msg', contains('未知的评分字段')),
+        ),
+      );
+
+      // delta 与 setValue 同时给出时报错
+      await expectLater(
+        () => vfs.writeFile(
+          '/stats/adjust.json',
+          jsonEncode({
+            'dateFrom': _dayKey(4),
+            'dateTo': _dayKey(4),
+            'delta': -5,
+            'setValue': 40,
+          }),
+        ),
+        throwsA(isA<Exception>()),
+      );
+
+      final applied = await vfs.writeFile(
+        '/stats/adjust.json',
+        jsonEncode({
+          'dateFrom': _dayKey(4),
+          'dateTo': _dayKey(4),
+          'setValue': 40,
+          'fields': ['screen'],
+        }),
+      );
+      expect(applied['applied'], 1);
+      final after = _decodeEchoed(
+        await vfs.readFile('/stats/scores/${_dayKey(4)}.json'),
+      ) as Map<String, dynamic>;
+      expect(after['totalScore'], 86, reason: '未选中的总分不变');
+      expect(after['dimensionScores']['screen'], 40);
+      expect(after['dimensionScores']['sleep'], 90);
+    });
+
+    test('29. stats: 一次批量调整只广播一次变更事件', () async {
+      for (final ago in [13, 12]) {
+        await vfs.writeFile(
+          '/stats/scores/${_dayKey(ago)}.json',
+          jsonEncode({'totalScore': 70}),
+        );
+      }
+
+      var events = 0;
+      void listener(WorkspaceChangeEvent e) {
+        if (e.path.startsWith('/stats/')) events++;
+      }
+
+      WorkspaceEventBus.instance.addListener(listener);
+      await vfs.writeFile(
+        '/stats/adjust.json',
+        jsonEncode({
+          'dateFrom': _dayKey(13),
+          'dateTo': _dayKey(12),
+          'delta': -3,
+        }),
+      );
+      WorkspaceEventBus.instance.removeListener(listener);
+
+      expect(events, 1, reason: '逐天 emit 会让图表对同一批改动重复重查');
+    });
   });
 
   group('VFS 变更录制（对话撤回 undoLog）测试', () {
@@ -740,6 +963,41 @@ tags: "运动,健康"
       final revived = afterDelete.where((r) => r.id == record.id).firstOrNull;
       expect(revived, isNotNull);
       expect(revived!.isDeleted, isFalse);
+    });
+
+    test('5. 批量调整评分按逐天快照回滚，端点自身不产生坏快照', () async {
+      final first = _dayKey(16);
+      final second = _dayKey(15);
+      await vfs.writeFile(
+        '/stats/scores/$first.json',
+        jsonEncode({'totalScore': 90, 'dimensionScores': {'sleep': 90}}),
+      );
+      await vfs.writeFile(
+        '/stats/scores/$second.json',
+        jsonEncode({'totalScore': 70, 'dimensionScores': {'sleep': 70}}),
+      );
+
+      final recorder = vfs.startRecording();
+      await vfs.writeFile(
+        '/stats/adjust.json',
+        jsonEncode({'dateFrom': first, 'dateTo': second, 'delta': -10}),
+      );
+      final entries = vfs.stopRecording(recorder);
+
+      expect(
+        entries.map((e) => e.path),
+        isNot(contains('/stats/adjust.json')),
+        reason: '端点自身读不出内容，快照挂在它上面会让撤回静默失效',
+      );
+      expect(entries.length, 2);
+      expect(entries.every((e) => e.existedBefore), isTrue);
+
+      for (final entry in entries) {
+        await vfs.writeFile(entry.path, entry.beforeContent!);
+      }
+      final restored = _decodeEchoed(await vfs.readFile('/stats/scores/$first.json'));
+      expect(restored['totalScore'], 90, reason: '撤回后分数必须回到调整前');
+      expect(restored['dimensionScores']['sleep'], 90);
     });
   });
 }

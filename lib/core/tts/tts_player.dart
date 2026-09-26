@@ -14,6 +14,10 @@ import 'package:just_audio/just_audio.dart';
 
 import 'package:qnote_flutter/core/agent/services/q_voice_config.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/tts/speech_queue.dart';
+import 'package:qnote_flutter/core/tts/speech_segments.dart';
+import 'package:qnote_flutter/core/tts/speech_tuning.dart';
+import 'package:qnote_flutter/core/tts/streaming_speech_session.dart';
 import 'package:qnote_flutter/core/tts/tts_service.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 
@@ -39,11 +43,14 @@ class TtsPlaybackState {
   static const TtsPlaybackState idle = TtsPlaybackState();
 }
 
-/// 小Q语音回复播放器：合成（Edge 失败降级系统语音）+ 播放 + 状态发布。
+/// 小Q语音回复播放器：分段合成（Edge 失败降级系统语音）+ 串行续播 + 状态发布。
 ///
-/// 全局单朗读通道：新任务开始或 [stop] 时旧任务作废（代际号守卫），
+/// 全局单朗读通道：新会话开始或 [stop] 时旧任务作废（代际号守卫），
 /// 事件完成回调先校验代际，避免旧任务把新任务的状态复位成空闲。
-class TtsPlayer extends Notifier<TtsPlaybackState> {
+///
+/// 一场朗读由 [beginSpeech]/[enqueueSpeech]/[finishSpeech] 三段构成：正文流式
+/// 生成多少就念多少，首声只等第一段，不再等整条回复生成与合成完毕。
+class TtsPlayer extends Notifier<TtsPlaybackState> implements SpeechSink {
   static const int _maxCacheEntries = 20;
 
   AudioPlayer? _player;
@@ -67,6 +74,28 @@ class TtsPlayer extends Notifier<TtsPlaybackState> {
   /// 合成结果内存缓存（digest → mp3 bytes），重听同一条回复免重复合成
   final Map<String, Uint8List> _cache = {};
 
+  /// 会话操作串行链。
+  ///
+  /// 流式增量以 token 级频率到达，[enqueueSpeech] 必须同步返回；真正的异步工作
+  /// （清场、跑播放循环）挂在这条链上，既保证顺序又不阻塞事件循环。
+  Future<void> _serial = Future.value();
+
+  SpeechQueue? _queue;
+
+  /// 本场朗读的消息标识：流式期是临时 key，收尾前由 [retagMessage] 换成正式 key
+  String? _sessionMessageId;
+
+  /// 会话进行中：段间的 completed 事件不能把状态复位成空闲
+  bool _sessionActive = false;
+
+  /// 本场是否改用系统语音（用户指定设备语音，或首段在线合成失败后整场降级）
+  bool _useSystemVoice = false;
+
+  double _sessionRate = 1.0;
+
+  /// 在线通道的失败原因，与系统语音的失败一起报给用户，便于区分网络与设备问题
+  String? _onlineFailureReason;
+
   @override
   TtsPlaybackState build() => TtsPlaybackState.idle;
 
@@ -89,87 +118,199 @@ class TtsPlayer extends Notifier<TtsPlaybackState> {
     await speakMessage(key, message.content);
   }
 
-  /// 朗读一段文本：自动读取语音配置；[voiceOverride]/[rateOverride] 供试听覆盖。
+  /// 朗读一段完整文本（气泡「朗读」按钮与设置页试听）。
   ///
-  /// 全程抛错时状态复位为空闲并携带 [TtsPlaybackState.error]，由 UI 层提示。
+  /// 与自动朗读共用同一套分段队列：长回复边合成边播，首声不用等整段合成完。
+  /// [voiceOverride]/[rateOverride] 供试听覆盖。
   Future<void> speakMessage(
     String messageId,
     String text, {
     String? voiceOverride,
     double? rateOverride,
   }) async {
-    final cleanText = TtsService.cleanSpeechText(text);
-    if (cleanText.isEmpty) {
+    final builder = SpeechSegmentBuilder();
+    final segments = [...builder.feed(text), ...builder.finish()];
+    if (segments.isEmpty) {
       state = const TtsPlaybackState(
         error: '没有可朗读的文字内容',
       );
       return;
     }
 
-    // 打断上一个任务：代际号自增使其所有在途回调失效
-    await stop();
+    final settings = await QVoiceConfig.instance.get();
+    beginSpeech(
+      messageId,
+      voice: voiceOverride ?? settings.voice,
+      rate: rateOverride ?? settings.rate,
+    );
+    for (final segment in segments) {
+      enqueueSpeech(segment);
+    }
+    finishSpeech();
+  }
+
+  /// 开启一场分段朗读。
+  ///
+  /// 音色与语速由调用方备好传入：本方法处在流式事件的高频路径上，不能再 await
+  /// 一次 app_configs 读取。同步返回，清场与播放循环挂在 [_serial] 链上，
+  /// 因此紧随其后的 [enqueueSpeech] 既不会丢，也不会打断要掐掉的上一条朗读。
+  @override
+  void beginSpeech(String messageId, {required String voice, required double rate}) {
     final gen = ++_generation;
+    _sessionMessageId = messageId;
+    _sessionActive = true;
+    _useSystemVoice = voice == QVoiceConfig.systemVoiceId;
+    _sessionRate = rate;
+    _onlineFailureReason = null;
+
+    final queue = SpeechQueue(
+      prefetch: SpeechTuning.prefetchDepth,
+      isCancelled: () => gen != _generation,
+      synthesize: (text) => _synthesizeFor(voice, rate, text),
+      play: (segment) => _playSegment(gen, segment),
+    );
+    _queue = queue;
     state = TtsPlaybackState(
       messageId: messageId,
       status: TtsPlaybackStatus.synthesizing,
     );
+    LoggerService.instance.logAI(
+      _useSystemVoice
+          ? 'TTS 使用系统语音（用户指定，跳过在线合成）'
+          : 'TTS 分段朗读开始',
+    );
 
-    final settings = await QVoiceConfig.instance.get();
-    final voice = voiceOverride ?? settings.voice;
-    final rate = rateOverride ?? settings.rate;
-
-    // 首选 Edge 在线合成（三端均可用；选了系统语音则直接跳过在线通道），
-    // 失败记录原因后降级系统语音
-    String? onlineFailureReason;
-    final useSystemVoice = voice == QVoiceConfig.systemVoiceId;
-    if (useSystemVoice) {
-      LoggerService.instance.logAI('TTS 使用系统语音（用户指定，跳过在线合成）');
-    } else if (kOnlineSynthesisSupported) {
-      try {
-        final bytes = await _synthesizedBytes(cleanText, voice, rate);
-        if (gen != _generation) return;
-        await _playBytes(gen, bytes);
-        return;
-      } on TtsException catch (e) {
-        if (gen != _generation) return;
-        onlineFailureReason = e.message;
-        LoggerService.instance.logAI('Edge TTS 降级系统语音: ${e.message}');
-      } catch (e) {
-        if (gen != _generation) return;
-        onlineFailureReason = '$e';
-        LoggerService.instance.logAI('Edge TTS 降级系统语音: $e');
-      }
-    }
-
-    try {
-      // 走系统语音后 just_audio 不再参与本次朗读，摘掉播放器事件的复位授权，
-      // 避免降级前那次播放的迟到 completed 把系统语音的状态提前打回空闲
-      _playingGeneration = null;
-      state = TtsPlaybackState(
-        messageId: messageId,
-        status: TtsPlaybackStatus.playing,
-      );
-      await TtsService.speakNative(text: cleanText, rate: rate);
+    _serial = _serial.then((_) async {
+      await _cancelPlayback();
       if (gen != _generation) return;
-      state = TtsPlaybackState(messageId: messageId);
-    } catch (e) {
+      await queue.run();
       if (gen != _generation) return;
-      // 把两段失败原因都带给用户，便于区分网络问题与设备能力问题
-      final fallbackReason = e is TtsException ? e.message : '$e';
-      final combined = onlineFailureReason == null
-          ? fallbackReason
-          : '$onlineFailureReason；系统语音：$fallbackReason';
-      state = TtsPlaybackState(error: combined);
+      _closeSession();
+    }).catchError((Object error) {
+      if (gen != _generation) return;
+      _failSession(error);
+    });
+  }
+
+  /// 追加一段可朗读文本（须已由 [SpeechSegmentBuilder] 清洗）。
+  ///
+  /// 播放中调用合法：只入队并推进预取，绝不打断正在播的那一段。
+  @override
+  void enqueueSpeech(String text) {
+    final queue = _queue;
+    if (queue == null || text.trim().isEmpty) return;
+    _serial = _serial.then((_) async => queue.add(text));
+  }
+
+  /// 声明本场不再有新片段：已入队的念完后收尾复位。
+  @override
+  void finishSpeech() {
+    final queue = _queue;
+    if (queue == null) return;
+    _serial = _serial.then((_) async => queue.close());
+  }
+
+  /// 把流式期的临时 key 换成本轮最终消息的 [messageKeyOf]。
+  ///
+  /// 开口朗读时最终 ChatMessage 还不存在，而气泡按钮按内容摘要定 key；
+  /// 不换过来按钮就认不出"这条正在念"，既不会亮起也无法点停。
+  @override
+  void retagMessage(String oldKey, String newKey) {
+    if (_sessionMessageId != oldKey) return;
+    _sessionMessageId = newKey;
+    if (state.messageId == oldKey) {
+      state = TtsPlaybackState(messageId: newKey, status: state.status);
     }
   }
 
-  /// 停止当前朗读并复位状态
+  /// 停止当前朗读并复位状态（含分段队列里所有未播片段）
+  @override
   Future<void> stop() async {
     _generation++;
+    _sessionActive = false;
+    _queue?.clear();
+    _queue = null;
+    _sessionMessageId = null;
+    await _cancelPlayback();
+    state = TtsPlaybackState.idle;
+  }
+
+  /// 合成一段文本；返回 null 表示这一段交给系统语音朗读。
+  Future<Uint8List?> _synthesizeFor(String voice, double rate, String text) async {
+    if (_useSystemVoice) return null;
+    if (!kOnlineSynthesisSupported) {
+      // Web（非 Edge 浏览器）没有在线通道：整场改走设备语音，不必再试注定失败的握手
+      _useSystemVoice = true;
+      return null;
+    }
+    return _synthesizedBytes(text, voice, rate);
+  }
+
+  /// 播好一段。策略留在这里，[SpeechQueue] 只管顺序与预取：
+  /// 首段就失败 → 整场改用系统语音（含已入队的后续段，不重放）；
+  /// 中途才失败 → 终止本场（半路换音色比留下静音更刺耳）。
+  Future<void> _playSegment(int gen, SpeechSegment segment) async {
+    if (gen != _generation) return;
+
+    final failure = segment.error;
+    if (failure != null) {
+      if (segment.index > 0) {
+        throw failure is TtsException
+            ? failure
+            : TtsException('synthesis_failed', '在线语音合成失败：$failure');
+      }
+      _onlineFailureReason =
+          failure is TtsException ? failure.message : '$failure';
+      LoggerService.instance.logAI('Edge TTS 首段失败，整场改用系统语音: $_onlineFailureReason');
+    }
+
+    final bytes = segment.audio;
+    if (_useSystemVoice || bytes == null) {
+      // 走系统语音后 just_audio 不再参与本场，摘掉播放器事件的复位授权，
+      // 避免降级前那次播放的迟到 completed 把系统语音的状态提前打回空闲
+      _playingGeneration = null;
+      state = TtsPlaybackState(
+        messageId: _sessionMessageId,
+        status: TtsPlaybackStatus.playing,
+      );
+      // 段间不再清队列：原生靠 awaitSpeakCompletion 串行，浏览器靠自带队列续播
+      await TtsService.speakNative(
+        text: segment.text,
+        rate: _sessionRate,
+        resetQueue: segment.index == 0,
+      );
+      return;
+    }
+    await _playBytes(gen, bytes);
+  }
+
+  /// 本场念完：复位为空闲（保留 messageId，让该条按钮回到"朗读"态）
+  void _closeSession() {
+    _sessionActive = false;
+    _queue = null;
+    state = TtsPlaybackState(messageId: _sessionMessageId);
+  }
+
+  /// 本场失败：状态复位并带上用户可读的原因
+  void _failSession(Object error) {
+    final fallbackReason = error is TtsException ? error.message : '$error';
+    final online = _onlineFailureReason;
+    final combined = online == null || !_useSystemVoice
+        ? fallbackReason
+        : '$online；系统语音：$fallbackReason';
+    _sessionActive = false;
+    _queue = null;
+    LoggerService.instance.logAI('语音朗读失败: $combined', level: LogLevel.error);
+    state = TtsPlaybackState(error: combined);
+  }
+
+  /// 掐掉在途播放与系统语音。
+  ///
+  /// 不动代际号也不改状态：供新会话清场使用，此刻状态已属于新任务。
+  Future<void> _cancelPlayback() async {
     _playingGeneration = null;
     await _player?.stop();
     await TtsService.stopNative();
-    state = TtsPlaybackState.idle;
   }
 
   /// 合成（带缓存），命中缓存时跳过网络请求
@@ -269,6 +410,9 @@ class TtsPlayer extends Notifier<TtsPlaybackState> {
 
   /// 本次朗读结束：复位为空闲（保留 messageId，让该条按钮回到"朗读"态）
   void _onPlaybackFinished() {
+    // 分段会话里每段播完都会 completed 一次；此时复位会让朗读按钮在段间闪回
+    // "朗读"态，用户以为念完了。会话收尾由播放循环独占（见 _closeSession）。
+    if (_sessionActive) return;
     final gen = _playingGeneration;
     // 代际不匹配说明这是被 stop()/新任务作废的旧播放器事件，忽略以免覆盖新状态
     if (gen == null || gen != _generation) return;

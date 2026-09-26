@@ -23,13 +23,33 @@ void goStreakFocus(BuildContext context, WidgetRef ref) {
 /// 取代原先占满一行的顶部提示条，挂在输入框同一行最左侧。
 /// 固定 44×44（与发送按钮同尺寸）保证行内齐底、不额外挤压输入框宽度；
 /// 被砍掉的整句文案降级到 Tooltip / Semantics，按需可见。
-class TodayProgressRing extends ConsumerWidget {
+///
+/// 同时负责把自身圆心上报给 [cheerAnchorProvider]，达标庆祝的彩带以这里为爆点
+/// —— 起点落在「用户刚刚盯着看的那个环」上，动线才有因果，比从屏幕中间凭空
+/// 撒彩带走心。
+class TodayProgressRing extends ConsumerStatefulWidget {
   const TodayProgressRing({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final progress = ref.watch(diaryProgressProvider);
+  ConsumerState<TodayProgressRing> createState() => _TodayProgressRingState();
+}
+
+class _TodayProgressRingState extends ConsumerState<TodayProgressRing> {
+  /// 每实例私有 key：输入条的 AnimatedCrossFade 会把收起态与展开态**同时**挂在
+  /// 树上（bottom child 只是被淡出），共享 key 会永久报 Duplicate GlobalKey。
+  final GlobalKey _boxKey = GlobalKey();
+
+  /// 一帧内只排一次上报，避免布局抖动时堆回调。
+  bool _reportScheduled = false;
+
+  /// 当前这份圆环是否是可见的那一份（由 AnimatedCrossFade 的 TickerMode 决定）。
+  bool _visible = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = ref.watch(diaryProgressProvider) ?? _pendingProgress(ref);
     final hint = _hintText(progress);
+    _visible = TickerMode.valuesOf(context).enabled;
 
     return Tooltip(
       message: hint,
@@ -43,34 +63,80 @@ class TodayProgressRing extends ConsumerWidget {
           child: InkWell(
             onTap: () => goStreakFocus(context, ref),
             customBorder: const CircleBorder(),
-            child: SizedBox(
-              width: 44,
-              height: 44,
-              child: Stack(
-                clipBehavior: Clip.none,
-                alignment: Alignment.center,
-                children: [
-                  _ProgressRing(
-                    ratio: progress.ratio,
-                    isFull: progress.isFull,
-                    label: '${progress.todayCount}/${progress.target}',
+            child: LayoutBuilder(
+              // LayoutBuilder 在每次重新布局时都会走一遍：窗口 resize、输入条
+              // 展开收起改高度都能靠它刷新爆点，不必挂全局 metrics 监听。
+              builder: (context, constraints) {
+                _scheduleReport();
+                return SizedBox(
+                  key: _boxKey,
+                  width: 44,
+                  height: 44,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    alignment: Alignment.center,
+                    children: [
+                      _ProgressRing(
+                        ratio: progress.ratio,
+                        isFull: progress.isFull,
+                        label: '${progress.todayCount}/${progress.target}',
+                      ),
+                      Positioned(
+                        right: 1,
+                        bottom: 2,
+                        child: _StreakBadge(
+                          streakDays: progress.streakDays,
+                          atRisk: progress.todayPending && progress.streakDays > 0,
+                        ),
+                      ),
+                    ],
                   ),
-                  Positioned(
-                    right: 1,
-                    bottom: 2,
-                    child: _StreakBadge(
-                      streakDays: progress.streakDays,
-                      atRisk: progress.todayPending && progress.streakDays > 0,
-                    ),
-                  ),
-                ],
-              ),
+                );
+              },
             ),
           ),
         ),
       ),
     );
   }
+
+  /// 布局后再量全局坐标：build 期间 RenderBox 还没定位置。
+  void _scheduleReport() {
+    if (_reportScheduled) {
+      return;
+    }
+    _reportScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _reportScheduled = false;
+      _reportAnchor();
+    });
+  }
+
+  void _reportAnchor() {
+    // crossfade 进行的 300ms 内两份都算可见、会先后写入，取「后写胜出」：
+    // 两者都贴着左下角、误差只有几 pt，装饰动画可接受，不值得再引状态协调。
+    if (!_visible || !mounted) {
+      return;
+    }
+    final box = _boxKey.currentContext?.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) {
+      return;
+    }
+    final center = box.localToGlobal(Offset.zero) + const Offset(22, 22);
+    final anchor = ref.read(cheerAnchorProvider);
+    if (anchor.value != center) {
+      anchor.value = center;
+    }
+  }
+
+  /// 列表尚未加载完时的占位进度：仍按 `0/目标` 渲染，保住 44×44 行内占位不跳动。
+  DiaryProgress _pendingProgress(WidgetRef ref) => DiaryProgress(
+    todayCount: 0,
+    target: ref.watch(dailyTargetProvider),
+    streakDays: 0,
+    maxPerDay: 0,
+    todayPending: false,
+  );
 
   String _hintText(DiaryProgress progress) {
     final parts = <String>['今日 ${progress.todayCount}/${progress.target}'];

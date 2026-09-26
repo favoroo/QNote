@@ -24,6 +24,7 @@ import 'package:qnote_flutter/core/ai/ai_error_explainer.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/model_vision_capability.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/tts/streaming_speech_session.dart';
 import 'package:qnote_flutter/core/tts/tts_player.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/providers/agent_support.dart';
@@ -292,6 +293,9 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
   final StringBuffer _thoughtBuffer = StringBuffer();
   Timer? _flushTimer;
 
+  /// 分段朗读驱动：随正文增量逐段开口，一轮任务一个实例
+  StreamingSpeechSession? _speech;
+
   @override
   FloatingQState build() {
     ref.onDispose(() {
@@ -335,6 +339,8 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
 
     if (state.phase == FloatingQPhase.working) {
       _contextSwitchedDuringRun = true;
+      // 切页即丢弃历史，朗读也要收住：新页面上突然冒出的语音毫无来由
+      _speech?.onAbort();
     }
     state = state.copyWith(
       contextSignature: signature,
@@ -503,6 +509,8 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
   void stop() {
     _currentToken?.cancel('用户主动中止操作');
     AgentInteractionService.instance.cancelPending('用户主动中止操作');
+    // 中止同时收声：只停 Agent 会让界面安静下来、语音却继续念完
+    _speech?.onAbort();
   }
 
   /// 将最近一条步数上限消息标记为已处理（隐藏「继续/暂停」按钮）
@@ -580,6 +588,15 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
     _currentToken = token;
     _streamBuffer.clear();
     _thoughtBuffer.clear();
+    final speechSink = ref.read(ttsPlaybackProvider.notifier);
+    // 新一轮任务发起即打断上一轮仍在进行的语音朗读
+    unawaited(speechSink.stop());
+    _speech = StreamingSpeechSession(
+      sink: speechSink,
+      // 现在就去取音色与语速：首段切出来时通常已就绪，不必为它多等一次读库
+      settings: QVoiceConfig.instance.get(),
+      keyPrefix: 'stream_floating_q',
+    );
     final recorderHandle = VirtualWorkspaceService.instance.startRecording();
 
     try {
@@ -664,6 +681,8 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
             _streamBuffer.clear();
             // 新一轮思考从零开始，与状态行「第 N 步」语义对齐
             _thoughtBuffer.clear();
+            // 上一轮的正文会被状态行覆盖，朗读跟着作废，否则"念半截又从头念"
+            _speech?.onTurnStart();
             state = state.copyWith(clearStreamingThought: true);
             // 首轮不展示步数，避免"第 1 步"这类无信息量文案
             _setStatus((event.turn ?? 0) > 1
@@ -674,6 +693,8 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
             if (event.text != null) {
               _streamBuffer.write(event.text);
               _scheduleFlush();
+              // 切页后不再喂正文：与"历史立即丢弃、答复不落界面"保持同一语义
+              if (!_contextSwitchedDuringRun) _speech?.onContentDelta(event.text!);
             }
             break;
           case AgentEventType.reasoningDelta:
@@ -736,14 +757,13 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
         if (!isDup) _appendSessionMessage(finalResponse, signature);
 
         // 语音回复：与 AI 主页面共用「小Q语音 → 自动朗读回复」开关。
-        // 只在答复确实落到当前可见会话时朗读（切页丢弃历史/用户主动中止时沉默），
-        // 且必须 unawaited：await 会把 finally 里的状态复位推迟到朗读结束，
-        // 面板会一直挂着「执行中」并让撤回横幅迟到出现
+        // 正文流式期间已逐段开口，这里只补上未满门槛的最后一段并收尾。
+        // 只在答复确实落到当前可见会话时朗读（切页丢弃历史/用户主动中止时沉默）
         if (!_contextSwitchedDuringRun &&
             !token.isCancelled &&
             state.contextSignature == signature &&
             finalResponse.content.trim().isNotEmpty) {
-          unawaited(_autoSpeakReply(finalResponse));
+          _speech?.onFinish(TtsPlayer.messageKeyOf(finalResponse));
         }
       }
       if (token.isCancelled && _sessionMessages.isNotEmpty) {
@@ -760,6 +780,8 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
         }
       }
     } catch (e, stackTrace) {
+      // 报错路径下已开口的半句不再续播，避免错误提示和语音打架
+      _speech?.onAbort();
       LoggerService.instance.logAI(
         '悬浮小Q任务执行失败: $e',
         level: LogLevel.error,
@@ -940,23 +962,6 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
     _sessionMessages = [..._sessionMessages, message];
     if (!_contextSwitchedDuringRun && state.contextSignature == runSignature) {
       state = state.copyWith(messages: List.of(_sessionMessages));
-    }
-  }
-
-  /// 自动朗读面板里的最终答复：与 AI 主页面共用「小Q语音」开关与朗读通道。
-  ///
-  /// 失败只记日志（面板无气泡朗读按钮，不做 Toast 打断），不影响任务收尾。
-  Future<void> _autoSpeakReply(ChatMessage reply) async {
-    try {
-      if (!await QVoiceConfig.instance.isAutoReadEnabled()) return;
-      await ref
-          .read(ttsPlaybackProvider.notifier)
-          .speakMessage(TtsPlayer.messageKeyOf(reply), reply.content);
-    } catch (e) {
-      LoggerService.instance.logAI(
-        '小Q面板自动朗读失败: $e',
-        level: LogLevel.error,
-      );
     }
   }
 

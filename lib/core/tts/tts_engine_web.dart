@@ -43,8 +43,16 @@ Future<Uint8List> synthesizeOnlineImpl(
   }
 }
 
-/// 浏览器 speechSynthesis 朗读，阻塞至朗读完成（onend/onerror 回调驱动）
-Future<void> systemSpeakImpl(String text, {required double rate}) async {
+/// 浏览器 speechSynthesis 朗读，阻塞至朗读完成（onend/onerror 回调驱动）。
+///
+/// [resetQueue] 只在本场朗读的第一段为 true：浏览器自带朗读队列会自动续播下一段，
+/// 分段之间若继续 `cancel()`，后一段就会把正在念的前一段掐掉，只剩最后一句有声。
+/// Chrome 上 cancel 紧接 speak 还有丢声竞态，故清场后稍作延迟。
+Future<void> systemSpeakImpl(
+  String text, {
+  required double rate,
+  bool resetQueue = true,
+}) async {
   final synth = web.window.speechSynthesis;
   if (synth.isUndefinedOrNull) {
     throw const TtsException(
@@ -52,10 +60,10 @@ Future<void> systemSpeakImpl(String text, {required double rate}) async {
       '当前浏览器不支持语音朗读（speechSynthesis 不可用）',
     );
   }
-  // 先清掉可能残留的队列，避免新语句不播；
-  // Chrome 上 cancel 后立即 speak 存在丢声竞态，稍作延迟规避
-  synth.cancel();
-  await Future<void>.delayed(const Duration(milliseconds: 60));
+  if (resetQueue) {
+    synth.cancel();
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+  }
 
   final utterance = web.SpeechSynthesisUtterance(text)
     ..lang = 'zh-CN'
@@ -80,5 +88,5 @@ Future<void> systemSpeakImpl(String text, {required double rate}) async {
 }
 
 Future<void> systemStopImpl() async {
-  web.window.speechSynthesis?.cancel();
+  web.window.speechSynthesis.cancel();
 }

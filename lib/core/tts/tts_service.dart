@@ -12,8 +12,10 @@ export 'package:qnote_flutter/core/tts/tts_engine.dart'
 class TtsService {
   TtsService._();
 
-  /// 朗读文本的最大长度：聊天回复过长的尾部价值低，截断控制在
-  /// 一分钟左右的朗读时长，兼顾合成耗时与流量
+  /// 整段一次性朗读的文本长度上限：聊天回复过长的尾部价值低，截断控制在
+  /// 一分钟左右的朗读时长，兼顾合成耗时与流量。
+  ///
+  /// 分段朗读不走这里（单段本就很短），总量护栏见 `SpeechTuning.maxSessionChars`。
   static const int maxSpeechChars = 600;
 
   /// 内置精选的 Edge 中文音色（zh-CN 系），名称与 Azure/Edge 音色表一致
@@ -48,8 +50,14 @@ class TtsService {
   }
 
   /// 系统语音朗读（阻塞至完成）。原生端走 flutter_tts，Web 端走浏览器语音。
-  static Future<void> speakNative({required String text, required double rate}) {
-    return systemSpeak(text, rate: rate);
+  ///
+  /// [resetQueue] 只在本场朗读的第一段传 true，段间传 false 才不会打断前一段。
+  static Future<void> speakNative({
+    required String text,
+    required double rate,
+    bool resetQueue = true,
+  }) {
+    return systemSpeak(text, rate: rate, resetQueue: resetQueue);
   }
 
   /// 停止系统语音朗读
@@ -70,9 +78,12 @@ class TtsService {
   /// 把 markdown 回复清洗成适合朗读的纯文本。
   ///
   /// 聊天回复里的代码块、表格、链接 URL 朗读出来全是噪音，逐一剥离；
-  /// 标题/列表降级为普通句子，连续空白折叠为单个空格，超出
-  /// [maxChars] 时按句子边界截断。
-  static String cleanSpeechText(String raw, {int maxChars = maxSpeechChars}) {
+  /// 标题/列表降级为普通句子，连续空白折叠为单个空格。
+  ///
+  /// [maxChars] 控制长度上限：传 `null` 表示**完全不截断**，供分段朗读使用
+  /// （段长已由 [SpeechChunker] 限制，逐段截断会让每段都挂上「后文略」）；
+  /// 整段一次性朗读的旧路径仍用 [maxSpeechChars] 默认值。
+  static String cleanSpeechText(String raw, {int? maxChars = maxSpeechChars}) {
     var text = raw;
     // 围栏代码块整体剔除（代码没有朗读价值）
     text = text.replaceAll(RegExp(r'```[\s\S]*?```'), ' ');
@@ -129,7 +140,7 @@ class TtsService {
       RegExp(r'\s+([，。！？、；：,.!?;:])'),
       (m) => m.group(1)!,
     );
-    if (text.length <= maxChars) return text;
+    if (maxChars == null || text.length <= maxChars) return text;
     // 句子边界截断：回退到最后一个句读符号，避免断在半截
     final window = text.substring(0, maxChars);
     final cut = window.lastIndexOf(RegExp(r'[。！？!?.；;，,]'));

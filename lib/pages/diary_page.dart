@@ -21,6 +21,7 @@ import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
+import 'package:qnote_flutter/core/utils/cheer_burst.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/core/utils/widget_utils.dart';
 import 'package:qnote_flutter/providers/journal_provider.dart';
@@ -29,6 +30,7 @@ import 'package:qnote_flutter/widgets/search_view.dart';
 import 'package:qnote_flutter/widgets/diary/diary_item.dart';
 import 'package:qnote_flutter/widgets/diary/model_selection_dialog.dart';
 import 'package:qnote_flutter/widgets/diary/diary_input_bar.dart';
+import 'package:qnote_flutter/widgets/diary/cheer_burst_overlay.dart';
 import 'package:qnote_flutter/widgets/diary/record_cheer_toast.dart';
 import 'package:qnote_flutter/widgets/diary/today_progress_ring.dart';
 import 'package:qnote_flutter/widgets/diary/journal_editor_view.dart';
@@ -101,6 +103,15 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   CheerEvent? _cheerEvent;
   Timer? _cheerTimer;
   int _cheerSeq = 0;
+
+  /// 停留到点后置 true，交给胶囊播退场动画，播完再真正移除。
+  bool _cheerLeaving = false;
+
+  /// 兜底移除：退场回调万一没送达（胶囊被父级抢先卸载等），胶囊会永久挂着。
+  Timer? _cheerExitTimer;
+
+  /// 彩带层。挂 OverlayEntry 而不是包进 body：见 [_showCheerBurst]。
+  OverlayEntry? _cheerBurstEntry;
 
   static String _dateKey(DateTime date) {
     final y = date.year.toString().padLeft(4, '0');
@@ -690,6 +701,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     WidgetsBinding.instance.removeObserver(this);
     _stopAutoScrollTimer();
     _cheerTimer?.cancel();
+    _cheerExitTimer?.cancel();
+    _removeCheerBurst();
     _itemContexts.clear();
     _itemHeights.clear();
     _scrollController.removeListener(_onScroll);
@@ -1080,37 +1093,96 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     context.push('/diary/batch');
   }
 
-  /// 记完一条后的轻量庆祝：输入条上方浮现胶囊，短暂停留后自动消失。
+  /// 记完一条后的轻量庆祝：输入条上方浮现胶囊，短暂停留后播退场再移除。
   ///
-  /// 满环/破纪录时配稍强样式与触感（调用方已触发），平时保持极轻；
+  /// 满档与破纪录才配流光描边和彩带（分级规格见 [resolveCheerLevel]），平时保持极轻；
   /// 1 秒内连记多条只展示最后一次，避免胶囊排队刷屏。
   void _showCheer({
     required String title,
     String? sub,
-    required bool celebrate,
+    required CheerLevel level,
     String? actionLabel,
   }) {
     _cheerTimer?.cancel();
+    _cheerExitTimer?.cancel();
     _cheerSeq++;
     setState(() {
       _cheerEvent = CheerEvent(
         id: _cheerSeq,
         title: title,
         sub: sub,
-        celebrate: celebrate,
+        level: level,
         actionLabel: actionLabel,
       );
+      _cheerLeaving = false;
     });
-    _cheerTimer = Timer(
-      Duration(milliseconds: celebrate ? 2500 : 1500),
-      () {
-        if (mounted) {
-          setState(() {
-            _cheerEvent = null;
-          });
-        }
-      },
+    if (level.isCheer) {
+      _showCheerBurst(_cheerEvent!);
+    }
+    _cheerTimer = Timer(Duration(milliseconds: level.dwellMs), () {
+      if (!mounted) {
+        return;
+      }
+      // 只置「该走了」，实际移除等胶囊自己把退场播完，避免动画被腰斩。
+      setState(() => _cheerLeaving = true);
+      _cheerExitTimer = Timer(const Duration(milliseconds: 400), _dismissCheer);
+    });
+  }
+
+  /// 退场播完的回调，兼作兜底超时的收口。
+  ///
+  /// 两条路径都进这里、谁先到谁生效：胶囊被父级抢先卸载时 onDismissed 送达不了，
+  /// 没有兜底那条，胶囊会永久挂在屏幕上。
+  void _dismissCheer() {
+    _cheerTimer?.cancel();
+    _cheerExitTimer?.cancel();
+    _removeCheerBurst();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _cheerEvent = null;
+      _cheerLeaving = false;
+    });
+  }
+
+  /// 彩带迸发层挂到 Overlay，而不是塞进 body。
+  ///
+  /// 两个原因：一是 body 是一条 Column，排在最后的 [DiaryInputBar] 是不透明面板，
+  /// 画在它之前的粒子会被整条盖掉，而爆点恰好贴着它左端的圆环；二是为了提层把
+  /// 这 600 行 body 包进 Stack，会让本次改动淹没在重排 diff 里（本文件按 120 行宽
+  /// 手写排版，不能靠 dart format 兜底）。Toast 在本项目里就是同一套 OverlayEntry。
+  ///
+  /// 播完由 [CheerBurstOverlay.onFinished] 自行摘除；连记多条时先摘再挂，
+  /// 保证每次爆发都是新的一组粒子。
+  void _showCheerBurst(CheerEvent event) {
+    _removeCheerBurst();
+    final entry = OverlayEntry(
+      // 这层铺满整屏，不吃手势就会把时间线滚动和两个 FAB 的点击全吞掉。
+      builder: (context) => IgnorePointer(
+        child: CheerBurstOverlay(
+          level: event.level,
+          seed: event.id,
+          anchor: ref.read(cheerAnchorProvider),
+          onFinished: _removeCheerBurst,
+        ),
+      ),
     );
+    Overlay.of(context).insert(entry);
+    _cheerBurstEntry = entry;
+  }
+
+  void _removeCheerBurst() {
+    final entry = _cheerBurstEntry;
+    if (entry == null) {
+      return;
+    }
+    _cheerBurstEntry = null;
+    try {
+      entry.remove();
+    } catch (_) {
+      // 页面被抢先销毁时宿主 Overlay 已不在，与 dispose 里 Toast.dismiss 同一处理方式。
+    }
   }
 
   /// 正在播放退场动画的记录集合
@@ -1910,35 +1982,32 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       }
     });
 
-    // 今日完整度庆祝：todayCount 变大才触发（首次加载 prev 为 null 不弹；
-    // 补记旧日期不计入今天，同样不会误触）。
+    // 今日完整度庆祝：该不该弹、弹哪一档都收在 resolveCheerLevel 里，
+    // 页面只管按档位取文案与强度 —— 冷启动误弹这类问题因此能在纯单测里锁住。
     ref.listen(diaryProgressProvider, (prev, next) {
-      if (prev == null || next.todayCount <= prev.todayCount) {
+      final level = resolveCheerLevel(prev, next);
+      if (level == null || next == null) {
         return;
       }
-      final justFull = !prev.isFull && next.isFull;
-      final isRecord = prev.maxPerDay > 0 && next.todayCount > prev.maxPerDay;
-      final celebrate = justFull || isRecord;
-      if (celebrate) {
+      if (level.isCheer) {
         HapticFeedback.mediumImpact();
       }
-      final String title;
-      final String? sub;
-      if (justFull) {
-        title = '今日完整！连续${next.streakDays}天';
-        sub = '共${next.todayCount}条，太棒了';
-      } else if (isRecord) {
-        title = '新纪录！今天第${next.todayCount}条';
-        sub = next.streakDays > 0 ? '已连续记录${next.streakDays}天' : null;
-      } else {
-        title = '今日第${next.todayCount}条';
-        sub = '再记${next.remaining}条就完整了';
-      }
+      final title = switch (level) {
+        CheerLevel.full => '今日完整！连续${next.streakDays}天',
+        CheerLevel.record => '新纪录！今天第${next.todayCount}条',
+        CheerLevel.plain => '今日第${next.todayCount}条',
+      };
+      final sub = switch (level) {
+        CheerLevel.full => '共${next.todayCount}条，太棒了',
+        CheerLevel.record =>
+          next.streakDays > 0 ? '已连续记录${next.streakDays}天' : null,
+        CheerLevel.plain => '再记${next.remaining}条就完整了',
+      };
       _showCheer(
         title: title,
         sub: sub,
-        celebrate: celebrate,
-        actionLabel: celebrate ? '看看统计' : null,
+        level: level,
+        actionLabel: level.isCheer ? '看看统计' : null,
       );
     });
 
@@ -2568,7 +2637,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                   bottom: 12,
                   child: _buildSmartExtractFAB(theme),
                 ),
-                // 记完即时庆祝胶囊：输入条上方居中浮现，不挡时间线主体
+                // 记完即时庆祝胶囊：输入条上方居中浮现，不挡时间线主体。
+                // 彩带不在这里画 —— 本 Stack 之后的 DiaryInputBar 是不透明面板，
+                // 会把贴着圆环的下半程整个盖掉，所以粒子层挂在 body 的兄弟层。
                 if (_cheerEvent != null)
                   Positioned(
                     left: 0,
@@ -2577,7 +2648,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                     child: Center(
                       child: RecordCheerToast(
                         event: _cheerEvent!,
+                        leaving: _cheerLeaving,
                         onAction: () => goStreakFocus(context, ref),
+                        onDismissed: _dismissCheer,
                       ),
                     ),
                   ),

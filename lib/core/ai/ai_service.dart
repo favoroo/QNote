@@ -9,6 +9,7 @@ import 'package:qnote_flutter/core/ai/sensenova_quota_policy.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/ai_request_stats_repository.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
+import 'package:qnote_flutter/core/utils/daily_score_adjust.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_request_stat.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
@@ -2694,10 +2695,11 @@ class AiService {
       throw Exception('AI判定当日信息过少，暂无法评分');
     }
 
-    final totalScore = (jsonResult['totalScore'] as num?)?.toInt() ?? 60;
+    // 钳位：模型偶尔会返回超界分值，未钳位的分会把统计页的分数环画爆
+    final totalScore = clampScore((jsonResult['totalScore'] as num?)?.toInt() ?? 60);
     final rawDimensionScores = jsonResult['dimensionScores'] as Map? ?? {};
     final dimensionScores = rawDimensionScores.map(
-      (k, v) => MapEntry(k.toString(), (v as num?)?.toInt() ?? 60),
+      (k, v) => MapEntry(k.toString(), clampScore((v as num?)?.toInt() ?? 60)),
     );
 
     return DailyScore(

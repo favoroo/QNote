@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
+import 'package:qnote_flutter/core/storage/daily_score_service.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/daily_score.dart';
 import 'package:qnote_flutter/providers/daily_score_provider.dart';
+import 'package:qnote_flutter/widgets/statistics/batch_score_adjust_sheet.dart';
 import 'package:qnote_flutter/widgets/statistics/date_navigation_header.dart';
 import 'package:qnote_flutter/widgets/statistics/score_heatmap.dart';
 import 'package:qnote_flutter/widgets/statistics/streak_summary_strip.dart';
@@ -75,6 +77,22 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
     if (confirmed == true && mounted && context.mounted) {
       _performScoreAction(context, date, isRescore: true);
     }
+  }
+
+  /// 批量调整历史评分：落库成功后 service 广播 `/stats/` 事件，
+  /// 环形分与两张图表自动热刷新，无需在此手动 invalidate
+  void _openBatchAdjust(BuildContext context) {
+    BatchScoreAdjustSheet.show(
+      context,
+      adjust: ({required from, required to, required spec, required dryRun}) {
+        return DailyScoreService.instance.adjustRange(
+          from: from,
+          to: to,
+          spec: spec,
+          dryRun: dryRun,
+        );
+      },
+    );
   }
 
   @override
@@ -473,6 +491,16 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                     const Text(
                       '历史评分趋势 (近7天)',
                       style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () => _openBatchAdjust(context),
+                      tooltip: '批量调整历史评分',
+                      icon: const Icon(Icons.tune),
+                      iconSize: 20,
+                      color: theme.colorScheme.primary,
+                      visualDensity: VisualDensity.compact,
+                      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                     ),
                   ],
                 ),

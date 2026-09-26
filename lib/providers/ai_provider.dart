@@ -19,6 +19,7 @@ import 'package:qnote_flutter/core/agent/prompts/q_system_prompt.dart';
 import 'package:qnote_flutter/core/agent/services/agent_tool_config.dart';
 import 'package:qnote_flutter/core/agent/services/q_personality_service.dart';
 import 'package:qnote_flutter/core/agent/services/q_voice_config.dart';
+import 'package:qnote_flutter/core/tts/streaming_speech_session.dart';
 import 'package:qnote_flutter/core/tts/tts_player.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_usage_tracker.dart';
@@ -401,6 +402,12 @@ class _ActiveAgentRun {
   /// 流式文本刷新节流定时器
   Timer? flushTimer;
 
+  /// 分段朗读驱动：随正文增量逐段开口，而不是等整条回复生成完。
+  ///
+  /// 挂在任务上而非全局：用户在任务期间新建/切换对话时，本任务的朗读生命周期
+  /// 仍与它自己的流式正文对齐，不会串到别的会话上。
+  late final StreamingSpeechSession speech;
+
   /// 最近一次阶段性状态文案（切回会话时恢复显示用）
   String? statusText;
 
@@ -569,7 +576,11 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
   void setSession(ChatSession? session) {
     // 流式气泡/状态行/思考区随会话走：先卸下，避免上一会话的流式内容串显到目标会话
     _clearStreamingProviders();
-    // 朗读音随会话：切走时停掉上一会话正在进行的朗读
+    // 朗读音随会话：切走时停掉上一会话正在进行的朗读，后台任务切回来的剩余正文
+    // 也不再补念（切回来突然出声很吓人）
+    for (final active in _activeRuns.values) {
+      active.speech.onAbort();
+    }
     unawaited(_ref.read(ttsPlaybackProvider.notifier).stop());
 
     // 目标会话若有进行中的小Q任务：以任务内的消息累积为准恢复
@@ -780,15 +791,23 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
     // 消息累积与最终落库始终以发起会话为准，不写当前打开的其他会话。
     // 取消令牌随任务注册一并创建：保证「准备中」阶段（附件上下文构建）也能响应停止
     final startSessionId = state!.id;
+    final speechSink = _ref.read(ttsPlaybackProvider.notifier);
+    // 新一轮任务发起即打断上一轮仍在进行的语音朗读
+    unawaited(speechSink.stop());
     final run = _ActiveAgentRun(
       startSessionId,
       AgentCancellationToken(),
       newTitle,
-    )..messages.addAll(updatedMessages);
+    )
+      ..messages.addAll(updatedMessages)
+      ..speech = StreamingSpeechSession(
+        sink: speechSink,
+        // 现在就去取音色与语速：首段切出来时通常已就绪，不必为它多等一次读库
+        settings: QVoiceConfig.instance.get(),
+        keyPrefix: 'stream_$startSessionId',
+      );
     _activeRuns[startSessionId] = run;
     _publishRunningSessions();
-    // 新一轮任务发起即打断上一轮仍在进行的语音朗读
-    unawaited(_ref.read(ttsPlaybackProvider.notifier).stop());
 
     state = state!.copyWith(title: newTitle, messages: updatedMessages);
 
@@ -924,6 +943,9 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
             run.contentBuffer.clear();
             // 新一轮思考从零开始，与状态行「第 N 步」语义对齐
             run.thoughtBuffer.clear();
+            // 上一轮的正文会被状态行覆盖、最终不展示，朗读也必须跟着作废，
+            // 否则用户会听到"念半截又从头念"
+            run.speech.onTurnStart();
             if (_bindsCurrentSession(run)) {
               _ref.read(aiStreamingThoughtProvider.notifier).state = null;
             }
@@ -936,6 +958,9 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
             if (event.text != null) {
               run.contentBuffer.write(event.text);
               _scheduleRunFlush(run);
+              // 朗读随会话走：用户切到别的会话后不再喂新正文（setSession 已中止本场
+              // 朗读），与「流式气泡不串显到别的会话」保持同一语义
+              if (_bindsCurrentSession(run)) run.speech.onContentDelta(event.text!);
             }
             break;
           case AgentEventType.reasoningDelta:
@@ -1022,16 +1047,18 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         }
         if (_bindsCurrentSession(run)) {
           state = state!.copyWith(messages: List.of(run.messages));
-          // 语音回复：开关开启且用户仍停留在发起会话时，自动朗读最终答复。
-          // 必须 unawaited：await 会把 finally（清流式气泡/清运行态/落库）推迟
-          // 到朗读结束，期间界面同时挂着正式气泡与流式气泡（回复"重复出现"），
-          // 且运行态停止按钮对已结束的任务无效（按了没反应）
-          if (finalResponse.content.trim().isNotEmpty) {
-            unawaited(_autoSpeakReply(finalResponse));
+          // 语音回复：正文流式期间已逐段开口，这里只补上未满门槛的最后一段并收尾。
+          // 同步调用即可——朗读排在音频通道自己的串行链上，不会拖住 finally
+          // （旧实现要 unawaited，正是因为那时 await 的是整段朗读的播放完成）。
+          // 用户主动中止时保持沉默：按下停止就是不想再听。
+          if (finalResponse.content.trim().isNotEmpty && !run.token.isCancelled) {
+            run.speech.onFinish(TtsPlayer.messageKeyOf(finalResponse));
           }
         }
       }
     } catch (e, stackTrace) {
+      // 报错路径下已开口的半句不再续播，避免错误提示和语音打架
+      run.speech.onAbort();
       LoggerService.instance.logAI(
         'AI对话发送失败: $e',
         level: LogLevel.error,
@@ -1103,20 +1130,6 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         await repo.updateChatSession(finalSession);
         _ref.read(chatSessionListProvider.notifier).upsertLocal(finalSession);
       }
-    }
-  }
-
-  /// 自动朗读最终答复：仅在语音回复开关开启时生效。
-  ///
-  /// 朗读失败只记日志（气泡上的手动朗读按钮会给出 Toast 反馈），不影响主流程。
-  Future<void> _autoSpeakReply(ChatMessage reply) async {
-    try {
-      if (!await QVoiceConfig.instance.isAutoReadEnabled()) return;
-      await _ref
-          .read(ttsPlaybackProvider.notifier)
-          .speakMessage(TtsPlayer.messageKeyOf(reply), reply.content);
-    } catch (e) {
-      LoggerService.instance.logAI('自动朗读失败: $e', level: LogLevel.error);
     }
   }
 
