@@ -14,6 +14,14 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.76',
+    date: '2026-09-27',
+    notes: [
+      '待办桌面小组件视觉优化：待办计数改用主题色圆角微胶囊，未勾选框加粗提高边缘清晰度',
+      '组件布局去噪与通透感提升：移除头部细分割线，优化纵向留白比例，界面更清爽精致',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.75',
     date: '2026-09-27',
     notes: [

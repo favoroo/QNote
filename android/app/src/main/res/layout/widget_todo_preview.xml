@@ -18,7 +18,8 @@
 
     <RelativeLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="10dp">
 
         <TextView
             android:id="@+id/preview_todo_title"
@@ -35,11 +36,19 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_centerVertical="true"
-            android:layout_marginLeft="4dp"
+            android:layout_marginLeft="6dp"
             android:layout_toRightOf="@id/preview_todo_title"
+            android:background="@drawable/bg_widget_todo_count"
+            android:gravity="center"
+            android:minWidth="22dp"
+            android:paddingLeft="6dp"
+            android:paddingTop="1dp"
+            android:paddingRight="6dp"
+            android:paddingBottom="1dp"
             android:text="7"
-            android:textColor="@color/widget_text_secondary"
-            android:textSize="12sp" />
+            android:textColor="@color/widget_accent"
+            android:textSize="11sp"
+            android:textStyle="bold" />
 
         <ImageButton
             android:layout_width="30dp"
@@ -51,13 +60,6 @@
             android:scaleType="centerInside"
             android:src="@drawable/ic_add" />
     </RelativeLayout>
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:layout_marginTop="7dp"
-        android:layout_marginBottom="5dp"
-        android:background="@color/widget_todo_hairline" />
 
     <LinearLayout
         android:layout_width="match_parent"

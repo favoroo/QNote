@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 标题旁的待办数胶囊：用主题色的低不透明度底，比再加一层灰白底更轻 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/widget_todo_count_bg" />
+    <corners android:radius="9dp" />
+</shape>
