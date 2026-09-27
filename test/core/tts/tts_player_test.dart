@@ -1,6 +1,8 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:qnote_flutter/core/agent/services/q_voice_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:qnote_flutter/core/tts/tts_player.dart';
@@ -119,6 +121,97 @@ void main() {
         container.read(ttsPlaybackProvider).messageId,
         'msg_assistant_first',
       );
+    });
+  });
+
+  group('TtsPlayer 分段朗读链路', () {
+    // flutter_tts 平台通道的调用记录：speak 的文本序列与 stop 次数。
+    // 走系统语音路径（不实例化 just_audio），即可在单测里驱动真实的
+    // begin→enqueue→finish 编排，覆盖串行链与播放循环的衔接
+    final spokenTexts = <String>[];
+    var stopCount = 0;
+
+    setUpAll(() {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(const MethodChannel('flutter_tts'), (
+            call,
+          ) async {
+            if (call.method == 'speak') {
+              // Android 端 speak 传 Map，其余平台直接传文本字符串
+              final arg = call.arguments;
+              spokenTexts.add(arg is Map ? arg['text'] as String : arg as String);
+            } else if (call.method == 'stop') {
+              stopCount++;
+            }
+            return 1;
+          });
+    });
+
+    /// 轮询等待状态迁移；死锁回归时条件永假，靠超时把测试打红
+    Future<void> waitUntil(
+      bool Function() condition, {
+      required String timeoutMessage,
+    }) async {
+      final deadline = DateTime.now().add(const Duration(seconds: 5));
+      while (!condition()) {
+        if (DateTime.now().isAfter(deadline)) fail(timeoutMessage);
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+    }
+
+    test('begin→enqueue→finish 后各段按序播出并正常收尾', () async {
+      SharedPreferences.setMockInitialValues({});
+      spokenTexts.clear();
+      stopCount = 0;
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final player = container.read(ttsPlaybackProvider.notifier);
+
+      player.beginSpeech(
+        'stream#0',
+        voice: QVoiceConfig.systemVoiceId,
+        rate: 1.0,
+      );
+      player.enqueueSpeech('第一段。');
+      player.enqueueSpeech('第二段。');
+      player.enqueueSpeech('第三段。');
+      player.finishSpeech();
+
+      // 回归点：清场与播放循环曾被串行链互相堵死，状态永远卡在
+      // synthesizing、整场无声；此处等不到 idle 即超时失败
+      await waitUntil(
+        () =>
+            container.read(ttsPlaybackProvider).status == TtsPlaybackStatus.idle,
+        timeoutMessage: '分段朗读链路死锁：finishSpeech 后状态未回到 idle',
+      );
+      expect(spokenTexts, ['第一段。', '第二段。', '第三段。']);
+      // 首段 resetQueue 掐一次残留朗读，段间靠 awaitSpeakCompletion 串行，不再 stop
+      expect(stopCount, 1);
+    });
+
+    test('begin 后立即 stop：不播出任何段并复位为空闲', () async {
+      SharedPreferences.setMockInitialValues({});
+      spokenTexts.clear();
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final player = container.read(ttsPlaybackProvider.notifier);
+
+      player.beginSpeech(
+        'stream#1',
+        voice: QVoiceConfig.systemVoiceId,
+        rate: 1.0,
+      );
+      player.enqueueSpeech('不该被念出来。');
+      await player.stop();
+
+      final state = container.read(ttsPlaybackProvider);
+      expect(state.status, TtsPlaybackStatus.idle);
+      expect(state.error, isNull);
+      expect(state.messageId, isNull);
+      // 留出事件循环窗口，确认清场后没有任何 speak 发生
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(spokenTexts, isEmpty);
     });
   });
 }

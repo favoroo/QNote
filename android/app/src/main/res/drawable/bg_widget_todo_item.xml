@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 待办条目胶囊底：极淡色差区分子项，不用描边也不抬 elevation -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/widget_todo_item_bg" />
+    <corners android:radius="10dp" />
+</shape>

@@ -6,6 +6,16 @@
     <color name="widget_text_secondary">#8E8E93</color>
     <color name="widget_accent">#007AFF</color>
     <color name="widget_card_bg">#FFFFFF</color>
+    <!--
+      今日待办小组件专属的半透明 token：alpha 只能写进色值，故收口成具名资源，
+      布局里不出现裸 hex。不与 bg_widget 共用的通用色混用，避免连带改到其他组件。
+    -->
+    <color name="widget_todo_surface">#CCFFFFFF</color>
+    <color name="widget_todo_hairline">#14000000</color>
+    <color name="widget_todo_item_bg">#0D000000</color>
+    <color name="widget_todo_icon_bg">#12000000</color>
+    <color name="widget_priority">#007AFF</color>
+    <color name="widget_badge_text">#FFFFFFFF</color>
     <color name="dialog_bg">#FFFFFF</color>
     <color name="dialog_text">#1C1C1E</color>
     <color name="dialog_input_bg">#F2F2F7</color>

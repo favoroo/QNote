@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  今日待办专用底板：半透明 surface，视觉上透出壁纸又不让文字压在壁纸上。
+  不复用 bg_widget（问小Q 组件共用），改这里会连带改到另一个组件。
+  保留自有 background 还有一层作用：launcher 只在根布局没有 background 时才补默认灰板。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/widget_todo_surface" />
+    <corners android:radius="20dp" />
+    <stroke android:width="1dp" android:color="@color/widget_todo_hairline" />
+</shape>

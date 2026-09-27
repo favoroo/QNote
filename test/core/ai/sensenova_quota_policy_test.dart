@@ -124,13 +124,24 @@ void main() {
       }
     });
 
-    test('TPM 比 rps 快、鉴权最快（换一把就有新 Key，不必等回填）', () {
+    test('TPM 等待随尝试次数阶梯拉长（额度按端点共享，换 Key 不如等回填）', () {
       for (var i = 0; i < 20; i++) {
-        final tpmMs = SensenovaQuotaPolicy.rotationDelay(QuotaSignal.tpm, 1).inMilliseconds;
+        // 默认基数 150ms × 阶梯 [4, 16, 40] + 0~150ms 抖动
+        final first = SensenovaQuotaPolicy.rotationDelay(QuotaSignal.tpm, 1).inMilliseconds;
+        final second = SensenovaQuotaPolicy.rotationDelay(QuotaSignal.tpm, 2).inMilliseconds;
+        final third = SensenovaQuotaPolicy.rotationDelay(QuotaSignal.tpm, 3).inMilliseconds;
+        expect(first, inInclusiveRange(600, 749));
+        expect(second, inInclusiveRange(2400, 2549));
+        expect(third, equals(6000), reason: '末档应被 6s 单档上限截断');
+        // 鉴权仍是快速换 Key 节奏（换一把就是新 Key，不必等回填）
         final authMs = SensenovaQuotaPolicy.rotationDelay(QuotaSignal.auth, 1).inMilliseconds;
-        expect(tpmMs, inInclusiveRange(150, 349));
         expect(authMs, inInclusiveRange(60, 119));
-        expect(authMs < tpmMs, isTrue);
+        expect(authMs < first, isTrue);
+        // attempt 超界钳到末档，不抛 RangeError
+        expect(
+          SensenovaQuotaPolicy.rotationDelay(QuotaSignal.tpm, 99),
+          equals(const Duration(seconds: 6)),
+        );
       }
     });
 
@@ -143,13 +154,15 @@ void main() {
       expect(SensenovaQuotaPolicy.rotationDelay(QuotaSignal.none, 1), equals(Duration.zero));
     });
 
-    test('整池尝试的最坏等待仍小于一次提问的可接受延迟', () {
-      // 4 把 Key × TPM 节奏：等待总和要远小于 maxQuotaHold，否则排队语义形同虚设
+    test('TPM 全程最坏等待（3 档重试 + 终局）仍小于一次提问的可接受延迟', () {
+      // 重试 3 次的阶梯等待 + 一次终局回填等待，总上限要小于排队预算 maxQuotaHold，
+      // 否则「终局再博一次」比整池排队还慢，语义就反了
       var totalMs = 0;
-      for (var attempt = 1; attempt <= SensenovaQuotaPolicy.poolMaxAttempts; attempt++) {
+      for (var attempt = 1; attempt <= SensenovaQuotaPolicy.poolMaxAttempts - 1; attempt++) {
         totalMs += SensenovaQuotaPolicy.rotationDelay(QuotaSignal.tpm, attempt).inMilliseconds;
       }
-      expect(totalMs, lessThan(SensenovaQuotaPolicy.maxQuotaHold.inMilliseconds ~/ 2));
+      totalMs += SensenovaQuotaPolicy.tpmFinalHold.inMilliseconds;
+      expect(totalMs, lessThan(SensenovaQuotaPolicy.maxQuotaHold.inMilliseconds));
     });
   });
 

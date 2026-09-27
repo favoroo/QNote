@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -51,10 +52,13 @@ void main() {
       );
 
   setUpAll(() async {
-    // 观测落库走真实建表迁移（ffi 后端下各测试 isolate 共用同一个 qnote.db 文件，
-    // 因此只在 setUp 里清自己这张表）
+    // 观测落库走真实建表迁移；数据库放在本 isolate 独有的临时目录 —— ffi 后端
+    // 默认共用同一个 qnote.db 文件，全量并发时其他测试 isolate 清/写
+    // ai_request_stats 会互相踩掉行（全量偶发失败、单跑必过）
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
+    final tempDir = Directory.systemTemp.createTempSync('qnote_test_key_rotation');
+    await databaseFactory.setDatabasesPath(tempDir.path);
     db = await DatabaseHelper.instance.database;
   });
 
@@ -151,7 +155,13 @@ void main() {
   });
 
   group('限流时的换 Key 与冷却归因', () {
-    test('TPM 限流：按 poolMaxAttempts 把把不同 Key，且只冷却各自用过的那把', () async {
+    test('TPM 限流：重试深度 + 终局一搏，每把 Key 互不相同且各自冷却', () async {
+      // 调小全部等待：测试关注的是发信次数与冷却归因，不是真实退避时长
+      SensenovaQuotaPolicy.apply({
+        'min_send_interval_ms': 0,
+        'tpm_retry_wait_ms': 1,
+        'tpm_final_hold_ms': 50,
+      });
       adapter.failWith(statusCode: 429, body: _tpmBody, failFirst: 99);
       service.updateConfig(poolConfig());
 
@@ -161,11 +171,13 @@ void main() {
       );
 
       final used = adapter.authHeaders.map(_bearerOf).toList();
-      expect(used.length, equals(SensenovaQuotaPolicy.poolMaxAttempts));
+      final expectedSends = SensenovaQuotaPolicy.poolMaxAttempts + 1;
+      expect(used.length, equals(expectedSends),
+          reason: '深度烧完且仍是 TPM 时，终局等待还要再博一次');
       expect(used.toSet().length, equals(used.length), reason: '重试必须换新 Key');
       expect(
         FreeModelKeyManager.instance.availableKeyCount,
-        equals(poolKeys.length - SensenovaQuotaPolicy.poolMaxAttempts),
+        equals(poolKeys.length - expectedSends),
       );
     });
 
@@ -257,6 +269,77 @@ void main() {
       // 第一次 429 就发现最早解锁在 60 秒外 → 直接放弃，只发一次
       expect(adapter.authHeaders.length, equals(1));
     });
+
+    test('终局一搏：深度内全部 429，等待回填后最后一次成功', () async {
+      SensenovaQuotaPolicy.apply({
+        'min_send_interval_ms': 0,
+        'tpm_retry_wait_ms': 1,
+        'tpm_final_hold_ms': 80,
+      });
+      // 前 poolMaxAttempts 次（首发 + 重试）全部 429，终局等待后的那一次成功
+      adapter.failWith(
+        statusCode: 429,
+        body: _tpmBody,
+        failFirst: SensenovaQuotaPolicy.poolMaxAttempts,
+      );
+      service.updateConfig(poolConfig());
+
+      final reply = await service.chat([ChatMessage(role: 'user', content: 'hi')]);
+
+      expect(reply, equals('ok'));
+      expect(
+        adapter.authHeaders.length,
+        equals(SensenovaQuotaPolicy.poolMaxAttempts + 1),
+        reason: '没有终局一搏时，这个请求会直接以失败告终',
+      );
+    });
+
+    test('终局等待把剩余时长报给状态行（onQuotaHold 被回调）', () async {
+      SensenovaQuotaPolicy.apply({
+        'min_send_interval_ms': 0,
+        'tpm_retry_wait_ms': 1,
+        'tpm_final_hold_ms': 80,
+      });
+      adapter.failWith(statusCode: 429, body: _tpmBody, failFirst: 99);
+      service.updateConfig(poolConfig());
+
+      final holds = <Duration>[];
+      await expectLater(
+        service
+            .chatStreamWithTools(
+              messages: [ChatMessage(role: 'user', content: 'hi')],
+              onQuotaHold: holds.add,
+            )
+            .drain<void>(),
+        throwsA(isA<DioException>()),
+      );
+
+      expect(
+        holds,
+        contains(SensenovaQuotaPolicy.tpmFinalHold),
+        reason: '终局等待期间状态行要显示「限流排队」，别让用户对着静止的界面以为卡死了',
+      );
+    });
+
+    test('终局预算置 0：深度用尽立即报错，不再多博一次', () async {
+      SensenovaQuotaPolicy.apply({
+        'min_send_interval_ms': 0,
+        'tpm_retry_wait_ms': 1,
+        'tpm_final_hold_ms': 0,
+      });
+      adapter.failWith(statusCode: 429, body: _tpmBody, failFirst: 99);
+      service.updateConfig(poolConfig());
+
+      await expectLater(
+        service.chat([ChatMessage(role: 'user', content: 'hi')]),
+        throwsA(isA<DioException>()),
+      );
+      expect(
+        adapter.authHeaders.length,
+        equals(SensenovaQuotaPolicy.poolMaxAttempts),
+        reason: '云端下发 tpm_final_hold_ms=0 时回到「深度用尽即报错」的旧行为',
+      );
+    });
   });
 
   group('逐请求观测落库（诊断表的数据来源）', () {
@@ -286,7 +369,12 @@ void main() {
       expect(rows.first.completionTokens, equals(1));
     });
 
-    test('TPM 耗尽重试深度时，每一次撞墙都各记一行', () async {
+    test('TPM 耗尽重试深度时（含终局一搏），每一次撞墙都各记一行', () async {
+      SensenovaQuotaPolicy.apply({
+        'min_send_interval_ms': 0,
+        'tpm_retry_wait_ms': 1,
+        'tpm_final_hold_ms': 50,
+      });
       adapter.failWith(statusCode: 429, body: _tpmBody, failFirst: 99);
       service.updateConfig(poolConfig());
 
@@ -297,7 +385,7 @@ void main() {
       await service.flushRequestStatsForTest();
 
       final rows = await statsRepo.all();
-      expect(rows.length, equals(SensenovaQuotaPolicy.poolMaxAttempts));
+      expect(rows.length, equals(SensenovaQuotaPolicy.poolMaxAttempts + 1));
       expect(
         rows.every((r) => r.outcome == AiRequestOutcomes.tpm),
         isTrue,
@@ -346,7 +434,12 @@ void main() {
     });
 
     test('下发的深度同时改变发信次数与观测行数（策略与观测同源）', () async {
-      SensenovaQuotaPolicy.apply({'pool_max_attempts': 2});
+      SensenovaQuotaPolicy.apply({
+        'pool_max_attempts': 2,
+        'min_send_interval_ms': 0,
+        'tpm_retry_wait_ms': 1,
+        'tpm_final_hold_ms': 50,
+      });
       adapter.failWith(statusCode: 429, body: _tpmBody, failFirst: 99);
       service.updateConfig(poolConfig());
 
@@ -356,9 +449,10 @@ void main() {
       );
       await service.flushRequestStatsForTest();
 
+      // 深度 2 = 首发 + 1 次重试，深度烧完仍是 TPM → 终局再博一次
       expect(
         await statsRepo.count(),
-        equals(2),
+        equals(3),
         reason: '阈值必须真的是运行时读取的，否则云端下发无效',
       );
     });

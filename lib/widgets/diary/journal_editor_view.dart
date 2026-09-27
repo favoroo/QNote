@@ -6,6 +6,7 @@ import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
 import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/utils/q_cursor_context.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/journal_provider.dart';
@@ -138,27 +139,46 @@ class _JournalEditorViewState extends ConsumerState<JournalEditorView> {
   }
 
   /// 捕获当前框选内容为引用（选择菜单「给小Q」与悬浮球点按共用）。
-  /// 仅当正文持有焦点且选区非空时返回，避免陈旧选区被误引用
+  /// 优先次序：正文聚焦且有选区 → 引用选中文本与行号；
+  /// 聚焦但未框选（仅光标）→ 摘录光标前后上下文并标记【光标】，
+  /// 让长按空白处点「给小Q」也能把光标位置带给小Q；
+  /// 未聚焦正文时返回 null，避免陈旧选区被误引用
   QTextQuote? _captureSelectionQuote() {
     if (!_focusNode.hasFocus) return null;
     final sel = _controller.selection;
     final text = _controller.text;
-    if (!sel.isValid || sel.isCollapsed) return null;
-    final quoted = text.substring(sel.start, sel.end).trim();
-    if (quoted.isEmpty) return null;
+    if (!sel.isValid) return null;
 
-    final line = '\n'.allMatches(text.substring(0, sel.start)).length + 1;
+    // 1. 选区非空：引用选中的文本
+    if (!sel.isCollapsed) {
+      final quoted = text.substring(sel.start, sel.end).trim();
+      if (quoted.isNotEmpty) {
+        final line = '\n'.allMatches(text.substring(0, sel.start)).length + 1;
+        return QTextQuote(
+          source: QQuoteSource.journal,
+          sourceId: _dateStr,
+          sourceTitle: _dateStr,
+          quotedText: quoted,
+          locationDesc: '第 $line 行附近',
+        );
+      }
+    }
+
+    // 2. 光标处（未框选文字）：摘录光标前后上下文并标记【光标】
+    final offset = sel.baseOffset.clamp(0, text.length);
+    final line = '\n'.allMatches(text.substring(0, offset)).length + 1;
+    final snippet = buildCursorContextSnippet(text, offset);
     return QTextQuote(
       source: QQuoteSource.journal,
       sourceId: _dateStr,
       sourceTitle: _dateStr,
-      quotedText: quoted,
-      locationDesc: '第 $line 行附近',
+      quotedText: snippet.isEmpty ? '（第 $line 行空行光标处）' : snippet,
+      locationDesc: '第 $line 行光标处',
     );
   }
 
-  /// 「给小Q」：把选中文本连同近似行号引用给悬浮小Q，
-  /// 便于用户让小Q修改这段指定文本或针对它提问
+  /// 「给小Q」：把选中文本或光标位置连同近似行号引用给悬浮小Q，
+  /// 便于用户让小Q修改这段指定文本、在光标处续写或针对它提问
   void _sendSelectionToQ() {
     final quote = _captureSelectionQuote();
     if (quote == null) return;

@@ -106,7 +106,6 @@
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="com.appone.qnote_flutter.TODO_TOGGLE" />
-                <action android:name="com.appone.qnote_flutter.TODO_REFRESH" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"

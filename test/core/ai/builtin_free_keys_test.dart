@@ -176,14 +176,14 @@ void main() {
 
     test('配额类等待由策略层给，且远短于通用指数退避', () {
       final manager = FreeModelKeyManager.instance;
-      final quotaDelay = SensenovaQuotaPolicy.rotationDelay(QuotaSignal.tpm, 1);
+      final tpmDelay = SensenovaQuotaPolicy.rotationDelay(QuotaSignal.tpm, 1);
       final rpsDelay = SensenovaQuotaPolicy.rotationDelay(QuotaSignal.rpsBurst, 1);
 
-      expect(quotaDelay.inMilliseconds, inInclusiveRange(150, 349));
-      // rps 层是「0.6 秒内连发」，等待必须跨过它，因此比 TPM 更慢才对
-      expect(rpsDelay > quotaDelay, isTrue);
-      // 通用退避（第 3 次 1200ms 起）明显重于逐请求换 Key 的节奏（TPM 150~349、rps 350~649）
-      expect(rpsDelay.inMilliseconds, lessThan(700));
+      // TPM 首档 600~749ms（基数 150 × 阶梯首档 4 + 抖动），后续档位见策略层测试
+      expect(tpmDelay.inMilliseconds, inInclusiveRange(600, 749));
+      // rps 层是「0.6 秒内连发」，等待必须跨过它（350~649ms）
+      expect(rpsDelay.inMilliseconds, inInclusiveRange(350, 649));
+      // 通用退避（第 3 次 1200ms 起）明显重于逐请求换 Key 的节奏
       expect(
         manager.getBackoffDelay(3).inMilliseconds,
         greaterThan(rpsDelay.inMilliseconds + 400),

@@ -1,64 +1,69 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  今日待办桌面小组件（RemoteViews）。
+  约束：只能用框架白名单容器；paddingHorizontal/Vertical 是 API 26 属性而 minSdk 24，
+  一律写显式四边 padding；透明度只能进色值，不能靠 View.alpha（会连文字一起透明）。
+  样式改动需同步到 widget_todo_preview.xml（小组件选择器预览）。
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/bg_widget"
+    android:background="@drawable/bg_widget_todo"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:paddingLeft="14dp"
+    android:paddingTop="12dp"
+    android:paddingRight="14dp"
+    android:paddingBottom="12dp">
 
     <!-- Header -->
     <RelativeLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="8dp">
+        android:layout_height="wrap_content">
 
         <TextView
             android:id="@+id/todo_widget_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_alignParentLeft="true"
+            android:layout_centerVertical="true"
+            android:includeFontPadding="false"
             android:text="今日待办"
             android:textColor="@color/widget_text_primary"
             android:textSize="15sp"
-            android:textStyle="bold"
-            android:layout_alignParentLeft="true"
-            android:layout_centerVertical="true" />
+            android:textStyle="bold" />
 
         <TextView
             android:id="@+id/todo_widget_count"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_centerVertical="true"
+            android:layout_marginLeft="4dp"
+            android:layout_toRightOf="@id/todo_widget_title"
+            android:includeFontPadding="false"
             android:text="(0)"
             android:textColor="@color/widget_text_secondary"
-            android:textSize="13sp"
-            android:layout_toRightOf="@id/todo_widget_title"
-            android:layout_marginLeft="6dp"
-            android:layout_centerVertical="true" />
+            android:textSize="12sp" />
 
-        <!-- Refresh Todo Button -->
-        <ImageButton
-            android:id="@+id/btn_widget_todo_refresh"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_refresh"
-            android:contentDescription="刷新待办"
-            android:layout_alignParentRight="true"
-            android:layout_centerVertical="true"
-            android:scaleType="centerInside" />
-
-        <!-- Quick Add Todo Button -->
+        <!-- 快速添加待办：桌面原地弹窗，不跳进应用 -->
         <ImageButton
             android:id="@+id/btn_widget_todo_add"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_add"
-            android:contentDescription="快速添加待办"
-            android:layout_toLeftOf="@id/btn_widget_todo_refresh"
-            android:layout_marginRight="6dp"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:layout_alignParentRight="true"
             android:layout_centerVertical="true"
-            android:scaleType="centerInside" />
+            android:background="@drawable/bg_widget_icon_btn"
+            android:contentDescription="快速添加待办"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_add" />
     </RelativeLayout>
+
+    <!-- 头部细分隔线：半透明底板上靠色差而非边框区分区域 -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="7dp"
+        android:layout_marginBottom="5dp"
+        android:background="@color/widget_todo_hairline" />
 
     <!-- Todo Static List Container -->
     <LinearLayout
@@ -74,36 +79,45 @@
             android:id="@+id/todo_item_layout_0"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingVertical="6dp"
-            android:paddingHorizontal="2dp"
             android:layout_marginBottom="4dp"
+            android:background="@drawable/bg_widget_todo_item"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingLeft="8dp"
+            android:paddingTop="4dp"
+            android:paddingRight="8dp"
+            android:paddingBottom="4dp"
             android:visibility="gone">
+
+            <!-- 视图 30dp、图标按原始 24dp 居中：热区比视觉大一档，方便桌面点击 -->
             <ImageView
                 android:id="@+id/todo_item_checkbox_0"
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:src="@drawable/ic_checkbox_unchecked"
-                android:contentDescription="标记完成"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
                 android:clickable="false"
-                android:focusable="false" />
+                android:contentDescription="标记完成"
+                android:focusable="false"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_checkbox_unchecked" />
+
             <TextView
                 android:id="@+id/todo_item_title_0"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
                 android:layout_weight="1"
-                android:layout_marginStart="10dp"
-                android:textColor="@color/widget_text_primary"
-                android:textSize="14sp"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
                 android:maxLines="1"
-                android:ellipsize="end" />
+                android:textColor="@color/widget_text_primary"
+                android:textSize="13sp" />
+
             <ImageView
                 android:id="@+id/todo_item_priority_0"
-                android:layout_width="8dp"
-                android:layout_height="8dp"
+                android:layout_width="7dp"
+                android:layout_height="7dp"
                 android:layout_marginLeft="6dp"
-                android:src="@drawable/ic_checkbox_checked"
+                android:background="@drawable/bg_widget_priority_dot"
                 android:visibility="gone" />
         </LinearLayout>
 
@@ -112,36 +126,44 @@
             android:id="@+id/todo_item_layout_1"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingVertical="6dp"
-            android:paddingHorizontal="2dp"
             android:layout_marginBottom="4dp"
+            android:background="@drawable/bg_widget_todo_item"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingLeft="8dp"
+            android:paddingTop="4dp"
+            android:paddingRight="8dp"
+            android:paddingBottom="4dp"
             android:visibility="gone">
+
             <ImageView
                 android:id="@+id/todo_item_checkbox_1"
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:src="@drawable/ic_checkbox_unchecked"
-                android:contentDescription="标记完成"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
                 android:clickable="false"
-                android:focusable="false" />
+                android:contentDescription="标记完成"
+                android:focusable="false"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_checkbox_unchecked" />
+
             <TextView
                 android:id="@+id/todo_item_title_1"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
                 android:layout_weight="1"
-                android:layout_marginStart="10dp"
-                android:textColor="@color/widget_text_primary"
-                android:textSize="14sp"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
                 android:maxLines="1"
-                android:ellipsize="end" />
+                android:textColor="@color/widget_text_primary"
+                android:textSize="13sp" />
+
             <ImageView
                 android:id="@+id/todo_item_priority_1"
-                android:layout_width="8dp"
-                android:layout_height="8dp"
+                android:layout_width="7dp"
+                android:layout_height="7dp"
                 android:layout_marginLeft="6dp"
-                android:src="@drawable/ic_checkbox_checked"
+                android:background="@drawable/bg_widget_priority_dot"
                 android:visibility="gone" />
         </LinearLayout>
 
@@ -150,36 +172,44 @@
             android:id="@+id/todo_item_layout_2"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingVertical="6dp"
-            android:paddingHorizontal="2dp"
             android:layout_marginBottom="4dp"
+            android:background="@drawable/bg_widget_todo_item"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingLeft="8dp"
+            android:paddingTop="4dp"
+            android:paddingRight="8dp"
+            android:paddingBottom="4dp"
             android:visibility="gone">
+
             <ImageView
                 android:id="@+id/todo_item_checkbox_2"
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:src="@drawable/ic_checkbox_unchecked"
-                android:contentDescription="标记完成"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
                 android:clickable="false"
-                android:focusable="false" />
+                android:contentDescription="标记完成"
+                android:focusable="false"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_checkbox_unchecked" />
+
             <TextView
                 android:id="@+id/todo_item_title_2"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
                 android:layout_weight="1"
-                android:layout_marginStart="10dp"
-                android:textColor="@color/widget_text_primary"
-                android:textSize="14sp"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
                 android:maxLines="1"
-                android:ellipsize="end" />
+                android:textColor="@color/widget_text_primary"
+                android:textSize="13sp" />
+
             <ImageView
                 android:id="@+id/todo_item_priority_2"
-                android:layout_width="8dp"
-                android:layout_height="8dp"
+                android:layout_width="7dp"
+                android:layout_height="7dp"
                 android:layout_marginLeft="6dp"
-                android:src="@drawable/ic_checkbox_checked"
+                android:background="@drawable/bg_widget_priority_dot"
                 android:visibility="gone" />
         </LinearLayout>
 
@@ -188,36 +218,44 @@
             android:id="@+id/todo_item_layout_3"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingVertical="6dp"
-            android:paddingHorizontal="2dp"
             android:layout_marginBottom="4dp"
+            android:background="@drawable/bg_widget_todo_item"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingLeft="8dp"
+            android:paddingTop="4dp"
+            android:paddingRight="8dp"
+            android:paddingBottom="4dp"
             android:visibility="gone">
+
             <ImageView
                 android:id="@+id/todo_item_checkbox_3"
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:src="@drawable/ic_checkbox_unchecked"
-                android:contentDescription="标记完成"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
                 android:clickable="false"
-                android:focusable="false" />
+                android:contentDescription="标记完成"
+                android:focusable="false"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_checkbox_unchecked" />
+
             <TextView
                 android:id="@+id/todo_item_title_3"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
                 android:layout_weight="1"
-                android:layout_marginStart="10dp"
-                android:textColor="@color/widget_text_primary"
-                android:textSize="14sp"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
                 android:maxLines="1"
-                android:ellipsize="end" />
+                android:textColor="@color/widget_text_primary"
+                android:textSize="13sp" />
+
             <ImageView
                 android:id="@+id/todo_item_priority_3"
-                android:layout_width="8dp"
-                android:layout_height="8dp"
+                android:layout_width="7dp"
+                android:layout_height="7dp"
                 android:layout_marginLeft="6dp"
-                android:src="@drawable/ic_checkbox_checked"
+                android:background="@drawable/bg_widget_priority_dot"
                 android:visibility="gone" />
         </LinearLayout>
 
@@ -226,25 +264,29 @@
             android:id="@+id/todo_more_layout"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_marginTop="6dp"
             android:layout_marginStart="4dp"
+            android:layout_marginTop="4dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
             android:visibility="gone">
+
             <TextView
                 android:id="@+id/todo_more_badge"
-                android:layout_width="18dp"
-                android:layout_height="18dp"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
                 android:background="@drawable/bg_widget_badge"
                 android:gravity="center"
-                android:textColor="#FFFFFF"
-                android:textSize="9sp"
+                android:includeFontPadding="false"
+                android:textColor="@color/widget_badge_text"
+                android:textSize="10sp"
                 android:textStyle="bold" />
+
             <TextView
                 android:id="@+id/todo_more_text"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="6dp"
+                android:includeFontPadding="false"
                 android:text="更多待办"
                 android:textColor="@color/widget_text_secondary"
                 android:textSize="11sp" />
@@ -258,8 +300,9 @@
         android:layout_height="0dp"
         android:layout_weight="1"
         android:gravity="center"
+        android:includeFontPadding="false"
         android:text="暂无今日待办"
         android:textColor="@color/widget_text_secondary"
-        android:textSize="13sp"
+        android:textSize="12sp"
         android:visibility="gone" />
 </LinearLayout>

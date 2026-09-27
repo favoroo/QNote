@@ -74,10 +74,12 @@ class TtsPlayer extends Notifier<TtsPlaybackState> implements SpeechSink {
   /// 合成结果内存缓存（digest → mp3 bytes），重听同一条回复免重复合成
   final Map<String, Uint8List> _cache = {};
 
-  /// 会话操作串行链。
+  /// 会话清场串行链。
   ///
-  /// 流式增量以 token 级频率到达，[enqueueSpeech] 必须同步返回；真正的异步工作
-  /// （清场、跑播放循环）挂在这条链上，既保证顺序又不阻塞事件循环。
+  /// 新会话开场前要掐掉在途播放，连续多场时须按序清场，故挂上这条链。
+  /// 链上只放清场这类短动作：入队（[enqueueSpeech]）与播放循环绝不上链——
+  /// add/close 是唤醒播放循环的唯一途径，而循环又要等入队，任何一方 await
+  /// 在链上都会堵死另一方（曾致整场无声的死锁）。
   Future<void> _serial = Future.value();
 
   SpeechQueue? _queue;
@@ -152,8 +154,9 @@ class TtsPlayer extends Notifier<TtsPlaybackState> implements SpeechSink {
   /// 开启一场分段朗读。
   ///
   /// 音色与语速由调用方备好传入：本方法处在流式事件的高频路径上，不能再 await
-  /// 一次 app_configs 读取。同步返回，清场与播放循环挂在 [_serial] 链上，
-  /// 因此紧随其后的 [enqueueSpeech] 既不会丢，也不会打断要掐掉的上一条朗读。
+  /// 一次 app_configs 读取。同步返回：清场挂在 [_serial] 链上按序进行，紧随其后
+  /// 的 [enqueueSpeech] 同步入队新队列（既不丢，也不会打断要掐掉的上一条朗读），
+  /// 播放循环在清场完成后脱离链启动（见下方 unawaited 注释）。
   @override
   void beginSpeech(String messageId, {required String voice, required double rate}) {
     final gen = ++_generation;
@@ -183,9 +186,18 @@ class TtsPlayer extends Notifier<TtsPlaybackState> implements SpeechSink {
     _serial = _serial.then((_) async {
       await _cancelPlayback();
       if (gen != _generation) return;
-      await queue.run();
-      if (gen != _generation) return;
-      _closeSession();
+      // 播放循环必须脱离链启动：queue.add/close（同步方法）是唤醒 run loop 的
+      // 唯一途径，若在这里 await queue.run()，唤醒动作会排在链上永不完成——
+      // 队列等入队、入队等链，整场朗读无声卡死
+      unawaited(
+        queue.run().then((_) {
+          if (gen != _generation) return;
+          _closeSession();
+        }).catchError((Object error) {
+          if (gen != _generation) return;
+          _failSession(error);
+        }),
+      );
     }).catchError((Object error) {
       if (gen != _generation) return;
       _failSession(error);
@@ -194,20 +206,22 @@ class TtsPlayer extends Notifier<TtsPlaybackState> implements SpeechSink {
 
   /// 追加一段可朗读文本（须已由 [SpeechSegmentBuilder] 清洗）。
   ///
-  /// 播放中调用合法：只入队并推进预取，绝不打断正在播的那一段。
+  /// 同步入队、播放中调用合法：只入队并推进预取，绝不打断正在播的那一段。
+  /// 不能挂上 [_serial]——add 正是唤醒播放循环的途径，挂链会被链上未完成
+  /// 的清场动作反向堵死，队列永远等不到第一个片段。
   @override
   void enqueueSpeech(String text) {
     final queue = _queue;
     if (queue == null || text.trim().isEmpty) return;
-    _serial = _serial.then((_) async => queue.add(text));
+    queue.add(text);
   }
 
-  /// 声明本场不再有新片段：已入队的念完后收尾复位。
+  /// 声明本场不再有新片段：已入队的念完后收尾复位（同步关闭，理由同 [enqueueSpeech]）。
   @override
   void finishSpeech() {
     final queue = _queue;
     if (queue == null) return;
-    _serial = _serial.then((_) async => queue.close());
+    queue.close();
   }
 
   /// 把流式期的临时 key 换成本轮最终消息的 [messageKeyOf]。

@@ -14,39 +14,19 @@ import android.widget.RemoteViews
 class TodoWidgetProvider : AppWidgetProvider() {
     companion object {
         const val ACTION_TODO_TOGGLE = "com.appone.qnote_flutter.TODO_TOGGLE"
-        const val ACTION_TODO_REFRESH = "com.appone.qnote_flutter.TODO_REFRESH"
         const val EXTRA_TODO_ID = "extra_todo_id"
         const val EXTRA_TODO_STATUS = "extra_todo_status"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        when (intent.action) {
-            ACTION_TODO_TOGGLE -> {
-                val todoId = intent.getStringExtra(EXTRA_TODO_ID)
-                val currentStatus = intent.getIntExtra(EXTRA_TODO_STATUS, 0)
-                if (todoId != null) {
-                    toggleTodoStatus(context, todoId, currentStatus == 1)
-                }
-            }
-            ACTION_TODO_REFRESH -> {
-                val appWidgetManager = AppWidgetManager.getInstance(context)
-                val targetWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
-                
-                // 弹出 Toast 提示给用户明确的点击反馈
-                android.widget.Toast.makeText(context, "今日待办数据已刷新", android.widget.Toast.LENGTH_SHORT).show()
-
-                val appWidgetIds = if (targetWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
-                    intArrayOf(targetWidgetId)
-                } else {
-                    val component = ComponentName(context, TodoWidgetProvider::class.java)
-                    appWidgetManager.getAppWidgetIds(component)
-                }
-                
-                // 重新渲染各个 Widget 实例（同步拉取数据并刷新 UI）
-                for (widgetId in appWidgetIds) {
-                    updateAppWidget(context, appWidgetManager, widgetId)
-                }
+        // 手动刷新入口已随右上角按钮一起移除：数据每次渲染都实时查库，
+        // 勾选、App 内改动（MainActivity）、桌面快加都会主动广播重渲染
+        if (intent.action == ACTION_TODO_TOGGLE) {
+            val todoId = intent.getStringExtra(EXTRA_TODO_ID)
+            val currentStatus = intent.getIntExtra(EXTRA_TODO_STATUS, 0)
+            if (todoId != null) {
+                toggleTodoStatus(context, todoId, currentStatus == 1)
             }
         }
     }
@@ -185,20 +165,7 @@ class TodoWidgetProvider : AppWidgetProvider() {
     private fun updateAppWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
         val views = RemoteViews(context.packageName, R.layout.widget_todo)
 
-        // 1. 设置待办头部刷新点击 -> 发送刷新广播
-        val refreshIntent = Intent(context, TodoWidgetProvider::class.java).apply {
-            action = ACTION_TODO_REFRESH
-            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
-        }
-        val refreshPendingIntent = PendingIntent.getBroadcast(
-            context,
-            appWidgetId + 300,
-            refreshIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        views.setOnClickPendingIntent(R.id.btn_widget_todo_refresh, refreshPendingIntent)
-
-        // 点击标题仍然进入今日待办页
+        // 1. 头部点击：标题进入今日待办页，加号在桌面原地弹快加窗
         val addPendingIntent = WidgetIntents.route(context, "/todo", appWidgetId + 100)
         views.setOnClickPendingIntent(R.id.todo_widget_title, addPendingIntent)
 

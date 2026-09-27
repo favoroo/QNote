@@ -3322,115 +3322,7 @@ class ChatBubble extends ConsumerWidget {
       );
     }
 
-    final isError = message.isError == true;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          margin: const EdgeInsets.only(bottom: 6),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: isError
-                ? theme.colorScheme.errorContainer.withValues(alpha: 0.4)
-                : theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                isError ? Icons.error_outline : Icons.check_circle_outline,
-                size: 14,
-                color: isError
-                    ? theme.colorScheme.error
-                    : theme.colorScheme.primary,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                AgentToolLabels.resultLabel(
-                  message.toolName ?? '',
-                  message.uiDetails,
-                ),
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: isError
-                      ? theme.colorScheme.error
-                      : theme.colorScheme.primary,
-                ),
-              ),
-            ],
-          ),
-        ),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 220),
-          child: SingleChildScrollView(
-            child: MarkdownBody(
-              data: message.content,
-              selectable: false,
-              styleSheet: MarkdownStyleSheet(
-                p: TextStyle(
-                  color: theme.colorScheme.onSurface,
-                  fontSize: 14,
-                  height: 1.5,
-                ),
-                h1: TextStyle(
-                  color: theme.colorScheme.onSurface,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  height: 1.6,
-                ),
-                h2: TextStyle(
-                  color: theme.colorScheme.onSurface,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  height: 1.5,
-                ),
-                h3: TextStyle(
-                  color: theme.colorScheme.onSurface,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  height: 1.4,
-                ),
-                code: TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 13,
-                  color: theme.colorScheme.primary,
-                  backgroundColor: Colors.transparent,
-                ),
-                codeblockDecoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerLow,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: theme.colorScheme.outlineVariant.withValues(
-                      alpha: 0.5,
-                    ),
-                  ),
-                ),
-                blockquoteDecoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerLow,
-                  border: Border(
-                    left: BorderSide(
-                      color: theme.colorScheme.primary,
-                      width: 4,
-                    ),
-                  ),
-                  borderRadius: const BorderRadius.horizontal(
-                    right: Radius.circular(6),
-                  ),
-                ),
-                blockquotePadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                listBullet: TextStyle(color: theme.colorScheme.onSurface),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
+    return _GenericToolFeedbackWidget(message: message, theme: theme);
   }
 
   /// 用户消息里的附件图片网格：单图大图展示，多图九宫格缩略，均可点击放大与长按操作
@@ -3604,6 +3496,197 @@ class ChatBubble extends ConsumerWidget {
 }
 
 /// 目录列表折叠反馈组件：条目较多时默认折叠，显示前 3 项与总计，支持平滑展开和内滚动
+/// 通用工具结果反馈组件（未被专属卡片覆盖的工具兜底）：
+/// 成功结果默认折叠成单行标签条（如「识别图片 · 路径」），点击展开查看正文，
+/// 避免识图、联网搜索等长结果直接铺满聊天流；错误信息不折叠，保持立即可见。
+class _GenericToolFeedbackWidget extends StatefulWidget {
+  final ChatMessage message;
+  final ThemeData theme;
+
+  const _GenericToolFeedbackWidget({
+    required this.message,
+    required this.theme,
+  });
+
+  @override
+  State<_GenericToolFeedbackWidget> createState() =>
+      _GenericToolFeedbackWidgetState();
+}
+
+class _GenericToolFeedbackWidgetState
+    extends State<_GenericToolFeedbackWidget> {
+  bool _isExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = widget.theme;
+    final message = widget.message;
+    final isError = message.isError == true;
+    final hasBody = message.content.trim().isNotEmpty;
+    final label = AgentToolLabels.resultLabel(
+      message.toolName ?? '',
+      message.uiDetails,
+    );
+
+    final markdownSheet = MarkdownStyleSheet(
+      p: TextStyle(
+        color: theme.colorScheme.onSurface,
+        fontSize: 14,
+        height: 1.5,
+      ),
+      h1: TextStyle(
+        color: theme.colorScheme.onSurface,
+        fontSize: 18,
+        fontWeight: FontWeight.bold,
+        height: 1.6,
+      ),
+      h2: TextStyle(
+        color: theme.colorScheme.onSurface,
+        fontSize: 16,
+        fontWeight: FontWeight.bold,
+        height: 1.5,
+      ),
+      h3: TextStyle(
+        color: theme.colorScheme.onSurface,
+        fontSize: 14,
+        fontWeight: FontWeight.bold,
+        height: 1.4,
+      ),
+      code: TextStyle(
+        fontFamily: 'monospace',
+        fontSize: 13,
+        color: theme.colorScheme.primary,
+        backgroundColor: Colors.transparent,
+      ),
+      codeblockDecoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+      ),
+      blockquoteDecoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        border: Border(
+          left: BorderSide(color: theme.colorScheme.primary, width: 4),
+        ),
+        borderRadius: const BorderRadius.horizontal(right: Radius.circular(6)),
+      ),
+      blockquotePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      listBullet: TextStyle(color: theme.colorScheme.onSurface),
+    );
+
+    Widget buildBody() => ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 220),
+      child: SingleChildScrollView(
+        child: MarkdownBody(data: message.content, selectable: false, styleSheet: markdownSheet),
+      ),
+    );
+
+    // 错误信息直接展示：失败原因需要立即可见，不参与折叠
+    if (isError) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.errorContainer.withValues(alpha: 0.4),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.error_outline, size: 14, color: theme.colorScheme.error),
+                const SizedBox(width: 4),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (hasBody) buildBody(),
+        ],
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 头部折叠条：工具标签 + 关键信息摘要，点击展开/收起正文
+          InkWell(
+            onTap: hasBody ? () => setState(() => _isExpanded = !_isExpanded) : null,
+            borderRadius: BorderRadius.circular(10),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.check_circle_outline,
+                    size: 15,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
+                      ),
+                    ),
+                  ),
+                  if (hasBody) ...[
+                    const SizedBox(width: 4),
+                    AnimatedRotation(
+                      turns: _isExpanded ? 0.5 : 0,
+                      duration: AppDurations.normal,
+                      child: Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        size: 16,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          // 展开内容区：长结果带滚动上限，与目录/检索折叠卡一致
+          if (_isExpanded && hasBody) ...[
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: buildBody(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _DirectoryFeedbackWidget extends StatefulWidget {
   final ChatMessage message;
   final ThemeData theme;

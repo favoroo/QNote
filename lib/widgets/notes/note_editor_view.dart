@@ -16,6 +16,7 @@ import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/utils/delta_markdown.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/core/utils/note_file_type.dart';
+import 'package:qnote_flutter/core/utils/q_cursor_context.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/widgets/notes/html_preview/html_preview_view.dart';
 import 'package:qnote_flutter/widgets/q_text_selection_toolbar.dart';
@@ -1741,7 +1742,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         contentPadding: EdgeInsets.symmetric(vertical: 4),
       ),
       // 系统默认项（剪切/复制/粘贴/全选等，过滤第三方文本处理项）+ 末尾「给小Q」：
-      // 把选中文本连同位置引用给悬浮小Q；用平铺工具栏避免「给小Q」被折叠进 ⋮
+      // 把选中文本或光标位置连同行号引用给悬浮小Q；用平铺工具栏避免「给小Q」被折叠进 ⋮
       contextMenuBuilder: (context, editableTextState) {
         return QTextSelectionToolbar(
           anchors: editableTextState.contextMenuAnchors,
@@ -1757,29 +1758,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     );
   }
 
-  /// 捕获当前框选内容为引用（选择菜单「给小Q」与悬浮球点按共用）。
-  /// 仅当正文段持有焦点且选区非空时返回，避免陈旧选区被误引用
-  QTextQuote? _captureSelectionQuote() {
-    final seg = _focusedTextSeg;
-    if (seg == null || !seg.focusNode.hasFocus) return null;
-    final sel = seg.controller.selection;
-    final text = seg.controller.text;
-    if (!sel.isValid || sel.isCollapsed) return null;
-    final quoted = text.substring(sel.start, sel.end).trim();
-    if (quoted.isEmpty) return null;
-
-    final line = _estimateSelectionLine(seg, sel.start);
-    return QTextQuote(
-      source: QQuoteSource.note,
-      sourceId: widget.note.id,
-      sourceTitle:
-          _titleController.text.isEmpty ? '无标题' : _titleController.text,
-      quotedText: quoted,
-      locationDesc: '第 $line 行附近',
-    );
-  }
-
-  /// 捕获当前光标位置或框选内容为引用（工具栏「给小Q」按钮及悬浮球共用）。
+  /// 捕获当前光标位置或框选内容为引用（选择菜单/工具栏「给小Q」按钮及悬浮球共用）。
   /// 优先次序：
   /// 1. 若正文段有有效选区（框选了文字），引用选中文本与行号；
   /// 2. 若正文段有聚焦且有光标（未框选文字），提取光标所在行号及光标前后上下文语境（标记【光标】）；
@@ -1807,25 +1786,15 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         }
       }
 
-      // 2. 光标处（未框选文字）：计算光标所在行，提取光标前后上下文并标记【光标】
+      // 2. 光标处（未框选文字）：计算光标所在行，摘录光标前后上下文并标记【光标】
       if (sel.isValid) {
         final offset = sel.baseOffset.clamp(0, text.length);
         final line = _estimateSelectionLine(seg, offset);
 
-        // 提取光标前后的局部上下文，便于小Q准确定位并续写
-        final preStart = (offset - 60).clamp(0, text.length);
-        final postEnd = (offset + 60).clamp(0, text.length);
-        final pre = text.substring(preStart, offset);
-        final post = text.substring(offset, postEnd);
-
-        String contextSnippet;
-        if (text.trim().isEmpty) {
-          contextSnippet = '（第 $line 行空行光标处）';
-        } else {
-          final prePrefix = preStart > 0 ? '…' : '';
-          final postSuffix = postEnd < text.length ? '…' : '';
-          contextSnippet = '$prePrefix$pre【光标】$post$postSuffix';
-        }
+        // 摘录光标前后的局部上下文，便于小Q准确定位并续写
+        final snippet = buildCursorContextSnippet(text, offset);
+        final contextSnippet =
+            snippet.isEmpty ? '（第 $line 行空行光标处）' : snippet;
 
         return QTextQuote(
           source: QQuoteSource.note,
@@ -1847,19 +1816,12 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     );
   }
 
-  /// 「给小Q」：把正文选中文本连同近似行号引用给悬浮小Q，
-  /// 便于用户让小Q修改这段指定文本或针对它提问
+  /// 「给小Q」：把正文选中文本或光标位置连同近似行号引用给悬浮小Q，
+  /// 便于用户让小Q修改这段指定文本、在光标处续写或针对它提问
+  /// （选择菜单与底部工具栏共用，自动按 选区→光标→全文 降级捕获）
   void _sendSelectionToQ() {
-    final quote = _captureSelectionQuote();
-    if (quote == null) return;
-    // 收起键盘与选择菜单，把焦点让给小Q面板输入框（选中文本已在上面捕获）
-    FocusManager.instance.primaryFocus?.unfocus();
-    ref.read(floatingQProvider.notifier).openWithQuote(quote);
-  }
-
-  /// 底部工具栏点击「给小Q」：自动捕获选区、光标位置或全文引用并唤起小Q浮窗
-  void _sendToQFromToolbar() {
     final quote = _captureCursorOrSelectionQuote();
+    // 收起键盘与选择菜单，把焦点让给小Q面板输入框（引用已在上面捕获）
     FocusManager.instance.primaryFocus?.unfocus();
     ref.read(floatingQProvider.notifier).openWithQuote(quote);
   }
@@ -2460,7 +2422,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
                       withBackground: true,
                     ),
                     tooltip: '给小Q',
-                    onPressed: _sendToQFromToolbar,
+                    onPressed: _sendSelectionToQ,
                   ),
                   _ToolbarButton(
                     icon: _isToolbarExpanded ? Icons.keyboard_arrow_down : Icons.more_horiz,

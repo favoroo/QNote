@@ -6,6 +6,12 @@
     <color name="widget_text_secondary">#8E8E93</color>
     <color name="widget_accent">#0A84FF</color>
     <color name="widget_card_bg">#1C1C1E</color>
+    <!-- 今日待办小组件半透明 token，浅/深两套成对维护，见 values/colors.xml 同名项 -->
+    <color name="widget_todo_surface">#CC121214</color>
+    <color name="widget_todo_hairline">#1FFFFFFF</color>
+    <color name="widget_todo_item_bg">#14FFFFFF</color>
+    <color name="widget_todo_icon_bg">#1AFFFFFF</color>
+    <color name="widget_priority">#0A84FF</color>
     <color name="dialog_bg">#1C1C1E</color>
     <color name="dialog_text">#F2F2F7</color>
     <color name="dialog_input_bg">#2C2C2E</color>

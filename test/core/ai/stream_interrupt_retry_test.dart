@@ -46,6 +46,11 @@ void main() {
   setUpAll(() async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
+    // 独立数据库目录：全量并发时其他测试 isolate（如 key_rotation）也会清/写
+    // ai_request_stats，共用默认 qnote.db 会互相踩掉行（表现为全量偶发失败、
+    // 单跑必过），各 isolate 用各自的临时库即可根治
+    final tempDir = Directory.systemTemp.createTempSync('qnote_test_stream_interrupt');
+    await databaseFactory.setDatabasesPath(tempDir.path);
     db = await DatabaseHelper.instance.database;
   });
 

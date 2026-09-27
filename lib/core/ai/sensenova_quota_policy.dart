@@ -188,6 +188,27 @@ class SensenovaQuotaPolicy {
   static Duration tpmCooldown = _defaultTpmCooldown;
   static const Duration _defaultTpmCooldown = Duration(seconds: 60);
 
+  /// TPM 连续耗尽重试深度后的「终局等待」预算
+  ///
+  /// 额度按端点（模型）+ 账号共享、按分钟回填，重试深度烧完时若失败是 TPM 类，
+  /// 说明整段窗口都撞在同一个已耗尽的额度墙上 —— 再换一把 Key 已无意义，
+  /// 直接报错又把「多等十几秒就能成功」的请求判死。折中：等一小段（默认 10s，
+  /// 远小于一分钟的回填窗口）后做最后一次尝试；等待经 onQuotaHold 报给状态行，
+  /// 用户看到的是「限流排队」而不是卡死。置 0 可完全关闭（回到深度用尽即报错）。
+  static Duration tpmFinalHold = _defaultTpmFinalHold;
+  static const Duration _defaultTpmFinalHold = Duration(seconds: 10);
+
+  /// TPM 换 Key 重试的等待阶梯（相对 [tpmRetryWaitMs] 基数的倍数）
+  ///
+  /// 历史结论「配额类不随次数放大，白等不如快点换下一把」建立在「各把 Key 配额
+  /// 独立」的旧假设上；2026-09-25 实测推翻了它 —— 亚秒级连撞同一个分钟窗口，
+  /// 只是把重试预算烧在同一面墙上。改为逐档拉长：默认基数下 600ms → 2.4s → 6s，
+  /// 前两档快速换 Key（排除单 Key 抖动），往后实质是在等端点回填。
+  static const List<int> _tpmWaitStepMultipliers = [4, 16, 40];
+
+  /// TPM 单档等待上限：云端把基数下得很大时防止总时长失控
+  static const int _tpmWaitStepCeilingMs = 6000;
+
   /// 401/403 类故障的 Key 冷却
   ///
   /// 与 TPM 同长度只是当前实测下的取值（内置 Key 没有真失效过，无法区分
@@ -343,6 +364,11 @@ class SensenovaQuotaPolicy {
     final tpm = _readInt(policy['tpm_cooldown_seconds']);
     if (tpm != null) tpmCooldown = Duration(seconds: tpm.clamp(1, 600));
 
+    final finalHold = _readInt(policy['tpm_final_hold_ms']);
+    if (finalHold != null) {
+      tpmFinalHold = Duration(milliseconds: finalHold.clamp(0, 30000));
+    }
+
     final auth = _readInt(policy['auth_cooldown_seconds']);
     if (auth != null) authCooldown = Duration(seconds: auth.clamp(1, 3600));
 
@@ -439,6 +465,7 @@ class SensenovaQuotaPolicy {
     freeGatewayMaxTokens = _defaultFreeGatewayMaxTokens;
     rpsCooldown = _defaultRpsCooldown;
     tpmCooldown = _defaultTpmCooldown;
+    tpmFinalHold = _defaultTpmFinalHold;
     authCooldown = _defaultAuthCooldown;
     rpsRetryWaitMs = _defaultRpsRetryWaitMs;
     tpmRetryWaitMs = _defaultTpmRetryWaitMs;
@@ -457,9 +484,10 @@ class SensenovaQuotaPolicy {
 
   /// 换下一把 Key（或同把重发）之前的等待
   ///
-  /// [attempt] 为本次请求内已失败的次数（从 1 开始），只有 [QuotaSignal.server]
-  /// 用它做指数增长；配额类不随次数放大，因为再大的退避也超不过一分钟的回填窗口，
-  /// 白等不如快点换下一把。
+  /// [attempt] 为本次请求内已失败的次数（从 1 开始）：[QuotaSignal.server] 与
+  /// [QuotaSignal.tpm] 都随它增长 —— server 是指数退避，TPM 是阶梯拉长
+  /// （见 [_tpmWaitStepMultipliers]：额度按端点共享，换 Key 换不来新配额，
+  /// 后几次等待的实质是给端点回填留窗口，而不是赌下一把 Key 有额度）。
   static Duration rotationDelay(QuotaSignal signal, int attempt) {
     final rnd = Random();
     switch (signal) {
@@ -467,7 +495,15 @@ class SensenovaQuotaPolicy {
         // 下界必须跨过实测的 0.6 秒突发窗口，否则重发只是再撞一次 rps
         return Duration(milliseconds: rpsRetryWaitMs + rnd.nextInt(300));
       case QuotaSignal.tpm:
-        return Duration(milliseconds: tpmRetryWaitMs + rnd.nextInt(200));
+        final step = _tpmWaitStepMultipliers[
+            (attempt - 1).clamp(0, _tpmWaitStepMultipliers.length - 1)];
+        // 基数可能被云端下发成 0：nextInt(0) 会抛 ArgumentError，抖动下限钳到 1
+        final jitter = rnd.nextInt(tpmRetryWaitMs > 0 ? tpmRetryWaitMs : 1);
+        final rawMs = tpmRetryWaitMs * step + jitter;
+        return Duration(
+          milliseconds:
+              rawMs > _tpmWaitStepCeilingMs ? _tpmWaitStepCeilingMs : rawMs,
+        );
       case QuotaSignal.auth:
         return Duration(milliseconds: authRetryWaitMs + rnd.nextInt(60));
       case QuotaSignal.server:

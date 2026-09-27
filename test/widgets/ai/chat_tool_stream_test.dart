@@ -151,6 +151,71 @@ void main() {
       expect(find.text('文件不存在: /notes/not_found.md'), findsOneWidget);
     });
 
+    testWidgets('通用工具结果（describe_image）：默认折叠成单行标签条，点击展开正文，错误时不折叠',
+        (tester) async {
+      final describeMsg = ChatMessage(
+        role: 'tool',
+        toolName: 'describe_image',
+        content:
+            '【识图结果 · sensenova-6.8-flash-lite】这张图片展示了一个小男孩的头部特写，短黑发、皮肤白皙。',
+        uiDetails: {'path': '/storage/emulated/0/Pictures/IMG_001.png'},
+        timestamp: DateTime.now(),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => ChatBubble.buildToolFeedback(
+                context,
+                describeMsg,
+                Theme.of(context),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // 折叠态：只显示标签条，正文不直接铺开
+      expect(find.text('识别图片 · /storage/emulated/0/Pict…'), findsOneWidget);
+      expect(find.textContaining('小男孩的头部特写'), findsNothing);
+
+      // 点击标签条展开，正文可见
+      await tester.tap(find.text('识别图片 · /storage/emulated/0/Pict…'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('小男孩的头部特写'), findsOneWidget);
+
+      // 再次点击收起，正文重新隐藏
+      await tester.tap(find.text('识别图片 · /storage/emulated/0/Pict…'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('小男孩的头部特写'), findsNothing);
+
+      // 错误结果不折叠，失败原因直接可见
+      final errorMsg = ChatMessage(
+        role: 'tool',
+        toolName: 'describe_image',
+        content: '识图失败：图片文件不存在',
+        isError: true,
+        timestamp: DateTime.now(),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => ChatBubble.buildToolFeedback(
+                context,
+                errorMsg,
+                Theme.of(context),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.textContaining('识图失败：图片文件不存在'), findsOneWidget);
+    });
+
     testWidgets('_ToolChainGroupWidget 多步连续工具调用折叠组件：汇总步骤数与分布，展开显示各步细节',
         (tester) async {
       final tool1 = ChatMessage(

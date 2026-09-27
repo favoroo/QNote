@@ -321,7 +321,28 @@ class AiService {
     if (retryCount >= maxRetries) {
       // 深度用尽也要先归类：这把 Key 确实被限流了，不记冷却就会被下一轮请求
       // 立刻再次端上来，白撞同一个 429。
-      await _classifyAndCooldown(error, trace);
+      final verdict = await _classifyAndCooldown(error, trace);
+      // 终局回填等待：额度按端点（模型）+ 账号共享，重试深度烧完且最后仍撞在
+      // TPM 类额度墙上时，换 Key 已无意义；直接报错又把「多等十几秒大概率能
+      // 成功」的请求判死。等一小段（tpmFinalHold，状态行同步提示）后做最后一次
+      // 尝试。retryCount 精确等于 maxRetries 才触发：终局重发再失败时
+      // retryCount 已是 maxRetries+1，自然落入下面的放弃分支，不会无限循环。
+      if (_isSenseNovaPool &&
+          verdict.signal == QuotaSignal.tpm &&
+          retryCount == maxRetries &&
+          SensenovaQuotaPolicy.tpmFinalHold > Duration.zero) {
+        final held = await _holdForFinalTpmRetry(
+          scene: scene,
+          cancelToken: cancelToken,
+          onQuotaHold: onQuotaHold,
+        );
+        if (!held) return false;
+        if (partiallyStreamed) onStreamRetry?.call();
+        LoggerService.instance.logAI(
+          '$scene 终局等待结束，做最后一次尝试（新 Key 由 _beforeSend 现取）',
+        );
+        return true;
+      }
       return false;
     }
     if (!FreeModelKeyManager.instance.isRecoverableError(error)) {
@@ -671,6 +692,36 @@ class AiService {
 
   /// 整池排队时的轮询切片
   static const Duration _poolPollInterval = Duration(milliseconds: 200);
+
+  /// 终局回填等待：重试深度耗尽后按 [SensenovaQuotaPolicy.tpmFinalHold] 等一段
+  /// 再做最后一次尝试
+  ///
+  /// 与 [_waitPoolSlot] 的区别：那里等的是「池子里的 Key 解锁」（判据是冷却标记），
+  /// 这里等的是「端点额度回填」—— 分钟窗口内没有可判读的解锁时刻，只能按固定
+  /// 预算静置。同样按 [_poolPollInterval] 切片轮询并响应取消，返回 false 表示
+  /// 用户已中止，调用方直接放弃。
+  Future<bool> _holdForFinalTpmRetry({
+    required String scene,
+    CancelToken? cancelToken,
+    void Function(Duration hold)? onQuotaHold,
+  }) async {
+    final hold = SensenovaQuotaPolicy.tpmFinalHold;
+    final deadline = DateTime.now().add(hold);
+    onQuotaHold?.call(hold);
+    LoggerService.instance.logAI(
+      '$scene 重试深度内持续撞端点 TPM 额度墙，终局等待 ${hold.inMilliseconds}ms '
+      '等额度回填后做最后一次尝试',
+      level: LogLevel.warning,
+    );
+    while (true) {
+      if (cancelToken?.isCancelled == true) return false;
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining <= Duration.zero) return true;
+      await Future.delayed(
+        remaining < _poolPollInterval ? remaining : _poolPollInterval,
+      );
+    }
+  }
 
   /// 连接类瞬时故障重试前刷新动态 CPA 端点
   ///
