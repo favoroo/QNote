@@ -894,7 +894,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
             return SafeArea(
               child: Container(
                 constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.7,
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.7,
                 ),
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 child: Column(
@@ -1730,10 +1730,12 @@ class _TodoEditBottomSheet extends StatefulWidget {
 
 class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
   late TextEditingController _textController;
+  final FocusNode _textFocusNode = FocusNode();
   String? _reminderTime;
   String _repeatRule = 'none';
   String? _selectedFolderId;
   bool _isCompleted = false;
+  bool _lastHasText = false;
 
   @override
   void initState() {
@@ -1744,14 +1746,27 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
     _selectedFolderId = widget.todo?.folderId ?? widget.folderId;
     _isCompleted = widget.todo?.isCompleted ?? false;
     _textController.addListener(_onTextChanged);
+    _lastHasText = _textController.text.trim().isNotEmpty;
+    // 弹层入场动画结束后再拉起键盘，避免入场与键盘弹出两段动画同帧叠加掉帧
+    Timer(const Duration(milliseconds: 350), () {
+      if (mounted) {
+        _textFocusNode.requestFocus();
+      }
+    });
   }
 
   void _onTextChanged() {
-    setState(() {});
+    // 发送按钮显隐只依赖 hasText，仅在翻转时重建，避免每次按键整层 setState
+    final hasText = _textController.text.trim().isNotEmpty;
+    if (hasText != _lastHasText) {
+      _lastHasText = hasText;
+      setState(() {});
+    }
   }
 
   @override
   void dispose() {
+    _textFocusNode.dispose();
     _textController.removeListener(_onTextChanged);
     _textController.dispose();
     super.dispose();
@@ -2003,19 +2018,308 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
         widget.folders.firstOrNull;
     final selectedFolderName = selectedFolder?.name ?? '';
 
-    final viewInsetsBottom = MediaQuery.of(context).viewInsets.bottom;
+    // 键盘避让外壳单独精确订阅 viewInsets，内容子树经 child 复用，
+    // 键盘动画期间只有外壳逐帧重建，弹层内容不再整层 rebuild
+    return _TodoSheetInsetShell(
+      decorationColor: isDark ? const Color(0xFF222222) : colorScheme.surface,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 待办输入区（左侧圆角方块，中间自动聚焦输入框，更舒展宽阔）
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              GestureDetector(
+                onTap: widget.todo == null
+                    ? null
+                    : () {
+                        setState(() {
+                          _isCompleted = !_isCompleted;
+                        });
+                      },
+                child: Container(
+                  width: 22,
+                  height: 22,
+                  margin: const EdgeInsets.only(top: 3, right: 14),
+                  decoration: BoxDecoration(
+                    color: _isCompleted
+                        ? (isDark ? Colors.white24 : colorScheme.primary.withValues(alpha: 0.15))
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: _isCompleted
+                          ? (isDark ? Colors.white38 : colorScheme.outline.withValues(alpha: 0.4))
+                          : (isDark ? Colors.white54 : colorScheme.outline.withValues(alpha: 0.5)),
+                      width: 2.0,
+                    ),
+                  ),
+                  child: _isCompleted
+                      ? Icon(
+                          Icons.check,
+                          size: 15,
+                          color: isDark ? Colors.white70 : colorScheme.primary,
+                        )
+                      : null,
+                ),
+              ),
+              Expanded(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 52),
+                      child: TextField(
+                        controller: _textController,
+                        focusNode: _textFocusNode,
+                        maxLines: 5,
+                    minLines: 1,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: _handleSubmitted,
+                    style: TextStyle(
+                      fontSize: 17.5,
+                      height: 1.35,
+                      fontWeight: FontWeight.w500,
+                      color: isDark ? Colors.white : colorScheme.onSurface,
+                    ),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 2),
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      errorBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
+                      filled: false,
+                      hintText: widget.todo == null ? '回车即可连续添加待办' : '输入待办内容...',
+                      hintStyle: TextStyle(
+                        fontSize: 17.5,
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.35)
+                            : colorScheme.onSurfaceVariant.withValues(alpha: 0.45),
+                        fontWeight: FontWeight.normal,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 26),
+          // 底部功能胶囊栏与完成按钮
+          Row(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      // 设置提醒胶囊
+                      InkWell(
+                        onTap: _pickReminderTime,
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5.5),
+                          decoration: BoxDecoration(
+                            color: _reminderTime != null
+                                ? colorScheme.primary.withValues(alpha: 0.15)
+                                : (isDark ? Colors.white.withValues(alpha: 0.08) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6)),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.alarm,
+                                size: 15,
+                                color: _reminderTime != null
+                                    ? colorScheme.primary
+                                    : (isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _reminderTime ?? '提醒',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: _reminderTime != null ? FontWeight.w600 : FontWeight.normal,
+                                  color: _reminderTime != null
+                                      ? colorScheme.primary
+                                      : (isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
+                                ),
+                              ),
+                              if (_reminderTime != null) ...[
+                                const SizedBox(width: 4),
+                                GestureDetector(
+                                  onTap: () {
+                                    setState(() => _reminderTime = null);
+                                  },
+                                  child: Icon(Icons.close, size: 13, color: colorScheme.primary),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // 设置重复胶囊
+                      InkWell(
+                        onTap: _pickRepeatRule,
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5.5),
+                          decoration: BoxDecoration(
+                            color: _repeatRule != 'none'
+                                ? colorScheme.primary.withValues(alpha: 0.15)
+                                : (isDark ? Colors.white.withValues(alpha: 0.08) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6)),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.repeat,
+                                size: 15,
+                                color: _repeatRule != 'none'
+                                    ? colorScheme.primary
+                                    : (isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _repeatRuleLabel(_repeatRule),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: _repeatRule != 'none' ? FontWeight.w600 : FontWeight.normal,
+                                  color: _repeatRule != 'none'
+                                      ? colorScheme.primary
+                                      : (isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      // 切换分类胶囊（若分类数大于1）
+                      if (widget.folders.length > 1 && selectedFolderName.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        InkWell(
+                          onTap: _pickFolder,
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5.5),
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.white.withValues(alpha: 0.08) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.folder_outlined, size: 15, color: isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
+                                const SizedBox(width: 4),
+                                Text(
+                                  selectedFolderName,
+                                  style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                      // 编辑模式：给小Q 与 删除操作
+                      if (widget.todo != null) ...[
+                        const SizedBox(width: 6),
+                        IconButton(
+                          icon: QIcon(
+                            size: 20,
+                            color: colorScheme.primary,
+                          ),
+                          tooltip: '给小Q',
+                          onPressed: () {
+                            Navigator.pop(context);
+                            widget.onQuoteToQ?.call(widget.todo!);
+                          },
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.delete_outline, size: 20, color: colorScheme.error),
+                          tooltip: '删除',
+                          onPressed: () {
+                            Navigator.pop(context);
+                            widget.onDelete?.call(widget.todo!);
+                          },
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // 圆形上箭头完成/提交按钮（统一遵循应用全局主题色）
+              Semantics(
+                button: true,
+                label: '完成',
+                child: Tooltip(
+                  message: '完成',
+                  child: GestureDetector(
+                    onTap: _handleComplete,
+                    child: AnimatedContainer(
+                      duration: AppDurations.normal,
+                      curve: Curves.easeInOut,
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: hasText
+                            ? colorScheme.primary
+                            : (isDark
+                                ? Colors.white.withValues(alpha: 0.1)
+                                : colorScheme.surfaceContainerHighest.withValues(alpha: 0.8)),
+                      ),
+                      child: Icon(
+                        Icons.arrow_upward_rounded,
+                        size: 20,
+                        color: hasText
+                            ? colorScheme.onPrimary
+                            : (isDark
+                                ? Colors.white.withValues(alpha: 0.3)
+                                : colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 待办编辑弹层的键盘避让外壳。
+///
+/// 单独精确订阅 viewInsets 计算底部留白与 SafeArea 开关，键盘动画期间只有
+/// 此小节点逐帧重建；弹层内容经 child 传入保持 Element 复用，不再整层 rebuild。
+class _TodoSheetInsetShell extends StatelessWidget {
+  final Color decorationColor;
+  final Widget child;
+
+  const _TodoSheetInsetShell({required this.decorationColor, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final viewInsetsBottom = MediaQuery.viewInsetsOf(context).bottom;
     final bottomMargin = viewInsetsBottom > 0 ? (viewInsetsBottom + 12.0) : 16.0;
 
     return Padding(
       padding: EdgeInsets.only(bottom: bottomMargin, left: 14, right: 14),
       child: Container(
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF222222) : colorScheme.surface,
+          color: decorationColor,
           borderRadius: BorderRadius.circular(28),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.3),
-              blurRadius: 24,
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 16,
               offset: const Offset(0, 4),
             ),
           ],
@@ -2024,275 +2328,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
         child: SafeArea(
           top: false,
           bottom: viewInsetsBottom == 0,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // 待办输入区（左侧圆角方块，中间自动聚焦输入框，更舒展宽阔）
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  GestureDetector(
-                    onTap: widget.todo == null
-                        ? null
-                        : () {
-                            setState(() {
-                              _isCompleted = !_isCompleted;
-                            });
-                          },
-                    child: Container(
-                      width: 22,
-                      height: 22,
-                      margin: const EdgeInsets.only(top: 3, right: 14),
-                      decoration: BoxDecoration(
-                        color: _isCompleted
-                            ? (isDark ? Colors.white24 : colorScheme.primary.withValues(alpha: 0.15))
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                          color: _isCompleted
-                              ? (isDark ? Colors.white38 : colorScheme.outline.withValues(alpha: 0.4))
-                              : (isDark ? Colors.white54 : colorScheme.outline.withValues(alpha: 0.5)),
-                          width: 2.0,
-                        ),
-                      ),
-                      child: _isCompleted
-                          ? Icon(
-                              Icons.check,
-                              size: 15,
-                              color: isDark ? Colors.white70 : colorScheme.primary,
-                            )
-                          : null,
-                    ),
-                  ),
-                  Expanded(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(minHeight: 52),
-                      child: TextField(
-                        controller: _textController,
-                        autofocus: true,
-                        maxLines: 5,
-                        minLines: 1,
-                        textInputAction: TextInputAction.send,
-                        onSubmitted: _handleSubmitted,
-                        style: TextStyle(
-                          fontSize: 17.5,
-                          height: 1.35,
-                          fontWeight: FontWeight.w500,
-                          color: isDark ? Colors.white : colorScheme.onSurface,
-                        ),
-                        decoration: InputDecoration(
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(vertical: 2),
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          errorBorder: InputBorder.none,
-                          disabledBorder: InputBorder.none,
-                          filled: false,
-                          hintText: widget.todo == null ? '回车即可连续添加待办' : '输入待办内容...',
-                          hintStyle: TextStyle(
-                            fontSize: 17.5,
-                            color: isDark
-                                ? Colors.white.withValues(alpha: 0.35)
-                                : colorScheme.onSurfaceVariant.withValues(alpha: 0.45),
-                            fontWeight: FontWeight.normal,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 26),
-              // 底部功能胶囊栏与完成按钮
-              Row(
-                children: [
-                  Expanded(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          // 设置提醒胶囊
-                          InkWell(
-                            onTap: _pickReminderTime,
-                            borderRadius: BorderRadius.circular(8),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5.5),
-                              decoration: BoxDecoration(
-                                color: _reminderTime != null
-                                    ? colorScheme.primary.withValues(alpha: 0.15)
-                                    : (isDark ? Colors.white.withValues(alpha: 0.08) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6)),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.alarm,
-                                    size: 15,
-                                    color: _reminderTime != null
-                                        ? colorScheme.primary
-                                        : (isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    _reminderTime ?? '提醒',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: _reminderTime != null ? FontWeight.w600 : FontWeight.normal,
-                                      color: _reminderTime != null
-                                          ? colorScheme.primary
-                                          : (isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
-                                    ),
-                                  ),
-                                  if (_reminderTime != null) ...[
-                                    const SizedBox(width: 4),
-                                    GestureDetector(
-                                      onTap: () {
-                                        setState(() => _reminderTime = null);
-                                      },
-                                      child: Icon(Icons.close, size: 13, color: colorScheme.primary),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          // 设置重复胶囊
-                          InkWell(
-                            onTap: _pickRepeatRule,
-                            borderRadius: BorderRadius.circular(8),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5.5),
-                              decoration: BoxDecoration(
-                                color: _repeatRule != 'none'
-                                    ? colorScheme.primary.withValues(alpha: 0.15)
-                                    : (isDark ? Colors.white.withValues(alpha: 0.08) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6)),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.repeat,
-                                    size: 15,
-                                    color: _repeatRule != 'none'
-                                        ? colorScheme.primary
-                                        : (isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    _repeatRuleLabel(_repeatRule),
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: _repeatRule != 'none' ? FontWeight.w600 : FontWeight.normal,
-                                      color: _repeatRule != 'none'
-                                          ? colorScheme.primary
-                                          : (isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          // 切换分类胶囊（若分类数大于1）
-                          if (widget.folders.length > 1 && selectedFolderName.isNotEmpty) ...[
-                            const SizedBox(width: 8),
-                            InkWell(
-                              onTap: _pickFolder,
-                              borderRadius: BorderRadius.circular(8),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5.5),
-                                decoration: BoxDecoration(
-                                  color: isDark ? Colors.white.withValues(alpha: 0.08) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.folder_outlined, size: 15, color: isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      selectedFolderName,
-                                      style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                          // 编辑模式：给小Q 与 删除操作
-                          if (widget.todo != null) ...[
-                            const SizedBox(width: 6),
-                            IconButton(
-                              icon: QIcon(
-                                size: 20,
-                                color: colorScheme.primary,
-                              ),
-                              tooltip: '给小Q',
-                              onPressed: () {
-                                Navigator.pop(context);
-                                widget.onQuoteToQ?.call(widget.todo!);
-                              },
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                            ),
-                            IconButton(
-                              icon: Icon(Icons.delete_outline, size: 20, color: colorScheme.error),
-                              tooltip: '删除',
-                              onPressed: () {
-                                Navigator.pop(context);
-                                widget.onDelete?.call(widget.todo!);
-                              },
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // 圆形上箭头完成/提交按钮（统一遵循应用全局主题色）
-                  Semantics(
-                    button: true,
-                    label: '完成',
-                    child: Tooltip(
-                      message: '完成',
-                      child: GestureDetector(
-                        onTap: _handleComplete,
-                        child: AnimatedContainer(
-                          duration: AppDurations.normal,
-                          curve: Curves.easeInOut,
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: hasText
-                                ? colorScheme.primary
-                                : (isDark
-                                    ? Colors.white.withValues(alpha: 0.1)
-                                    : colorScheme.surfaceContainerHighest.withValues(alpha: 0.8)),
-                          ),
-                          child: Icon(
-                            Icons.arrow_upward_rounded,
-                            size: 20,
-                            color: hasText
-                                ? colorScheme.onPrimary
-                                : (isDark
-                                    ? Colors.white.withValues(alpha: 0.3)
-                                    : colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+          child: child,
         ),
       ),
     );

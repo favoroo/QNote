@@ -146,20 +146,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
 
   @override
   Widget build(BuildContext context) {
-    final noteListAsync = ref.watch(noteListProvider);
-    final folderListAsync = ref.watch(folderListProvider);
-
-    final notes = noteListAsync.value ?? [];
-    final folders = folderListAsync.value ?? [];
-
-    // 日记体系节点不参与批量选择与全选
-    final selectableNoteIds =
-        notes.where((n) => !JournalService.isJournalNote(n.id)).map((n) => n.id).toSet();
-    final selectableFolderIds =
-        folders.where((f) => !JournalService.isJournalFolder(f)).map((f) => f.id).toSet();
-    final isAllSelected = _selectedNoteIds.length == selectableNoteIds.length &&
-        _selectedFolderIds.length == selectableFolderIds.length;
-
+    // noteListProvider/folderListProvider 的订阅收窄到 AppBar 全选按钮与 body
+    // 两个 Consumer 内，笔记/文件夹任何变更不再重建整个页面骨架
     return Scaffold(
       appBar: AppBar(
         leading: _isSelectionMode
@@ -178,26 +166,37 @@ class _NotesPageState extends ConsumerState<NotesPage> {
         ),
         actions: [
           if (_isSelectionMode)
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  if (isAllSelected) {
-                    _selectedNoteIds.clear();
-                    _selectedFolderIds.clear();
-                  } else {
-                    _selectedNoteIds = Set<String>.from(selectableNoteIds);
-                    _selectedFolderIds = Set<String>.from(selectableFolderIds);
-                  }
-                });
-              },
-              child: Text(
-                isAllSelected ? '取消全选' : '全选',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.primary,
-                  fontWeight: FontWeight.bold,
+            Consumer(builder: (context, ref, _) {
+              // 日记体系节点不参与批量选择与全选
+              final notes = ref.watch(noteListProvider).value ?? [];
+              final folders = ref.watch(folderListProvider).value ?? [];
+              final selectableNoteIds =
+                  notes.where((n) => !JournalService.isJournalNote(n.id)).map((n) => n.id).toSet();
+              final selectableFolderIds =
+                  folders.where((f) => !JournalService.isJournalFolder(f)).map((f) => f.id).toSet();
+              final isAllSelected = _selectedNoteIds.length == selectableNoteIds.length &&
+                  _selectedFolderIds.length == selectableFolderIds.length;
+              return TextButton(
+                onPressed: () {
+                  setState(() {
+                    if (isAllSelected) {
+                      _selectedNoteIds.clear();
+                      _selectedFolderIds.clear();
+                    } else {
+                      _selectedNoteIds = Set<String>.from(selectableNoteIds);
+                      _selectedFolderIds = Set<String>.from(selectableFolderIds);
+                    }
+                  });
+                },
+                child: Text(
+                  isAllSelected ? '取消全选' : '全选',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-            )
+              );
+            })
           else ...[
             IconButton(
               icon: Icon(
@@ -219,23 +218,27 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           ],
         ],
       ),
-      body: noteListAsync.when(
-        data: (notes) => folderListAsync.when(
-          data: (folders) => _buildTree(context, folders, notes),
+      body: Consumer(builder: (context, ref, _) {
+        final noteListAsync = ref.watch(noteListProvider);
+        final folderListAsync = ref.watch(folderListProvider);
+        return noteListAsync.when(
+          data: (notes) => folderListAsync.when(
+            data: (folders) => _buildTree(context, folders, notes),
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => AppErrorState(
+              error: e,
+              action: '加载文件夹失败',
+              onRetry: () => ref.invalidate(folderListProvider),
+            ),
+          ),
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => AppErrorState(
             error: e,
-            action: '加载文件夹失败',
-            onRetry: () => ref.invalidate(folderListProvider),
+            action: '加载笔记失败',
+            onRetry: () => ref.invalidate(noteListProvider),
           ),
-        ),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => AppErrorState(
-          error: e,
-          action: '加载笔记失败',
-          onRetry: () => ref.invalidate(noteListProvider),
-        ),
-      ),
+        );
+      }),
       floatingActionButton: AnimatedSwitcher(
         duration: AppDurations.fast,
         child: _isSelectionMode

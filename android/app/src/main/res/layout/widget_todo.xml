@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   今日待办桌面小组件（RemoteViews）。
-  约束：只能用框架白名单容器；paddingHorizontal/Vertical 是 API 26 属性而 minSdk 24，
-  一律写显式四边 padding；透明度只能进色值，不能靠 View.alpha（会连文字一起透明）。
+  约束（都是踩过的坑）：只能用框架白名单容器，裸 <View> 与 android:includeFontPadding 会被
+  launcher 拒绝加载、整个组件显示「载入小组件出现问题」；paddingHorizontal/Vertical 是 API 26
+  属性而 minSdk 24，一律写显式四边 padding；透明度只能进色值，不能靠 View.alpha（会连文字一起透明）。
+  样式走简约路线：只有一层半透明底板 + 头部发丝线，条目不加背景色。
   样式改动需同步到 widget_todo_preview.xml（小组件选择器预览）。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -26,8 +28,7 @@
             android:layout_height="wrap_content"
             android:layout_alignParentLeft="true"
             android:layout_centerVertical="true"
-            android:includeFontPadding="false"
-            android:text="今日待办"
+            android:text="Todo"
             android:textColor="@color/widget_text_primary"
             android:textSize="15sp"
             android:textStyle="bold" />
@@ -39,8 +40,7 @@
             android:layout_centerVertical="true"
             android:layout_marginLeft="4dp"
             android:layout_toRightOf="@id/todo_widget_title"
-            android:includeFontPadding="false"
-            android:text="(0)"
+            android:text="0"
             android:textColor="@color/widget_text_secondary"
             android:textSize="12sp" />
 
@@ -57,8 +57,8 @@
             android:src="@drawable/ic_add" />
     </RelativeLayout>
 
-    <!-- 头部细分隔线：半透明底板上靠色差而非边框区分区域 -->
-    <View
+    <!-- 头部细分隔线：半透明底板上靠色差而非边框区分区域。用 TextView 而非裸 View，RemoteViews 的类白名单不含 android.view.View -->
+    <TextView
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:layout_marginTop="7dp"
@@ -80,12 +80,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="4dp"
-            android:background="@drawable/bg_widget_todo_item"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingLeft="8dp"
             android:paddingTop="4dp"
-            android:paddingRight="8dp"
             android:paddingBottom="4dp"
             android:visibility="gone">
 
@@ -107,7 +104,6 @@
                 android:layout_marginStart="8dp"
                 android:layout_weight="1"
                 android:ellipsize="end"
-                android:includeFontPadding="false"
                 android:maxLines="1"
                 android:textColor="@color/widget_text_primary"
                 android:textSize="13sp" />
@@ -127,12 +123,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="4dp"
-            android:background="@drawable/bg_widget_todo_item"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingLeft="8dp"
             android:paddingTop="4dp"
-            android:paddingRight="8dp"
             android:paddingBottom="4dp"
             android:visibility="gone">
 
@@ -153,7 +146,6 @@
                 android:layout_marginStart="8dp"
                 android:layout_weight="1"
                 android:ellipsize="end"
-                android:includeFontPadding="false"
                 android:maxLines="1"
                 android:textColor="@color/widget_text_primary"
                 android:textSize="13sp" />
@@ -173,12 +165,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="4dp"
-            android:background="@drawable/bg_widget_todo_item"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingLeft="8dp"
             android:paddingTop="4dp"
-            android:paddingRight="8dp"
             android:paddingBottom="4dp"
             android:visibility="gone">
 
@@ -199,7 +188,6 @@
                 android:layout_marginStart="8dp"
                 android:layout_weight="1"
                 android:ellipsize="end"
-                android:includeFontPadding="false"
                 android:maxLines="1"
                 android:textColor="@color/widget_text_primary"
                 android:textSize="13sp" />
@@ -219,12 +207,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="4dp"
-            android:background="@drawable/bg_widget_todo_item"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingLeft="8dp"
             android:paddingTop="4dp"
-            android:paddingRight="8dp"
             android:paddingBottom="4dp"
             android:visibility="gone">
 
@@ -245,7 +230,6 @@
                 android:layout_marginStart="8dp"
                 android:layout_weight="1"
                 android:ellipsize="end"
-                android:includeFontPadding="false"
                 android:maxLines="1"
                 android:textColor="@color/widget_text_primary"
                 android:textSize="13sp" />
@@ -276,7 +260,6 @@
                 android:layout_height="20dp"
                 android:background="@drawable/bg_widget_badge"
                 android:gravity="center"
-                android:includeFontPadding="false"
                 android:textColor="@color/widget_badge_text"
                 android:textSize="10sp"
                 android:textStyle="bold" />
@@ -286,7 +269,6 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="6dp"
-                android:includeFontPadding="false"
                 android:text="更多待办"
                 android:textColor="@color/widget_text_secondary"
                 android:textSize="11sp" />
@@ -300,7 +282,6 @@
         android:layout_height="0dp"
         android:layout_weight="1"
         android:gravity="center"
-        android:includeFontPadding="false"
         android:text="暂无今日待办"
         android:textColor="@color/widget_text_secondary"
         android:textSize="12sp"

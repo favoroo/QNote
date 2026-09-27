@@ -12,7 +12,6 @@
     -->
     <color name="widget_todo_surface">#CCFFFFFF</color>
     <color name="widget_todo_hairline">#14000000</color>
-    <color name="widget_todo_item_bg">#0D000000</color>
     <color name="widget_todo_icon_bg">#12000000</color>
     <color name="widget_priority">#007AFF</color>
     <color name="widget_badge_text">#FFFFFFFF</color>

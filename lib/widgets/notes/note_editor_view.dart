@@ -50,15 +50,9 @@ class _TextSegment extends _Segment {
           plainCode: plainCode,
         ) {
     controller.focusNode = focusNode;
-    focusNode.addListener(_onFocusChanged);
-  }
-
-  void _onFocusChanged() {
-    controller.refresh();
   }
 
   void dispose() {
-    focusNode.removeListener(_onFocusChanged);
     controller.dispose();
     focusNode.dispose();
   }
@@ -2520,10 +2514,6 @@ class MarkdownTextEditingController extends TextEditingController {
     super.text,
     this.plainCode = false,
   });
-
-  void refresh() {
-    notifyListeners();
-  }
 
   @override
   TextSpan buildTextSpan({required BuildContext context, TextStyle? style, required bool withComposing}) {

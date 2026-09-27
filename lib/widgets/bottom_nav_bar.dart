@@ -128,11 +128,14 @@ class _NavBranchTransitionState extends State<_NavBranchTransition>
 
   @override
   Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _fadeAnimation,
-      child: SlideTransition(
-        position: _slideAnimation,
-        child: widget.child,
+    // 独立重绘边界：切换/抽屉动画期间底层分支内容不再逐帧重绘
+    return RepaintBoundary(
+      child: FadeTransition(
+        opacity: _fadeAnimation,
+        child: SlideTransition(
+          position: _slideAnimation,
+          child: widget.child,
+        ),
       ),
     );
   }

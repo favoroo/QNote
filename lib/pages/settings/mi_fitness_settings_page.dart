@@ -2055,7 +2055,7 @@ class _StepTargetSheetState extends State<_StepTargetSheet> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final viewInsets = MediaQuery.of(context).viewInsets;
+    final viewInsets = MediaQuery.viewInsetsOf(context);
 
     return Padding(
       padding: EdgeInsets.only(bottom: viewInsets.bottom),

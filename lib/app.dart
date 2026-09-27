@@ -41,10 +41,11 @@ Future<void> preInitializeApp() async {
     initDatabaseFactory(),
   ]);
 
-  await DatabaseHelper.instance.database;
-
-  // 版本号从构建产物读取，在任何 widget 引用前完成初始化
-  await AppVersion.init();
+  // 打开数据库与版本号读取互不依赖，并行执行缩短冷启动
+  await Future.wait([
+    DatabaseHelper.instance.database,
+    AppVersion.init(),
+  ]);
 
   final configRepo = ConfigRepository.instance;
   await Future.wait([

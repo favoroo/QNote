@@ -213,7 +213,7 @@ class TodoWidgetProvider : AppWidgetProvider() {
         }
 
         // 设置今日待办总数
-        views.setTextViewText(R.id.todo_widget_count, "($pendingCount)")
+        views.setTextViewText(R.id.todo_widget_count, "$pendingCount")
 
         // 3. 静态渲染槽位定义
         val itemLayouts = intArrayOf(

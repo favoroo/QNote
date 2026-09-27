@@ -72,6 +72,8 @@ class _AiPageState extends ConsumerState<AiPage> {
   final _scrollController = ScrollController();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   double _lastBottomInset = 0.0;
+  // 键盘动画中间帧的贴底校准定时器（见 build 内 inset 监听）
+  Timer? _insetScrollDebounce;
 
   bool _isTyping = false;
   String? _activeModelId;
@@ -336,6 +338,7 @@ class _AiPageState extends ConsumerState<AiPage> {
 
   @override
   void dispose() {
+    _insetScrollDebounce?.cancel();
     QTargetBridge.instance.unregister('page:/ai');
     AgentInteractionService.instance.cancelPending('离开AI页面');
     WorkspaceEventBus.instance.removeListener(_onSkillsChanged);
@@ -1212,12 +1215,23 @@ class _AiPageState extends ConsumerState<AiPage> {
 
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     if (bottomInset != _lastBottomInset) {
-      // 软键盘高度变化（弹起避让或收拢恢复），在下一帧重新校准贴底
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _scrollToBottomIfNeeded();
-        }
-      });
+      final switched = (bottomInset == 0) != (_lastBottomInset == 0);
+      // 键盘弹出/收起瞬间立即校准贴底；动画中间帧不逐帧滚动，
+      // 改用短 debounce 在动画结束后兜底校准一次，避免每帧滚动布局
+      _insetScrollDebounce?.cancel();
+      if (switched) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _scrollToBottomIfNeeded();
+          }
+        });
+      } else {
+        _insetScrollDebounce = Timer(const Duration(milliseconds: 80), () {
+          if (mounted) {
+            _scrollToBottomIfNeeded();
+          }
+        });
+      }
     }
     _lastBottomInset = bottomInset;
 
@@ -2271,7 +2285,7 @@ class _AiPageState extends ConsumerState<AiPage> {
   }
 }
 
-class _StreamingBubble extends ConsumerWidget {
+class _StreamingBubble extends ConsumerStatefulWidget {
   final bool isFirstInGroup;
   final bool isLastInGroup;
 
@@ -2287,7 +2301,41 @@ class _StreamingBubble extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_StreamingBubble> createState() => _StreamingBubbleState();
+}
+
+class _StreamingBubbleState extends ConsumerState<_StreamingBubble> {
+  /// 已渲染到气泡的正文。Markdown 全量重解析的成本随正文长度线性增长，
+  /// 而流式 provider 约 60ms flush 一次，正文越长逐帧解析越贵，
+  /// 因此按「增量达阈值立即渲染 + 超时兜底补渲染」降低重建频率。
+  String _renderedContent = '';
+  String _pendingContent = '';
+  Timer? _flushTimer;
+
+  /// 约 8 个汉字的增量才触发一次重渲染，正文越长省下的解析越多
+  static const int _minFlushDelta = 24;
+
+  /// 未达增量阈值时最长等待多久补渲染一次，保证尾部内容最终跟上
+  static const Duration _flushInterval = Duration(milliseconds: 200);
+
+  void _scheduleFlush(String latest) {
+    _pendingContent = latest;
+    _flushTimer ??= Timer(_flushInterval, () {
+      _flushTimer = null;
+      if (mounted) {
+        setState(() => _renderedContent = _pendingContent);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _flushTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final streamingContent = ref.watch(aiStreamingMessageProvider);
     // 正文与阶段性状态互斥展示：优先正文；正文未到时展示状态行（思考中/准备中…）
     final hasContent =
@@ -2297,18 +2345,41 @@ class _StreamingBubble extends ConsumerWidget {
     final statusStartedAt = hasContent
         ? null
         : ref.watch(aiStreamingStartedAtProvider);
-    return ChatBubble(
-      message: ChatMessage(
-        role: 'assistant',
-        content: streamingContent ?? '',
-        timestamp: DateTime.now(),
+
+    String content = '';
+    if (hasContent) {
+      if (streamingContent.length - _renderedContent.length >= _minFlushDelta ||
+          !streamingContent.startsWith(_renderedContent)) {
+        // 增量达阈值，或内容被整体替换（重发/重试），立即跟上
+        _flushTimer?.cancel();
+        _flushTimer = null;
+        _renderedContent = streamingContent;
+      } else {
+        _scheduleFlush(streamingContent);
+      }
+      content = _renderedContent;
+    } else {
+      // 状态行模式：清掉残留正文与挂起的补渲染
+      _flushTimer?.cancel();
+      _flushTimer = null;
+      _renderedContent = '';
+    }
+
+    // 独立重绘边界：流式气泡逐帧刷新时不连带整条列表重绘
+    return RepaintBoundary(
+      child: ChatBubble(
+        message: ChatMessage(
+          role: 'assistant',
+          content: content,
+          timestamp: DateTime.now(),
+        ),
+        statusText: statusText,
+        statusStartedAt: statusStartedAt,
+        isFirstInGroup: widget.isFirstInGroup,
+        isLastInGroup: widget.isLastInGroup,
+        generatedImageKeys: widget.generatedImageKeys,
+        onSendToQ: widget.onSendToQ,
       ),
-      statusText: statusText,
-      statusStartedAt: statusStartedAt,
-      isFirstInGroup: isFirstInGroup,
-      isLastInGroup: isLastInGroup,
-      generatedImageKeys: generatedImageKeys,
-      onSendToQ: onSendToQ,
     );
   }
 }

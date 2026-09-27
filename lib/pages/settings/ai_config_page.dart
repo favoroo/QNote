@@ -451,7 +451,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
             top: 16,
             left: 16,
             right: 16,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+            bottom: MediaQuery.viewInsetsOf(ctx).bottom + 16,
           ),
           child: FractionallySizedBox(
             heightFactor: 0.7,
@@ -3052,7 +3052,7 @@ class _ModelPickerBottomSheetState extends State<_ModelPickerBottomSheet> {
         top: 16,
         left: 16,
         right: 16,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
       ),
       child: FractionallySizedBox(
         heightFactor: 0.7,

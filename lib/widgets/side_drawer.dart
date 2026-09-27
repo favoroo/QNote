@@ -84,9 +84,12 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: SafeArea(
+    // 抽屉首开时整棵子树与动画首帧同帧构建（DrawerController 关闭态不挂载内容），
+    // 这里用轻量 Material 代替内嵌 Scaffold 减小每次打开的构建与布局成本；
+    // ink 高亮仍画在外层 Drawer 自带的 Material 上，Toast 由外层 ScaffoldMessenger 负责
+    return Material(
+      color: Colors.transparent,
+      child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

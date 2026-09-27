@@ -2308,40 +2308,30 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     final theme = Theme.of(context);
     final shortcuts = ref.watch(shortcutListProvider);
 
-    // 动态计算可用最大高度，避免软键盘弹起时遮挡输入框
-    final mediaQuery = MediaQuery.of(context);
-    final keyboardHeight = mediaQuery.viewInsets.bottom;
-    final screenHeight = mediaQuery.size.height;
-    final safeAreaTop = mediaQuery.padding.top;
-    const appBarHeight = 56.0; // 对应主页面的头部高度
-
-    // 键盘弹起时，底部输入框最大可占用高度，预留出头部和安全距离
-    final maxAvailableHeight = screenHeight - keyboardHeight - safeAreaTop - appBarHeight - 16;
-    final double dynamicMaxHeight = math.max(120.0, math.min(680.0, maxAvailableHeight));
-
-    return Container(
-      constraints: BoxConstraints(maxHeight: dynamicMaxHeight),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 30,
-            offset: const Offset(0, -8),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: AnimatedCrossFade(
-        alignment: Alignment.bottomCenter,
-        firstChild: _buildCollapsedContent(theme),
-        secondChild: _buildExpandedContent(theme, shortcuts, selectedDate),
-        crossFadeState: _isExpanded
-            ? CrossFadeState.showSecond
-            : CrossFadeState.showFirst,
-        duration: const Duration(milliseconds: 300),
-        sizeCurve: Curves.easeInOut,
+    return _KeyboardMaxHeightShell(
+      child: Container(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 16,
+              offset: const Offset(0, -8),
+            ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: AnimatedCrossFade(
+          alignment: Alignment.bottomCenter,
+          firstChild: _buildCollapsedContent(theme),
+          secondChild: _buildExpandedContent(theme, shortcuts, selectedDate),
+          crossFadeState: _isExpanded
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
+          duration: const Duration(milliseconds: 300),
+          sizeCurve: Curves.easeInOut,
+        ),
       ),
     );
   }
@@ -4145,6 +4135,35 @@ class _UndoCountdownPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _UndoCountdownPainter oldDelegate) {
     return oldDelegate.progress != progress || oldDelegate.color != color;
+  }
+}
+
+/// 键盘避让外壳：单独精确订阅 viewInsets 计算输入条 maxHeight 限制。
+///
+/// 键盘弹出/收起的动画期间 viewInsets 逐帧变化，若由输入条主 build 直接依赖
+/// MediaQuery，整条内容（收起/展开态、快捷栏等）会被逐帧重建。把这一层抽出来
+/// 后，动画期间只有此小节点逐帧 rebuild，内容子树经 child 传入保持 Element
+/// 复用，仅按新约束重新布局。
+class _KeyboardMaxHeightShell extends StatelessWidget {
+  final Widget child;
+
+  const _KeyboardMaxHeightShell({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final keyboardHeight = MediaQuery.viewInsetsOf(context).bottom;
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final safeAreaTop = MediaQuery.paddingOf(context).top;
+    const appBarHeight = 56.0; // 对应主页面的头部高度
+
+    // 键盘弹起时，底部输入框最大可占用高度，预留出头部和安全距离
+    final maxAvailableHeight = screenHeight - keyboardHeight - safeAreaTop - appBarHeight - 16;
+    final double dynamicMaxHeight = math.max(120.0, math.min(680.0, maxAvailableHeight));
+
+    return Container(
+      constraints: BoxConstraints(maxHeight: dynamicMaxHeight),
+      child: child,
+    );
   }
 }
 

@@ -3,7 +3,7 @@
   今日待办的桌面选择器预览（previewLayout，API 31+）。
   真布局 widget_todo 的条目默认 visibility=gone、由代码逐槽位填充，直接拿它做预览
   会显示成一张只有标题的空卡，在小组件列表里完全没有辨识度；所以这份静态摆几条示例。
-  样式（底板、间距、字号、条目胶囊底）必须与 widget_todo 保持一致。
+  样式（底板、间距、字号、无条目背景）必须与 widget_todo 保持一致。
   示例一律画成未完成态：TODAY_PENDING_WHERE 过滤了 is_completed，真布局不会出现已完成项。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -26,8 +26,7 @@
             android:layout_height="wrap_content"
             android:layout_alignParentLeft="true"
             android:layout_centerVertical="true"
-            android:includeFontPadding="false"
-            android:text="今日待办"
+            android:text="Todo"
             android:textColor="@color/widget_text_primary"
             android:textSize="15sp"
             android:textStyle="bold" />
@@ -38,8 +37,7 @@
             android:layout_centerVertical="true"
             android:layout_marginLeft="4dp"
             android:layout_toRightOf="@id/preview_todo_title"
-            android:includeFontPadding="false"
-            android:text="(7)"
+            android:text="7"
             android:textColor="@color/widget_text_secondary"
             android:textSize="12sp" />
 
@@ -54,7 +52,7 @@
             android:src="@drawable/ic_add" />
     </RelativeLayout>
 
-    <View
+    <TextView
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:layout_marginTop="7dp"
@@ -65,12 +63,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginBottom="4dp"
-        android:background="@drawable/bg_widget_todo_item"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingLeft="8dp"
         android:paddingTop="4dp"
-        android:paddingRight="8dp"
         android:paddingBottom="4dp">
 
         <ImageView
@@ -86,7 +81,6 @@
             android:layout_marginStart="8dp"
             android:layout_weight="1"
             android:ellipsize="end"
-            android:includeFontPadding="false"
             android:maxLines="1"
             android:text="回复邮件"
             android:textColor="@color/widget_text_primary"
@@ -103,12 +97,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginBottom="4dp"
-        android:background="@drawable/bg_widget_todo_item"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingLeft="8dp"
         android:paddingTop="4dp"
-        android:paddingRight="8dp"
         android:paddingBottom="4dp">
 
         <ImageView
@@ -124,7 +115,6 @@
             android:layout_marginStart="8dp"
             android:layout_weight="1"
             android:ellipsize="end"
-            android:includeFontPadding="false"
             android:maxLines="1"
             android:text="整理本周记录"
             android:textColor="@color/widget_text_primary"
@@ -135,12 +125,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginBottom="4dp"
-        android:background="@drawable/bg_widget_todo_item"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingLeft="8dp"
         android:paddingTop="4dp"
-        android:paddingRight="8dp"
         android:paddingBottom="4dp">
 
         <ImageView
@@ -156,7 +143,6 @@
             android:layout_marginStart="8dp"
             android:layout_weight="1"
             android:ellipsize="end"
-            android:includeFontPadding="false"
             android:maxLines="1"
             android:text="买牛奶"
             android:textColor="@color/widget_text_primary"
@@ -176,7 +162,6 @@
             android:layout_height="20dp"
             android:background="@drawable/bg_widget_badge"
             android:gravity="center"
-            android:includeFontPadding="false"
             android:text="+3"
             android:textColor="@color/widget_badge_text"
             android:textSize="10sp"
@@ -186,7 +171,6 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="6dp"
-            android:includeFontPadding="false"
             android:text="更多待办"
             android:textColor="@color/widget_text_secondary"
             android:textSize="11sp" />
