@@ -24,16 +24,61 @@ void main() {
     'settings-manager',
     'stats-analyst',
     'frontend-design',
+    'life-decision-guide',
   ];
 
   group('SkillRegistry 技能手册文档', () {
-    test('八个技能均可加载且含 frontmatter', () {
+    test('所有内置技能均可加载且含 frontmatter', () {
       for (final name in skillNames) {
         final doc = registry.getSkillContent(name);
         expect(doc, isNotNull, reason: '$name 应可加载');
         expect(doc!.startsWith('---'), isTrue, reason: '$name 应以 frontmatter 开头');
         expect(doc.contains('name:'), isTrue, reason: '$name 应含 name 字段');
       }
+    });
+
+    test('life-decision-guide 为索引型 skill：含 34 章索引与 fetch_url 调用指引', () {
+      final doc = registry.getSkillContent('life-decision-guide')!;
+      // 索引型 skill 的核心依赖：必须指引小Q 用 fetch_url 拉原文
+      expect(doc.contains('fetch_url'), isTrue, reason: '应指引用 fetch_url 拉取章节正文');
+      // 34 章索引齐全（用章号前缀校验，避免标题被改名导致漏断言）
+      for (final ch in [
+        '01', '02', '03', '04', '05', '06', '07', '08', '09', '10',
+        '11', '12', '13', '14', '15', '16', '17', '18', '19', '20',
+        '21', '22', '23', '24', '25', '26', '27', '28', '29', '30',
+        '31', '32', '33', '34',
+      ]) {
+        expect(doc.contains('**$ch '), isTrue, reason: '第 $ch 章索引行应存在');
+      }
+      // raw URL 指向源项目 main 分支
+      expect(
+        doc.contains('raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/'),
+        isTrue,
+        reason: '应使用源项目 main 分支的 raw URL',
+      );
+      // 署名与许可证
+      expect(doc.contains('CC BY 4.0'), isTrue, reason: '应保留 CC BY 4.0 许可声明');
+      expect(doc.contains('eternity4719'), isTrue, reason: '应署名原作者');
+      // 证据分级规范（防误读 A 级为因果）
+      expect(doc.contains('A 级 ≠ 因果'), isTrue, reason: '应明确 A 级不等于因果');
+    });
+
+    test('life-decision-guide 支持别名与虚拟路径解析', () {
+      for (final key in [
+        'life',
+        'live-better',
+        'how-to-live',
+        '/skills/life-decision-guide.md',
+      ]) {
+        expect(
+          registry.getSkillContent(key),
+          registry.getSkillContent('life-decision-guide'),
+          reason: '别名 "$key" 应解析到同一份手册',
+        );
+      }
+      // 内置主名与别名均禁止用户技能占用
+      expect(registry.isReservedName('life-decision-guide'), isTrue);
+      expect(registry.isReservedName('life'), isTrue);
     });
 
     test('note-manager 的 grep 示例使用 scope 而非 path', () {

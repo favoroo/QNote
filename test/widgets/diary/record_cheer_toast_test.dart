@@ -27,10 +27,9 @@ double _opacity(WidgetTester tester) => tester
     .opacity;
 
 class _ToastHost extends StatefulWidget {
-  const _ToastHost({required this.event, this.onAction, this.onDismissed});
+  const _ToastHost({required this.event, this.onDismissed});
 
   final CheerEvent event;
-  final VoidCallback? onAction;
   final VoidCallback? onDismissed;
 
   @override
@@ -56,7 +55,6 @@ class _ToastHostState extends State<_ToastHost> {
           child: RecordCheerToast(
             event: _event,
             leaving: _leaving,
-            onAction: widget.onAction,
             onDismissed: widget.onDismissed,
           ),
         ),
@@ -69,14 +67,12 @@ CheerEvent _event({
   CheerLevel level = CheerLevel.full,
   int id = 1,
   String? sub = '共3条，太棒了',
-  String? actionLabel = '看看统计',
 }) {
   return CheerEvent(
     id: id,
-    title: level == CheerLevel.full ? '今日完整！连续4天' : '今日第$id条',
+    title: level == CheerLevel.full ? '今日完整！' : '今日第$id条',
     sub: sub,
     level: level,
-    actionLabel: actionLabel,
   );
 }
 
@@ -101,7 +97,7 @@ void main() {
     testWidgets('满档带流光描边与副标题', (tester) async {
       await _pump(tester, _ToastHost(event: _event(level: CheerLevel.full)));
 
-      expect(find.text('今日完整！连续4天'), findsOneWidget);
+      expect(find.text('今日完整！'), findsOneWidget);
       expect(find.text('共3条，太棒了'), findsOneWidget);
       expect(_flowAnimating(tester), isTrue);
     });
@@ -112,16 +108,13 @@ void main() {
       expect(_flowAnimating(tester), isTrue);
     });
 
-    testWidgets('普通记录不放流光也不给跳转入口，保持极轻', (tester) async {
+    testWidgets('普通记录不放流光，保持极轻', (tester) async {
       await _pump(
         tester,
-        _ToastHost(
-          event: _event(level: CheerLevel.plain, sub: null, actionLabel: null),
-        ),
+        _ToastHost(event: _event(level: CheerLevel.plain, sub: null)),
       );
 
       expect(_flowAnimating(tester), isFalse);
-      expect(find.text('看看统计'), findsNothing);
     });
   });
 
@@ -190,20 +183,11 @@ void main() {
   });
 
   group('RecordCheerToast 交互与布局', () {
-    testWidgets('「看看统计」回调送达调用方', (tester) async {
-      var tapped = 0;
-      await _pump(tester, _ToastHost(event: _event(), onAction: () => tapped++));
-
-      await tester.tap(find.text('看看统计'));
-      await tester.pump(const Duration(milliseconds: 50));
-      expect(tapped, 1);
-    });
-
     testWidgets('超长文案单行省略，不撑破胶囊', (tester) async {
       await _pump(
         tester,
         _ToastHost(
-          event: _event(sub: '已连续记录 1234567890 天，这段文案故意拉得很长'),
+          event: _event(sub: '这条副标题文案故意拉得很长很长用来验证省略号'),
         ),
         screen: const Size(320, 640),
       );

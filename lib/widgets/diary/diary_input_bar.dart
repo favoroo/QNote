@@ -3862,7 +3862,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          // 今日完整度：环内条数/目标，右下角连续天数；点它跳统计页
+          // 今日完整度：环内条数/目标；点它跳统计页
           const TodayProgressRing(),
           const SizedBox(width: 8),
           Expanded(

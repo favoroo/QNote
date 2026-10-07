@@ -218,13 +218,12 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
       }
       final changes = await SyncLogRepository.instance.getChangesSince(baseline);
       final now = DateTime.now();
-      // 完整度与坚持度把 DateTime.now() 缓存在 Provider 里，列表不变就不重算：
+      // 完整度把 DateTime.now() 缓存在 Provider 里，列表不变就不重算：
       // 跨零点回前台且期间无数据变更时不主动失效，圆环会一直显示昨天的条数。
       if (now.year != baseline.year ||
           now.month != baseline.month ||
           now.day != baseline.day) {
         ref.invalidate(diaryProgressProvider);
-        ref.invalidate(streakSummaryProvider);
       }
       if (changes.isEmpty) {
         return;

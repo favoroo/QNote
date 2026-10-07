@@ -4,13 +4,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
+import 'package:qnote_flutter/providers/selected_date_provider.dart';
 import 'package:qnote_flutter/widgets/statistics/screen_usage_stats_view.dart';
 
 /// 屏幕使用时间独立页面
 ///
 /// 展示今日屏幕总时长、各应用使用排行榜及近7天趋势，支持点击顶栏更新按钮与下拉刷新。
 class ScreenUsagePage extends ConsumerStatefulWidget {
-  const ScreenUsagePage({super.key});
+  final DateTime? initialDate;
+
+  const ScreenUsagePage({super.key, this.initialDate});
 
   @override
   ConsumerState<ScreenUsagePage> createState() => _ScreenUsagePageState();
@@ -19,6 +22,24 @@ class ScreenUsagePage extends ConsumerStatefulWidget {
 class _ScreenUsagePageState extends ConsumerState<ScreenUsagePage> {
   final GlobalKey<ScreenUsageStatsViewState> _viewKey = GlobalKey<ScreenUsageStatsViewState>();
   bool _isRefreshing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final initDate = widget.initialDate;
+    if (initDate != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        ref.read(selectedDateProvider.notifier).state = DateTime(
+          initDate.year,
+          initDate.month,
+          initDate.day,
+        );
+      });
+    }
+  }
 
   /// 手动触发数据更新
   Future<void> _handleRefresh() async {

@@ -62,18 +62,16 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('TodayProgressRing', () {
-    testWidgets('今日2条、连续3天：环内 2/3，徽标显示连续天数', (tester) async {
+    testWidgets('今日2条：环内 2/3，历史记录不影响计数', (tester) async {
       await _pumpRing(tester, _records({0: 2, 1: 1, 2: 1}));
 
       expect(find.text('2/3'), findsOneWidget);
-      expect(find.text('3'), findsOneWidget);
     });
 
     testWidgets('达到目标：环内 3/3 且满环', (tester) async {
       await _pumpRing(tester, _records({0: 3}));
 
       expect(find.text('3/3'), findsOneWidget);
-      expect(find.text('1'), findsOneWidget);
     });
 
     testWidgets('超过目标不封顶显示，仍如实反映条数', (tester) async {
@@ -82,18 +80,10 @@ void main() {
       expect(find.text('5/3'), findsOneWidget);
     });
 
-    testWidgets('今天没记但连续未断：徽标显示从昨天起算的天数', (tester) async {
-      await _pumpRing(tester, _records({1: 1, 2: 1}));
-
-      expect(find.text('0/3'), findsOneWidget);
-      expect(find.text('2'), findsOneWidget);
-    });
-
-    testWidgets('无任何记录：0/3 与连续 0', (tester) async {
+    testWidgets('无任何记录：0/3', (tester) async {
       await _pumpRing(tester, const []);
 
       expect(find.text('0/3'), findsOneWidget);
-      expect(find.text('0'), findsOneWidget);
     });
 
     testWidgets('整句提示降级进 Tooltip 与 Semantics，信息不丢', (tester) async {
@@ -103,16 +93,6 @@ void main() {
         find.descendant(of: _ringBox, matching: find.byType(Tooltip)),
       );
       expect(tooltip.message, contains('今日 1/3'));
-      expect(tooltip.message, contains('连续2天'));
-    });
-
-    testWidgets('今日未记时提示会断连', (tester) async {
-      await _pumpRing(tester, _records({1: 1}));
-
-      final tooltip = tester.widget<Tooltip>(
-        find.descendant(of: _ringBox, matching: find.byType(Tooltip)),
-      );
-      expect(tooltip.message, contains('今天还没记'));
     });
 
     testWidgets('固定 44×44 命中区，与发送按钮同尺寸不挤压输入框', (tester) async {

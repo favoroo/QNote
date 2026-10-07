@@ -1699,8 +1699,10 @@ class _DiaryItemState extends State<DiaryItem> {
               color: Colors.transparent,
               child: InkWell(
                 onTap: () {
-                  // 点击直接跳转至统计页的屏幕时长完整看板
-                  context.push('/statistics');
+                  // 点击直接跳转至独立的屏幕使用时间页面，并同步对齐卡片所属日期
+                  final dateStr = bs['date'] as String?;
+                  final targetDate = dateStr != null ? DateTime.tryParse(dateStr) : record.time;
+                  context.push('/settings/screen-usage', extra: targetDate ?? record.time);
                 },
                 borderRadius: BorderRadius.circular(14),
                 child: Container(

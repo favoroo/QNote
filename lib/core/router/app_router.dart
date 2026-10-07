@@ -16,6 +16,7 @@ import 'package:qnote_flutter/pages/settings/shortcuts_page.dart';
 import 'package:qnote_flutter/pages/settings/fixed_events_page.dart';
 import 'package:qnote_flutter/pages/settings/data_sync_page.dart';
 import 'package:qnote_flutter/pages/settings/mi_fitness_settings_page.dart';
+import 'package:qnote_flutter/pages/settings/screen_usage_page.dart';
 import 'package:qnote_flutter/pages/health/health_metric_detail_page.dart';
 import 'package:qnote_flutter/pages/settings/personalization_page.dart';
 import 'package:qnote_flutter/pages/settings/about_page.dart';
@@ -202,6 +203,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(
+        path: '/settings/screen-usage',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) {
+          final initialDate = state.extra as DateTime?;
+          return _fadeTransitionPage(ScreenUsagePage(initialDate: initialDate));
+        },
+      ),
+      GoRoute(
         // 健康指标二级详情页：数据由主看板通过 extra 带入，不自己查库
         path: '/health-detail',
         parentNavigatorKey: rootNavigatorKey,
@@ -226,10 +235,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         redirect: (context, state) {
           final actionStr = state.uri.queryParameters['action'];
           WidgetAction? action;
-          if (actionStr == 'input') action = WidgetAction.input;
-          else if (actionStr == 'photo') action = WidgetAction.photo;
-          else if (actionStr == 'camera') action = WidgetAction.camera;
-          else if (actionStr == 'send') action = WidgetAction.send;
+          if (actionStr == 'input') {
+            action = WidgetAction.input;
+          } else if (actionStr == 'photo') {
+            action = WidgetAction.photo;
+          } else if (actionStr == 'camera') {
+            action = WidgetAction.camera;
+          } else if (actionStr == 'send') {
+            action = WidgetAction.send;
+          }
 
           if (action != null) {
             ref.read(pendingWidgetActionProvider.notifier).state = action;

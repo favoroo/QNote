@@ -10,14 +10,11 @@ DiaryProgress _progress({
   required int todayCount,
   int target = 3,
   int maxPerDay = 0,
-  int streakDays = 0,
 }) {
   return DiaryProgress(
     todayCount: todayCount,
     target: target,
-    streakDays: streakDays,
     maxPerDay: maxPerDay,
-    todayPending: todayCount == 0,
   );
 }
 

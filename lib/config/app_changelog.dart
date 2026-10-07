@@ -14,6 +14,15 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.77',
+    date: '2026-10-07',
+    notes: [
+      '移除日记「连续记录」机制：统计页坚持度指标条、圆环连续天数徽标与「看看统计」跳转入口一并下线，今日完整度圆环保留',
+      '小Q 新增「人生决策指南」内置技能：34 章人生决策框架索引，按需现拉源项目正文，不预置全量文本',
+      '修复日记时间线「屏幕使用」卡片点击误跳统计页的问题，现直达屏幕使用详情页并同步对齐日期',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.76',
     date: '2026-09-27',
     notes: [

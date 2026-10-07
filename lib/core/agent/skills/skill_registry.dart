@@ -641,6 +641,91 @@ QNote 预览环境原生开启了 DOM Storage 与独立 Origin 存储沙箱，**
 - **异常保护**：涉及 `localStorage` 的读写必须使用 `try...catch` 包裹，保障极端情况或受限环境下页面基础展示不崩溃。
 ''';
 
+  /// 生活决策备选单：本 skill 仅作索引，正文每次用 fetch_url 现拉对应章节，
+  /// 既不把 1.75MB 全量塞进常量，也保证与源项目 main 分支同步。
+  /// 来源：eternity4719/HowToLiveBetter（CC BY 4.0）。
+  static const String lifeDecisionGuideDoc = '''---
+name: life-decision-guide
+description: 生活决策备选单：基于《高性价比人生指南》(HowToLiveBetter) 的循证建议查询——寿命/精力/时间/金钱/人身自由/法律红线/慢性病/看病/紧急情况等，按问题匹配章节并调用 fetch_url 拉取原文回答
+---
+
+# 生活决策备选单技能 (Life Decision Guide)
+
+本手册是 [HowToLiveBetter](https://github.com/eternity4719/HowToLiveBetter)（《高性价比人生指南》）的**索引型 skill**：手册本身只存章号 + 一句话主旨 + 原文 raw URL，正文每次按需用 `fetch_url` 现拉。书是面向中国大陆普通人的循证生活决策备选单，670 条建议、1693 条文献、A/B/C 三档证据分级，按"花掉什么、换回什么"的性价比排序。
+
+## 1. 这本书是什么
+- 来源：eternity4719 在 GitHub 维护的 CC BY 4.0 项目，全书约 50 万字、34 章。
+- 核心范式：**先查书再回答，查不到就不编**。每条建议都标「成本 / 说人话 / 收益 / 证据等级 / 来源 / 备注」六栏。
+- 适用范围：中国大陆现行规定（医保、社保、法律、户籍等）。其他国家/地区仅作参考，需另查本地规定。
+- 章节以 main 分支为准，如 URL 失效到仓库重新核对：https://github.com/eternity4719/HowToLiveBetter
+
+## 2. 何时调用本技能（触发场景）
+- 用户问"怎么活得更值 / 更久 / 怎么少花钱""程序员有哪些法律红线""慢性病确诊后怎么办""紧急情况怎么处理""彩礼 / 婚前房产""被裁了先做什么""账号被盗 / 电信诈骗""学什么技能划算""租房买房避坑""常备药怎么用"等生活决策类问题。
+- 用户问的某个具体生活建议需要**循证依据**（数字、文献、证据等级）时。
+- 用户明确提到本书或要求"按 HowToLiveBetter 查"。
+- **不适用**：与生活决策无关的纯技术、纯情感、纯创作类问题——交给其他技能或不调技能。
+
+## 3. 34 章索引表（核心）
+每行：**章号 标题** — 一句话主旨。raw URL 用于 `fetch_url` 拉取正文。
+
+- **01 不要早死** — 几乎不花钱就能明显降低早死概率的事。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/01-不要早死.md
+- **02 不要慢慢死** — 抽烟喝酒久坐熬夜折寿多少、怎么戒、慢病早筛。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/02-不要慢慢死.md
+- **03 不要浪费精力** — 每天精力不够用、总被打断怎么改。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/03-不要浪费精力.md
+- **04 不要浪费时间** — 时间花哪去了、拖延怎么治。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/04-不要浪费时间.md
+- **05 不要浪费钱** — 攒下的钱怎么放才不被利息/费率/骗局吃掉。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/05-不要浪费钱.md
+- **06 反面清单** — 哪些保健品/体检套餐/智商税直接不买。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/06-反面清单.md
+- **07 没钱的时候怎么活** — 失业/被欠薪/身无分文能领什么。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/07-没钱的时候怎么活.md
+- **08 别把自己搭进去** — 彩礼、婚前房产、被报案指控时第一步做什么。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/08-别把自己搭进去.md
+- **09 普通人容易踩的法律红线** — 哪些"兼职"会让普通人变成刑事被告。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/09-普通人容易踩的法律红线.md
+- **10 恋爱和结婚划不划算** — 追人该广撒网还是死磕一个、领证要带什么。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/10-恋爱和结婚划不划算.md
+- **11 程序员和技术人容易踩的红线** — 技术人专属的法律与执业红线。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/11-程序员和技术人容易踩的红线.md
+- **12 创业与做生意** — 开公司、合伙、税务与倒闭。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/12-创业与做生意.md
+- **13 紧急情况** — 猝死/中毒/火灾/地震等现场处置。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/13-紧急情况.md
+- **14 账号与信息安全** — 账号被盗、电信诈骗与个人信息保护。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/14-账号与信息安全.md
+- **15 租房与买房** — 租约陷阱、买房贷款与产权。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/15-租房与买房.md
+- **16 得了慢性病之后怎么活** — 高血压/糖尿病/癌症等确诊后怎么办。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/16-得了慢性病之后怎么活.md
+- **17 家里有老人** — 老人照护、跌倒、临终与后事。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/17-家里有老人.md
+- **18 养孩子划不划算** — 要不要孩子、生育成本与回报。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/18-养孩子划不划算.md
+- **19 在职离职和工伤** — 劳动合同、离职补偿、工伤认定。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/19-在职离职和工伤.md
+- **20 刚出生的孩子怎么带** — 新生儿护理与办证。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/20-刚出生的孩子怎么带.md
+- **21 出国旅行与境外安全** — 签证、保险、应急与风险地区。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/21-出国旅行与境外安全.md
+- **22 怎么放松** — 低成本有效放松方式。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/22-怎么放松.md
+- **23 学什么技能划算** — 技能投入产出比。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/23-学什么技能划算.md
+- **24 看病** — 挂号、医保、就医流程与避坑。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/24-看病.md
+- **25 人走了以后要办什么** — 丧葬、遗产、销户。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/25-人走了以后要办什么.md
+- **26 做一个网站或平台** — 建站合规、备案、ICP。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/26-做一个网站或平台.md
+- **27 怀孕和生产** — 孕期保健、产检、分娩与费用。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/27-怀孕和生产.md
+- **28 别为了外形把身体搞坏** — 医美、减肥、整形风险。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/28-别为了外形把身体搞坏.md
+- **29 遭遇重大打击之后** — 失业、重病、丧亲后的恢复。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/29-遭遇重大打击之后.md
+- **30 上学以后的孩子** — 教育、升学、学区与补课。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/30-上学以后的孩子.md
+- **31 十八岁之后有哪几条路** — 高考、留学、就业、参军。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/31-十八岁之后有哪几条路.md
+- **32 出国留学** — 留学成本、回报与中介坑。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/32-出国留学.md
+- **33 残疾之后怎么活** — 残疾证、补贴、就业与无障碍。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/33-残疾之后怎么活.md
+- **34 家里的常备药别吃出事** — 常备药选用、过期与用药安全。 https://raw.githubusercontent.com/eternity4719/HowToLiveBetter/main/book/34-家里的常备药别吃出事.md
+
+## 4. 使用流程（SOP）
+1. 按用户问题在上面的第 3 章索引表里定位 1-2 个最相关章号（如问"程序员兼职会不会违法"→ 第 09 + 第 11 章）。
+2. 调 `fetch_url(url: 该章 raw URL)` 拉正文。长章（如第 08、05、13 章约 100KB+）返回结果末尾会提示可继续读取的 offset，按需传入续读，**不要一次性读完整个长章**——通常只读用户问题对应的那一节即可。
+3. 用该章内容回答用户。引用时注明「**第 X 节 第 Y 条 · 证据等级 A/B/C · 来源**」，并把来源链接一并给出。
+4. 涉及**争议条目**（书中有约 69 条标"争议"）必须转述该条"备注"栏的限定条件（如适用人群、禁忌、与因果性的差距），不得删改。
+5. **查不到对应条目就直说不知道**，禁止编造证据等级、文献编号或数字。
+6. fetch_url 失败（GitHub raw 偶发限流）时告知用户「源项目暂时不可达，稍后再试」并给出仓库链接 https://github.com/eternity4719/HowToLiveBetter 。
+
+## 5. 证据分级与回答规范
+- **A 级**：有具体数字可查（荟萃分析 / 大型队列 / RCT）。**A 级 ≠ 因果**——必须看收益栏写的是"随机分组"（因果证据）还是"只记录不分组"（仅相关）。
+- **B 级**：有研究但说不出确切数字，或样本小。
+- **C 级**：作者经验或公认做法，无强证据支撑。
+- **性价比档**：极高 / 高 / 一般（按"换寿命/换钱/换时间精力/换人身自由"四口径与收益量级事先定好的数值界线套）。
+- **受益人四档**：①你自己 ②配偶和直系亲属 ③朋友同事与其他亲属（互惠） ④陌生人（最低档，含被讹/反咬风险）。四类好处**不互相折算**。
+- 回答风格：说人话、给数字、给成本、给来源链接，不夸大、不绝对化。涉及医疗、法律的具体决策建议用户**咨询执业医师 / 律师**，本 skill 仅提供循证参考。
+
+## 6. 来源与署名
+- 内容版权：作者 eternity4719，CC BY 4.0。
+- 仓库：https://github.com/eternity4719/HowToLiveBetter
+- 在线检索页：https://eternity4719.github.io/HowToLiveBetter/
+- 本 skill 仅作索引与使用规范，正文每次现拉，保证与源项目 main 分支同步；引用原文时请保留章号与证据等级标注。
+''';
+
   /// 获取所有可用 Skill 清单（内置 + 用户技能，含 `origin` 来源标记）
   ///
   /// 默认排除已归档的用户技能（技能索引、skill 工具与小Q视角均不可见）；
@@ -693,6 +778,12 @@ QNote 预览环境原生开启了 DOM Storage 与独立 Origin 存储沙箱，**
         'name': 'frontend-design',
         'path': '/skills/frontend-design.md',
         'description': '网页设计：精美单文件 HTML 网页/待办打卡工具/海报/邀请函/简历/数据可视化，美学方向、移动端适配、动效细节与状态本地持久化规范',
+        'origin': AgentSkillOrigin.builtin,
+      },
+      {
+        'name': 'life-decision-guide',
+        'path': '/skills/life-decision-guide.md',
+        'description': '生活决策备选单：基于《高性价比人生指南》(HowToLiveBetter) 的循证建议查询——寿命/精力/时间/金钱/人身自由/法律红线/慢性病/看病/紧急情况，按问题匹配章节并用 fetch_url 拉取原文回答',
         'origin': AgentSkillOrigin.builtin,
       },
       // 用户技能追加在内置之后，由 Agent/UI 按需加载；归档技能默认不可见
@@ -758,6 +849,12 @@ QNote 预览环境原生开启了 DOM Storage 与独立 Origin 存储沙箱，**
       case 'design':
       case 'ui':
         return 'frontend-design';
+      case 'life-decision-guide':
+      case 'life':
+      case 'live-better':
+      case 'how-to-live':
+      case 'howtolivebetter':
+        return 'life-decision-guide';
     }
     if (builtinSkillNames.contains(key)) return key;
     for (final skill in _userSkills) {
@@ -788,6 +885,8 @@ QNote 预览环境原生开启了 DOM Storage 与独立 Origin 存储沙箱，**
         return statsAnalystDoc;
       case 'frontend-design':
         return frontendDesignDoc;
+      case 'life-decision-guide':
+        return lifeDecisionGuideDoc;
       default:
         // 内置未命中时回退查用户技能（同步读内存缓存；归档技能已排除）
         for (final skill in _userSkills) {
@@ -834,6 +933,7 @@ QNote 预览环境原生开启了 DOM Storage 与独立 Origin 存储沙箱，**
     'settings-manager',
     'stats-analyst',
     'frontend-design',
+    'life-decision-guide',
   };
 
   /// 内置技能别名（getSkillContent 的模糊匹配名，同样禁止用户技能占用）
@@ -841,6 +941,7 @@ QNote 预览环境原生开启了 DOM Storage 与独立 Origin 存储沙箱，**
     'todo', 'todos', 'note', 'notes', 'timeline', 'journal',
     'folder', 'folders', 'settings', 'config', 'stats', 'statistics',
     'frontend', 'web-design', 'web', 'design', 'ui',
+    'life', 'live-better', 'how-to-live', 'howtolivebetter',
   };
 
   /// 名称是否被内置技能（含别名）保留

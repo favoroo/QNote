@@ -17,7 +17,6 @@ class CheerEvent {
     required this.title,
     this.sub,
     required this.level,
-    this.actionLabel,
   });
 
   final int id;
@@ -26,7 +25,6 @@ class CheerEvent {
 
   /// 庆祝强度：满档与破纪录才配流光描边，普通记录保持极轻。
   final CheerLevel level;
-  final String? actionLabel;
 
   bool get isCheer => level.isCheer;
 }
@@ -41,7 +39,6 @@ class RecordCheerToast extends StatefulWidget {
     super.key,
     required this.event,
     this.leaving = false,
-    this.onAction,
     this.onDismissed,
   });
 
@@ -49,7 +46,6 @@ class RecordCheerToast extends StatefulWidget {
 
   /// 调用方停留时间到点后置 true，本组件随即播退场。
   final bool leaving;
-  final VoidCallback? onAction;
 
   /// 退场播完的回调，调用方在此把事件置空。
   final VoidCallback? onDismissed;
@@ -210,19 +206,6 @@ class _RecordCheerToastState extends State<RecordCheerToast> with SingleTickerPr
                   ],
                 ),
               ),
-              if (event.actionLabel != null) ...[
-                const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: widget.onAction,
-                  child: Text(
-                    event.actionLabel!,
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: scheme.inversePrimary,
-                    ),
-                  ),
-                ),
-              ],
             ],
           ),
         ),

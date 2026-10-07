@@ -10,15 +10,7 @@ import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/utils/diary_progress.dart';
 import 'package:qnote_flutter/providers/diary_progress_provider.dart';
 
-/// 发起「到统计页看记录坚持」的定位，置意图后跳转。
-///
-/// 圆环与庆祝胶囊的「看看统计」共用，避免两个入口落到不同位置。
-void goStreakFocus(BuildContext context, WidgetRef ref) {
-  ref.read(streakFocusProvider.notifier).state = DateTime.now();
-  context.go('/statistics');
-}
-
-/// 今日完整度圆环：环内 `条数/目标`，右下角徽标为连续记录天数。
+/// 今日完整度圆环：环内 `条数/目标`，点击跳统计页。
 ///
 /// 取代原先占满一行的顶部提示条，挂在输入框同一行最左侧。
 /// 固定 44×44（与发送按钮同尺寸）保证行内齐底、不额外挤压输入框宽度；
@@ -61,7 +53,7 @@ class _TodayProgressRingState extends ConsumerState<TodayProgressRing> {
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: () => goStreakFocus(context, ref),
+            onTap: () => context.go('/statistics'),
             customBorder: const CircleBorder(),
             child: LayoutBuilder(
               // LayoutBuilder 在每次重新布局时都会走一遍：窗口 resize、输入条
@@ -72,24 +64,10 @@ class _TodayProgressRingState extends ConsumerState<TodayProgressRing> {
                   key: _boxKey,
                   width: 44,
                   height: 44,
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    alignment: Alignment.center,
-                    children: [
-                      _ProgressRing(
-                        ratio: progress.ratio,
-                        isFull: progress.isFull,
-                        label: '${progress.todayCount}/${progress.target}',
-                      ),
-                      Positioned(
-                        right: 1,
-                        bottom: 2,
-                        child: _StreakBadge(
-                          streakDays: progress.streakDays,
-                          atRisk: progress.todayPending && progress.streakDays > 0,
-                        ),
-                      ),
-                    ],
+                  child: _ProgressRing(
+                    ratio: progress.ratio,
+                    isFull: progress.isFull,
+                    label: '${progress.todayCount}/${progress.target}',
                   ),
                 );
               },
@@ -130,13 +108,8 @@ class _TodayProgressRingState extends ConsumerState<TodayProgressRing> {
   }
 
   /// 列表尚未加载完时的占位进度：仍按 `0/目标` 渲染，保住 44×44 行内占位不跳动。
-  DiaryProgress _pendingProgress(WidgetRef ref) => DiaryProgress(
-    todayCount: 0,
-    target: ref.watch(dailyTargetProvider),
-    streakDays: 0,
-    maxPerDay: 0,
-    todayPending: false,
-  );
+  DiaryProgress _pendingProgress(WidgetRef ref) =>
+      DiaryProgress(todayCount: 0, target: ref.watch(dailyTargetProvider), maxPerDay: 0);
 
   String _hintText(DiaryProgress progress) {
     final parts = <String>['今日 ${progress.todayCount}/${progress.target}'];
@@ -144,11 +117,6 @@ class _TodayProgressRingState extends ConsumerState<TodayProgressRing> {
       parts.add('已完整');
     } else {
       parts.add('再记${progress.remaining}条就完整了');
-    }
-    if (progress.streakDays > 0) {
-      parts.add('连续${progress.streakDays}天${progress.todayPending ? '，今天还没记' : ''}');
-    } else {
-      parts.add('还没有连续记录');
     }
     return parts.join(' · ');
   }
@@ -227,65 +195,6 @@ class _ProgressRing extends StatelessWidget {
         return Transform.scale(scale: scale, child: child);
       },
       child: ring,
-    );
-  }
-}
-
-/// 连续记录天数徽标：贴在环右下角，不额外占行内宽度。
-///
-/// [atRisk]（连续未断但今天还没记）时改用描边空心，视觉上提示「再不记就断了」。
-class _StreakBadge extends StatelessWidget {
-  const _StreakBadge({
-    required this.streakDays,
-    required this.atRisk,
-  });
-
-  final int streakDays;
-  final bool atRisk;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final inactive = streakDays <= 0;
-
-    final Color background;
-    final Color foreground;
-    final BoxBorder? border;
-    if (inactive) {
-      background = scheme.surfaceContainerHighest;
-      foreground = scheme.onSurfaceVariant.withValues(alpha: 0.7);
-      border = null;
-    } else if (atRisk) {
-      background = scheme.surface;
-      foreground = scheme.primary;
-      border = Border.all(color: scheme.primary, width: 1.2);
-    } else {
-      background = scheme.primary;
-      foreground = scheme.onPrimary;
-      border = null;
-    }
-
-    return Container(
-      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(9),
-        border: border,
-      ),
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Text(
-          '$streakDays',
-          style: TextStyle(
-            fontSize: 9,
-            fontWeight: FontWeight.w700,
-            height: 1.1,
-            color: foreground,
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
-        ),
-      ),
     );
   }
 }

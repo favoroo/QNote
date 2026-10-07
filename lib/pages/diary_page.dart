@@ -32,7 +32,6 @@ import 'package:qnote_flutter/widgets/diary/model_selection_dialog.dart';
 import 'package:qnote_flutter/widgets/diary/diary_input_bar.dart';
 import 'package:qnote_flutter/widgets/diary/cheer_burst_overlay.dart';
 import 'package:qnote_flutter/widgets/diary/record_cheer_toast.dart';
-import 'package:qnote_flutter/widgets/diary/today_progress_ring.dart';
 import 'package:qnote_flutter/widgets/diary/journal_editor_view.dart';
 import 'package:qnote_flutter/widgets/diary/custom_date_picker.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
@@ -1101,7 +1100,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     required String title,
     String? sub,
     required CheerLevel level,
-    String? actionLabel,
   }) {
     _cheerTimer?.cancel();
     _cheerExitTimer?.cancel();
@@ -1112,7 +1110,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
         title: title,
         sub: sub,
         level: level,
-        actionLabel: actionLabel,
       );
       _cheerLeaving = false;
     });
@@ -1993,22 +1990,15 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
         HapticFeedback.mediumImpact();
       }
       final title = switch (level) {
-        CheerLevel.full => '今日完整！连续${next.streakDays}天',
+        CheerLevel.full => '今日完整！',
         CheerLevel.record => '新纪录！今天第${next.todayCount}条',
         CheerLevel.plain => '今日第${next.todayCount}条',
       };
       final sub = switch (level) {
         CheerLevel.full => '共${next.todayCount}条，太棒了',
-        CheerLevel.record =>
-          next.streakDays > 0 ? '已连续记录${next.streakDays}天' : null,
+        CheerLevel.record => null,
         CheerLevel.plain => '再记${next.remaining}条就完整了',
       };
-      _showCheer(
-        title: title,
-        sub: sub,
-        level: level,
-        actionLabel: level.isCheer ? '看看统计' : null,
-      );
     });
 
     final theme = Theme.of(context);
@@ -2649,7 +2639,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                       child: RecordCheerToast(
                         event: _cheerEvent!,
                         leaving: _cheerLeaving,
-                        onAction: () => goStreakFocus(context, ref),
                         onDismissed: _dismissCheer,
                       ),
                     ),

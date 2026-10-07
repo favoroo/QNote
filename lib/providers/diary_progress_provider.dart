@@ -29,23 +29,6 @@ final diaryProgressProvider = Provider<DiaryProgress?>((ref) {
   return computeDiaryProgress(records, DateTime.now(), target: ref.watch(dailyTargetProvider));
 });
 
-/// 记录坚持度汇总（统计页用）。
-///
-/// 依赖 [diaryListProvider] 的**全量**列表才能算出历史最长连续；
-/// 注意 `diary_provider.dart` 的 `loadByDate()` 会把该列表换成单日子集，
-/// 一旦被重新启用，这里的「最长连续 / 近30天」会静默缩水。
-final streakSummaryProvider = Provider<StreakSummary>((ref) {
-  final target = ref.watch(dailyTargetProvider);
-  final records = ref.watch(diaryListProvider).valueOrNull ?? const [];
-  return computeStreakSummary(records, DateTime.now(), target: target);
-});
-
-/// 「去统计页看连续记录」的一次性意图。
-///
-/// 日记页圆环与庆祝胶囊的「看看统计」置值，统计页消费后置回 null，
-/// 口径同 [diaryScrollToTimeProvider]。
-final streakFocusProvider = StateProvider<DateTime?>((ref) => null);
-
 /// 今日完整度圆环的圆心（全局坐标），作为达标庆祝粒子的爆点。
 ///
 /// 用 [ValueNotifier] 而不是 StateProvider：圆环在每次布局后都可能重算，
