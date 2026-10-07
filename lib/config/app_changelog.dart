@@ -14,6 +14,13 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.78',
+    date: '2026-10-07',
+    notes: [
+      '移除日记时间线输入框左侧的「今日完整度圆环」：连续记录下线后圆环已无独立价值，一并删除以净化输入区',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.77',
     date: '2026-10-07',
     notes: [

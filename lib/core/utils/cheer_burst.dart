@@ -198,11 +198,11 @@ double _clampDouble(double value, {double min = 0}) {
 
 /// 粒子层应使用的爆点坐标。
 ///
-/// 锚点由圆环上报，取不到时退回到屏幕左下角的圆环常规位置 —— 圆环是常驻
-/// 控件，取不到只会发生在首帧之前，此时按常规位置画也比不画好。
+/// 当前无外部锚点来源，恒取屏幕左下角回退位置 —— 落在输入条左侧附近，
+/// 与记录入口同侧，动线仍然连贯。
 Offset resolveBurstOrigin({required Offset? anchor, required Size size}) {
   return anchor ?? Offset(_fallbackInset, size.height - _fallbackInset);
 }
 
-/// 回退爆点距左/下边缘的距离：圆环左边 12 padding + 半径 22。
+/// 回退爆点距左/下边缘的距离：与输入条左侧 padding 对齐。
 const double _fallbackInset = 34;

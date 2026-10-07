@@ -1160,7 +1160,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
         child: CheerBurstOverlay(
           level: event.level,
           seed: event.id,
-          anchor: ref.read(cheerAnchorProvider),
           onFinished: _removeCheerBurst,
         ),
       ),
@@ -1999,6 +1998,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
         CheerLevel.record => null,
         CheerLevel.plain => '再记${next.remaining}条就完整了',
       };
+      _showCheer(title: title, sub: sub, level: level);
     });
 
     final theme = Theme.of(context);

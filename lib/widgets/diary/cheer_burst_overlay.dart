@@ -1,12 +1,11 @@
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/utils/cheer_burst.dart';
 
-/// 以今日进度圆环为爆点的彩带迸发层。
+/// 彩带迸发层。
 ///
 /// 纯自绘（CustomPainter + AnimationController），不引第三方粒子包：项目现有动效
 /// 全是这套路子，而且色谱必须由用户选的强调色派生，素材型方案做不到跟随主题。
@@ -18,7 +17,6 @@ class CheerBurstOverlay extends StatefulWidget {
     super.key,
     required this.level,
     required this.seed,
-    required this.anchor,
     this.onFinished,
   });
 
@@ -27,9 +25,6 @@ class CheerBurstOverlay extends StatefulWidget {
 
   /// 粒子随机种子：用庆祝事件序号即可，让连续的两次爆发长得不一样。
   final int seed;
-
-  /// 爆点坐标（全局坐标系），由圆环实时上报。
-  final ValueListenable<Offset?> anchor;
 
   /// 粒子散尽后回调一次。
   final VoidCallback? onFinished;
@@ -103,44 +98,22 @@ class _CheerBurstOverlayState extends State<CheerBurstOverlay> with SingleTicker
     final palette = burstPalette(scheme);
     final baseAlpha = scheme.brightness == Brightness.dark ? 0.95 : 0.90;
 
-    // anchor 变化才重建（爆点位置几乎不动），每帧重绘交给 CustomPaint.repaint，
-    // 这样 AnimationController 不会把整个子树逐帧 rebuild。
-    return ValueListenableBuilder<Offset?>(
-      valueListenable: widget.anchor,
-      builder: (context, anchor, child) {
-        return RepaintBoundary(
-          key: _rootKey,
-          child: CustomPaint(
-            painter: _BurstPainter(
-              particles: _particles,
-              progress: _controller,
-              totalMs: (_controller.duration ?? Duration.zero).inMilliseconds.toDouble(),
-              burstDelayMs: widget.level.burstDelayMs.toDouble(),
-              rippleSpanMs: _rippleSpanMs,
-              origin: _toLocalOrigin(anchor),
-              palette: palette,
-              baseAlpha: baseAlpha,
-            ),
-            child: child,
-          ),
-        );
-      },
-      // 撑满 Positioned.fill 的父约束，让画布覆盖整块 body。
-      child: const SizedBox.expand(),
+    return RepaintBoundary(
+      key: _rootKey,
+      child: CustomPaint(
+        painter: _BurstPainter(
+          particles: _particles,
+          progress: _controller,
+          totalMs: (_controller.duration ?? Duration.zero).inMilliseconds.toDouble(),
+          burstDelayMs: widget.level.burstDelayMs.toDouble(),
+          rippleSpanMs: _rippleSpanMs,
+          palette: palette,
+          baseAlpha: baseAlpha,
+        ),
+        // 撑满 Positioned.fill 的父约束，让画布覆盖整块 body。
+        child: const SizedBox.expand(),
+      ),
     );
-  }
-
-  /// 全局 → 本层局部。首帧本层还没布局，先原样返回：此时粒子几乎没位移，
-  /// 一帧的偏差看不出来，比引入 postFrame 协调更划算。
-  Offset? _toLocalOrigin(Offset? globalAnchor) {
-    if (globalAnchor == null) {
-      return null;
-    }
-    final box = _rootKey.currentContext?.findRenderObject();
-    if (box is! RenderBox || !box.hasSize) {
-      return globalAnchor;
-    }
-    return box.globalToLocal(globalAnchor);
   }
 }
 
@@ -169,7 +142,6 @@ class _BurstPainter extends CustomPainter {
     required this.totalMs,
     required this.burstDelayMs,
     required this.rippleSpanMs,
-    required this.origin,
     required this.palette,
     required this.baseAlpha,
   }) : super(repaint: progress);
@@ -182,8 +154,6 @@ class _BurstPainter extends CustomPainter {
   final double burstDelayMs;
   final double rippleSpanMs;
 
-  /// 已换算到本层坐标系的爆点；null 表示圆环还没上报过。
-  final Offset? origin;
   final List<Color> palette;
   final double baseAlpha;
 
@@ -192,7 +162,8 @@ class _BurstPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final elapsed = progress.value * totalMs;
-    final center = resolveBurstOrigin(anchor: origin, size: size);
+    // 爆点取屏幕左下角回退位置（输入条左侧原圆环位置附近）。
+    final center = resolveBurstOrigin(anchor: null, size: size);
 
     _paintRipple(canvas, center, elapsed);
     _paintParticles(canvas, center, elapsed, size);
@@ -276,7 +247,6 @@ class _BurstPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _BurstPainter oldDelegate) =>
-      oldDelegate.origin != origin ||
       oldDelegate.baseAlpha != baseAlpha ||
       oldDelegate.particles != particles ||
       oldDelegate.palette != palette;

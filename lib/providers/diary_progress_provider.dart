@@ -1,7 +1,3 @@
-import 'dart:ui' show Offset;
-
-import 'package:flutter/foundation.dart' show ValueNotifier;
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:qnote_flutter/core/utils/diary_progress.dart';
@@ -27,18 +23,4 @@ final diaryProgressProvider = Provider<DiaryProgress?>((ref) {
     return null;
   }
   return computeDiaryProgress(records, DateTime.now(), target: ref.watch(dailyTargetProvider));
-});
-
-/// 今日完整度圆环的圆心（全局坐标），作为达标庆祝粒子的爆点。
-///
-/// 用 [ValueNotifier] 而不是 StateProvider：圆环在每次布局后都可能重算，
-/// 换成 provider 状态会把整个日记页牵进重建链；粒子层只在自己动画的每帧
-/// 读一次，互不打扰。
-///
-/// 初值为 null（圆环还没上过屏），粒子层此时回退到左下角的常规位置。
-/// 圆环收起态/展开态各挂一份，由可见的那份写值。
-final cheerAnchorProvider = Provider<ValueNotifier<Offset?>>((ref) {
-  final anchor = ValueNotifier<Offset?>(null);
-  ref.onDispose(anchor.dispose);
-  return anchor;
 });

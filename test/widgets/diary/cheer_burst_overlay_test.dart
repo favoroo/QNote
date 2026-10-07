@@ -35,13 +35,11 @@ Widget _host(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  final anchor = ValueNotifier<Offset?>(const Offset(120, 600));
-
   group('CheerBurstOverlay', () {
     testWidgets('满档按档位颗数画出粒子', (tester) async {
       await tester.pumpWidget(
         _host(
-          CheerBurstOverlay(level: CheerLevel.full, seed: 5, anchor: anchor),
+          const CheerBurstOverlay(level: CheerLevel.full, seed: 5),
         ),
       );
       await tester.pump(const Duration(milliseconds: 200));
@@ -53,7 +51,7 @@ void main() {
     testWidgets('破纪录粒子更少，普通记录整层不挂', (tester) async {
       await tester.pumpWidget(
         _host(
-          CheerBurstOverlay(level: CheerLevel.record, seed: 5, anchor: anchor),
+          const CheerBurstOverlay(level: CheerLevel.record, seed: 5),
         ),
       );
       await tester.pump(const Duration(milliseconds: 200));
@@ -62,43 +60,13 @@ void main() {
 
       await tester.pumpWidget(
         _host(
-          CheerBurstOverlay(level: CheerLevel.plain, seed: 5, anchor: anchor),
+          const CheerBurstOverlay(level: CheerLevel.plain, seed: 5),
         ),
       );
       await tester.pump(const Duration(milliseconds: 200));
 
       // 普通记录不放粒子，也不该留一块每帧脏重绘的透明画布。
       expect(_burstCanvas, findsNothing);
-    });
-
-    testWidgets('爆点取圆环上报的锚点，并换算到本层坐标', (tester) async {
-      // 粒子层铺满 body，本层原点和全局原点重合，换算后应当原值落地。
-      await tester.pumpWidget(
-        _host(
-          CheerBurstOverlay(level: CheerLevel.full, seed: 3, anchor: anchor),
-        ),
-      );
-      await tester.pump(const Duration(milliseconds: 100));
-
-      final origin = _painterOf(tester).origin as Offset;
-      expect(origin, const Offset(120, 600));
-    });
-
-    testWidgets('圆环还没上报时按左下角回退，不画在屏幕外', (tester) async {
-      final pending = ValueNotifier<Offset?>(null);
-      addTearDown(pending.dispose);
-
-      await tester.pumpWidget(
-        _host(
-          CheerBurstOverlay(level: CheerLevel.full, seed: 3, anchor: pending),
-        ),
-      );
-      await tester.pump(const Duration(milliseconds: 100));
-
-      final origin = _painterOf(tester).origin as Offset?;
-      expect(origin, isNull);
-      // 回退点由 painter 在 paint 时按尺寸算，这里只确认整层照常出图。
-      expect(_burstCanvas, findsOneWidget);
     });
 
     testWidgets('散尽后回调一次并停掉 ticker，不留在树里空转', (tester) async {
@@ -108,7 +76,6 @@ void main() {
           CheerBurstOverlay(
             level: CheerLevel.full,
             seed: 9,
-            anchor: anchor,
             onFinished: () => finished++,
           ),
         ),
@@ -126,7 +93,7 @@ void main() {
     testWidgets('系统要求减少动效时整层不出图', (tester) async {
       await tester.pumpWidget(
         _host(
-          CheerBurstOverlay(level: CheerLevel.full, seed: 5, anchor: anchor),
+          const CheerBurstOverlay(level: CheerLevel.full, seed: 5),
           disableAnimations: true,
         ),
       );
@@ -142,7 +109,7 @@ void main() {
 
       await tester.pumpWidget(
         _host(
-          CheerBurstOverlay(level: CheerLevel.full, seed: 2, anchor: anchor),
+          const CheerBurstOverlay(level: CheerLevel.full, seed: 2),
         ),
       );
       await tester.pump(const Duration(milliseconds: 300));
