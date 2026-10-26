@@ -2,17 +2,35 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>QNote · AI 随身记录管家 — 让记下来的东西，真正帮到你</title>
-<meta name="description" content="QNote 是一款 Flutter 多平台（Android / iOS / Web）个人记录应用：时间线日记、富文本笔记、GTD 待办、小米运动健康与屏幕使用量化、WebDAV 同步，内置 AI 智能体小Q——记待办、写笔记、打卡时间线、看统计，说一句就行。">
-<meta name="theme-color" content="#005BCB">
-<link rel="icon" type="image/svg+xml" href="./app_icon.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QNote · 记录生活，让 AI 真正懂它</title>
+<meta name="description" content="QNote 把日记、待办、运动、睡眠、屏幕时间汇到一处，内置 AI 助手小Q，基于你真实的生活数据给出建议。开源、本地优先、支持 WebDAV 同步。">
+<meta property="og:title" content="QNote · 记录生活，让 AI 真正懂它">
+<meta property="og:description" content="日记 / 笔记 / 待办 / 健康数据一体记录，内置 AI 助手小Q，读懂你的生活。">
 <meta property="og:type" content="website">
-<meta property="og:title" content="QNote · AI 随身记录管家">
-<meta property="og:description" content="日记、笔记、待办、健康数据一站式沉淀，内置智能体小Q。本地存储 · 零遥测 · WebDAV 同步。">
 <meta property="og:url" content="https://favoroo.github.io/QNote/">
 <meta property="og:image" content="https://favoroo.github.io/QNote/app_icon.png">
-<meta name="twitter:card" content="summary">
+<link rel="icon" type="image/svg+xml" href="./app_icon.svg">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+/* Tailwind 主题：以 QNote 品牌蓝为主色，套企业简洁风 token */
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        primary: {
+          50: '#EEF4FD', 100: '#D9E7FA', 500: '#2B7AE0',
+          600: '#005BCB', 700: '#004AA3',
+        },
+      },
+      fontFamily: {
+        sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'PingFang SC',
+               'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', 'Arial', 'sans-serif'],
+      },
+    },
+  },
+};
+</script>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -20,1709 +38,414 @@
   "name": "QNote",
   "operatingSystem": "Android, iOS, Web",
   "applicationCategory": "ProductivityApplication",
-  "description": "AI 随身记录管家：时间线日记、富文本笔记、GTD 待办、健康数据量化与智能体小Q。",
-  "softwareVersion": "0.1.78",
-  "url": "https://favoroo.github.io/QNote/",
-  "downloadUrl": "https://github.com/favoroo/QNote/releases/latest",
-  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "CNY" }
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "CNY" },
+  "description": "记录生活数据，让 AI 接入生活数据给出建议的开源记录应用。"
 }
 </script>
 <style>
-/* ============================================================
-   QNote 落地页设计系统
-   色彩 / 圆角 / 缓动全部对齐 lib/core/theme/app_theme.dart：
-   经典蓝 #005BCB、墨色 #191B23、浅底 #F9F9FF、深底 #111318，
-   圆角沿用 AppRadius（8/12/20）并放大到网页尺度（14/20/28），
-   缓动沿用 Material3 emphasized（此处取 Apple 式 ease-out）。
-   强调色支持 8 款 App 内预设色实时切换（见 :root 覆盖逻辑）。
-   ============================================================ */
-:root {
-  --accent: #005BCB;
-  /* 由 --accent 派生的一切 tint，主题切换只改 --accent 即可全站联动 */
-  --accent-deep:  color-mix(in srgb, var(--accent) 78%, #0B1220);
-  --accent-mid:   color-mix(in srgb, var(--accent) 22%, #fff);
-  --accent-soft:  color-mix(in srgb, var(--accent) 10%, #fff);
-  --accent-ghost: color-mix(in srgb, var(--accent) 5%,  #fff);
-  --accent-glow:  color-mix(in srgb, var(--accent) 34%, transparent);
-  --accent-line:  color-mix(in srgb, var(--accent) 24%, transparent);
-  --ink:    #191B23;
-  --ink-2:  #4B4F5C;
-  --ink-3:  #727785;
-  --bg:      #ffffff;
-  --bg-alt:  #F8F9FE;
-  --bg-mid:  #F1F3FB;
-  --line:    rgba(25, 27, 35, .08);
-  --line-2:  rgba(25, 27, 35, .14);
-  --ok: #0E9F6E; --warn: #E8930C; --bad: #E03131; --violet: #6366F1;
-  --font: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
-          "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
-  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
-  --r-l: 28px; --r-m: 20px; --r-s: 14px;
-  --ease: cubic-bezier(.22, 1, .36, 1);
-  --spring: cubic-bezier(.34, 1.56, .64, 1);
-  --sp: clamp(64px, 9vw, 128px);
-  --mx: 50%; --my: 50%;
-}
-
-/* ---------- reset ---------- */
-* { box-sizing: border-box; margin: 0; padding: 0; }
-html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
-body {
-  font-family: var(--font); color: var(--ink); background: var(--bg);
-  line-height: 1.6; letter-spacing: -0.011em; overflow-x: hidden;
-  font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased;
-}
-::selection { background: var(--accent-line); }
-button { font-family: inherit; cursor: pointer; border: 0; background: none; color: inherit; }
-a { color: inherit; text-decoration: none; }
-svg { display: block; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
-
-.wrap { max-width: 1160px; margin: 0 auto; padding: 0 24px; }
-section { scroll-margin-top: 88px; }
-
-/* ---------- 滚动揭示（IntersectionObserver 驱动） ---------- */
-.reveal {
-  opacity: 0; transform: translateY(26px) scale(.988);
-  transition: opacity .85s var(--ease), transform .85s var(--ease),
-              box-shadow .5s var(--ease), border-color .5s var(--ease);
-  transition-delay: var(--d, 0s);
-}
-.reveal.in { opacity: 1; transform: none; }
-
-/* ---------- 区块标题 ---------- */
-.eyebrow {
-  font-family: var(--mono); font-size: 11.5px; font-weight: 600;
-  letter-spacing: .22em; text-transform: uppercase; color: var(--accent);
-  display: flex; align-items: center; gap: 12px;
-}
-.eyebrow::before { content: ""; width: 26px; height: 1.5px; background: var(--accent-line); border-radius: 2px; }
-h2.sec-title {
-  font-size: clamp(29px, 4vw, 44px); font-weight: 700; letter-spacing: -0.025em;
-  line-height: 1.17; margin: 14px 0 12px;
-}
-.sec-sub { font-size: 16.5px; color: var(--ink-2); max-width: 660px; }
-
-/* ---------- 通用卡片 ---------- */
-.card {
-  background: #fff; border: 1px solid var(--line); border-radius: var(--r-l);
-  position: relative; isolation: isolate;
-}
-.card.spot::before { /* 鼠标跟随聚光灯：径向高光 */
-  content: ""; position: absolute; inset: 0; border-radius: inherit; z-index: -1;
-  background: radial-gradient(460px circle at var(--mx) var(--my), var(--accent-soft), transparent 62%);
-  opacity: 0; transition: opacity .55s var(--ease);
-}
-.card.spot:hover::before { opacity: 1; }
-.card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 20px 48px -18px rgba(17, 19, 24, .14), 0 4px 14px rgba(17, 19, 24, .04);
-  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
-}
-
-/* ---------- 按钮 ---------- */
-.btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 9px;
-  padding: 13px 22px; border-radius: 16px; font-size: 15px; font-weight: 600;
-  letter-spacing: -0.01em; transition: transform .5s var(--ease), box-shadow .5s var(--ease),
-              background .35s, border-color .35s, color .35s; white-space: nowrap;
-}
-.btn:active { transform: translateY(1px) scale(.985); }
-.btn-primary {
-  background: var(--accent); color: #fff;
-  box-shadow: 0 10px 26px -8px var(--accent-glow);
-}
-.btn-primary:hover { background: var(--accent-deep); transform: translateY(-2px);
-  box-shadow: 0 16px 34px -10px var(--accent-glow); }
-.btn-ghost { background: rgba(255,255,255,.75); border: 1px solid var(--line-2); color: var(--ink); }
-.btn-ghost:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-2px);
-  box-shadow: 0 10px 24px -12px rgba(17,19,24,.16); }
-
-.pill {
-  display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px;
-  border-radius: 999px; border: 1px solid var(--line); background: #fff;
-  font-size: 13px; font-weight: 500; color: var(--ink-2);
-}
-.pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
-.mono { font-family: var(--mono); }
-
-/* ============================================================
-   顶部导航（毛玻璃 Sticky Header）
-   ============================================================ */
-.hdr {
-  position: fixed; inset: 0 0 auto 0; z-index: 100;
-  transition: background .45s var(--ease), border-color .45s var(--ease), box-shadow .45s var(--ease);
-  border-bottom: 1px solid transparent;
-}
-.hdr.scrolled {
-  background: rgba(255, 255, 255, .74); backdrop-filter: blur(20px) saturate(1.8);
-  -webkit-backdrop-filter: blur(20px) saturate(1.8);
-  border-bottom-color: var(--line); box-shadow: 0 6px 24px -18px rgba(17,19,24,.18);
-}
-.hdr-in { display: flex; align-items: center; gap: 18px; height: 64px; }
-.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16.5px; letter-spacing: -0.02em; }
-.brand svg, .brand img { width: 30px; height: 30px; border-radius: 8.5px; box-shadow: 0 3px 10px rgba(17,19,24,.12); }
-.ver-badge {
-  font-family: var(--mono); font-size: 10.5px; font-weight: 600; color: var(--accent);
-  background: var(--accent-soft); border: 1px solid var(--accent-line);
-  padding: 2.5px 7px; border-radius: 7px; margin-left: 2px;
-}
-.nav { display: flex; gap: 4px; margin: 0 auto; }
-.nav a {
-  position: relative; padding: 8px 14px; border-radius: 10px; font-size: 14px;
-  font-weight: 500; color: var(--ink-2); transition: color .3s, background .3s;
-}
-.nav a::after {
-  content: ""; position: absolute; left: 14px; right: 14px; bottom: 3px; height: 2px;
-  border-radius: 2px; background: var(--accent); transform: scaleX(0);
-  transform-origin: center; transition: transform .45s var(--ease);
-}
-.nav a:hover { color: var(--ink); background: var(--bg-mid); }
-.nav a.on { color: var(--accent); }
-.nav a.on::after { transform: scaleX(1); }
-.hdr-right { display: flex; align-items: center; gap: 12px; margin-left: auto; }
-
-/* 8 款 App 预设强调色切换器 */
-.theme-dots { display: flex; gap: 5px; padding: 5px 8px; border-radius: 999px;
-  border: 1px solid var(--line); background: rgba(255,255,255,.6); }
-.tdot { width: 15px; height: 15px; border-radius: 50%; position: relative;
-  transition: transform .45s var(--spring); }
-.tdot:hover { transform: scale(1.25); }
-.tdot.on { box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px var(--dot-c); }
-.icbtn { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 12px;
-  border: 1px solid var(--line); background: rgba(255,255,255,.7); transition: .35s var(--ease); }
-.icbtn:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-2px); }
-.burger { display: none; }
-
-/* ============================================================
-   Hero 首屏
-   ============================================================ */
-.hero { position: relative; padding: calc(64px + 72px) 0 var(--sp); overflow: hidden; }
-.ambient { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
-.glow { position: absolute; border-radius: 50%; background: radial-gradient(closest-side, var(--accent-glow), transparent);
-  filter: blur(24px); animation: glow-breathe 9s var(--ease) infinite alternate; }
-.glow.g1 { width: 640px; height: 640px; top: -240px; right: -140px; }
-.glow.g2 { width: 520px; height: 520px; top: 180px; left: -260px; opacity: .8; animation-delay: -4.5s; }
-@keyframes glow-breathe { from { transform: scale(1) translate(0,0); opacity: .5; }
-                          to   { transform: scale(1.22) translate(-18px, 14px); opacity: .9; } }
-.dotfield { /* 点阵网格 + 椭圆遮罩 + 缓慢扫光 */
-  position: absolute; inset: 0;
-  background-image: radial-gradient(rgba(25,27,35,.1) 1px, transparent 1.5px);
-  background-size: 26px 26px;
-  -webkit-mask-image: radial-gradient(ellipse 62% 58% at 46% 42%, #000 0%, transparent 78%);
-          mask-image: radial-gradient(ellipse 62% 58% at 46% 42%, #000 0%, transparent 78%);
-  animation: dot-sweep 14s linear infinite alternate;
-}
-@keyframes dot-sweep { from { background-position: 0 0; } to { background-position: 52px 26px; } }
-.hero-grid { position: relative; z-index: 1; display: grid; grid-template-columns: 1.06fr .94fr;
-  gap: clamp(32px, 5vw, 72px); align-items: center; }
-
-/* 标题逐行遮罩上推入场 */
-.hero-kicker { margin-bottom: 22px; }
-.line-mask { overflow: hidden; padding: 2px 0; }
-.line-in { display: block; transform: translateY(112%); animation: line-rise 1s var(--ease) forwards;
-  animation-delay: var(--d, 0s); }
-@keyframes line-rise { to { transform: translateY(0); } }
-h1.hero-title { font-size: clamp(38px, 5.6vw, 66px); font-weight: 700;
-  letter-spacing: -0.032em; line-height: 1.14; }
-.hl { color: var(--accent); position: relative; white-space: nowrap; }
-.hl::after { content: ""; position: absolute; left: 2px; right: 2px; bottom: -1px; height: .1em;
-  border-radius: 4px; background: var(--accent-line); transform: scaleX(0); transform-origin: left;
-  animation: hl-draw .8s var(--ease) 1.15s forwards; }
-@keyframes hl-draw { to { transform: scaleX(1); } }
-.hero-sub { margin: 22px 0 8px; font-size: clamp(16px, 1.5vw, 18.5px); color: var(--ink-2); max-width: 520px; }
-.hero-sub b { color: var(--ink); font-weight: 600; }
-.fade-up { opacity: 0; transform: translateY(20px); animation: fade-rise .9s var(--ease) forwards;
-  animation-delay: var(--d, .9s); }
-@keyframes fade-rise { to { opacity: 1; transform: none; } }
-
-.fact-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
-.fact { font-size: 12.5px; font-weight: 550; color: var(--ink-2); padding: 6px 12px;
-  border-radius: 999px; background: #fff; border: 1px solid var(--line); }
-.fact i { font-style: normal; color: var(--accent); font-weight: 700; margin-right: 5px; }
-
-/* Hero 下载盒 */
-.dl-box { margin-top: 26px; padding: 18px; border-radius: var(--r-m);
-  background: rgba(255,255,255,.72); border: 1px solid var(--line);
-  backdrop-filter: blur(10px); max-width: 560px; }
-.dl-btns { display: flex; flex-wrap: wrap; gap: 12px; }
-.dl-btns .btn { flex: 1; min-width: 210px; }
-.mirror-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
-.mirror-row .lab { font-family: var(--mono); font-size: 10px; letter-spacing: .12em;
-  color: var(--ink-3); text-transform: uppercase; margin-right: 4px; }
-.mchip { font-size: 12.5px; font-weight: 550; padding: 5.5px 12px; border-radius: 999px;
-  border: 1px solid var(--line); color: var(--ink-2); background: #fff; transition: .3s var(--ease); }
-.mchip:hover { border-color: var(--accent); color: var(--accent); }
-.mchip.on { background: var(--accent); border-color: var(--accent); color: #fff;
-  box-shadow: 0 6px 16px -6px var(--accent-glow); }
-.dl-note { margin-top: 10px; font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 7px; }
-.dl-note code { font-family: var(--mono); font-size: 11px; background: var(--bg-mid);
-  padding: 2px 7px; border-radius: 6px; color: var(--ink-2); }
-
-/* ============================================================
-   可交互手机模拟器
-   ============================================================ */
-.hero-phone { display: flex; flex-direction: column; align-items: center; gap: 16px; }
-.seg { display: flex; gap: 5px; padding: 5px; border-radius: 999px; background: rgba(255,255,255,.8);
-  border: 1px solid var(--line); backdrop-filter: blur(8px); flex-wrap: wrap; justify-content: center; }
-.seg button { font-size: 12.5px; font-weight: 550; padding: 6.5px 13px; border-radius: 999px;
-  color: var(--ink-3); transition: .4s var(--ease); white-space: nowrap; }
-.seg button:hover { color: var(--ink); }
-.seg button.on { background: var(--ink); color: #fff; box-shadow: 0 8px 18px -8px rgba(17,19,24,.4); }
-.device-hint { font-size: 12.5px; color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
-.device-hint svg { width: 13px; height: 13px; }
-
-.device { /* 悬浮呼吸 + 入场 */
-  position: relative; width: min(338px, 82vw);
-  border-radius: 48px; padding: 8px;
-  background: linear-gradient(160deg, #2a2e3c, #0c0e14 60%);
-  box-shadow: 0 42px 92px -34px rgba(13,16,26,.5), 0 10px 30px -12px rgba(13,16,26,.28),
-              inset 0 1px 2px rgba(255,255,255,.16);
-  transform: perspective(1400px) rotateY(-7deg) rotateX(1.5deg);
-  animation: phone-float 7s ease-in-out .6s infinite alternate;
-}
-@keyframes phone-float { from { transform: perspective(1400px) rotateY(-7deg) rotateX(1.5deg) translateY(0); }
-                          to   { transform: perspective(1400px) rotateY(-7deg) rotateX(1.5deg) translateY(-12px); } }
-.island { position: absolute; top: 17px; left: 50%; transform: translateX(-50%);
-  width: 88px; height: 24px; border-radius: 14px; background: #000; z-index: 5; }
-.screen-area { position: relative; height: min(712px, 190vw); border-radius: 40px; overflow: hidden;
-  background: #F9F9FF; display: grid; }
-.screen { grid-area: 1/1; display: flex; flex-direction: column; opacity: 0; pointer-events: none;
-  transform: translateY(12px) scale(.98); transition: opacity .5s var(--ease), transform .5s var(--ease); }
-.screen.active { opacity: 1; pointer-events: auto; transform: none; }
-.confetti-layer { position: absolute; inset: 0; pointer-events: none; z-index: 9; }
-
-/* ---- 屏内通用 ---- */
-.st-bar { height: 44px; display: flex; align-items: flex-end; justify-content: space-between;
-  padding: 0 20px 5px; font-size: 11px; font-weight: 650; color: var(--ink); flex-shrink: 0; }
-.st-bar .st-ic { display: flex; gap: 4px; align-items: center; }
-.st-bar svg { width: 14px; height: 12px; }
-.s-head { height: 44px; display: flex; align-items: center; justify-content: space-between;
-  padding: 0 16px; flex-shrink: 0; }
-.s-title { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
-.s-ic-row { display: flex; gap: 14px; color: var(--ink-3); }
-.s-ic-row svg { width: 17px; height: 17px; }
-.s-body { flex: 1; overflow-y: auto; padding: 6px 14px 10px; scrollbar-width: none; }
-.s-body::-webkit-scrollbar { display: none; }
-.dock { height: 64px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-around;
-  background: rgba(255,255,255,.9); backdrop-filter: blur(12px); border-top: 1px solid var(--line);
-  position: relative; padding: 0 8px; }
-.dock .tab { display: flex; flex-direction: column; align-items: center; gap: 2.5px; font-size: 8.5px;
-  font-weight: 600; color: var(--ink-3); width: 56px; transition: color .35s, transform .35s var(--ease); }
-.dock .tab svg { width: 20px; height: 20px; }
-.dock .tab.on { color: var(--accent); }
-.dock .fab { position: absolute; right: 16px; top: -19px; width: 47px; height: 47px; border-radius: 50%;
-  background: var(--accent); color: #fff; display: grid; place-items: center;
-  box-shadow: 0 10px 22px -6px var(--accent-glow); transition: transform .5s var(--spring); }
-.dock .fab:hover { transform: scale(1.08) rotate(-6deg); }
-.dock .fab svg { width: 22px; height: 22px; }
-.home-ind { position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%);
-  width: 100px; height: 4px; border-radius: 4px; background: rgba(25,27,35,.28); }
-
-.tag { font-size: 8.5px; font-weight: 650; padding: 1.5px 6.5px; border-radius: 7px; white-space: nowrap; }
-.t-sleep { background: rgba(99,102,241,.12);  color: #4F46E5; }
-.t-food  { background: rgba(245,158,11,.14);  color: #B45309; }
-.t-sport { background: rgba(16,185,129,.13);  color: #047857; }
-.t-money { background: rgba(239,68,68,.12);   color: #B91C1C; }
-.t-gray  { background: rgba(107,114,128,.13); color: #4B5563; }
-.t-accent{ background: var(--accent-soft);    color: var(--accent-deep); }
-
-/* ---- 时间线屏 ---- */
-.quick-input { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--line);
-  border-radius: 14px; padding: 11px 13px; font-size: 12px; color: var(--ink-3);
-  box-shadow: 0 3px 10px rgba(17,19,24,.04); }
-.quick-input svg { width: 15px; height: 15px; color: var(--accent); }
-.quick-input kbd { margin-left: auto; font-family: var(--mono); font-size: 9px; background: var(--bg-mid);
-  border-radius: 6px; padding: 2.5px 6px; color: var(--ink-3); border: 1px solid var(--line); }
-.sec-lab { display: flex; align-items: center; gap: 8px; margin: 14px 2px 6px; font-size: 11px;
-  font-weight: 650; color: var(--ink-2); }
-.sec-lab::after { content: ""; flex: 1; height: 1px; background: var(--line); }
-.sec-lab .cnt { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
-.tl-row { display: flex; gap: 9px; padding: 9px 2px 9px; border-bottom: 1px dashed var(--line); }
-.tl-row:last-child { border-bottom: 0; }
-.tl-time { font-family: var(--mono); font-size: 9.5px; color: var(--ink-3); padding-top: 2px; width: 34px; flex-shrink: 0; }
-.tl-body { flex: 1; min-width: 0; }
-.tl-text { font-size: 12px; color: var(--ink); line-height: 1.55; }
-.tl-meta { display: flex; gap: 5px; margin-top: 5px; flex-wrap: wrap; }
-.health-card { margin-top: 8px; border: 1px solid var(--line); border-radius: 14px; padding: 11px 12px;
-  background: linear-gradient(135deg, rgba(16,185,129,.07), rgba(99,102,241,.06)); }
-.hc-head { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: #047857; }
-.hc-head svg { width: 13px; height: 13px; }
-.hc-stats { display: flex; gap: 8px; margin-top: 8px; }
-.hc-stat { flex: 1; background: rgba(255,255,255,.75); border: 1px solid var(--line); border-radius: 10px;
-  padding: 6px 8px; text-align: center; }
-.hc-stat b { display: block; font-size: 12.5px; letter-spacing: -0.02em; }
-.hc-stat span { font-size: 8.5px; color: var(--ink-3); }
-.q-suggest { display: flex; align-items: center; gap: 7px; margin: 12px 2px 4px; padding: 9px 12px;
-  border-radius: 13px; background: var(--accent-soft); border: 1px dashed var(--accent-line);
-  font-size: 11.5px; color: var(--accent-deep); font-weight: 550; }
-.q-suggest svg { width: 14px; height: 14px; }
-
-/* ---- 笔记屏 ---- */
-.search-bar { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--line);
-  border-radius: 12px; padding: 9px 12px; font-size: 11.5px; color: var(--ink-3); }
-.search-bar svg { width: 14px; height: 14px; }
-.note-card { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 12px 13px;
-  margin-top: 10px; box-shadow: 0 3px 10px rgba(17,19,24,.04); }
-.nc-top { display: flex; align-items: center; gap: 6px; }
-.nc-title { font-size: 12.5px; font-weight: 700; letter-spacing: -0.01em; flex: 1; min-width: 0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nc-lines { margin: 8px 2px 0; display: grid; gap: 5px; }
-.sk { height: 6px; border-radius: 3px; background: var(--bg-mid); }
-.sk.w80 { width: 80%; } .sk.w65 { width: 65%; } .sk.w45 { width: 45%; }
-.nc-tags { display: flex; gap: 5px; margin-top: 9px; align-items: center; }
-.nc-thumb-row { display: flex; gap: 5px; margin-top: 9px; }
-.nc-thumb { width: 34px; height: 34px; border-radius: 8px; }
-.mode-chip { margin-left: auto; font-family: var(--mono); font-size: 8.5px; color: var(--ink-3);
-  background: var(--bg-mid); padding: 2px 6px; border-radius: 6px; }
-.nc-check { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--ink-2); margin-top: 6px; }
-.nc-check .cbx { width: 13px; height: 13px; border-radius: 4px; border: 1.5px solid var(--line-2); flex-shrink: 0; }
-.nc-check .cbx.done { background: var(--accent); border-color: var(--accent); }
-.nc-check.struck { text-decoration: line-through; color: var(--ink-3); }
-
-/* ---- 待办屏（可勾选交互） ---- */
-.todo-progress { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: #fff;
-  border: 1px solid var(--line); border-radius: 14px; margin-bottom: 10px; }
-.tp-cap { font-size: 11px; font-weight: 650; color: var(--accent); background: var(--accent-soft);
-  padding: 3px 9px; border-radius: 999px; }
-.tp-bar { flex: 1; height: 6px; border-radius: 4px; background: var(--bg-mid); overflow: hidden; }
-.tp-bar i { display: block; height: 100%; border-radius: 4px; background: var(--accent);
-  transition: width .7s var(--ease); }
-.quad { display: flex; gap: 5px; margin: 4px 2px 10px; }
-.quad button { font-size: 10px; font-weight: 600; color: var(--ink-3); background: #fff;
-  border: 1px solid var(--line); padding: 4.5px 9px; border-radius: 9px; transition: .3s; }
-.quad button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
-.todo-item { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--line);
-  border-radius: 14px; padding: 11px 13px; margin-bottom: 8px; transition: .45s var(--ease); width: 100%;
-  text-align: left; }
-.todo-item:hover { border-color: var(--accent-line); box-shadow: 0 4px 14px -6px rgba(17,19,24,.14); }
-.cb { width: 20px; height: 20px; border-radius: 6px; border: 1.8px solid var(--line-2); flex-shrink: 0;
-  display: grid; place-items: center; transition: background .35s var(--ease), border-color .35s; }
-.cb svg { width: 12px; height: 12px; color: #fff; stroke-dasharray: 20; stroke-dashoffset: 20;
-  transition: stroke-dashoffset .38s var(--ease) .05s; }
-.todo-item.done .cb { background: var(--accent); border-color: var(--accent); }
-.todo-item.done .cb svg { stroke-dashoffset: 0; }
-.ti-text { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 550; transition: .4s; }
-.todo-item.done .ti-text { text-decoration: line-through; color: var(--ink-3); font-weight: 500; }
-.ti-side { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
-.pri { width: 8px; height: 8px; border-radius: 50%; }
-.ti-time { font-family: var(--mono); font-size: 9px; color: var(--ink-3); }
-.repeat-badge { font-size: 8.5px; padding: 1px 6px; border-radius: 6px; background: var(--accent-soft);
-  color: var(--accent-deep); font-weight: 650; }
-.demo-note { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 10px 12px;
-  border-radius: 12px; background: var(--bg-mid); font-size: 11px; color: var(--ink-3); line-height: 1.5; }
-.demo-note b { color: var(--ink-2); }
-.demo-note button { margin-left: auto; font-size: 10.5px; font-weight: 650; color: var(--accent);
-  padding: 4px 10px; border-radius: 999px; border: 1px solid var(--accent-line); flex-shrink: 0; }
-.demo-note button:hover { background: var(--accent-soft); }
-
-/* ---- 统计屏 ---- */
-.score-card { background: linear-gradient(145deg, var(--accent-soft), #fff 65%); border: 1px solid var(--accent-line);
-  border-radius: 18px; padding: 13px; display: flex; gap: 14px; align-items: center; }
-.ring { position: relative; width: 74px; height: 74px; flex-shrink: 0; }
-.ring svg { transform: rotate(-90deg); }
-.ring circle { fill: none; stroke-width: 8; stroke-linecap: round; }
-.ring .bgc { stroke: rgba(25,27,35,.07); }
-.ring .fgc { stroke: var(--accent); stroke-dasharray: 188.5; stroke-dashoffset: calc(188.5 * (1 - var(--p, .76)));
-  transition: stroke-dashoffset 1.2s var(--ease); }
-.ring .rv { position: absolute; inset: 0; display: grid; place-items: center; font-size: 19px; font-weight: 800;
-  letter-spacing: -0.03em; }
-.dims { flex: 1; display: grid; gap: 5.5px; }
-.dim { display: flex; align-items: center; gap: 7px; font-size: 10px; color: var(--ink-2); }
-.dim i { width: 20px; height: 5px; border-radius: 3px; background: var(--dc, var(--accent)); }
-.dim .dbar { flex: 1; height: 5px; border-radius: 3px; background: rgba(25,27,35,.07); overflow: hidden; }
-.dim .dbar i { width: var(--p, 50%); height: 100%; border-radius: 3px; }
-.dim b { font-family: var(--mono); font-size: 9.5px; color: var(--ink-3); font-weight: 600; width: 18px; text-align: right; }
-.steps-card { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 12px 13px; margin-top: 10px; }
-.sc-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 9px; }
-.sc-head b { font-size: 12.5px; font-weight: 700; }
-.sc-head span { font-size: 10px; color: var(--ink-3); }
-.sc-num { margin-left: auto; font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--accent); }
-.bars { display: flex; align-items: flex-end; gap: 6px; height: 66px; }
-.bars i { flex: 1; border-radius: 5px 5px 3px 3px; background: var(--bg-mid); height: var(--h, 40%);
-  transition: height .9s var(--ease); }
-.bars i.hi { background: var(--accent); }
-.bars-x { display: flex; gap: 6px; margin-top: 6px; }
-.bars-x span { flex: 1; text-align: center; font-family: var(--mono); font-size: 8px; color: var(--ink-3); }
-.hm-card { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 12px 13px; margin-top: 10px; }
-.hm-card .sc-head span { font-size: 9.5px; }
-.hm-grid { display: grid; grid-template-rows: repeat(6, 1fr); grid-auto-flow: column; gap: 4px; }
-.hm-grid i { width: 100%; aspect-ratio: 1; border-radius: 3.5px; background:
-  color-mix(in srgb, var(--accent) calc(var(--o, 0) * 92%), var(--bg-mid)); }
-.hm-legend { display: flex; align-items: center; gap: 4px; justify-content: flex-end; margin-top: 8px;
-  font-size: 9px; color: var(--ink-3); }
-.hm-legend i { width: 8px; height: 8px; border-radius: 2.5px; }
-
-/* ---- 小Q 对话屏 ---- */
-.chat-head { display: flex; align-items: center; gap: 9px; padding: 4px 16px 10px; }
-.q-ava { width: 34px; height: 34px; border-radius: 11px; background: var(--accent); color: #fff;
-  display: grid; place-items: center; font-weight: 800; font-size: 14px; flex-shrink: 0;
-  box-shadow: 0 5px 14px -4px var(--accent-glow); }
-.chat-head .ch-name { font-size: 13px; font-weight: 700; }
-.chat-head .ch-sub { font-size: 9.5px; color: var(--ink-3); }
-.chat-head .ch-ic { margin-left: auto; display: flex; gap: 12px; color: var(--ink-3); }
-.chat-head .ch-ic svg { width: 16px; height: 16px; }
-.bub-row { display: flex; margin: 7px 0; }
-.bub-row.user { justify-content: flex-end; }
-.bub { max-width: 82%; padding: 9px 12px; border-radius: 15px; font-size: 11.5px; line-height: 1.6;
-  animation: bub-pop .5s var(--spring) backwards; }
-@keyframes bub-pop { from { opacity: 0; transform: translateY(8px) scale(.96); } }
-.bub.user { background: var(--accent); color: #fff; border-bottom-right-radius: 5px; }
-.bub.ai { background: #fff; border: 1px solid var(--line); color: var(--ink); border-bottom-left-radius: 5px;
-  box-shadow: 0 2px 8px rgba(17,19,24,.04); }
-.toolpill { margin: 6px 0; }
-.toolpill summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
-  font-family: var(--mono); font-size: 9.5px; color: var(--ink-3); background: var(--bg-mid);
-  border: 1px solid var(--line); padding: 5px 10px; border-radius: 9px; }
-.toolpill summary::-webkit-details-marker { display: none; }
-.toolpill summary svg { width: 11px; height: 11px; transition: transform .3s; }
-.toolpill[open] summary svg { transform: rotate(90deg); }
-.toolpill .tp-list { margin-top: 5px; display: grid; gap: 3px; font-family: var(--mono); font-size: 9px;
-  color: var(--accent-deep); background: var(--accent-ghost); border: 1px dashed var(--accent-line);
-  border-radius: 9px; padding: 7px 10px; }
-.tts-chip { display: inline-flex; align-items: center; gap: 8px; margin: 6px 0; padding: 6px 11px;
-  border-radius: 999px; background: var(--accent-soft); border: 1px solid var(--accent-line);
-  font-size: 9.5px; font-weight: 600; color: var(--accent-deep); }
-.wave { display: flex; align-items: center; gap: 2px; height: 12px; }
-.wave i { width: 2.5px; border-radius: 2px; background: var(--accent); animation: wave-1 1s ease-in-out infinite; }
-.wave i:nth-child(2) { animation-delay: .12s; } .wave i:nth-child(3) { animation-delay: .24s; }
-.wave i:nth-child(4) { animation-delay: .36s; } .wave i:nth-child(5) { animation-delay: .48s; }
-@keyframes wave-1 { 0%,100% { height: 4px; } 50% { height: 12px; } }
-.typing { display: inline-flex; gap: 4px; padding: 12px 14px; background: #fff; border: 1px solid var(--line);
-  border-radius: 15px; }
-.typing i { width: 5px; height: 5px; border-radius: 50%; background: var(--ink-3);
-  animation: bounce-1 1.1s var(--ease) infinite; }
-.typing i:nth-child(2) { animation-delay: .15s; } .typing i:nth-child(3) { animation-delay: .3s; }
-@keyframes bounce-1 { 0%,60%,100% { transform: translateY(0); opacity: .5; } 30% { transform: translateY(-4px); opacity: 1; } }
-.chat-cursor { display: inline-block; width: 2px; height: 11px; background: var(--accent); vertical-align: -1px;
-  margin-left: 2px; animation: blink 1s steps(2) infinite; }
-@keyframes blink { 50% { opacity: 0; } }
-.composer { margin: auto 0 0; display: flex; align-items: center; gap: 9px; background: #fff;
-  border: 1px solid var(--line); border-radius: 16px; padding: 9px 12px; font-size: 11px; color: var(--ink-3);
-  box-shadow: 0 4px 14px rgba(17,19,24,.05); }
-.composer .send { margin-left: auto; width: 26px; height: 26px; border-radius: 9px; background: var(--accent);
-  color: #fff; display: grid; place-items: center; }
-.composer .send svg { width: 13px; height: 13px; }
-
-/* ============================================================
-   01 / AGENT 智能体
-   ============================================================ */
-.agent-grid { display: grid; grid-template-columns: 1.02fr .98fr; gap: 22px; margin-top: 44px; align-items: stretch; }
-.persona-card { padding: 26px; display: flex; flex-direction: column; gap: 18px; }
-.pc-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.pc-chip { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: #fff;
-  font-size: 13.5px; font-weight: 600; color: var(--ink-2); transition: .4s var(--ease); text-align: left; }
-.pc-chip small { display: block; font-size: 10px; font-weight: 500; color: var(--ink-3); }
-.pc-chip:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-2px); }
-.pc-chip.on { background: var(--ink); border-color: var(--ink); color: #fff; }
-.pc-chip.on small { color: rgba(255,255,255,.6); }
-.demo-q { display: flex; align-items: flex-start; gap: 10px; padding: 13px 15px; background: var(--bg-mid);
-  border-radius: var(--r-s); font-size: 13.5px; color: var(--ink-2); }
-.demo-q .mini-ava { width: 26px; height: 26px; border-radius: 8px; background: var(--accent); color: #fff;
-  display: grid; place-items: center; font-size: 11px; font-weight: 800; flex-shrink: 0; }
-.demo-a-wrap { flex: 1; display: flex; flex-direction: column; gap: 10px; min-height: 150px; }
-.demo-a { display: flex; gap: 10px; }
-.demo-a .bub { font-size: 13.5px; padding: 12px 15px; }
-.demo-a .q-ava { width: 30px; height: 30px; font-size: 12px; border-radius: 9px; }
-.demo-tools { font-family: var(--mono); font-size: 10px; color: var(--ink-3); display: flex; flex-wrap: wrap; gap: 6px; }
-.demo-tools span { background: var(--bg-mid); border: 1px solid var(--line); border-radius: 7px; padding: 2.5px 7px; }
-.agent-right { display: grid; gap: 22px; }
-.vfs-card { padding: 22px 24px; }
-.vfs-card h3, .skills-card h3 { font-size: 15px; font-weight: 700; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
-.vfs-card h3 svg, .skills-card h3 svg { width: 15px; height: 15px; color: var(--accent); flex-shrink: 0; }
-.vfs { font-family: var(--mono); font-size: 12.5px; display: grid; }
-.vfs .vl { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; color: var(--ink-3); }
-.vfs .vl b { color: var(--accent-deep); font-weight: 600; }
-.vfs .vl i { font-style: normal; color: #A2A7B5; font-size: 11px; margin-left: 4px; font-family: var(--font); }
-.skills-card { padding: 22px 24px; }
-.chip-wrap { display: flex; flex-wrap: wrap; gap: 7px; }
-.skill-chip { font-size: 12.5px; font-weight: 550; padding: 6px 12px; border-radius: 10px;
-  background: var(--accent-ghost); border: 1px solid var(--accent-line); color: var(--accent-deep); }
-.tool-chip { font-family: var(--mono); font-size: 11px; padding: 4.5px 9px; border-radius: 8px;
-  background: var(--bg-mid); color: var(--ink-2); border: 1px solid var(--line); }
-.sub-lab { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
-  color: var(--ink-3); margin: 14px 0 8px; }
-.extra-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 22px; }
-.ex-card { padding: 16px 18px; border-radius: var(--r-m); background: #fff; border: 1px solid var(--line);
-  transition: .5s var(--ease); position: relative; isolation: isolate; }
-.ex-card:hover { transform: translateY(-3px); border-color: var(--accent-line); box-shadow: 0 14px 30px -14px rgba(17,19,24,.16); }
-.ex-card .xi { width: 34px; height: 34px; border-radius: 10px; background: var(--accent-soft); color: var(--accent);
-  display: grid; place-items: center; margin-bottom: 10px; }
-.ex-card .xi svg { width: 17px; height: 17px; }
-.ex-card b { font-size: 14px; display: block; margin-bottom: 3px; letter-spacing: -0.01em; }
-.ex-card p { font-size: 12.5px; color: var(--ink-3); line-height: 1.5; }
-
-/* ============================================================
-   02 / FEATURES Bento
-   ============================================================ */
-.features { background: var(--bg-alt); padding: var(--sp) 0; }
-.bento { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 44px; }
-.b-lg { grid-column: span 2; }
-.b-card { padding: 30px; display: flex; flex-direction: column; gap: 12px; }
-.b-num { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--accent);
-  letter-spacing: .1em; opacity: .85; }
-.b-card h3 { font-size: 21px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.3; }
-.b-card h3 span { color: var(--accent); }
-.b-card p { font-size: 14.5px; color: var(--ink-2); line-height: 1.7; }
-.b-card p em { font-style: normal; color: var(--ink); font-weight: 600; }
-.b-mini { margin-top: auto; padding-top: 16px; }
-/* 卡片内小可视化 */
-.mini-rows { display: grid; gap: 7px; }
-.mini-row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--ink-3);
-  background: var(--bg-mid); border-radius: 10px; padding: 7px 11px; }
-.mini-row i { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-.mini-row kbd { margin-left: auto; font-family: var(--mono); font-size: 9px; color: var(--ink-3); }
-.mini-toggle { display: inline-flex; align-items: center; gap: 8px; background: var(--bg-mid);
-  border-radius: 999px; padding: 6px 8px; font-size: 11.5px; color: var(--ink-2); }
-.mini-toggle .sw { width: 40px; height: 20px; border-radius: 999px; background: var(--accent); position: relative; }
-.mini-toggle .sw::after { content: ""; position: absolute; top: 2.5px; left: 2.5px; width: 15px; height: 15px;
-  border-radius: 50%; background: #fff; transition: .4s var(--ease); }
-.mini-widget { display: flex; flex-direction: column; gap: 6px; background: #fff; border: 1px solid var(--line);
-  border-radius: 14px; padding: 11px 13px; box-shadow: 0 4px 14px rgba(17,19,24,.05); }
-.mini-widget .mw-top { display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; }
-.mini-widget .mw-top b { color: var(--accent); }
-.mini-widget .mw-bar { height: 5px; border-radius: 3px; background: var(--bg-mid); overflow: hidden; }
-.mini-widget .mw-bar i { display: block; height: 100%; width: 60%; background: var(--accent); border-radius: 3px; }
-.mini-widget .mw-row { font-size: 10.5px; color: var(--ink-3); display: flex; gap: 6px; align-items: center; }
-.mini-widget .mw-row i { width: 11px; height: 11px; border-radius: 3.5px; border: 1.4px solid var(--line-2); }
-.svc-chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.svc-chips span { font-size: 11px; font-weight: 550; color: var(--ink-2); background: var(--bg-mid);
-  border: 1px solid var(--line); text-align: center; border-radius: 9px; padding: 5.5px 4px; }
-.mini-free { display: flex; align-items: center; gap: 8px; margin-top: 9px; font-size: 11.5px; color: var(--accent-deep);
-  background: var(--accent-soft); border: 1px dashed var(--accent-line); border-radius: 10px; padding: 7px 11px; }
-.sync-vis { display: flex; align-items: center; gap: 12px; }
-.sync-node { width: 44px; height: 44px; border-radius: 13px; background: #fff; border: 1px solid var(--line);
-  display: grid; place-items: center; color: var(--ink-2); box-shadow: 0 4px 12px rgba(17,19,24,.05); }
-.sync-node svg { width: 20px; height: 20px; }
-.sync-node.cloud { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
-.sync-arc { flex: 1; height: 2px; background: repeating-linear-gradient(90deg, var(--accent-line) 0 6px, transparent 6px 12px);
-  position: relative; }
-.sync-arc::before, .sync-arc::after { content: ""; position: absolute; width: 6px; height: 6px; border-radius: 50%;
-  background: var(--accent); top: -2px; animation: sync-move 2.6s var(--ease) infinite; }
-.sync-arc::after { animation-delay: 1.3s; }
-@keyframes sync-move { 0% { left: -4px; opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { left: calc(100% - 2px); opacity: 0; } }
-
-/* ============================================================
-   03 / HEALTH
-   ============================================================ */
-.health-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 18px; margin-top: 44px; }
-.h-card { padding: 30px; display: flex; flex-direction: column; }
-.h-card h3 { font-size: 18px; font-weight: 700; letter-spacing: -0.015em; margin-bottom: 8px;
-  display: flex; align-items: center; gap: 9px; }
-.h-card h3 svg { width: 18px; height: 18px; color: var(--accent); }
-.h-card > p { font-size: 14px; color: var(--ink-2); }
-.stat-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 18px 0 14px; }
-.stat-tile { background: var(--bg-alt); border: 1px solid var(--line); border-radius: var(--r-s); padding: 12px; text-align: center; }
-.stat-tile b { display: block; font-size: clamp(16px, 2vw, 20px); font-weight: 800; letter-spacing: -0.03em; }
-.stat-tile b small { font-size: 11px; font-weight: 600; color: var(--ink-3); }
-.stat-tile span { font-size: 10.5px; color: var(--ink-3); }
-.stat-tile.accent b { color: var(--accent); }
-.sleep-band { display: flex; height: 16px; border-radius: 8px; overflow: hidden; gap: 2px; margin-bottom: 6px; }
-.sleep-band i { border-radius: 4px; }
-.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 10.5px; color: var(--ink-3); margin-bottom: 14px; }
-.legend span { display: inline-flex; align-items: center; gap: 5px; }
-.legend i { width: 8px; height: 8px; border-radius: 3px; }
-.h-list { display: grid; gap: 9px; }
-.h-list li { list-style: none; display: flex; gap: 9px; font-size: 13.5px; color: var(--ink-2); line-height: 1.55; }
-.h-list li::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--accent);
-  margin-top: 8px; flex-shrink: 0; }
-.h-list li b { color: var(--ink); font-weight: 600; }
-.app-row { display: flex; align-items: center; gap: 9px; margin-top: 9px; font-size: 11.5px; color: var(--ink-2); }
-.app-ic { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; color: #fff;
-  font-size: 11px; font-weight: 800; flex-shrink: 0; }
-.app-bar { flex: 1; height: 5px; border-radius: 3px; background: var(--bg-mid); overflow: hidden; }
-.app-bar i { display: block; height: 100%; border-radius: 3px; }
-.app-row b { font-family: var(--mono); font-size: 10px; color: var(--ink-3); font-weight: 600; width: 42px; text-align: right; }
-
-/* ============================================================
-   04 / SYNC & PRIVACY
-   ============================================================ */
-.sync { background: var(--bg-alt); padding: var(--sp) 0; }
-.sync-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 40px; }
-.sy-card { padding: 28px; }
-.sy-card .xi { width: 44px; height: 44px; border-radius: 14px; background: var(--accent-soft); color: var(--accent);
-  display: grid; place-items: center; margin-bottom: 16px; }
-.sy-card .xi svg { width: 21px; height: 21px; }
-.sy-card h3 { font-size: 17px; font-weight: 700; margin-bottom: 8px; }
-.sy-card p { font-size: 14px; color: var(--ink-2); line-height: 1.7; }
-.sy-card p b { color: var(--ink); font-weight: 600; }
-.sy-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
-.sy-tags span { font-size: 11.5px; color: var(--ink-3); background: var(--bg-mid); border: 1px solid var(--line);
-  border-radius: 8px; padding: 4px 10px; }
-
-/* ============================================================
-   05 / CHANGELOG
-   ============================================================ */
-.cl-grid { display: grid; grid-template-columns: .9fr 1.1fr; gap: 22px; margin-top: 44px; align-items: start; }
-.cl-intro { position: sticky; top: 100px; padding: 30px; }
-.cl-big { font-size: 46px; font-weight: 800; letter-spacing: -0.035em; line-height: 1; color: var(--accent);
-  margin: 14px 0 4px; }
-.cl-big small { font-size: 15px; color: var(--ink-3); font-weight: 600; letter-spacing: 0; }
-.cl-intro p { font-size: 14px; color: var(--ink-2); margin-top: 12px; }
-.cl-list { display: grid; gap: 12px; }
-.cl-item { padding: 18px 22px; display: flex; gap: 16px; align-items: center; }
-.cl-ver { font-family: var(--mono); font-size: 12.5px; font-weight: 700; color: var(--accent);
-  background: var(--accent-soft); border: 1px solid var(--accent-line); border-radius: 9px; padding: 5px 9px;
-  white-space: nowrap; }
-.cl-item .txt { flex: 1; font-size: 13.5px; color: var(--ink-2); }
-.cl-item .txt b { color: var(--ink); font-weight: 650; }
-.cl-date { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); white-space: nowrap; }
-
-/* ============================================================
-   下载收口（深色区）
-   ============================================================ */
-.band { background: #111318; color: #E2E2E9; padding: calc(var(--sp) * .9) 0 0; position: relative; overflow: hidden; }
-.band::before { content: ""; position: absolute; inset: 0;
-  background-image: radial-gradient(rgba(255,255,255,.05) 1px, transparent 1.5px); background-size: 26px 26px;
-  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, #000, transparent);
-          mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, #000, transparent); }
-.band-grid { position: relative; display: grid; grid-template-columns: 1.15fr .85fr; gap: 40px; align-items: center; }
-.band h2 { font-size: clamp(30px, 4.4vw, 46px); font-weight: 750; letter-spacing: -0.025em; line-height: 1.15; }
-.band h2 em { font-style: normal; color: color-mix(in srgb, var(--accent) 65%, #fff); }
-.band-sub { color: #9CA3B4; font-size: 15.5px; margin: 14px 0 26px; max-width: 460px; }
-.band .btn-primary { background: var(--accent); }
-.band .btn-dark { background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.14); color: #E2E2E9; }
-.band .btn-dark:hover { border-color: rgba(255,255,255,.4); transform: translateY(-2px); background: rgba(255,255,255,.1); }
-.priv-card { background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.1); border-radius: var(--r-l);
-  padding: 26px; backdrop-filter: blur(8px); }
-.priv-card h3 { font-size: 15.5px; font-weight: 700; display: flex; gap: 9px; align-items: center; margin-bottom: 10px; }
-.priv-card h3 svg { width: 17px; height: 17px; color: #4DD0D0; }
-.priv-card p { font-size: 13px; color: #9CA3B4; line-height: 1.7; }
-.priv-card .pp-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
-.priv-card .pp-row span { font-size: 11px; color: #C7CBD8; background: rgba(255,255,255,.07);
-  border: 1px solid rgba(255,255,255,.09); border-radius: 999px; padding: 4px 11px; }
-.foot-bar { position: relative; margin-top: calc(var(--sp) * .6); padding: 22px 0 26px;
-  border-top: 1px solid rgba(255,255,255,.08); display: flex; flex-wrap: wrap; gap: 14px;
-  align-items: center; font-size: 12.5px; color: #727a8c; }
-.foot-bar .f-links { margin-left: auto; display: flex; gap: 18px; }
-.foot-bar a:hover { color: #E2E2E9; }
-.foot-dots { display: flex; gap: 5px; margin-left: 6px; }
-.foot-dots .tdot { width: 12px; height: 12px; }
-
-/* ---------- 返回顶部 ---------- */
-#toTop { position: fixed; right: 26px; bottom: 26px; width: 46px; height: 46px; border-radius: 50%; z-index: 90;
-  background: rgba(255,255,255,.85); border: 1px solid var(--line); backdrop-filter: blur(10px);
-  display: grid; place-items: center; color: var(--ink-2); opacity: 0; transform: translateY(14px);
-  pointer-events: none; transition: .5s var(--ease); box-shadow: 0 10px 26px -10px rgba(17,19,24,.25); }
-#toTop.show { opacity: 1; transform: none; pointer-events: auto; }
-#toTop:hover { color: var(--accent); border-color: var(--accent); transform: translateY(-3px); }
-#toTop svg { width: 17px; height: 17px; }
-
-/* ---------- toast（下载提示） ---------- */
-.toast { position: fixed; left: 50%; bottom: 34px; transform: translate(-50%, 24px); z-index: 120;
-  background: rgba(25,27,35,.92); color: #fff; font-size: 13px; padding: 11px 20px; border-radius: 999px;
-  opacity: 0; pointer-events: none; transition: .5s var(--ease); backdrop-filter: blur(8px);
-  box-shadow: 0 14px 34px -10px rgba(0,0,0,.4); display: flex; gap: 9px; align-items: center; }
-.toast.show { opacity: 1; transform: translate(-50%, 0); }
-.toast svg { width: 14px; height: 14px; color: color-mix(in srgb, var(--accent) 55%, #fff); }
-
-/* ---------- 响应式 ---------- */
-@media (max-width: 1020px) {
-  .nav { display: none; }
-  .burger { display: grid; }
-  .hero-grid { grid-template-columns: 1fr; text-align: left; }
-  .hero-phone { order: 2; }
-  .agent-grid, .cl-grid, .band-grid { grid-template-columns: 1fr; }
-  .cl-intro { position: static; }
-  .bento { grid-template-columns: repeat(2, 1fr); }
-  .b-lg { grid-column: span 2; }
-  .health-grid { grid-template-columns: 1fr; }
-  .extra-grid { grid-template-columns: repeat(2, 1fr); }
-  .sync-grid { grid-template-columns: 1fr; }
-}
-@media (max-width: 640px) {
-  :root { --sp: 72px; }
-  .hdr-right .theme-dots { display: none; }
-  .hdr-right .btn span.lbl { display: none; }
-  .bento { grid-template-columns: 1fr; }
-  .b-lg { grid-column: span 1; }
-  .stat-tiles { grid-template-columns: repeat(2, 1fr); }
-  .device { transform: none; animation: none; margin: 0 auto; }
-  .hero { padding-top: calc(64px + 46px); }
-  .dl-btns .btn { min-width: 100%; }
-  .svc-chips { grid-template-columns: repeat(3, 1fr); }
-}
-
-/* ---------- 移动菜单 ---------- */
-.mob-pop { position: fixed; top: 70px; left: 50%; transform: translate(-50%, -12px); width: min(320px, 92vw);
-  z-index: 99; background: rgba(255,255,255,.92); backdrop-filter: blur(22px) saturate(1.8);
-  border: 1px solid var(--line); border-radius: var(--r-m); padding: 10px; box-shadow: 0 26px 60px -20px rgba(17,19,24,.3);
-  opacity: 0; pointer-events: none; transition: .45s var(--ease); }
-.mob-pop.open { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
-.mob-pop a { display: block; padding: 11px 14px; border-radius: 12px; font-size: 14.5px; font-weight: 550; color: var(--ink-2); }
-.mob-pop a:hover { background: var(--bg-mid); color: var(--accent); }
-.mob-dots { display: flex; gap: 7px; padding: 12px 14px 6px; border-top: 1px solid var(--line); margin-top: 8px; flex-wrap: wrap; }
-
-/* ---------- 降低动态偏好 ---------- */
-@media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
-  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important;
-    transition-duration: .01ms !important; }
-  .line-in { transform: none; } .fade-up, .reveal { opacity: 1; transform: none; }
-}
+  /* 滚动淡入：克制的页面级动效，交互反馈一律 ≤200ms */
+  .reveal { opacity: 0; transform: translateY(16px); transition: opacity .4s ease-out, transform .4s ease-out; }
+  .reveal.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal { opacity: 1; transform: none; transition: none; }
+    * { scroll-behavior: auto !important; }
+  }
+  html { scroll-behavior: smooth; }
+  /* 截图画廊切换 */
+  .shot-pane { display: none; }
+  .shot-pane.on { display: flex; }
 </style>
 </head>
-<body>
 
-<!-- SVG 图标精灵：全站用 <use> 复用，避免重复内联 -->
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-<defs>
-  <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></symbol>
-  <symbol id="i-note" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></symbol>
-  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
-  <symbol id="i-check-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m22 4-10 10.01L9 11"/></symbol>
-  <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3v18h18"/><path d="M7 15v3M12 9v9M17 5v13"/></symbol>
-  <symbol id="i-spark" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.3 7L22 12l-7.7 2.9L12 22l-2.4-7.1L2 12l7.6-3z"/></symbol>
-  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
-  <symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4"/></symbol>
-  <symbol id="i-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></symbol>
-  <symbol id="i-github" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55v-2.17c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.05-.72.08-.71.08-.71 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.97.1-.75.4-1.26.73-1.55-2.55-.29-5.23-1.28-5.23-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 5.78 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.25 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.55A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"/></symbol>
-  <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4.5-4.5M12 15 7.5 10.5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
-  <symbol id="i-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5m0 0 6 6m-6-6-6 6"/></symbol>
-  <symbol id="i-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m0 0-6-6m6 6-6 6"/></symbol>
-  <symbol id="i-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></symbol>
-  <symbol id="i-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 .42-8.98 7 7 0 0 0-13.58 2.2A4 4 0 0 4.5 19z"/></symbol>
-  <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/><circle cx="12" cy="16" r="1.5" fill="currentColor" stroke="none"/></symbol>
-  <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5.5V11c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5.5z"/><path d="m9 11.5 2.2 2.2L15.5 9"/></symbol>
-  <symbol id="i-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .7-4.5 2-1.5-1.3-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7z"/></symbol>
-  <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></symbol>
-  <symbol id="i-wifi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5.5 5.5 0 0 1 7 0"/><circle cx="12" cy="19.5" r="1" fill="currentColor" stroke="none"/></symbol>
-  <symbol id="i-brain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 3A3.5 3.5 0 0 0 6 6.5c-1.7.5-3 2-3 4 0 1.3.6 2.5 1.6 3.2A3.5 3.5 0 0 0 6 19.5c.3 1.4 1.6 2.5 3.2 2.5H11V3zM14.5 3A3.5 3.5 0 0 1 18 6.5c1.7.5 3 2 3 4 0 1.3-.6 2.5-1.6 3.2A3.5 3.5 0 0 1 18 19.5c-.3 1.4-1.6 2.5-3.2 2.5H13V3z"/></symbol>
-  <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
-  <symbol id="i-steps" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 5.5C10 5.5 11 7 11 9.5S9.5 14 8 13.5 6 10 6.5 8s1-2.5 2-2.5z"/><path d="M7 16c1.5 0 2 1 2 2.5S8 21 7 21s-2-1-2-2 .5-3 2-3z"/><path d="M15.5 3.5C17 3.5 18 5 18 7.5S16.5 12 15 11.5 13 8 13.5 6s1-2.5 2-2.5z"/><path d="M14 14c1.5 0 2 1 2 2.5S15 19 14 19s-2-1-2-2 .5-3 2-3z"/></symbol>
-  <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
-  <symbol id="i-timer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4M9 2h6M19 7l1.5-1.5"/></symbol>
-  <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 0 1 2-2h4l2 2.5h6a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></symbol>
-  <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></symbol>
-  <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.8"/></symbol>
-  <symbol id="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4.5v15l13-7.5z"/></symbol>
-  <symbol id="i-funnel" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 5h16M7 12h10M10 19h4"/></symbol>
-  <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
-  <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
-  <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></symbol>
-  <symbol id="i-branch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="6" cy="5" r="2.4"/><circle cx="6" cy="19" r="2.4"/><circle cx="18" cy="9" r="2.4"/><path d="M6 7.4v9.2M18 11.4c0 3.5-3 4.5-6 4.6"/></symbol>
-  <symbol id="i-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8a2 2 0 0 1 2-2h1.5L9 4.5h6L16.5 6H18a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.2"/></symbol>
-</defs>
-</svg>
+<body class="bg-white text-gray-900 antialiased">
 
-<!-- ============================ 顶部导航 ============================ -->
-<header class="hdr" id="hdr">
-  <div class="wrap hdr-in">
-    <a class="brand" href="#top" aria-label="QNote 首页">
-      <img src="./app_icon.svg" alt="" width="30" height="30">
-      <span>QNote</span>
-      <span class="ver-badge js-ver">v0.1.78</span>
+<!-- ══════════ 导航栏 ══════════ -->
+<header class="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-gray-200">
+  <nav class="max-w-6xl mx-auto px-4 md:px-6 lg:px-8 h-16 flex items-center justify-between">
+    <a href="#" class="flex items-center gap-2.5 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded-lg">
+      <img src="./app_icon.svg" alt="QNote 图标" class="w-8 h-8 rounded-lg">
+      <span class="font-semibold tracking-tight text-xl">QNote</span>
     </a>
-    <nav class="nav" id="mainNav" aria-label="主导航">
-      <a href="#agent">小Q 智能体</a>
-      <a href="#features">功能</a>
-      <a href="#health">健康量化</a>
-      <a href="#sync">同步与隐私</a>
-      <a href="#changelog">版本演进</a>
-    </nav>
-    <div class="hdr-right">
-      <div class="theme-dots" role="group" aria-label="主题强调色（与 App 内 8 款预设一致）"></div>
-      <a class="icbtn" href="https://github.com/favoroo/QNote" target="_blank" rel="noopener" aria-label="GitHub 仓库"><svg width="19" height="19"><use href="#i-github"/></svg></a>
-      <a class="btn btn-primary" style="padding:9.5px 16px;border-radius:13px;font-size:13.5px" href="#download">
-        <svg width="15" height="15"><use href="#i-down"/></svg><span class="lbl">下载 APK</span>
-      </a>
-      <button class="icbtn burger" id="burger" aria-label="打开菜单" aria-expanded="false"><svg width="19" height="19"><use href="#i-menu"/></svg></button>
+    <div class="hidden md:flex items-center gap-8 text-sm font-medium text-gray-600">
+      <a href="#how" class="hover:text-gray-900 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded">理念</a>
+      <a href="#screens" class="hover:text-gray-900 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded">界面</a>
+      <a href="#agent" class="hover:text-gray-900 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded">小Q</a>
+      <a href="#widgets" class="hover:text-gray-900 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded">小组件</a>
     </div>
+    <div class="flex items-center gap-3">
+      <a href="#download"
+         class="rounded-lg font-medium text-sm px-4 py-2 bg-primary-600 text-white shadow-sm
+                hover:bg-primary-700 hover:-translate-y-0.5 hover:shadow transition-all duration-200
+                active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2">
+        下载 App
+      </a>
+      <button id="burger" aria-label="打开菜单"
+              class="md:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors duration-150
+                     active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+    </div>
+  </nav>
+  <div id="mobMenu" class="hidden md:hidden border-t border-gray-200 bg-white px-4 py-3 space-y-1 text-sm font-medium text-gray-600">
+    <a href="#how" class="block px-2 py-2 rounded-lg hover:bg-gray-50">理念</a>
+    <a href="#screens" class="block px-2 py-2 rounded-lg hover:bg-gray-50">界面</a>
+    <a href="#agent" class="block px-2 py-2 rounded-lg hover:bg-gray-50">小Q</a>
+    <a href="#widgets" class="block px-2 py-2 rounded-lg hover:bg-gray-50">小组件</a>
+    <a href="#download" class="block px-2 py-2 rounded-lg hover:bg-gray-50">下载</a>
   </div>
 </header>
-<div class="mob-pop" id="mobPop">
-  <a href="#agent">小Q 智能体</a><a href="#features">功能矩阵</a><a href="#health">健康量化</a>
-  <a href="#sync">同步与隐私</a><a href="#changelog">版本演进</a><a href="#download">下载 APK</a>
-  <div class="mob-dots" role="group" aria-label="主题强调色"></div>
-</div>
 
-<main id="top">
-
-<!-- ============================ Hero ============================ -->
-<section class="hero">
-  <div class="ambient" aria-hidden="true">
-    <div class="glow g1"></div><div class="glow g2"></div><div class="dotfield"></div>
-  </div>
-  <div class="wrap hero-grid">
-    <div>
-      <div class="hero-kicker fade-up" style="--d:.05s">
-        <span class="pill"><span class="dot"></span>Flutter · Android / iOS / Web&nbsp;&nbsp;<span class="mono" style="font-size:11px;color:var(--ink-3)">AI PERSONAL STEWARD</span></span>
-      </div>
-      <h1 class="hero-title">
-        <span class="line-mask"><span class="line-in" style="--d:.12s">让记下来的东西，</span></span>
-        <span class="line-mask"><span class="line-in" style="--d:.24s">真正<span class="hl">帮到你</span>。</span></span>
+<!-- ══════════ Hero ══════════ -->
+<section class="bg-slate-50 border-b border-gray-200">
+  <div class="max-w-6xl mx-auto px-4 md:px-6 lg:px-8 py-16 md:py-24 grid lg:grid-cols-2 gap-12 items-center">
+    <div class="reveal in">
+      <h1 class="font-semibold tracking-tight text-4xl md:text-5xl leading-tight">
+        记录生活，<br>让 AI 真正懂它。
       </h1>
-      <p class="hero-sub fade-up" style="--d:.42s">
-        时间线速记、双模笔记、GTD 待办、小米运动健康与屏幕使用量化，全部沉淀在同一座本地数据底座上；内置智能体<b>小Q</b>——
-        <b>记待办、写笔记、打卡时间线、看统计，说一句就行。</b>
+      <p class="mt-5 text-base md:text-lg text-gray-600 max-w-md leading-relaxed">
+        日记、待办、运动、睡眠、屏幕时间汇到一处，内置 AI 助手小Q，基于你真实的生活数据给出建议。
       </p>
-      <div class="fact-row fade-up" style="--d:.52s">
-        <span class="fact"><i>本地</i>SQLite 存储 · 零遥测</span>
-        <span class="fact"><i>免费</i>内置 AI 模型 · 开箱即用</span>
-        <span class="fact"><i>78+</i>版本高频迭代 · 双端开源</span>
-      </div>
-
-      <div class="dl-box fade-up" style="--d:.62s" id="dlbox">
-        <div class="dl-btns">
-          <a class="btn btn-primary dl-main" href="https://github.com/favoroo/QNote/releases/download/v0.1.78/QNote-v0.1.78-arm64-v8a.apk" data-mirror="gh">
-            <svg width="17" height="17"><use href="#i-down"/></svg>下载 Android 版 <span class="js-ver mono" style="font-weight:700">v0.1.78</span>
-          </a>
-          <a class="btn btn-ghost" href="https://github.com/favoroo/QNote/releases" target="_blank" rel="noopener">
-            <svg width="16" height="16"><use href="#i-branch"/></svg>发行页 / 更新日志
-          </a>
-        </div>
-        <div class="mirror-row">
-          <span class="lab">下载通道</span>
-          <button class="mchip" data-mirror="gh" title="GitHub Releases 官方直链">GitHub 直连</button>
-          <button class="mchip" data-mirror="cn" title="ghfast 公共加速代理，转 GitHub Release">国内加速</button>
-          <button class="mchip" data-mirror="gitee" title="Gitee 镜像仓库 Releases">Gitee 镜像</button>
-        </div>
-        <div class="dl-note">
-          <svg width="13" height="13" style="color:var(--accent)"><use href="#i-shield"/></svg>
-          <span class="js-dl-note">arm64-v8a · 约 30&nbsp;MB · 正在获取最新版本信息…</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- ---------- 可交互手机模拟器 ---------- -->
-    <div class="hero-phone fade-up" style="--d:.5s">
-      <div class="seg" role="tablist" aria-label="App 界面预览">
-        <button data-screen="chat" class="on" role="tab">小Q 对话</button>
-        <button data-screen="diary" role="tab">时间线</button>
-        <button data-screen="todo" role="tab">待办</button>
-        <button data-screen="notes" role="tab">笔记</button>
-        <button data-screen="stats" role="tab">统计</button>
-      </div>
-      <div class="device">
-        <div class="island"></div>
-        <div class="screen-area">
-
-          <!-- 屏 1：小Q 对话 -->
-          <div class="screen active" id="scr-chat">
-            <div class="st-bar"><span class="mono">9:41</span><span class="st-ic">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M2 20v-4M8 20v-8M14 20v-12M20 20V4"/></svg>
-              <svg><use href="#i-wifi"/></svg>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="8" width="17" height="8" rx="2.2"/><rect x="4" y="10" width="11" height="4" rx="1" fill="currentColor" stroke="none"/><path d="M21 11v2" stroke-linecap="round"/></svg>
-            </span></div>
-            <div class="chat-head">
-              <div class="q-ava">Q</div>
-              <div><div class="ch-name">小Q · 经典管家</div><div class="ch-sub">在线 · 已加载 9 项技能</div></div>
-              <div class="ch-ic"><svg><use href="#i-search"/></svg><svg><use href="#i-mic"/></svg></div>
-            </div>
-            <div class="s-body">
-              <div class="bub-row user"><div class="bub user">今晚跑了 5 公里，夜宵吃了烧烤 45 元，提醒我明早 9 点复盘</div></div>
-              <details class="toolpill"><summary><svg><use href="#i-chevron"/></svg>已执行 3 步工具 · /timeline/ /todos/ 定时提醒</summary>
-                <div class="tp-list">write_file → /timeline/2026-10-26.md（运动 + 记账 ×2）<br>write_file → /todos/复盘.md（09:00 · 高优先级）<br>reminder_time → 系统通知已排期</div>
-              </details>
-              <div class="bub-row"><div class="bub ai" id="chatAnswer">收到，已帮你记好两笔：<b>运动 5km</b>、<b>夜宵 ¥45</b>，都进了今天的时间线。「复盘」待办已放在明早 9:00，带系统提醒。跑得漂亮，睡前记得拉伸。</div></div>
-              <div class="bub-row"><div class="tts-chip"><span class="wave"><i></i><i></i><i></i><i></i><i></i></span>Edge TTS 流式朗读中 · 「沉稳磁性」</div></div>
-            </div>
-            <div class="s-body" style="display:none"></div>
-            <div style="padding:0 14px 10px"><div class="composer"><svg width="14" height="14"><use href="#i-mic"/></svg>问问小Q，或 /skill 引用技能…
-              <span class="send"><svg><use href="#i-send"/></svg></span></div></div>
-            <div class="dock">
-              <button class="tab" data-screen="diary"><svg><use href="#i-book"/></svg>日记</button>
-              <button class="tab" data-screen="notes"><svg><use href="#i-note"/></svg>笔记</button>
-              <button class="tab" data-screen="todo"><svg><use href="#i-check-circle"/></svg>待办</button>
-              <button class="tab" data-screen="stats"><svg><use href="#i-chart"/></svg>统计</button>
-              <span class="home-ind"></span>
-            </div>
-          </div>
-
-          <!-- 屏 2：时间线日记 -->
-          <div class="screen" id="scr-diary">
-            <div class="st-bar"><span class="mono">18:47</span><span class="st-ic">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M2 20v-4M8 20v-8M14 20v-12M20 20V4"/></svg>
-              <svg><use href="#i-wifi"/></svg></span></div>
-            <div class="s-head"><div class="s-title">时间线 · 今天</div>
-              <div class="s-ic-row"><svg><use href="#i-search"/></svg><svg><use href="#i-moon"/></svg></div></div>
-            <div class="s-body">
-              <div class="quick-input"><svg><use href="#i-spark"/></svg>随手记点什么…<kbd>✦ 小Q</kbd></div>
-              <div class="sec-lab">上午 <span class="cnt">3 条</span></div>
-              <div class="tl-row"><span class="tl-time">07:12</span><div class="tl-body"><div class="tl-text">昨晚 23:40 入睡，深睡 1h52m，醒来一次</div><div class="tl-meta"><span class="tag t-sleep">睡眠</span><span class="tag t-gray">自动</span></div></div></div>
-              <div class="tl-row"><span class="tl-time">08:05</span><div class="tl-body"><div class="tl-text">早餐：豆浆 + 两个茶叶蛋</div><div class="tl-meta"><span class="tag t-food">饮食</span></div></div></div>
-              <div class="sec-lab">下午 <span class="cnt">4 条</span></div>
-              <div class="tl-row"><span class="tl-time">12:30</span><div class="tl-body"><div class="tl-text">午餐记账 ¥32，人均算下来还行</div><div class="tl-meta"><span class="tag t-money">记账</span></div></div></div>
-              <div class="health-card">
-                <div class="hc-head"><svg><use href="#i-heart"/></svg>运动健康日结 · 23:00 自动沉淀</div>
-                <div class="hc-stats">
-                  <div class="hc-stat"><b>8,236</b><span>步数</span></div>
-                  <div class="hc-stat"><b>7h24m</b><span>睡眠</span></div>
-                  <div class="hc-stat"><b>58</b><span>静息心率</span></div>
-                  <div class="hc-stat"><b>98%</b><span>血氧</span></div>
-                </div>
-              </div>
-              <div class="sec-lab">晚上 <span class="cnt">2 条</span></div>
-              <div class="tl-row"><span class="tl-time">18:32</span><div class="tl-body"><div class="tl-text">江边跑步 5.2km · 配速 6'12" <span style="display:inline-block;width:22px;height:14px;border-radius:4px;background:linear-gradient(135deg,#0E9F6E,#6366F1);vertical-align:-2px"></span></div><div class="tl-meta"><span class="tag t-sport">活动</span><span class="tag t-gray">图片已识图</span></div></div></div>
-              <div class="q-suggest"><svg><use href="#i-spark"/></svg>今日 3 条目标达成 ✨ 让小Q写一条 KPT 总结？</div>
-            </div>
-            <div class="dock">
-              <button class="tab on" data-screen="diary"><svg><use href="#i-book"/></svg>日记</button>
-              <button class="tab" data-screen="notes"><svg><use href="#i-note"/></svg>笔记</button>
-              <button class="tab" data-screen="todo"><svg><use href="#i-check-circle"/></svg>待办</button>
-              <button class="tab" data-screen="stats"><svg><use href="#i-chart"/></svg>统计</button>
-              <button class="fab" data-screen="chat" aria-label="问小Q"><svg><use href="#i-spark"/></svg></button>
-              <span class="home-ind"></span>
-            </div>
-          </div>
-
-          <!-- 屏 3：笔记 -->
-          <div class="screen" id="scr-notes">
-            <div class="st-bar"><span class="mono">15:02</span><span class="st-ic">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M2 20v-4M8 20v-8M14 20v-12M20 20V4"/></svg>
-              <svg><use href="#i-wifi"/></svg></span></div>
-            <div class="s-head"><div class="s-title">笔记</div>
-              <div class="s-ic-row"><svg><use href="#i-search"/></svg><svg><use href="#i-folder"/></svg></div></div>
-            <div class="s-body">
-              <div class="search-bar"><svg><use href="#i-search"/></svg>搜索全部笔记…</div>
-              <div class="note-card">
-                <div class="nc-top"><span class="tag t-accent">置顶</span><div class="nc-title">Flutter 冷启动性能排查手记</div><span class="mode-chip">MARKDOWN</span></div>
-                <div class="nc-lines"><span class="sk w80"></span><span class="sk w65"></span></div>
-                <div class="nc-tags"><span class="tag t-gray">性能</span><span class="tag t-gray">Riverpod</span></div>
-              </div>
-              <div class="note-card">
-                <div class="nc-top"><div class="nc-title">周末徒步计划 · 径山</div><span class="mode-chip">富文本 ⇄ MD</span></div>
-                <div class="nc-lines"><span class="sk w80"></span><span class="sk w45"></span></div>
-                <div class="nc-thumb-row">
-                  <span class="nc-thumb" style="background:linear-gradient(135deg,#10B981,#6366F1)"></span>
-                  <span class="nc-thumb" style="background:linear-gradient(135deg,#F59E0B,#EF4444)"></span>
-                  <span class="nc-thumb" style="background:linear-gradient(135deg,#00BCD4,#005BCB)"></span>
-                </div>
-              </div>
-              <div class="note-card">
-                <div class="nc-top"><div class="nc-title">发布流程 checklist</div><span class="mode-chip">HTML 预览</span></div>
-                <div class="nc-check"><span class="cbx done"></span>版本号 +1 · app_changelog 同步</div>
-                <div class="nc-check"><span class="cbx done"></span>arm64 构建 + SHA-256</div>
-                <div class="nc-check struck"><span class="cbx done"></span>双端 Tag 与 Release</div>
-                <div class="nc-check"><span class="cbx"></span>更新 GitHub Pages 说明</div>
-              </div>
-            </div>
-            <div class="dock">
-              <button class="tab" data-screen="diary"><svg><use href="#i-book"/></svg>日记</button>
-              <button class="tab on" data-screen="notes"><svg><use href="#i-note"/></svg>笔记</button>
-              <button class="tab" data-screen="todo"><svg><use href="#i-check-circle"/></svg>待办</button>
-              <button class="tab" data-screen="stats"><svg><use href="#i-chart"/></svg>统计</button>
-              <button class="fab" data-screen="chat" aria-label="问小Q"><svg><use href="#i-spark"/></svg></button>
-              <span class="home-ind"></span>
-            </div>
-          </div>
-
-          <!-- 屏 4：待办（可勾选） -->
-          <div class="screen" id="scr-todo">
-            <div class="st-bar"><span class="mono">20:15</span><span class="st-ic">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M2 20v-4M8 20v-8M14 20v-12M20 20V4"/></svg>
-              <svg><use href="#i-wifi"/></svg></span></div>
-            <div class="s-head"><div class="s-title">待办</div>
-              <div class="s-ic-row"><svg><use href="#i-funnel"/></svg><svg style="color:var(--accent)"><use href="#i-plus"/></svg></div></div>
-            <div class="s-body">
-              <div class="todo-progress">
-                <span class="tp-cap" id="todoCap">2 / 5</span>
-                <span class="tp-bar"><i id="todoBar" style="width:40%"></i></span>
-              </div>
-              <div class="quad">
-                <button class="on">重要·紧急</button><button>重要</button><button>紧急</button><button>琐碎</button>
-              </div>
-              <button class="todo-item" data-id="t1"><span class="cb"><svg><use href="#i-check"/></svg></span><span class="ti-text">预约周六体检 · 截止今天</span><span class="ti-side"><span class="pri" style="background:#EF4444"></span></span></button>
-              <button class="todo-item" data-id="t2"><span class="cb"><svg><use href="#i-check"/></svg></span><span class="ti-text">复盘翻译 Agent 文档</span><span class="ti-side"><span class="pri" style="background:#F59E0B"></span><span class="ti-time">21:00</span></span></button>
-              <button class="todo-item done" data-id="t3"><span class="cb"><svg><use href="#i-check"/></svg></span><span class="ti-text">给小Q 写一篇技能文档</span><span class="ti-side"><span class="repeat-badge">每日</span></span></button>
-              <button class="todo-item done" data-id="t4"><span class="cb"><svg><use href="#i-check"/></svg></span><span class="ti-text">WebDAV 备份自检</span><span class="ti-side"><span class="pri" style="background:#10B981"></span></span></button>
-              <button class="todo-item" data-id="t5"><span class="cb"><svg><use href="#i-check"/></svg></span><span class="ti-text">整理本周时间线标签</span><span class="ti-side"><span class="ti-time">明早 9:00</span></span></button>
-              <div class="demo-note"><span><b>这是真实交互：</b>点一下勾选试试，完成率会跟着走。</span><button id="todoReset">重置</button></div>
-            </div>
-            <div class="dock">
-              <button class="tab" data-screen="diary"><svg><use href="#i-book"/></svg>日记</button>
-              <button class="tab" data-screen="notes"><svg><use href="#i-note"/></svg>笔记</button>
-              <button class="tab on" data-screen="todo"><svg><use href="#i-check-circle"/></svg>待办</button>
-              <button class="tab" data-screen="stats"><svg><use href="#i-chart"/></svg>统计</button>
-              <button class="fab" data-screen="chat" aria-label="问小Q"><svg><use href="#i-spark"/></svg></button>
-              <span class="home-ind"></span>
-            </div>
-            <canvas class="confetti-layer" id="confetti" aria-hidden="true"></canvas>
-          </div>
-
-          <!-- 屏 5：统计 -->
-          <div class="screen" id="scr-stats">
-            <div class="st-bar"><span class="mono">22:30</span><span class="st-ic">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M2 20v-4M8 20v-8M14 20v-12M20 20V4"/></svg>
-              <svg><use href="#i-wifi"/></svg></span></div>
-            <div class="s-head"><div class="s-title">统计</div>
-              <div class="s-ic-row"><span class="tag t-accent" style="font-size:9px">本周</span><svg><use href="#i-clock"/></svg></div></div>
-            <div class="s-body">
-              <div class="score-card">
-                <div class="ring" style="--p:.76"><svg width="74" height="74"><circle class="bgc" cx="37" cy="37" r="30"/><circle class="fgc" cx="37" cy="37" r="30"/></svg><span class="rv" id="scoreNum">76</span></div>
-                <div class="dims">
-                  <div class="dim"><i style="--dc:#6366F1"></i>睡眠<span class="dbar"><i style="--p:82%;background:#6366F1"></i></span><b>82</b></div>
-                  <div class="dim"><i style="--dc:#F59E0B"></i>饮食<span class="dbar"><i style="--p:68%;background:#F59E0B"></i></span><b>68</b></div>
-                  <div class="dim"><i style="--dc:#10B981"></i>活动<span class="dbar"><i style="--p:91%;background:#10B981"></i></span><b>91</b></div>
-                  <div class="dim"><i style="--dc:#EF4444"></i>健康<span class="dbar"><i style="--p:74%;background:#EF4444"></i></span><b>74</b></div>
-                  <div class="dim"><i style="--dc:#727785"></i>屏幕<span class="dbar"><i style="--p:55%;background:#727785"></i></span><b>55</b></div>
-                </div>
-              </div>
-              <div class="steps-card">
-                <div class="sc-head"><b>步数趋势</b><span>近 7 天 · 周/月自动聚合</span><span class="sc-num">8,236</span></div>
-                <div class="bars" id="stepBars">
-                  <i style="--h:46%"></i><i style="--h:62%"></i><i style="--h:38%"></i><i style="--h:74%"></i><i style="--h:56%"></i><i style="--h:88%" class="hi"></i><i style="--h:70%"></i>
-                </div>
-                <div class="bars-x"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
-              </div>
-              <div class="hm-card">
-                <div class="sc-head"><b>记录热力图</b><span>一眼看完这一年</span></div>
-                <div class="hm-grid" id="hmGrid"></div>
-                <div class="hm-legend">少 <i style="background:var(--bg-mid)"></i><i style="background:color-mix(in srgb,var(--accent) 25%,var(--bg-mid))"></i><i style="background:color-mix(in srgb,var(--accent) 55%,var(--bg-mid))"></i><i style="background:color-mix(in srgb,var(--accent) 80%,var(--bg-mid))"></i><i style="background:var(--accent)"></i> 多</div>
-              </div>
-            </div>
-            <div class="dock">
-              <button class="tab" data-screen="diary"><svg><use href="#i-book"/></svg>日记</button>
-              <button class="tab" data-screen="notes"><svg><use href="#i-note"/></svg>笔记</button>
-              <button class="tab" data-screen="todo"><svg><use href="#i-check-circle"/></svg>待办</button>
-              <button class="tab on" data-screen="stats"><svg><use href="#i-chart"/></svg>统计</button>
-              <button class="fab" data-screen="chat" aria-label="问小Q"><svg><use href="#i-spark"/></svg></button>
-              <span class="home-ind"></span>
-            </div>
-          </div>
-
-        </div><!-- /screen-area -->
-      </div><!-- /device -->
-      <div class="device-hint"><svg><use href="#i-spark"/></svg>手机里的每个界面都可以点 —— 切 Tab、勾待办、展开工具调用</div>
-    </div>
-  </div>
-</section>
-
-<!-- ============================ 01 / AGENT ============================ -->
-<section id="agent" class="wrap" style="padding:var(--sp) 24px">
-  <div class="reveal">
-    <p class="eyebrow">01 / Agent</p>
-    <h2 class="sec-title">嗨，我是<span class="hl" style="--after:none">小Q</span>——<br>说一句就行，剩下的我来。</h2>
-    <p class="sec-sub">14 个原子工具 + 9 大内置技能，全部读写同一套虚拟文件系统（VFS）：先落库、再回执，绝不空口答应。换个人设，同一个它。</p>
-  </div>
-
-  <div class="agent-grid">
-    <!-- 人设切换演示 -->
-    <div class="card spot persona-card reveal">
-      <div>
-        <div class="sub-lab" style="margin-top:0">实时切换人设 · 点击试用</div>
-        <div class="pc-chips" id="pcChips">
-          <button class="pc-chip on" data-p="default">经典管家<small>沉稳可靠 · 出厂默认</small></button>
-          <button class="pc-chip" data-p="energetic">活泼元气<small>爱用颜文字</small></button>
-          <button class="pc-chip" data-p="concise">简洁干练<small>直奔结论</small></button>
-          <button class="pc-chip" data-p="gentle">温柔陪伴<small>先接住情绪</small></button>
-          <button class="pc-chip" data-p="custom">自定义<small>你来描述性格</small></button>
-        </div>
-      </div>
-      <div class="demo-q">
-        <span class="mini-ava">我</span>
-        <span>「今晚跑了 5 公里，夜宵吃了烧烤 45 元，提醒我明早 9 点复盘」</span>
-      </div>
-      <div class="demo-a-wrap" id="personaDemo"><!-- JS 渲染 --></div>
-    </div>
-
-    <div class="agent-right">
-      <div class="card spot vfs-card reveal" style="--d:.08s">
-        <h3><svg><use href="#i-folder"/></svg>一座虚拟文件系统，打通全部数据</h3>
-        <div class="vfs">
-          <div class="vl">├── <b>/todos</b><i>待办 · GTD 四象限 · 重复规则 · 系统提醒</i></div>
-          <div class="vl">├── <b>/notes</b><i>笔记 · 多层目录树 · 标签 · 置顶</i></div>
-          <div class="vl">├── <b>/timeline</b><i>时间线 · 睡眠/饮食/活动/记账分类流水</i></div>
-          <div class="vl">├── <b>/journal</b><i>日记 · GRAI / KPT / 九宫格模板</i></div>
-          <div class="vl">├── <b>/health</b><i>运动健康 · 屏幕使用时间</i></div>
-          <div class="vl">├── <b>/memory</b><i>长期记忆 · 用户画像 + 小Q手记</i></div>
-          <div class="vl">├── <b>/skills</b><i>技能 · 9 内置 + 用户自建</i></div>
-          <div class="vl">└── <b>/settings</b><i>设置 · 主题 / 模型 / 快捷键 / 云同步</i></div>
-        </div>
-      </div>
-      <div class="card spot skills-card reveal" style="--d:.16s">
-        <h3><svg><use href="#i-brain"/></svg>9 大内置技能 · 14 个工具</h3>
-        <div class="chip-wrap">
-          <span class="skill-chip">待办管家</span><span class="skill-chip">笔记管家</span><span class="skill-chip">时间线管家</span>
-          <span class="skill-chip">日记管家</span><span class="skill-chip">目录管家</span><span class="skill-chip">设置管家</span>
-          <span class="skill-chip">数据分析师</span><span class="skill-chip">前端设计</span><span class="skill-chip">人生决策指南</span>
-        </div>
-        <div class="sub-lab">VFS 核心工具 + 可选能力</div>
-        <div class="chip-wrap">
-          <span class="tool-chip">read_file</span><span class="tool-chip">write_files</span><span class="tool-chip">edit_file</span>
-          <span class="tool-chip">move_file</span><span class="tool-chip">view_image</span><span class="tool-chip">skill_tool</span>
-          <span class="tool-chip">fetch_url</span><span class="tool-chip">web_search</span><span class="tool-chip">generate_image</span>
-          <span class="tool-chip">describe_image</span><span class="tool-chip">ask_user</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="extra-grid">
-    <div class="ex-card reveal"><span class="xi"><svg><use href="#i-play"/></svg></span><b>流式语音朗读</b><p>自研 Edge TTS 协议，7 款中文音色；长回复分句切片，边生成边开口。</p></div>
-    <div class="ex-card reveal" style="--d:.06s"><span class="xi"><svg><use href="#i-eye"/></svg></span><b>不会编造图片</b><p>不支持看图的模型自动调用识图工具兜底，杜绝小Q「看图说话」瞎编。</p></div>
-    <div class="ex-card reveal" style="--d:.12s"><span class="xi"><svg><use href="#i-brain"/></svg></span><b>长期记忆</b><p>用户画像 + 小Q手记持续沉淀，记得你的偏好、作息与目标。</p></div>
-    <div class="ex-card reveal" style="--d:.18s"><span class="xi"><svg><use href="#i-spark"/></svg></span><b>随处可用</b><p>悬浮球长按即唤、桌面组件直达、划选文本提问、/skill 与 @ 引用。</p></div>
-  </div>
-</section>
-
-<!-- ============================ 02 / FEATURES ============================ -->
-<section id="features" class="features">
-  <div class="wrap">
-    <div class="reveal">
-      <p class="eyebrow">02 / Features</p>
-      <h2 class="sec-title">记录的四件套，<br>每一件都打磨到位。</h2>
-      <p class="sec-sub">不为极简藏功能，不为丰富堆按钮——信息密度与触控尺寸都按真实使用打磨过的样子。</p>
-    </div>
-    <div class="bento">
-      <div class="card spot b-card b-lg reveal">
-        <span class="b-num">FEATURE 01</span>
-        <h3>时间线流水 + 深度日记，<span>双形态</span>记录</h3>
-        <p>碎片随手记，按 <em>睡眠 / 饮食 / 活动 / 记账</em> 自动归类；长文日记内置 <em>GRAI、KPT、九宫格</em> 模板。记满今日目标，屏幕上会当场放一朵<em>庆祝礼花</em>。0.1.77 起主动下线「连续打卡」机制——记录是为你服务，不制造焦虑。</p>
-        <div class="b-mini mini-rows">
-          <div class="mini-row"><i style="background:#6366F1"></i>07:12 · 昨晚 23:40 入睡，深睡 1h52m<kbd>睡眠</kbd></div>
-          <div class="mini-row"><i style="background:#F59E0B"></i>08:05 · 早餐豆浆 + 茶叶蛋<kbd>饮食</kbd></div>
-          <div class="mini-row"><i style="background:#10B981"></i>18:32 · 江边跑 5.2km · 配速 6'12"<kbd>活动</kbd></div>
-        </div>
-      </div>
-      <div class="card spot b-card reveal" style="--d:.08s">
-        <span class="b-num">FEATURE 02</span>
-        <h3>富文本 ⇄ Markdown<br>无损双模笔记</h3>
-        <p>Flutter Quill 富文本与 Markdown 互转不打折，切换时<em>连光标位置都记得</em>。HTML / SVG / 代码文件内置沙盒预览。</p>
-        <div class="b-mini"><span class="mini-toggle">富文本 <span class="sw"></span> Markdown</span></div>
-      </div>
-      <div class="card spot b-card reveal" style="--d:.04s">
-        <span class="b-num">FEATURE 03</span>
-        <h3>Android 原生<br>桌面小组件 ×3</h3>
-        <p>待办完成率微胶囊卡、问小Q 直达、快捷记录——<em>不打开 App</em> 也能勾掉一条待办。</p>
-        <div class="b-mini mini-widget">
-          <div class="mw-top"><span>今日待办</span><b>3 / 5</b></div>
-          <div class="mw-bar"><i></i></div>
-          <div class="mw-row"><i></i>预约周六体检 · 截止今天</div>
-          <div class="mw-row"><i style="background:var(--accent);border-color:var(--accent)"></i>WebDAV 备份自检</div>
-        </div>
-      </div>
-      <div class="card spot b-card b-lg reveal" style="--d:.12s">
-        <span class="b-num">FEATURE 04</span>
-        <h3>15 家 AI 服务商预设，<span>免费模型开箱即用</span></h3>
-        <p>DeepSeek / OpenAI / Kimi / 智谱 / Gemini / MiniMax 等 15 家一键绑定；新用户<em>无需任何 Key</em>——内置免费模型密钥池 + 公网双通道热切换，装好就能和小Q对话。</p>
-        <div class="b-mini">
-          <div class="svc-chips">
-            <span>DeepSeek</span><span>OpenAI</span><span>Kimi</span><span>智谱 GLM</span>
-            <span>Gemini</span><span>MiniMax</span><span>OpenRouter</span><span>自定义…</span>
-          </div>
-          <div class="mini-free"><svg width="13" height="13"><use href="#i-spark"/></svg>默认 GLM-5.2 · 内置免费池 · Cloudflare + Tailscale 双通道</div>
-        </div>
-      </div>
-      <div class="card spot b-card b-lg reveal" style="--d:.06s">
-        <span class="b-num">FEATURE 05</span>
-        <h3>六维图表与每日<span>生活评分</span></h3>
-        <p>睡眠、饮食、活动、记账、心情、屏幕使用分项可视化；每日自动算出<em>五维生活健康总分</em>，支持按时间段批量调分、逐日预览、一键撤销。步数趋势按周/月自动聚合，年度热力图一眼看完。</p>
-        <div class="b-mini mini-rows">
-          <div class="mini-row"><i style="background:var(--accent)"></i>今日总分 76 · 活动 91 睡眠 82 饮食 68<kbd>五维</kbd></div>
-          <div class="mini-row"><i style="background:#10B981"></i>批量调分 → 逐日 diff 预览 → 撤销<kbd>安全</kbd></div>
-        </div>
-      </div>
-      <div class="card spot b-card reveal" style="--d:.14s">
-        <span class="b-num">FEATURE 06</span>
-        <h3>WebDAV 全量同步</h3>
-        <p>兼容<em>坚果云 / Nextcloud / 自建服务</em>，图片一并同步；全量 + 增量同步日志透明可查。</p>
-        <div class="b-mini sync-vis">
-          <span class="sync-node"><svg><use href="#i-phone"/></svg></span>
-          <span class="sync-arc"></span>
-          <span class="sync-node cloud"><svg><use href="#i-cloud"/></svg></span>
-          <span class="sync-arc"></span>
-          <span class="sync-node"><svg><use href="#i-grid"/></svg></span>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ============================ 03 / HEALTH ============================ -->
-<section id="health" class="wrap" style="padding:var(--sp) 24px">
-  <div class="reveal">
-    <p class="eyebrow">03 / Quantified</p>
-    <h2 class="sec-title">数字不用手抄，<br>它们自己会流进来。</h2>
-    <p class="sec-sub">直连小米运动健康云端加密协议，配合 Android 屏幕使用统计——步数、睡眠分期、心率血氧、应用时长自动归档进时间线。</p>
-  </div>
-
-  <div class="health-grid">
-    <div class="card spot h-card reveal">
-      <h3><svg><use href="#i-heart"/></svg>小米运动健康 · 云端直连</h3>
-      <p>passToken 静默续期自愈登录态；逐小时选主源，口径对齐官方 App。</p>
-      <div class="stat-tiles">
-        <div class="stat-tile accent"><b data-count="8236" data-fmt="#,##0">8,236</b><span>今日步数</span></div>
-        <div class="stat-tile"><b>7<small>h</small>24<small>m</small></b><span>全天睡眠</span></div>
-        <div class="stat-tile"><b data-count="58">58</b><span>静息心率 bpm</span></div>
-        <div class="stat-tile"><b data-count="98">98<small>%</small></b><span>血氧</span></div>
-      </div>
-      <div class="sleep-band">
-        <i style="flex:2;background:#6366F1"></i><i style="flex:3;background:#8FA4F6"></i><i style="flex:1.2;background:#4DD0D0"></i><i style="flex:.5;background:#E4E5EC"></i><i style="flex:2.4;background:#8FA4F6"></i><i style="flex:.8;background:#E4E5EC"></i><i style="flex:1.6;background:#4DD0D0"></i>
-      </div>
-      <div class="legend">
-        <span><i style="background:#6366F1"></i>深睡</span><span><i style="background:#8FA4F6"></i>浅睡</span>
-        <span><i style="background:#4DD0D0"></i>REM</span><span><i style="background:#E4E5EC"></i>清醒</span>
-        <span style="margin-left:auto">每晚 23:00 自动生成「运动健康日结」卡片沉淀到时间线，不用手记。</span>
-      </div>
-      <ul class="h-list">
-        <li><b>睡眠分期</b>精确到时间轴：深睡/浅睡/REM/清醒 + 主睡眠入睡醒来，优先采用云端聚合时长</li>
-        <li><b>心率 / 血氧 / 压力</b>全天曲线 + 心率区间时长，4 个二级详情页</li>
-        <li><b>运动记录</b>与<b>计步分钟</b>逐条入库，可被小Q 直接查询和分析</li>
-      </ul>
-    </div>
-
-    <div class="card spot h-card reveal" style="--d:.1s">
-      <h3><svg><use href="#i-phone"/></svg>屏幕使用时间</h3>
-      <p>Android 用量统计权限，周口径自动重排。</p>
-      <div class="stat-tiles" style="grid-template-columns:repeat(2,1fr)">
-        <div class="stat-tile"><b>5<small>h</small>12<small>m</small></b><span>今日总时长</span></div>
-        <div class="stat-tile accent"><b>1<small>h</small>47<small>m</small></b><span>最长单项</span></div>
-      </div>
-      <div class="sub-lab">Top 应用 · 含真实图标</div>
-      <div class="app-row"><span class="app-ic" style="background:#E85D3A">音</span><span class="app-bar"><i style="width:86%;background:#E85D3A"></i></span><b>1h47m</b></div>
-      <div class="app-row"><span class="app-ic" style="background:#41B0F0">微</span><span class="app-bar"><i style="width:54%;background:#41B0F0"></i></span><b>66m</b></div>
-      <div class="app-row"><span class="app-ic" style="background:#10B981">读</span><span class="app-bar"><i style="width:30%;background:#10B981"></i></span><b>37m</b></div>
-      <div class="app-row"><span class="app-ic" style="background:#6366F1">Q</span><span class="app-bar"><i style="width:18%;background:#6366F1"></i></span><b>22m</b></div>
-      <ul class="h-list" style="margin-top:16px">
-        <li>近 7 天快照回看，误删可查</li>
-        <li>时间线卡片一键直达详情页</li>
-      </ul>
-    </div>
-  </div>
-</section>
-
-<!-- ============================ 04 / SYNC ============================ -->
-<section id="sync" class="sync">
-  <div class="wrap">
-    <div class="reveal">
-      <p class="eyebrow">04 / Local-First</p>
-      <h2 class="sec-title">你的数据，<br>只待在你自己的地盘上。</h2>
-    </div>
-    <div class="sync-grid">
-      <div class="card spot sy-card reveal">
-        <span class="xi"><svg><use href="#i-lock"/></svg></span>
-        <h3>本地优先存储</h3>
-        <p>所有记录先写入<b>设备本地 SQLite</b>，不经过任何第三方服务器；软删除 + 回收站机制兜底，误删可恢复。</p>
-        <div class="sy-tags"><span>零遥测</span><span>零账号强制</span><span>离线可用</span></div>
-      </div>
-      <div class="card spot sy-card reveal" style="--d:.08s">
-        <span class="xi"><svg><use href="#i-cloud"/></svg></span>
-        <h3>WebDAV 云同步</h3>
-        <p>把<b>你自己的云</b>当同步后端：坚果云、Nextcloud、群晖、自建 Nginx 皆可；文本与图片全量同步，日志逐条可查。</p>
-        <div class="sy-tags"><span>全量同步</span><span>增量日志</span><span>冲突可控</span></div>
-      </div>
-      <div class="card spot sy-card reveal" style="--d:.16s">
-        <span class="xi"><svg><use href="#i-refresh"/></svg></span>
-        <h3>备份与迁移</h3>
-        <p><b>JSON 全量导出 / 导入</b>，图片一并打包；恢复前自动预检，换手机登录同步即完整复活。</p>
-        <div class="sy-tags"><span>导出图片</span><span>恢复预检</span><span>双端开源</span></div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ============================ 05 / CHANGELOG ============================ -->
-<section id="changelog" class="wrap" style="padding:var(--sp) 24px">
-  <div class="cl-grid">
-    <div class="card spot cl-intro reveal">
-      <p class="eyebrow">05 / Iteration</p>
-      <div class="cl-big"><span data-count="78">0</span><small> 个版本 · 双端开源</small></div>
-      <p>从 0.1.27 到 0.1.78，几乎每 1~2 天一版。GitHub 与 Gitee 双端同步发布，App 内检查更新即可直达。</p>
-      <div style="margin-top:22px"><a class="btn btn-primary" href="#download"><svg width="16" height="16"><use href="#i-down"/></svg>立即下载</a></div>
-    </div>
-    <div class="cl-list">
-      <div class="card cl-item reveal"><span class="cl-ver">0.1.78</span><span class="txt"><b>输入区净化</b> — 移除今日完整度圆环与爆点 anchor，界面更聚焦</span><span class="cl-date">10·07</span></div>
-      <div class="card cl-item reveal" style="--d:.05s"><span class="cl-ver">0.1.77</span><span class="txt">新增<b>「人生决策指南」技能</b>（34 章循证索引）· 主动下线连续记录机制</span><span class="cl-date">10·07</span></div>
-      <div class="card cl-item reveal" style="--d:.1s"><span class="cl-ver">0.1.76</span><span class="txt"><b>待办小组件美化</b> — 主题色计数微胶囊，勾选框清晰度增强</span><span class="cl-date">09·27</span></div>
-      <div class="card cl-item reveal" style="--d:.15s"><span class="cl-ver">0.1.75</span><span class="txt"><b>全局流畅度深度调优</b> — 冷启动并行化、流式气泡独立重绘边界</span><span class="cl-date">09·27</span></div>
-      <div class="card cl-item reveal" style="--d:.2s"><span class="cl-ver">0.1.74</span><span class="txt">桌面待办组件重构 · AI <b>光标上下文感知</b>与划选提问</span><span class="cl-date">09·26</span></div>
-      <div class="card cl-item reveal" style="--d:.25s"><span class="cl-ver">0.1.73</span><span class="txt"><b>流式语音朗读</b> · 达成庆祝礼花 · 评分批量调整 + 撤销</span><span class="cl-date">09·26</span></div>
-      <div class="card cl-item reveal" style="--d:.3s"><span class="cl-ver">0.1.71</span><span class="txt">默认模型切换 <b>GLM-5.2</b> · 不识图模型自动 describe_image 兜底</span><span class="cl-date">09·25</span></div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;padding:2px 4px">
-        <a class="pill" href="https://github.com/favoroo/QNote/releases" target="_blank" rel="noopener" style="font-weight:600;color:var(--accent);border-color:var(--accent-line)">在 GitHub 查看全部 45 个 Tag <svg width="13" height="13"><use href="#i-right"/></svg></a>
-      </div>
-    </div>
-  </div>
-</section>
-
-</main>
-
-<!-- ============================ 下载收口（深色） ============================ -->
-<section id="download" class="band">
-  <div class="wrap band-grid">
-    <div class="reveal">
-      <h2>今晚就把 <em>小Q</em> 装上。</h2>
-      <p class="band-sub">Android 8.0+ · arm64 单架构包约 30 MB · 免费内置 AI，注册都不需要。</p>
-      <div class="dl-btns" style="max-width:560px">
-        <a class="btn btn-primary dl-main" href="https://github.com/favoroo/QNote/releases/download/v0.1.78/QNote-v0.1.78-arm64-v8a.apk">
-          <svg width="17" height="17"><use href="#i-down"/></svg>下载 Android APK <span class="js-ver mono" style="font-weight:700">v0.1.78</span>
+      <div class="mt-8 flex flex-wrap items-center gap-4">
+        <a href="#download"
+           class="rounded-lg font-medium px-6 py-3 bg-primary-600 text-white shadow-sm
+                  hover:bg-primary-700 hover:-translate-y-0.5 hover:shadow transition-all duration-200
+                  active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2">
+          免费下载
         </a>
-        <a class="btn btn-dark" href="https://github.com/favoroo/QNote" target="_blank" rel="noopener"><svg width="16" height="16"><use href="#i-github"/></svg>GitHub</a>
-        <a class="btn btn-dark" href="https://gitee.com/favo9/qnote" target="_blank" rel="noopener"><svg width="16" height="16"><use href="#i-branch"/></svg>Gitee 镜像</a>
+        <a href="https://github.com/favoroo/QNote" target="_blank" rel="noopener"
+           class="rounded-lg font-medium px-6 py-3 bg-white text-gray-700 border border-gray-300 shadow-sm
+                  hover:-translate-y-0.5 hover:shadow transition-all duration-200
+                  active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2">
+          GitHub 源码
+        </a>
       </div>
-      <div class="mirror-row" style="margin-top:16px">
-        <span class="lab" style="color:#727a8c">下载通道</span>
-        <button class="mchip js-mchip" data-mirror="gh" style="background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.14);color:#c7cbd8">GitHub 直连</button>
-        <button class="mchip js-mchip" data-mirror="cn" style="background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.14);color:#c7cbd8">国内加速</button>
-        <button class="mchip js-mchip" data-mirror="gitee" style="background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.14);color:#c7cbd8">Gitee 镜像</button>
-      </div>
+      <p class="mt-6 text-sm text-gray-500">开源免费 · 数据存本地 · WebDAV 同步到你自己的云</p>
     </div>
-    <div class="priv-card reveal" style="--d:.12s">
-      <h3><svg><use href="#i-shield"/></svg>隐私承诺</h3>
-      <p>QNote 不会收集任何用户的个人数据。所有数据均存储在你自己的设备上；同步走你自己的 WebDAV，分析在你本地完成。开源可审计，双端镜像仓库随时验证。</p>
-      <div class="pp-row"><span>零遥测</span><span>本地 SQLite</span><span>自带云同步</span><span>Apache 式透明迭代</span></div>
+    <div class="reveal in flex justify-center lg:justify-end">
+      <img src="./screenshots/diary.jpg" alt="QNote 日记时间线界面：步数、睡眠、屏幕使用自动成卡"
+           class="w-64 md:w-72 rounded-2xl border border-gray-200 shadow-md"
+           loading="eager">
     </div>
-  </div>
-  <div class="wrap foot-bar">
-    <span>© 2026 QNote Team · Built with Flutter & Inter</span>
-    <span class="foot-dots" role="group" aria-label="主题强调色"></span>
-    <span class="f-links">
-      <a href="#agent">小Q</a><a href="#features">功能</a><a href="#changelog">更新日志</a>
-      <a href="https://github.com/favoroo/QNote" target="_blank" rel="noopener">源码</a>
-    </span>
   </div>
 </section>
 
-<button id="toTop" aria-label="返回顶部"><svg><use href="#i-up"/></svg></button>
-<div class="toast" id="toast" role="status" aria-live="polite"><svg><use href="#i-check"/></svg><span id="toastText"></span></div>
+<!-- ══════════ 理念三步 ══════════ -->
+<section id="how" class="py-16 md:py-20">
+  <div class="max-w-6xl mx-auto px-4 md:px-6 lg:px-8">
+    <h2 class="reveal font-semibold tracking-tight text-2xl md:text-3xl text-center">它是怎么工作的</h2>
+    <div class="mt-10 grid md:grid-cols-3 gap-6">
+      <div class="reveal bg-white rounded-xl shadow-sm border border-gray-200 p-6
+                  hover:-translate-y-0.5 hover:shadow-md transition-all duration-200">
+        <div class="group w-11 h-11 rounded-lg bg-primary-50 text-primary-600 flex items-center justify-center
+                    hover:bg-primary-500 hover:scale-110 transition-all duration-200">
+          <svg class="w-6 h-6 group-hover:text-white transition-colors duration-200" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.9 4.5l2.6 2.6L7.7 18.9l-3.6 1 1-3.6L16.9 4.5z"/></svg>
+        </div>
+        <h3 class="mt-4 font-semibold tracking-tight text-xl">1 · 随手记录</h3>
+        <p class="mt-2 text-sm text-gray-600 leading-relaxed">日记、笔记、待办，一天的事都记在一条时间线上。</p>
+      </div>
+      <div class="reveal bg-white rounded-xl shadow-sm border border-gray-200 p-6
+                  hover:-translate-y-0.5 hover:shadow-md transition-all duration-200">
+        <div class="group w-11 h-11 rounded-lg bg-primary-50 text-primary-600 flex items-center justify-center
+                    hover:bg-primary-500 hover:scale-110 transition-all duration-200">
+          <svg class="w-6 h-6 group-hover:text-white transition-colors duration-200" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20.5 12a8.5 8.5 0 11-2.5-6M20.5 3v4h-4M12 8v4l3 2"/></svg>
+        </div>
+        <h3 class="mt-4 font-semibold tracking-tight text-xl">2 · 数据自动汇入</h3>
+        <p class="mt-2 text-sm text-gray-600 leading-relaxed">步数、睡眠、心率、屏幕时间自动同步，不用手抄。</p>
+      </div>
+      <div class="reveal bg-white rounded-xl shadow-sm border border-gray-200 p-6
+                  hover:-translate-y-0.5 hover:shadow-md transition-all duration-200">
+        <div class="group w-11 h-11 rounded-lg bg-primary-50 text-primary-600 flex items-center justify-center
+                    hover:bg-primary-500 hover:scale-110 transition-all duration-200">
+          <svg class="w-6 h-6 group-hover:text-white transition-colors duration-200" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3a7 7 0 00-4 12.7V18h8v-2.3A7 7 0 0012 3zM9 21h6"/></svg>
+        </div>
+        <h3 class="mt-4 font-semibold tracking-tight text-xl">3 · 小Q 给建议</h3>
+        <p class="mt-2 text-sm text-gray-600 leading-relaxed">AI 读懂这些数据，给出基于你真实生活的分析与建议。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ 界面展示 ══════════ -->
+<section id="screens" class="bg-slate-50 border-y border-gray-200 py-16 md:py-20">
+  <div class="max-w-6xl mx-auto px-4 md:px-6 lg:px-8">
+    <h2 class="reveal font-semibold tracking-tight text-2xl md:text-3xl text-center">实际界面</h2>
+    <p class="reveal mt-3 text-center text-sm text-gray-500">以下均为 App 真实截图</p>
+
+    <div class="reveal mt-8 flex flex-wrap justify-center gap-2" role="tablist" aria-label="界面切换">
+      <button class="shot-tab rounded-lg font-medium text-sm px-4 py-2 transition-all duration-150 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 bg-primary-600 text-white shadow-sm" data-shot="diary" role="tab" aria-selected="true">日记</button>
+      <button class="shot-tab rounded-lg font-medium text-sm px-4 py-2 transition-all duration-150 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 bg-white text-gray-700 border border-gray-300" data-shot="chat" role="tab" aria-selected="false">小Q 对话</button>
+      <button class="shot-tab rounded-lg font-medium text-sm px-4 py-2 transition-all duration-150 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 bg-white text-gray-700 border border-gray-300" data-shot="notes" role="tab" aria-selected="false">笔记</button>
+      <button class="shot-tab rounded-lg font-medium text-sm px-4 py-2 transition-all duration-150 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 bg-white text-gray-700 border border-gray-300" data-shot="todo" role="tab" aria-selected="false">待办</button>
+      <button class="shot-tab rounded-lg font-medium text-sm px-4 py-2 transition-all duration-150 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 bg-white text-gray-700 border border-gray-300" data-shot="stats" role="tab" aria-selected="false">统计</button>
+    </div>
+
+    <div class="reveal mt-8">
+      <figure class="shot-pane on flex-col items-center" data-shot="diary">
+        <img src="./screenshots/diary.jpg" alt="日记界面截图" class="w-64 md:w-80 rounded-2xl border border-gray-200 shadow-md" loading="lazy">
+        <figcaption class="mt-4 text-sm text-gray-600">时间线速记，运动睡眠自动成卡</figcaption>
+      </figure>
+      <figure class="shot-pane flex-col items-center" data-shot="chat">
+        <img src="./screenshots/chat.jpg" alt="小Q 对话界面截图" class="w-64 md:w-80 rounded-2xl border border-gray-200 shadow-md" loading="lazy">
+        <figcaption class="mt-4 text-sm text-gray-600">说一句就行，剩下的它来</figcaption>
+      </figure>
+      <figure class="shot-pane flex-col items-center" data-shot="notes">
+        <img src="./screenshots/notes.jpg" alt="笔记界面截图" class="w-64 md:w-80 rounded-2xl border border-gray-200 shadow-md" loading="lazy">
+        <figcaption class="mt-4 text-sm text-gray-600">文件夹归档，富文本与 Markdown 双模</figcaption>
+      </figure>
+      <figure class="shot-pane flex-col items-center" data-shot="todo">
+        <img src="./screenshots/todo.jpg" alt="待办界面截图" class="w-64 md:w-80 rounded-2xl border border-gray-200 shadow-md" loading="lazy">
+        <figcaption class="mt-4 text-sm text-gray-600">今日与长期清单，桌面一键勾选</figcaption>
+      </figure>
+      <figure class="shot-pane flex-col items-center" data-shot="stats">
+        <img src="./screenshots/stats.jpg" alt="统计界面截图" class="w-64 md:w-80 rounded-2xl border border-gray-200 shadow-md" loading="lazy">
+        <figcaption class="mt-4 text-sm text-gray-600">每日生活评分与坚持热力图</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ 小Q ══════════ -->
+<section id="agent" class="py-16 md:py-20">
+  <div class="max-w-6xl mx-auto px-4 md:px-6 lg:px-8 grid lg:grid-cols-2 gap-12 items-center">
+    <div class="reveal order-2 lg:order-1 flex justify-center lg:justify-start">
+      <img src="./screenshots/chat.jpg" alt="小Q 正在基于技能回答人生决策问题"
+           class="w-64 md:w-72 rounded-2xl border border-gray-200 shadow-md" loading="lazy">
+    </div>
+    <div class="reveal order-1 lg:order-2">
+      <h2 class="font-semibold tracking-tight text-2xl md:text-3xl">小Q：住在你数据里的 AI</h2>
+      <p class="mt-4 text-base text-gray-600 leading-relaxed max-w-md">
+        它不是通用聊天机器人——小Q 能直接读写你的日记、待办和健康数据，回答建立在真实的你之上。
+      </p>
+      <ul class="mt-6 space-y-4">
+        <li class="flex gap-3">
+          <span class="mt-0.5 w-6 h-6 rounded-lg bg-primary-50 text-primary-600 flex items-center justify-center flex-shrink-0">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+          </span>
+          <p class="text-sm text-gray-700"><span class="font-medium text-gray-900">读懂你的生活</span>：睡眠、运动、屏幕时间都在它的上下文里。</p>
+        </li>
+        <li class="flex gap-3">
+          <span class="mt-0.5 w-6 h-6 rounded-lg bg-primary-50 text-primary-600 flex items-center justify-center flex-shrink-0">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+          </span>
+          <p class="text-sm text-gray-700"><span class="font-medium text-gray-900">9 大内置技能</span>：复盘、记账分析、人生决策指南，说一句就调用。</p>
+        </li>
+        <li class="flex gap-3">
+          <span class="mt-0.5 w-6 h-6 rounded-lg bg-primary-50 text-primary-600 flex items-center justify-center flex-shrink-0">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+          </span>
+          <p class="text-sm text-gray-700"><span class="font-medium text-gray-900">5 种人设 + 流式语音</span>：管家或伙伴随你选，回答边生成边朗读。</p>
+        </li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ 桌面小组件 ══════════ -->
+<section id="widgets" class="bg-slate-50 border-y border-gray-200 py-16 md:py-20">
+  <div class="max-w-6xl mx-auto px-4 md:px-6 lg:px-8">
+    <div class="reveal text-center max-w-xl mx-auto">
+      <h2 class="font-semibold tracking-tight text-2xl md:text-3xl">不用开 App，桌面上直接记</h2>
+      <p class="mt-3 text-sm text-gray-500">Android 原生桌面小组件，以下为按真实布局 1:1 还原的展示</p>
+    </div>
+
+    <!-- 模拟桌面底板 -->
+    <div class="reveal mt-10 max-w-2xl mx-auto rounded-2xl border border-gray-200 bg-slate-200/60 p-6 md:p-8 space-y-5 shadow-sm">
+
+      <!-- 今日待办小组件：250×110dp，半透明白底，圆角 20dp -->
+      <div class="mx-auto w-full max-w-sm rounded-[20px] border border-black/[0.08] bg-white/80 backdrop-blur px-4 py-3 shadow-sm">
+        <div class="flex items-center justify-between">
+          <span class="text-[15px] font-bold text-[#1C1C1E]">Todo</span>
+          <div class="flex items-center gap-2">
+            <span class="rounded-[9px] bg-[#007AFF]/[0.12] text-[#007AFF] text-[11px] font-bold px-2 py-0.5">7</span>
+            <span class="w-[30px] h-[30px] rounded-full bg-black/[0.06] flex items-center justify-center text-[#1C1C1E] text-lg leading-none">+</span>
+          </div>
+        </div>
+        <div class="mt-2 space-y-2">
+          <div class="flex items-center gap-2.5">
+            <span class="w-[22px] h-[22px] rounded-full border-2 border-gray-300 flex-shrink-0"></span>
+            <span class="text-[13px] text-[#1C1C1E]">回复邮件</span>
+            <span class="ml-auto w-[7px] h-[7px] rounded-full bg-[#007AFF]"></span>
+          </div>
+          <div class="flex items-center gap-2.5">
+            <span class="w-[22px] h-[22px] rounded-full border-2 border-gray-300 flex-shrink-0"></span>
+            <span class="text-[13px] text-[#1C1C1E]">整理本周记录</span>
+          </div>
+          <div class="flex items-center gap-2.5">
+            <span class="w-[22px] h-[22px] rounded-full bg-[#007AFF] flex items-center justify-center flex-shrink-0">
+              <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+            </span>
+            <span class="text-[13px] text-[#8E8E93] line-through">买牛奶</span>
+          </div>
+        </div>
+        <div class="mt-2 flex items-center gap-1.5">
+          <span class="w-5 h-5 rounded-full bg-[#007AFF] text-white text-[10px] font-bold flex items-center justify-center">+3</span>
+          <span class="text-[11px] text-[#8E8E93]">更多待办</span>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap justify-center gap-5">
+        <!-- 问小Q 小组件：110×110dp，浅灰底圆角 16dp -->
+        <div class="w-[140px] h-[140px] rounded-2xl border border-[#E2E4EB] bg-[#F5F6FA] flex flex-col items-center justify-center gap-1.5 shadow-sm">
+          <svg class="w-9 h-9 text-[#007AFF]" fill="currentColor" viewBox="0 0 24 24"><path d="M20 2H4a2 2 0 00-2 2v18l4-4h14a2 2 0 002-2V4a2 2 0 00-2-2z"/></svg>
+          <span class="text-[15px] font-bold text-[#1C1C1E]">问小Q</span>
+          <span class="text-[11px] text-[#8E8E93]">随手提问、记录与整理</span>
+        </div>
+
+        <!-- 快捷记录小组件：250×40dp 胶囊 -->
+        <div class="self-center w-full max-w-[300px] rounded-full border border-[#E2E4EB] bg-[#F5F6FA] pl-1.5 pr-2 py-1.5 flex items-center gap-1 shadow-sm">
+          <span class="flex-1 h-9 rounded-full bg-white border border-[#E2E4EB] flex items-center px-3.5 text-[13px] text-[#8E8E93]">快速记录...</span>
+          <svg class="w-6 h-6 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 5h16v14H4zM4 15l5-5 3 3 4-4 4 4"/><circle cx="9" cy="9" r="1.4"/></svg>
+          <svg class="w-6 h-6 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8h3l2-3h6l2 3h3v12H4z"/><circle cx="12" cy="13" r="3.2"/></svg>
+          <span class="w-9 h-9 rounded-full bg-[#007AFF] flex items-center justify-center flex-shrink-0">
+            <svg class="w-[18px] h-[18px] text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M3.4 20.4l17.3-7.5c.8-.35.8-1.45 0-1.8L3.4 3.6c-.66-.29-1.39.2-1.39.91L2 9.12c0 .5.37.93.87.99L17 12 2.87 13.88c-.5.07-.87.5-.87 1l.01 4.61c0 .72.73 1.2 1.39.91z"/></svg>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div class="reveal mt-8 grid sm:grid-cols-3 gap-6 max-w-3xl mx-auto text-center">
+      <p class="text-sm text-gray-600"><span class="font-medium text-gray-900">今日待办</span><br>桌面直接勾选，点 + 原地添加</p>
+      <p class="text-sm text-gray-600"><span class="font-medium text-gray-900">问小Q</span><br>一键唤起 AI 对话</p>
+      <p class="text-sm text-gray-600"><span class="font-medium text-gray-900">快捷记录</span><br>文字、拍照、相册，抬手就记</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ 下载 ══════════ -->
+<section id="download" class="py-16 md:py-24">
+  <div class="max-w-xl mx-auto px-4 md:px-6 text-center">
+    <div class="reveal bg-white rounded-xl shadow-sm border border-gray-200 p-8">
+      <img src="./app_icon.svg" alt="" class="w-14 h-14 rounded-xl mx-auto">
+      <h2 class="mt-4 font-semibold tracking-tight text-2xl md:text-3xl">现在开始记录</h2>
+      <p class="mt-3 text-sm text-gray-600">免费开源，支持 Android / iOS / Web</p>
+      <a id="dlBtn" href="https://github.com/favoroo/QNote/releases/latest" target="_blank" rel="noopener"
+         class="mt-6 inline-block rounded-lg font-medium px-8 py-3 bg-primary-600 text-white shadow-sm
+                hover:bg-primary-700 hover:-translate-y-0.5 hover:shadow transition-all duration-200
+                active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2">
+        下载 Android APK
+      </a>
+      <div class="mt-5 flex justify-center gap-2" role="group" aria-label="下载通道">
+        <button class="mirror-chip rounded-lg text-xs font-medium px-3 py-1.5 border transition-all duration-150 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 bg-primary-50 text-primary-700 border-primary-600/30" data-mirror="gh">GitHub 直连</button>
+        <button class="mirror-chip rounded-lg text-xs font-medium px-3 py-1.5 border transition-all duration-150 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 bg-white text-gray-600 border-gray-300" data-mirror="cn">国内加速</button>
+        <button class="mirror-chip rounded-lg text-xs font-medium px-3 py-1.5 border transition-all duration-150 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 bg-white text-gray-600 border-gray-300" data-mirror="gitee">Gitee 镜像</button>
+      </div>
+      <p class="mt-5 text-xs text-gray-500">iOS 与 Web 版可从源码构建 · 下载链接自动指向最新正式版</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ 页脚 ══════════ -->
+<footer class="bg-slate-50 border-t border-gray-200">
+  <div class="max-w-6xl mx-auto px-4 md:px-6 lg:px-8 py-10 flex flex-col md:flex-row items-center justify-between gap-6">
+    <div class="flex items-center gap-2.5">
+      <img src="./app_icon.svg" alt="" class="w-7 h-7 rounded-lg">
+      <div>
+        <span class="font-semibold tracking-tight">QNote</span>
+        <p class="text-xs text-gray-500">你的数据，只待在你自己的地盘上</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-6 text-sm text-gray-600">
+      <a href="https://github.com/favoroo/QNote" target="_blank" rel="noopener"
+         class="hover:text-gray-900 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded">GitHub</a>
+      <a href="https://gitee.com/favo9/qnote" target="_blank" rel="noopener"
+         class="hover:text-gray-900 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded">Gitee</a>
+      <a href="https://github.com/favoroo/QNote/blob/main/LICENSE" target="_blank" rel="noopener"
+         class="hover:text-gray-900 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded">开源协议</a>
+    </div>
+  </div>
+</footer>
 
 <script>
-/* ============================================================
-   QNote 落地页交互脚本（零依赖原生 JS）
-   状态持久化遵循 localStorage 命名空间 qnote.landing.*，
-   全部读写包 try/catch，隐私模式/无存储环境下静默降级。
-   ============================================================ */
 (function () {
   'use strict';
-  var $ = function (s, r) { return (r || document).querySelector(s); };
-  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
-  var LS = {
-    get: function (k, d) { try { var v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } },
-    set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
-  };
-  var REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var $ = function (s, c) { return (c || document).querySelector(s); };
+  var $$ = function (s, c) { return Array.prototype.slice.call((c || document).querySelectorAll(s)); };
 
-  /* ---------- 1. 8 款 App 预设强调色切换 ---------- */
-  var PALETTES = [
-    ['#005BCB', '经典蓝'], ['#C5E803', '荧光黄绿'], ['#E91E8C', '玫瑰粉红'], ['#00E676', '春天亮绿'],
-    ['#FF3B30', '活力红'], ['#FF9500', '活力橙'], ['#00BCD4', '湖水青'], ['#7C4DFF', '典雅紫']
-  ];
-  function setAccent(c) { document.documentElement.style.setProperty('--accent', c); }
-  function paintDots(box, cur) {
-    box.innerHTML = '';
-    PALETTES.forEach(function (p) {
-      var b = document.createElement('button');
-      b.className = 'tdot' + (p[0] === cur ? ' on' : '');
-      b.style.background = p[0]; b.style.setProperty('--dot-c', p[0]);
-      b.title = p[1]; b.setAttribute('aria-label', '强调色：' + p[1]);
-      b.onclick = function () {
-        setAccent(p[0]); LS.set('qnote.landing.accent.v1', p[0]);
-        $$('.theme-dots, .foot-dots, .mob-dots').forEach(function (bx) { paintDots(bx, p[0]); });
-      };
-      box.appendChild(b);
-    });
-  }
-  var savedAccent = LS.get('qnote.landing.accent.v1', '#005BCB');
-  if (/^#[0-9A-Fa-f]{6}$/.test(savedAccent)) setAccent(savedAccent);
-  $$('.theme-dots, .foot-dots, .mob-dots').forEach(function (bx) { paintDots(bx, savedAccent); });
-
-  /* ---------- 2. Header：毛玻璃、滚动高亮、移动菜单 ---------- */
-  var hdr = $('#hdr'), navLinks = $$('#mainNav a');
-  var sections = navLinks.map(function (a) { return $(a.getAttribute('href')); });
-  function onScroll() {
-    hdr.classList.toggle('scrolled', window.scrollY > 8);
-    var y = window.scrollY + 140, idx = -1;
-    sections.forEach(function (s, i) { if (s && s.offsetTop <= y) idx = i; });
-    navLinks.forEach(function (a, i) { a.classList.toggle('on', i === idx); });
-    $('#toTop').classList.toggle('show', window.scrollY > 640);
-  }
-  window.addEventListener('scroll', onScroll, { passive: true });
-  onScroll();
-  $('#toTop').onclick = function () { window.scrollTo({ top: 0, behavior: REDUCED ? 'auto' : 'smooth' }); };
-  var burger = $('#burger'), mobPop = $('#mobPop');
-  burger.onclick = function () {
-    var open = mobPop.classList.toggle('open');
-    burger.setAttribute('aria-expanded', String(open));
-  };
-  $$('#mobPop a').forEach(function (a) { a.onclick = function () { mobPop.classList.remove('open'); }; });
-
-  /* ---------- 3. 滚动揭示 ---------- */
-  var io = new IntersectionObserver(function (entries) {
-    entries.forEach(function (en) { if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); } });
-  }, { threshold: 0.12, rootMargin: '0px 0px -4% 0px' });
-  $$('.reveal').forEach(function (el) { io.observe(el); });
-
-  /* ---------- 4. 卡片鼠标聚光灯 ---------- */
-  $$('.spot').forEach(function (card) {
-    card.addEventListener('pointermove', function (e) {
-      var r = card.getBoundingClientRect();
-      card.style.setProperty('--mx', ((e.clientX - r.left) / r.width * 100).toFixed(1) + '%');
-      card.style.setProperty('--my', ((e.clientY - r.top) / r.height * 100).toFixed(1) + '%');
-    });
+  /* ── 移动端菜单 ── */
+  var burger = $('#burger'), mobMenu = $('#mobMenu');
+  burger.addEventListener('click', function () { mobMenu.classList.toggle('hidden'); });
+  $$('#mobMenu a').forEach(function (a) {
+    a.addEventListener('click', function () { mobMenu.classList.add('hidden'); });
   });
 
-  /* ---------- 5. 数字滚动（统计块入场触发） ---------- */
-  function countUp(el) {
-    var final = el.getAttribute('data-final');
-    if (!final) { final = el.innerHTML; el.setAttribute('data-final', final); }
-    var target = parseFloat(el.getAttribute('data-count'));
-    if (REDUCED || isNaN(target)) { el.innerHTML = final; return; }
-    var comma = el.getAttribute('data-fmt') === '#,##0';
-    var t0 = performance.now(), dur = 1300;
-    function step(t) {
-      var p = Math.min(1, (t - t0) / dur), eased = 1 - Math.pow(1 - p, 3);
-      var val = Math.round(target * eased);
-      var s = comma ? val.toLocaleString('en-US') : String(val);
-      // 只替换 HTML 串里第一段数字，<small> 等单位后缀原样保留
-      el.innerHTML = final.replace(/[\d,]+/, s);
-      if (p < 1) requestAnimationFrame(step);
-    }
-    requestAnimationFrame(step);
-  }
-  var cio = new IntersectionObserver(function (entries) {
-    entries.forEach(function (en) { if (en.isIntersecting) { countUp(en.target); cio.unobserve(en.target); } });
-  }, { threshold: 0.6 });
-  $$('[data-count]').forEach(function (el) { cio.observe(el); });
-
-  /* ---------- 6. 手机模拟器：屏切换 ---------- */
-  var currentScreen = 'chat';
-  function goScreen(name) {
-    if (name === currentScreen) return;
-    $$('.screen').forEach(function (s) { s.classList.toggle('active', s.id === 'scr-' + name); });
-    $$('.seg button').forEach(function (b) { b.classList.toggle('on', b.dataset.screen === name); });
-    currentScreen = name;
-    if (name === 'todo') { sizeCanvas(); updateTodoUI(); }
-  }
-  $$('[data-screen]').forEach(function (el) {
-    el.addEventListener('click', function () { goScreen(el.dataset.screen); });
-  });
-
-  /* ---------- 7. 待办演示（localStorage 持久化 + 礼花） ---------- */
-  var TODO_KEY = 'qnote.landing.todo.v1';
-  var DEFAULT_TODO = { t1: false, t2: false, t3: true, t4: true, t5: false };
-  var todoState;
-  try { todoState = JSON.parse(LS.get(TODO_KEY, '')) || DEFAULT_TODO; } catch (e) { todoState = DEFAULT_TODO; }
-  var todoEls = $$('#scr-todo .todo-item');
-  function saveTodo() { LS.set(TODO_KEY, JSON.stringify(todoState)); }
-  function updateTodoUI() {
-    var done = Object.keys(todoState).filter(function (k) { return todoState[k]; }).length;
-    var total = todoEls.length;
-    todoEls.forEach(function (el) { el.classList.toggle('done', !!todoState[el.dataset.id]); });
-    var cap = $('#todoCap'); if (cap) cap.textContent = done + ' / ' + total;
-    var bar = $('#todoBar'); if (bar) bar.style.width = Math.round(done / total * 100) + '%';
-  }
-  var prevDone = Object.keys(todoState).filter(function (k) { return todoState[k]; }).length;
-  todoEls.forEach(function (el) {
-    el.addEventListener('click', function () {
-      var id = el.dataset.id;
-      todoState[id] = !todoState[id]; saveTodo(); updateTodoUI();
-      var done = Object.keys(todoState).filter(function (k) { return todoState[k]; }).length;
-      if (done > prevDone && !REDUCED) burst(done === todoEls.length ? 70 : 26);
-      prevDone = done;
-    });
-  });
-  var resetBtn = $('#todoReset');
-  if (resetBtn) resetBtn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    todoState = JSON.parse(JSON.stringify(DEFAULT_TODO)); prevDone = 2; saveTodo(); updateTodoUI();
-    toast('演示数据已重置');
-  });
-  updateTodoUI();
-
-  /* 礼花：canvas 粒子，颜色取当前主题强调色 */
-  var cvs = $('#confetti'), ctx = cvs ? cvs.getContext('2d') : null, parts = [], rafId = 0;
-  function sizeCanvas() {
-    if (!cvs) return;
-    var r = cvs.parentElement.getBoundingClientRect();
-    cvs.width = r.width * devicePixelRatio; cvs.height = r.height * devicePixelRatio;
-  }
-  window.addEventListener('resize', sizeCanvas);
-  function accentNow() {
-    return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#005BCB';
-  }
-  function burst(n) {
-    if (!ctx) return;
-    sizeCanvas();
-    var colors = [accentNow(), '#C5E803', '#E91E8C', '#FF9500', '#00E676', '#6366F1'];
-    var W = cvs.width, H = cvs.height;
-    for (var i = 0; i < n; i++) {
-      parts.push({
-        x: W * (0.2 + Math.random() * 0.6), y: H * (0.32 + Math.random() * 0.1),
-        vx: (Math.random() - 0.5) * 7, vy: -4 - Math.random() * 6,
-        s: (2.5 + Math.random() * 3.5) * devicePixelRatio, r: Math.random() * Math.PI,
-        vr: (Math.random() - 0.5) * 0.3, c: colors[i % colors.length], life: 1
+  /* ── 滚动淡入 ── */
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
       });
-    }
-    if (!rafId) rafId = requestAnimationFrame(tickConfetti);
-  }
-  function tickConfetti() {
-    ctx.clearRect(0, 0, cvs.width, cvs.height);
-    parts.forEach(function (p) {
-      p.vy += 0.16; p.x += p.vx; p.y += p.vy; p.r += p.vr; p.life -= 0.011;
-      ctx.save(); ctx.globalAlpha = Math.max(0, p.life); ctx.translate(p.x, p.y); ctx.rotate(p.r);
-      ctx.fillStyle = p.c; ctx.fillRect(-p.s / 2, -p.s / 2, p.s, p.s * 0.6); ctx.restore();
-    });
-    parts = parts.filter(function (p) { return p.life > 0 && p.y < cvs.height + 20; });
-    rafId = parts.length ? requestAnimationFrame(tickConfetti) : 0;
-    if (!rafId && currentScreen === 'todo') ctx.clearRect(0, 0, cvs.width, cvs.height);
+    }, { threshold: 0.12 });
+    $$('.reveal').forEach(function (el) { io.observe(el); });
+  } else {
+    $$('.reveal').forEach(function (el) { el.classList.add('in'); });
   }
 
-  /* ---------- 8. 小Q 人设实时演示 ---------- */
-  var PERSONAS = {
-    default: {
-      name: '经典管家',
-      tools: ['timeline-manager', 'todo-manager', 'reminder'],
-      text: '收到，已办好三件事：① 运动 5km 与夜宵 ¥45 写入今天的时间线；② 「复盘」待办放进明早 09:00，高优先级；③ 系统提醒已排期。跑得不错，睡前记得补水拉伸。'
-    },
-    energetic: {
-      name: '活泼元气',
-      tools: ['timeline-manager', 'todo-manager'],
-      text: '收到收到！(๑•̀ㅂ•́)و✧ 5 公里打卡成功，今晚的你也太棒了吧！烧烤 ¥45 也悄悄记进口袋账啦～明早 9 点我会准时蹦出来喊你复盘，现在去泡个脚睡个好觉嘛！'
-    },
-    concise: {
-      name: '简洁干练',
-      tools: ['timeline-manager', 'todo-manager'],
-      text: '已记：运动 5km、夜宵 ¥45、明日 09:00 复盘提醒（高优先级）。无遗留事项。'
-    },
-    gentle: {
-      name: '温柔陪伴',
-      tools: ['timeline-manager', 'todo-manager'],
-      text: '都记下啦。今晚吹着江风跑了 5 公里，一定很舒展吧？夜宵吃得满足也很重要。明早 9 点我来提醒你复盘，现在先把身体交给被窝，晚安。'
-    },
-    custom: {
-      name: '自定义人设',
-      tools: ['settings-manager'],
-      text: '（这里是留给你的一段话）用你自己的文字描述小Q 的性格，保存后即刻上身——人格段在系统提示词中拥有最高优先级，长对话尾部还会复述摘要，防止被工具流水冲淡。'
-    }
-  };
-  var demoBox = $('#personaDemo');
-  var personaIdx = 0, personaTimer = [];
-  function clearTimers() { personaTimer.forEach(clearTimeout); personaTimer = []; }
-  function renderPersona(key) {
-    clearTimers();
-    var p = PERSONAS[key];
-    demoBox.innerHTML = '';
-    var tools = document.createElement('div');
-    tools.className = 'demo-tools';
-    tools.innerHTML = '<span>▸ ' + p.tools.map(function (t) { return t; }).join(' · ') + '</span>';
-    var row = document.createElement('div');
-    row.className = 'demo-a';
-    row.innerHTML = '<span class="q-ava">Q</span>';
-    var bub = document.createElement('div');
-    bub.className = 'bub ai';
-    row.appendChild(bub);
-    if (REDUCED) {
-      bub.textContent = p.text; demoBox.appendChild(tools); demoBox.appendChild(row); return;
-    }
-    demoBox.appendChild(row);
-    var i = 0;
-    function type() {
-      bub.innerHTML = p.text.slice(0, i) + '<span class="chat-cursor"></span>';
-      i += 2;
-      if (i <= p.text.length) personaTimer.push(setTimeout(type, 26));
-      else { bub.textContent = p.text; personaTimer.push(setTimeout(function () { demoBox.insertBefore(tools, row); }, 120)); }
-    }
-    personaTimer.push(setTimeout(type, 260));
-  }
-  var savedPersona = LS.get('qnote.landing.persona.v1', 'default');
-  if (!PERSONAS[savedPersona]) savedPersona = 'default';
-  $$('#pcChips .pc-chip').forEach(function (c) {
-    c.classList.toggle('on', c.dataset.p === savedPersona);
-    c.addEventListener('click', function () {
-      $$('#pcChips .pc-chip').forEach(function (x) { x.classList.remove('on'); });
-      c.classList.add('on'); LS.set('qnote.landing.persona.v1', c.dataset.p);
-      renderPersona(c.dataset.p);
+  /* ── 截图画廊切换 ── */
+  $$('.shot-tab').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var name = btn.dataset.shot;
+      $$('.shot-tab').forEach(function (b) {
+        var on = b === btn;
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+        b.classList.toggle('bg-primary-600', on);
+        b.classList.toggle('text-white', on);
+        b.classList.toggle('shadow-sm', on);
+        b.classList.toggle('bg-white', !on);
+        b.classList.toggle('text-gray-700', !on);
+        b.classList.toggle('border', !on);
+        b.classList.toggle('border-gray-300', !on);
+      });
+      $$('.shot-pane').forEach(function (p) {
+        p.classList.toggle('on', p.dataset.shot === name);
+      });
     });
   });
-  new IntersectionObserver(function (e, obs) {
-    if (e[0].isIntersecting) { renderPersona(savedPersona); obs.disconnect(); }
-  }, { threshold: 0.3 }).observe(demoBox);
 
-  /* ---------- 9. 最新 Release 获取 + 三通道下载 ---------- */
+  /* ── 下载：自动指向最新 Release，多通道镜像（页面不展示版本号）── */
   var STATE = {
-    version: '0.1.78',
-    filename: 'QNote-v0.1.78-arm64-v8a.apk',
-    gh: 'https://github.com/favoroo/QNote/releases/download/v0.1.78/QNote-v0.1.78-arm64-v8a.apk',
-    gitee: 'https://gitee.com/favo9/qnote/releases/download/v0.1.78/QNote-v0.1.78-arm64-v8a.apk',
-    cn: ''
+    gh: 'https://github.com/favoroo/QNote/releases/latest',
+    gitee: 'https://gitee.com/favo9/qnote/releases/latest',
+    cn: '',
+    mirror: 'gh',
   };
-  STATE.cn = 'https://ghfast.top/' + STATE.gh;
-  function pickMirror() {
-    var m = LS.get('qnote.landing.mirror.v1', '');
-    if (m !== 'gh' && m !== 'cn' && m !== 'gitee') {
-      m = ((navigator.language || 'en') + '').toLowerCase().indexOf('zh') === 0 ? 'cn' : 'gh';
-    }
-    return m;
-  }
-  var mirror = pickMirror();
-  function applyDownload() {
-    var url = STATE[mirror] || STATE.gh;
-    $$('.dl-main').forEach(function (a) { a.href = url; });
-    $$('.js-ver').forEach(function (el) { el.textContent = 'v' + STATE.version; });
-    $$('#dlbox .mchip').forEach(function (b) {
-      b.classList.toggle('on', b.dataset.mirror === mirror);
+  var dlBtn = $('#dlBtn');
+
+  function applyMirror(m) {
+    STATE.mirror = m;
+    dlBtn.href = STATE[m] || STATE.gh;
+    $$('.mirror-chip').forEach(function (b) {
+      var on = b.dataset.mirror === m;
+      b.classList.toggle('bg-primary-50', on);
+      b.classList.toggle('text-primary-700', on);
+      b.classList.toggle('border-primary-600/30', on);
+      b.classList.toggle('bg-white', !on);
+      b.classList.toggle('text-gray-600', !on);
+      b.classList.toggle('border-gray-300', !on);
     });
-    $$('.js-mchip').forEach(function (b) {
-      var on = b.dataset.mirror === mirror;
-      b.classList.toggle('on', on);
-      // 深色区 chip 有内联底色会盖过 .on 类样式，这里直接改内联值保证选中可见
-      b.style.background = on ? 'var(--accent)' : 'rgba(255,255,255,.06)';
-      b.style.borderColor = on ? 'var(--accent)' : 'rgba(255,255,255,.14)';
-      b.style.color = on ? '#fff' : '#c7cbd8';
-    });
-    var note = $('.js-dl-note');
-    if (note) note.innerHTML = '当前通道：<code>' + STATE.filename + '</code> · arm64-v8a · 约 30 MB · GitHub/Gitee 双端同发布';
   }
-  function fetchJSON(url) {
-    return fetch(url, { headers: { Accept: 'application/json' } })
-      .then(function (r) { if (!r.ok) throw 0; return r.json(); });
-  }
-  function refreshLatest() {
-    fetchJSON('https://api.github.com/repos/favoroo/QNote/releases/latest').then(function (j) {
-      var apk = (j.assets || []).filter(function (a) { return a.name && /\.apk$/i.test(a.name); })[0];
-      if (j.tag_name) STATE.version = String(j.tag_name).replace(/^v/, '');
-      if (apk) {
-        STATE.filename = apk.name; STATE.gh = apk.browser_download_url;
-        STATE.cn = 'https://ghfast.top/' + STATE.gh;
-        STATE.gitee = 'https://gitee.com/favo9/qnote/releases/download/v' + STATE.version + '/' + apk.name;
-      }
-      applyDownload();
-    }).catch(function () { /* 离线/限流：保留静态兜底 v0.1.78 */ });
-  }
-  $$('[data-mirror]').forEach(function (b) {
-    b.addEventListener('click', function () {
-      mirror = b.dataset.mirror; LS.set('qnote.landing.mirror.v1', mirror); applyDownload();
-    });
+  $$('.mirror-chip').forEach(function (b) {
+    b.addEventListener('click', function () { applyMirror(b.dataset.mirror); });
   });
-  applyDownload();
-  refreshLatest();
 
-  /* ---------- 10. toast ---------- */
-  var toastEl = $('#toast'), toastTimer = 0;
-  function toast(msg) {
-    $('#toastText').textContent = msg;
-    toastEl.classList.add('show');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 2200);
-  }
-
-  /* ---------- 11. 热力图（手机统计屏内） ---------- */
-  var hm = $('#hmGrid');
-  if (hm) {
-    var seed = 42;
-    function rnd() { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
-    for (var i = 0; i < 54; i++) {
-      var d = document.createElement('i');
-      var o = rnd(); d.style.setProperty('--o', (o < 0.2 ? 0 : o < 0.5 ? 0.3 : o < 0.8 ? 0.6 : 1));
-      hm.appendChild(d);
-    }
-  }
-
-  /* ---------- 12. Hero 对话屏首次流式打字 ---------- */
-  var chatEl = $('#chatAnswer');
-  if (chatEl && !REDUCED) {
-    var full = chatEl.textContent, ci = 0;
-    chatEl.textContent = '';
-    var chatTimer = setInterval(function () {
-      ci += 3;
-      chatEl.innerHTML = full.slice(0, ci) + '<span class="chat-cursor"></span>';
-      if (ci >= full.length) { clearInterval(chatTimer); chatEl.textContent = full; }
-    }, 22);
-  }
-
-  /* ---------- 13. 平滑锚点（带 header 偏移微调由 CSS scroll-margin 处理） ---------- */
-  window.addEventListener('load', function () { sizeCanvas(); });
+  /* 后台拉取最新 Release，拿到 APK 直链后替换；失败则保持 /releases/latest 兜底 */
+  fetch('https://api.github.com/repos/favoroo/QNote/releases/latest')
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (data) {
+      if (!data || !data.tag_name) { return; }
+      var tag = data.tag_name;
+      var asset = (data.assets || []).filter(function (a) { return /\.apk$/i.test(a.name || ''); })[0];
+      var file = asset ? asset.name : null;
+      if (file) {
+        STATE.gh = 'https://github.com/favoroo/QNote/releases/download/' + tag + '/' + file;
+        STATE.gitee = 'https://gitee.com/favo9/qnote/releases/download/' + tag + '/' + file;
+        STATE.cn = 'https://ghfast.top/' + STATE.gh;
+      } else {
+        STATE.gh = 'https://github.com/favoroo/QNote/releases/tag/' + tag;
+        STATE.gitee = 'https://gitee.com/favo9/qnote/releases/tag/' + tag;
+      }
+      applyMirror(STATE.mirror);
+    })
+    .catch(function () { /* 保持兜底链接 */ });
 })();
 </script>
 </body>
