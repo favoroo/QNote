@@ -1,0 +1,36 @@
+# QNote GitHub Pages 部署：docs/ 目录为站点源（含介绍落地页 index.html）
+# 与 favoroo/Q-profile 的 Pages 工作流同构：workflow 构建型（无需构建步骤，直接上传静态目录）
+name: Deploy Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+# 同一时刻只跑一个部署，新的提交会取消进行中的旧部署
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./docs
+      - id: deployment
+        uses: actions/deploy-pages@v4
