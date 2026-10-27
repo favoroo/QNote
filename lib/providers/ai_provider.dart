@@ -6,10 +6,10 @@ import 'package:qnote_flutter/config/defaults.dart';
 import 'package:qnote_flutter/core/ai/ai_error_explainer.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
-import 'package:qnote_flutter/core/ai/free_model_service.dart';
 import 'package:qnote_flutter/core/ai/model_vision_capability.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/refresh/refresh_failure_notice.dart';
+import 'package:qnote_flutter/core/storage/ai_provider_repository.dart';
 import 'package:qnote_flutter/core/agent/agent_tool_labels.dart';
 import 'package:qnote_flutter/core/agent/agent_tool_registry.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_cancellation_token.dart';
@@ -32,10 +32,9 @@ import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/providers/agent_support.dart';
-import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
-import 'package:qnote_flutter/models/free_model_config.dart';
+import 'package:qnote_flutter/models/ai_provider.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/models/todo.dart';
 import 'package:uuid/uuid.dart';
@@ -74,35 +73,15 @@ final aiTemperaturesProvider = FutureProvider<AiTemperatures?>((ref) async {
   return repo.getAiTemperatures();
 });
 
-// 免费模型相关 Provider
-final freeModelsProvider =
-    FutureProvider<List<FreeModelConfig>>((ref) async {
-  return FreeModelService.instance.getCachedModels();
-});
-
-final freeModelsManifestProvider =
-    FutureProvider<FreeModelsManifest?>((ref) async {
-  return FreeModelService.instance.getCachedManifest();
-});
-
-final freeModelsLastUpdateProvider = FutureProvider<DateTime?>((ref) async {
-  return FreeModelService.instance.getLastUpdateTime();
-});
-
-// 用户选择的主模型ID
-final selectedFreeModelProvider = StateProvider<String?>((ref) => null);
-
-// 免费模型更新状态
-final freeModelUpdatingProvider = StateProvider<bool>((ref) => false);
-
-final aiConfigListProvider =
-    AsyncNotifierProvider<AiConfigListNotifier, List<AiConfig>>(() {
-      return AiConfigListNotifier();
+final aiProviderListProvider =
+    AsyncNotifierProvider<AiProviderListNotifier, List<AiProvider>>(() {
+      return AiProviderListNotifier();
     });
 
-class AiConfigListNotifier extends AsyncNotifier<List<AiConfig>> {
+/// 厂商条目列表：界面上的模型来源、模型选择器、角色绑定都从这里读
+class AiProviderListNotifier extends AsyncNotifier<List<AiProvider>> {
   @override
-  Future<List<AiConfig>> build() async {
+  Future<List<AiProvider>> build() async {
     void onWorkspaceChange(WorkspaceChangeEvent event) {
       if (event.path == '/settings/ai.json') {
         refresh();
@@ -113,14 +92,12 @@ class AiConfigListNotifier extends AsyncNotifier<List<AiConfig>> {
     ref.onDispose(() {
       WorkspaceEventBus.instance.removeListener(onWorkspaceChange);
     });
-    final repo = ConfigRepository.instance;
-    return repo.getAllAiConfigs();
+    return AiProviderRepository.instance.getAll();
   }
 
   Future<void> refresh() async {
-    final repo = ConfigRepository.instance;
     try {
-      state = AsyncData(await repo.getAllAiConfigs());
+      state = AsyncData(await AiProviderRepository.instance.getAll());
     } catch (e, st) {
       RefreshFailureNotice.report(
         source: 'AI 配置',
@@ -133,38 +110,45 @@ class AiConfigListNotifier extends AsyncNotifier<List<AiConfig>> {
     }
   }
 
-  Future<AiConfig> addConfig(AiConfig config) async {
-    final repo = ConfigRepository.instance;
-    await repo.insertAiConfig(config);
+  Future<AiProvider> addProvider(AiProvider provider) async {
+    final saved = await AiProviderRepository.instance.upsert(provider);
     // 内存增量更新，避免全表重查
-    state = AsyncData([...(state.valueOrNull ?? []), config]);
-    return config;
+    state = AsyncData([...(state.valueOrNull ?? []), saved]);
+    return saved;
   }
 
-  Future<void> updateConfig(AiConfig config) async {
-    final repo = ConfigRepository.instance;
-    await repo.updateAiConfig(config);
+  Future<void> updateProvider(AiProvider provider) async {
+    final saved = await AiProviderRepository.instance.upsert(provider);
     // 内存替换目标项
     state = AsyncData(
       (state.valueOrNull ?? [])
-          .map((c) => c.id == config.id ? config : c)
+          .map((p) => p.id == saved.id ? saved : p)
           .toList(),
     );
   }
 
-  Future<void> deleteConfig(String id) async {
-    final repo = ConfigRepository.instance;
-    await repo.deleteAiConfig(id);
-    // 内存移除
+  Future<void> deleteProvider(String id) async {
+    await AiProviderRepository.instance.delete(id);
+    // 内存移除 + 收敛默认标记（默认项可能刚被删掉）
     state = AsyncData(
-      (state.valueOrNull ?? []).where((c) => c.id != id).toList(),
+      (state.valueOrNull ?? []).where((p) => p.id != id).toList(),
     );
+    final providers = state.valueOrNull ?? const <AiProvider>[];
+    if (providers.isNotEmpty && providers.every((p) => !p.isDefault)) {
+      await AiProviderRepository.instance.setDefault(providers.first.id);
+      await refresh();
+    }
+  }
+
+  /// 设为默认厂商（全局唯一）
+  Future<void> setDefault(String id) async {
+    await AiProviderRepository.instance.setDefault(id);
+    await refresh();
   }
 }
 
-final defaultAiConfigProvider = FutureProvider<AiConfig?>((ref) async {
-  final repo = ConfigRepository.instance;
-  return repo.getDefaultAiConfig();
+final defaultAiProviderProvider = FutureProvider<AiProvider?>((ref) async {
+  return AiProviderRepository.instance.getDefault();
 });
 
 Future<void> saveAiRoles(AiRoles roles) async {

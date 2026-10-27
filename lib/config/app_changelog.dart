@@ -14,6 +14,16 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.79',
+    date: '2026-10-27',
+    notes: [
+      'AI 模型服务全面重构为厂商条目管理：一个服务商条目 = Base URL + 多把 API Key + 多个启用模型，对齐 CLIProxyAPI 语义，存量配置启动时自动平滑迁移',
+      '新增密钥池轮询：同一厂商下多把 Key 按 round-robin 逐请求轮询，撞 429 或配额耗尽自动冷却切换、冷却后回池',
+      '新增全屏服务商详情页：支持批量粘贴多 Key 逐把测试、一键「扫描模型」拉取全量列表并按需勾选启用，对话 / 时间线提取 / 生图可分别绑定不同模型',
+      '彻底移除内置免费模型与硬编码 Key：小Q 对话、悬浮球、时间线提取、每日评分等场景在未配置模型时统一弹窗引导前往添加',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.78',
     date: '2026-10-07',
     notes: [

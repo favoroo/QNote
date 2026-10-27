@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'package:qnote_flutter/config/app_version.dart';
+import 'package:qnote_flutter/core/ai/ai_provider_migration.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/model_vision_capability.dart';
 import 'package:qnote_flutter/core/health/health_sync_service.dart';
@@ -50,12 +51,15 @@ Future<void> preInitializeApp() async {
   final configRepo = ConfigRepository.instance;
   await Future.wait([
     configRepo.ensureDefaultShortcuts(),
-    configRepo.ensureDefaultAiConfigs(),
     AiRoleService.instance.initAndEnsureDefaults(),
     NotificationService.instance.init(),
     // 识图能力判定的同步查表依赖这份缓存，必须在首帧前预热
     ModelVisionCapability.loadFromPrefs(),
   ]);
+
+  // 旧版模型级配置（ai_configs）→ 厂商条目（ai_providers）的一次性迁移。
+  // 必须在首帧前完成：用户可能一进来就发消息，角色解析不能读到旧格式绑定。
+  await AiProviderMigration.instance.run();
 }
 
 class QNoteApp extends ConsumerStatefulWidget {

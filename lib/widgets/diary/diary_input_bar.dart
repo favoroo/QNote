@@ -8,14 +8,13 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'package:qnote_flutter/core/utils/schema_formatter.dart';
 import 'package:qnote_flutter/widgets/diary/ai_extract_helper.dart';
+import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 import 'package:qnote_flutter/widgets/diary/model_selection_dialog.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/shortcut_field.dart';
-import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/models/fixed_event_template.dart';
-import 'package:qnote_flutter/models/free_model_config.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/providers/fixed_event_provider.dart';
@@ -1080,6 +1079,13 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         (extractImages && draft.selectedPhotos.isNotEmpty);
     if (!isExtractButtonEnabled) return;
 
+    if (!await AiRoleService.instance.hasUsableConfigForRole('timelineOptimization')) {
+      if (mounted) {
+        await showNoModelConfiguredDialog(context, scene: '时间线 AI 提取');
+      }
+      return;
+    }
+
     setState(() {
       _isExtracting = true;
       _extractPhase = _ExtractPhase.sending;
@@ -1095,21 +1101,25 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       final roleSettings = await AiRoleService.instance.getSettingsForRole(
         'timelineOptimization',
       );
-      // 要发图而绑定模型看不了图时（实测这类模型收图不报错、直接把内容编出来），
-      // 本次提取改走内置识图链路，温度与 token 预算仍沿用角色设置
-      final effectiveConfig = ModelVisionCapability.withVisionFallback(
-        roleConfig,
-        sendingImage: extractImages && draft.selectedPhotos.isNotEmpty,
-      );
-      if (!identical(effectiveConfig, roleConfig)) {
-        LoggerService.instance.logAI(
-          '快捷记录的图片提取已改走内置识图链路',
-          details: '原绑定模型=${roleConfig.modelName} 不支持图片输入，'
-              '改用 ${effectiveConfig.modelName}',
-        );
+      // 要发图而绑定模型看不了图时，内置识图兜底已下线：明确让用户换模型，
+      // 而不是把图片塞给一个看不见画面的模型（它会照常 200 并编造内容）
+      final sendingImage = extractImages && draft.selectedPhotos.isNotEmpty;
+      if (sendingImage && !ModelVisionCapability.supportsVision(roleConfig)) {
+        if (mounted) {
+          setState(() {
+            _isExtracting = false;
+            _extractPhase = _ExtractPhase.idle;
+          });
+          await showVisionUnsupportedDialog(
+            context,
+            modelName: roleConfig.modelName,
+            scene: '快捷记录的图片提取',
+          );
+        }
+        return;
       }
       aiService.updateConfig(
-        effectiveConfig,
+        roleConfig,
         temperature: roleSettings.temperature,
         maxTokens: roleSettings.maxTokens,
       );
@@ -1567,49 +1577,8 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
 
   void _showModelMenu() async {
     FocusScope.of(context).unfocus();
-
-    List<AiConfig> configs = [];
-    try {
-      configs = await ref.read(aiConfigListProvider.future);
-    } catch (e) {
-      LoggerService.instance.logAI('加载模型配置失败: $e');
-    }
-
-    if (!mounted) return;
-
-    final roles = await AiRoleService.instance.getRoles();
-    final currentModelId = roles.timelineOptimizationUseFreeModel
-        ? 'free:${roles.timelineOptimizationFreeModelId ?? kDefaultFreeModelId}'
-        : roles.timelineOptimization;
-
-    if (!mounted) return;
-
-    final selectedId = await showDialog<String>(
-      context: context,
-      builder: (context) =>
-          ModelSelectionDialog(configs: configs, selectedId: currentModelId),
-    );
-
-    if (selectedId != null && mounted) {
-      final isFree = selectedId.startsWith('free:');
-      final freeModelId = isFree ? selectedId.substring(5) : null;
-      final newRoles = roles.copyWith(
-        timelineOptimization: isFree ? null : selectedId,
-        timelineOptimizationUseFreeModel: isFree,
-        timelineOptimizationFreeModelId: freeModelId,
-      );
-      await AiRoleService.instance.saveRoles(newRoles);
-      ref.invalidate(aiRolesProvider);
-      if (!mounted) return;
-      final displayName = isFree
-          ? (kAssistantBuiltinModels
-                  .firstWhere((m) => m['id'] == selectedId,
-                      orElse: () => {'name': selectedId})['name'] ??
-              'QNote内置模型')
-          : (configs
-                  .firstWhere((c) => c.id == selectedId,
-                      orElse: () => configs.first)
-                  .name);
+    final displayName = await showTimelineModelSelector(context, ref);
+    if (displayName != null && mounted) {
       Toast.success(
         context,
         '已切换：$displayName',
@@ -1617,6 +1586,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       );
     }
   }
+
 
   void _removeModelMenuOverlay() {
     _modelMenuOverlay?.remove();

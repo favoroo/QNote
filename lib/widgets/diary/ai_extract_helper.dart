@@ -31,6 +31,19 @@ class AiExtractResult {
   });
 }
 
+/// 要发图而绑定模型不支持识图时抛出
+///
+/// 内置识图模型下线后不再有「静默换模型」的兜底：调用方据此弹窗引导用户换模型，
+/// 而不是把图片塞给一个看不见画面的模型（它会照常 200 并编造内容）。
+class VisionUnsupportedException implements Exception {
+  final String modelName;
+
+  VisionUnsupportedException(this.modelName);
+
+  @override
+  String toString() => '当前模型「$modelName」不支持图片输入';
+}
+
 Future<AiExtractResult?> extractExistingRecord({
   required WidgetRef ref,
   required BuildContext context,
@@ -44,27 +57,26 @@ Future<AiExtractResult?> extractExistingRecord({
 }) async {
   onLoadingChanged?.call(true);
   try {
+    // 未配置模型：静默返回，由用户触发的入口负责弹「去添加模型」引导
+    if (!await AiRoleService.instance.hasUsableConfigForRole('timelineOptimization')) {
+      LoggerService.instance.logAI(
+        '时间线提取跳过：尚未配置可用的 AI 模型',
+        level: LogLevel.warning,
+      );
+      return null;
+    }
     final aiService = ref.read(aiServiceProvider);
     final roleConfig = await AiRoleService.instance.getEffectiveConfigForRole('timelineOptimization');
     final roleSettings = await AiRoleService.instance.getSettingsForRole('timelineOptimization');
     final aiTempsAsync = ref.read(aiTemperaturesProvider);
     final extractImages = aiTempsAsync.valueOrNull?.timelineOptimization.extractImages ?? false;
     final bool shouldSendImage = extractImages && photos.isNotEmpty;
-    // 要发图而绑定模型看不了图时（实测这类模型收图不报错、直接把内容编出来），
-    // 本次提取改走内置识图链路；温度与 token 预算仍沿用角色原值，保证输出格式不变
-    final effectiveConfig = ModelVisionCapability.withVisionFallback(
-      roleConfig,
-      sendingImage: shouldSendImage,
-    );
-    if (!identical(effectiveConfig, roleConfig)) {
-      LoggerService.instance.logAI(
-        '时间线提取的图片已改走内置识图链路',
-        details: '原绑定模型=${roleConfig.modelName} 不支持图片输入，'
-            '改用 ${effectiveConfig.modelName}',
-      );
+    // 要发图而绑定模型看不了图时，内置识图兜底已下线：交给调用方弹窗引导换模型
+    if (shouldSendImage && !ModelVisionCapability.supportsVision(roleConfig)) {
+      throw VisionUnsupportedException(roleConfig.modelName);
     }
     aiService.updateConfig(
-      effectiveConfig,
+      roleConfig,
       temperature: roleSettings.temperature,
       maxTokens: roleSettings.maxTokens,
     );
@@ -234,6 +246,7 @@ Future<AiExtractResult?> extractExistingRecord({
     }
     return null;
   } catch (e, stackTrace) {
+    if (e is VisionUnsupportedException) rethrow;
     String errorMessage = '提取失败';
     if (e is ArgumentError && e.message.toString().contains('apiKey')) {
       errorMessage = 'AI配置不完整，请在设置中完善API密钥和地址';

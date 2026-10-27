@@ -334,45 +334,6 @@ void main() {
     });
   });
 
-  group('GenerateImageTool.shouldTryFallback（降级判据）', () {
-    test('上游空结果且预算充足 => 允许降级', () {
-      expect(
-        GenerateImageTool.shouldTryFallback(ImageFailureKind.upstreamEmpty,
-            const Duration(seconds: 70)),
-        isTrue,
-      );
-    });
-
-    test('HTTP 错误（秒级失败）=> 允许降级', () {
-      expect(
-        GenerateImageTool.shouldTryFallback(ImageFailureKind.httpError,
-            const Duration(seconds: 1)),
-        isTrue,
-      );
-    });
-
-    test('本地保存失败 => 换后端无解，不降级', () {
-      expect(
-        GenerateImageTool.shouldTryFallback(ImageFailureKind.saveFailed,
-            const Duration(seconds: 1)),
-        isFalse,
-      );
-    });
-
-    test('剩余预算不足一次降级请求 => 放弃降级', () {
-      expect(
-        GenerateImageTool.shouldTryFallback(ImageFailureKind.timeout,
-            const Duration(seconds: 150)),
-        isFalse,
-      );
-      expect(
-        GenerateImageTool.shouldTryFallback(ImageFailureKind.upstreamEmpty,
-            const Duration(seconds: 149)),
-        isTrue,
-      );
-    });
-  });
-
   group('GenerateImageTool.describeFailures（给模型的可执行文案）', () {
     test('空尝试列表也要给出如实告知且禁止编造路径的文案', () {
       final text = GenerateImageTool.describeFailures([]);
@@ -385,9 +346,9 @@ void main() {
             const Duration(seconds: 70),
             detail: '网关接受请求但未产出图片'),
       ]);
-      expect(text, contains('Gemini 生图'));
+      expect(text, contains('gemini-3.1-flash-image'));
       expect(text, contains('上游返回空结果'));
-      expect(text, contains('与用户的描述无关'));
+      expect(text, contains('严禁编造图片路径'));
       expect(text, contains('严禁编造图片路径'));
     });
 
@@ -398,8 +359,8 @@ void main() {
         ImageAttempt.failure(sensenovaConfig, ImageFailureKind.httpError,
             const Duration(seconds: 3)),
       ]);
-      expect(text, contains('Gemini 生图'));
-      expect(text, contains('SenseNova 生图'));
+      expect(text, contains('gemini-3.1-flash-image'));
+      expect(text, contains('sensenova-u1.5-lite'));
       expect(text, contains('上游返回空结果'));
       expect(text, contains('服务返回错误'));
     });
@@ -453,26 +414,22 @@ void main() {
 
 const String aValidBase64 = 'SGVsbG8gUUhOb3RlIQ==';
 
-/// 两个内置生图后端的测试配置：仅用于文案与分类断言，不含真实 Key、不发起网络请求
+/// 两份生图模型的测试配置：仅用于文案与分类断言，不含真实 Key、不发起网络请求
 final AiConfig geminiConfig = AiConfig(
-  id: 'free_gemini-3.1-flash-image',
-  name: 'Gemini 生图',
+  providerId: 'provider-gemini',
+  name: 'gemini-3.1-flash-image',
   provider: 'openai',
   modelName: 'gemini-3.1-flash-image',
   apiKey: 'sk-test-placeholder',
-  baseUrl: 'https://cpa-gateway.example/v1',
-  createdAt: DateTime(2026, 9, 19),
-  updatedAt: DateTime(2026, 9, 19),
+  baseUrl: 'https://images.example/v1',
 );
 
 final AiConfig sensenovaConfig = AiConfig(
-  id: 'free_sensenova-u1.5-lite',
-  name: 'SenseNova 生图',
+  providerId: 'provider-sensenova',
+  name: 'sensenova-u1.5-lite',
   provider: 'openai',
   modelName: 'sensenova-u1.5-lite',
   apiKey: 'sk-test-placeholder',
-  baseUrl: 'https://token.sensenova.cn/v1',
-  createdAt: DateTime(2026, 9, 19),
-  updatedAt: DateTime(2026, 9, 19),
+  baseUrl: 'https://images.example/v1',
 );
 

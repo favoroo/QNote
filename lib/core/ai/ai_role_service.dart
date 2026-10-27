@@ -1,103 +1,37 @@
-import 'package:qnote_flutter/core/ai/ai_service.dart';
-import 'package:qnote_flutter/core/ai/free_model_service.dart';
-import 'package:qnote_flutter/models/ai_config.dart';
-import 'package:qnote_flutter/models/ai_roles.dart';
-import 'package:qnote_flutter/models/free_model_config.dart';
-import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:qnote_flutter/core/ai/no_model_exception.dart';
+import 'package:qnote_flutter/core/storage/ai_provider_repository.dart';
+import 'package:qnote_flutter/core/storage/config_repository.dart';
+import 'package:qnote_flutter/models/ai_config.dart';
+import 'package:qnote_flutter/models/ai_model_ref.dart';
+import 'package:qnote_flutter/models/ai_provider.dart';
+import 'package:qnote_flutter/models/ai_roles.dart';
+
+/// 角色 → 厂商模型 的绑定与解析服务
+///
+/// 数据源只有一处：`ai_providers` 厂商条目表。角色里存 [AiModelRef]
+/// （厂商 id + 模型名），解析时组装请求用的 [AiConfig]；绑定失效
+/// （厂商被删、模型被停用）时按「默认厂商的首个已启用模型 → 首个厂商的首个
+/// 已启用模型」回落，全部落空则抛 [NoModelConfiguredException] 交给 UI 引导。
 class AiRoleService {
   static final AiRoleService _instance = AiRoleService._();
   static AiRoleService get instance => _instance;
   AiRoleService._();
 
   final ConfigRepository _repo = ConfigRepository.instance;
+  final AiProviderRepository _providers = AiProviderRepository.instance;
 
-  // 免费模型主模型选择持久化键
-  static const _selectedFreeModelKey = 'selected_free_model';
-  // AI 温度设置迁移版本标记
+  /// AI 温度设置迁移版本标记
   static const _aiTempsMigrationVersionKey = 'ai_temps_migration_version';
-  // 默认免费模型升级迁移标记（升级到当时的内置头牌；再下线模型时 +1 重跑）
-  //
-  // 换头牌**故意不升版**：升版会把已显式选了旧头牌的老用户一起改写，
-  // 而头牌迁移只应作用于「从未设过值」的设备（见 `_migrateDeprecatedFreeModel`）。
-  static const _defaultModelMigrationVersionKey = 'default_model_migration_v5';
 
-  /// 已下线的内置聊天免费模型 id（含历史裸名变体，统一归位到新头牌）
-  static const Set<String> _deprecatedFreeModelIds = {
-    'gemini-3.5-flash-lite-mix',
-    'gemini-3.5-flash-lite',
-    'gemini-3.8-flash-low-mix',
-    'gemini-3.8-flash-low',
-    'gemini-3.8-flash-medium-mix',
-    'gemini-3.8-flash-high-mix',
-    'claude-sonnet-4-6',
-  };
-
-  /// 初始化并确保默认配置
-  Future<void> initAndEnsureDefaults() async {
-    final existing = await _repo.getAiRoles();
-    if (existing == null) {
-      // 初次进入应用：自动配置使用内置模型（开箱即用，头牌见 `kDefaultFreeModelId`）
-      await saveRoles(
-        const AiRoles(
-          assistantUseFreeModel: true,
-          timelineOptimizationUseFreeModel: true,
-          assistantFreeModelId: kDefaultFreeModelId,
-          timelineOptimizationFreeModelId: kDefaultFreeModelId,
-        ),
-      );
-    }
-
-    // 迁移：将 timelineOptimization.extractImages 默认值从 false 升级为 true
-    await _migrateExtractImagesDefault();
-    // 迁移：把绑定在已下线内置模型上的老用户归位到当前头牌
-    await _migrateDeprecatedFreeModel();
-  }
-
-  /// 迁移已下线的内置模型绑定至当前头牌
+  /// 初始化：只跑仍在生效的迁移，不再自动写入任何角色绑定
   ///
-  /// Gemini 系列（4 个聊天模型 + Gemini 生图）与 Claude Sonnet 4.6 都已从
-  /// BuiltinFreeKeys 删除，内置免费模型现在全部落在商汤网关。老设备上角色仍可能
-  /// 绑着这些 id：不迁移也不会崩（`getOrderedModels` 找不到 preferredId 时按
-  /// priority 兜底），但模型选择器无高亮、界面显示裸 id，实际走的模型与用户看到的
-  /// 不一致。这里一次性归位到新头牌，并把生图绑定落到唯一保留的商汤后端。
-  Future<void> _migrateDeprecatedFreeModel() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool(_defaultModelMigrationVersionKey) == true) return;
-
-    final existing = await _repo.getAiRoles();
-    if (existing != null) {
-      final deprecatedImage = existing.imageGenerationFreeModelId == 'gemini-3.1-flash-image';
-      final needRetarget = _deprecatedFreeModelIds.contains(existing.assistantFreeModelId) ||
-          _deprecatedFreeModelIds.contains(existing.timelineOptimizationFreeModelId) ||
-          deprecatedImage;
-      if (needRetarget) {
-        await saveRoles(
-          existing.copyWith(
-            assistantFreeModelId:
-                _deprecatedFreeModelIds.contains(existing.assistantFreeModelId)
-                    ? kDefaultFreeModelId
-                    : existing.assistantFreeModelId,
-            timelineOptimizationFreeModelId:
-                _deprecatedFreeModelIds.contains(
-                        existing.timelineOptimizationFreeModelId)
-                    ? kDefaultFreeModelId
-                    : existing.timelineOptimizationFreeModelId,
-            imageGenerationFreeModelId: deprecatedImage
-                ? 'sensenova-u1.5-lite'
-                : existing.imageGenerationFreeModelId,
-          ),
-        );
-      }
-    }
-
-    final preferred = await getPreferredFreeModelId();
-    if (preferred == null || _deprecatedFreeModelIds.contains(preferred)) {
-      await savePreferredFreeModelId(kDefaultFreeModelId);
-    }
-
-    await prefs.setBool(_defaultModelMigrationVersionKey, true);
+  /// 旧版本会在这里把两个角色默认指到内置免费模型（开箱即用）；内置模型下线后
+  /// 「开箱即用」不再成立——没有厂商条目时由「未配置模型」引导弹窗负责把用户
+  /// 带到添加页，因此这里刻意什么都不写。
+  Future<void> initAndEnsureDefaults() async {
+    await _migrateExtractImagesDefault();
   }
 
   /// 迁移旧版用户的 extractImages 设置：默认开启图片提取
@@ -139,32 +73,33 @@ class AiRoleService {
     await _repo.saveAiRoles(roles);
   }
 
-  /// 清理指向已删除配置的角色绑定，返回清理后的角色配置
+  /// 清理指向已删除厂商 / 已停用模型的角色绑定，返回清理后的角色配置
   ///
-  /// 历史遗留：旧版 `AiRoles.copyWith` 无法把字段置回 null，删除配置后角色里
-  /// 会残留失效 id。虽然 `getEffectiveConfigForRole` 会回退到默认配置、功能不受影响，
-  /// 但绑定值与实际生效模型不一致，界面也无法反映真实状态。这里一次性归位到内置模型。
+  /// 保留绑定会让界面显示的名字与实际生效模型不一致：解析侧虽有回落，
+  /// 但用户看到的「已选模型」是失效项，必须把绑定归位到未绑定状态。
   Future<AiRoles> pruneStaleRoleBindings() async {
     final roles = await getRoles();
-    final configs = await _repo.getAllAiConfigs();
-    final validIds = configs.map((c) => c.id).toSet();
+    final providers = await _providers.getAll();
+
+    bool isValid(AiModelRef? ref) {
+      if (ref == null) return true;
+      final provider =
+          providers.where((p) => p.id == ref.providerId).firstOrNull;
+      return provider != null && provider.hasModel(ref.modelName);
+    }
 
     var updated = roles;
     var changed = false;
-
-    if (roles.assistant != null && !validIds.contains(roles.assistant)) {
-      updated = updated.copyWith(
-        assistant: null,
-        assistantUseFreeModel: true,
-      );
+    if (!isValid(roles.assistant)) {
+      updated = updated.copyWith(assistant: null);
       changed = true;
     }
-    if (roles.timelineOptimization != null &&
-        !validIds.contains(roles.timelineOptimization)) {
-      updated = updated.copyWith(
-        timelineOptimization: null,
-        timelineOptimizationUseFreeModel: true,
-      );
+    if (!isValid(roles.timelineOptimization)) {
+      updated = updated.copyWith(timelineOptimization: null);
+      changed = true;
+    }
+    if (!isValid(roles.imageGeneration)) {
+      updated = updated.copyWith(imageGeneration: null);
       changed = true;
     }
 
@@ -180,26 +115,6 @@ class AiRoleService {
 
   Future<void> saveTemperatures(AiTemperatures temps) async {
     await _repo.saveAiTemperatures(temps);
-  }
-
-  Future<AiConfig?> getConfigForRole(String role) async {
-    final roles = await getRoles();
-    String? configId;
-    switch (role) {
-      case 'assistant':
-        configId = roles.assistant;
-        break;
-      case 'timelineOptimization':
-        configId = roles.timelineOptimization;
-        break;
-    }
-    if (configId == null) return null;
-    final configs = await _repo.getAllAiConfigs();
-    try {
-      return configs.firstWhere((c) => c.id == configId);
-    } catch (_) {
-      return null;
-    }
   }
 
   Future<AiRoleSettings> getSettingsForRole(String role) async {
@@ -224,120 +139,99 @@ class AiRoleService {
     return settings.maxTokens;
   }
 
-  /// 判断角色是否启用了免费模型
-  Future<bool> isFreeModelEnabled(String role) async {
+  /// 取角色绑定的模型引用（未绑定返回 null）
+  Future<AiModelRef?> boundRefForRole(String role) async {
     final roles = await getRoles();
-    if (role == 'assistant') return roles.assistantUseFreeModel;
-    if (role == 'timelineOptimization') {
-      return roles.timelineOptimizationUseFreeModel;
-    }
-    return false;
-  }
-
-  /// 获取用户选择的主模型ID
-  Future<String?> getPreferredFreeModelId() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_selectedFreeModelKey);
-  }
-
-  /// 保存用户选择的主模型ID
-  Future<void> savePreferredFreeModelId(String? modelId) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (modelId == null || modelId.isEmpty) {
-      await prefs.remove(_selectedFreeModelKey);
-    } else {
-      await prefs.setString(_selectedFreeModelKey, modelId);
+    switch (role) {
+      case 'assistant':
+        return roles.assistant;
+      case 'timelineOptimization':
+        return roles.timelineOptimization;
+      case 'imageGeneration':
+        return roles.imageGeneration;
+      default:
+        return null;
     }
   }
 
-  /// 获取角色绑定的免费模型列表（排序后）
-  Future<List<FreeModelConfig>> getFreeModelConfigsForRole(String role) async {
-    final models = await FreeModelService.instance.getCachedModels();
-    if (models.isEmpty) return [];
-    final preferredId = await getPreferredFreeModelId();
-    return FreeModelService.instance.getOrderedModels(models, preferredId);
-  }
-
-  /// 获取小Q生图工具的生效配置
-  ///
-  /// 读取 AiRoles.imageGenerationFreeModelId 绑定的内置生图模型 id，
-  /// 绑定缺失或失效时回落到列表首位的商汤生图模型。
-  Future<AiConfig> getImageGenerationModelConfig() async {
+  /// 写入角色绑定（null 表示清空绑定，回落到默认厂商的首个模型）
+  Future<void> bindRole(String role, AiModelRef? ref) async {
     final roles = await getRoles();
-    final models = FreeModelService.instance.getImageGenerationModels();
-    final boundId = roles.imageGenerationFreeModelId;
-    final config = models.firstWhere(
-      (m) => m.id == boundId,
-      orElse: () => models.first,
-    );
-    return FreeModelService.instance.toAiConfig(config);
+    switch (role) {
+      case 'assistant':
+        await saveRoles(roles.copyWith(assistant: ref));
+        break;
+      case 'timelineOptimization':
+        await saveRoles(roles.copyWith(timelineOptimization: ref));
+        break;
+      case 'imageGeneration':
+        await saveRoles(roles.copyWith(imageGeneration: ref));
+        break;
+    }
   }
 
-  /// 取与主后端互补的备用内置生图配置（Gemini ↔ SenseNova）
+  /// 解析角色的有效配置；没有任何可用模型时抛 [NoModelConfiguredException]
+  Future<AiConfig> getEffectiveConfigForRole(String role) async {
+    final providers = await _providers.getAll();
+    final ref = await boundRefForRole(role);
+
+    final bound = _resolveRef(providers, ref);
+    if (bound != null) return bound;
+
+    // 绑定缺失/失效：默认厂商的首个已启用模型 → 首个可用厂商的首个已启用模型
+    final fallback = _firstUsableProvider(providers);
+    if (fallback != null) {
+      final model = fallback.firstModel!;
+      return AiConfig.fromProvider(fallback, model.id);
+    }
+
+    throw NoModelConfiguredException(role);
+  }
+
+  /// 预检：角色当前是否有可用模型（入口处弹引导用，失败不抛异常）
+  Future<bool> hasUsableConfigForRole(String role) async {
+    try {
+      final providers = await _providers.getAll();
+      final ref = await boundRefForRole(role);
+      if (_resolveRef(providers, ref) != null) return true;
+      return _firstUsableProvider(providers) != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 生图工具使用的配置；未配置生图模型时返回 null（工具据此给出引导文案）
   ///
-  /// 供小Q `generate_image` 工具在主后端返回空结果/报错时降级重试。
-  /// 刻意不读取角色绑定、不落库，也不改变
-  /// [FreeModelService.getImageGenerationModels] 的候选语义（生图模型不得进入聊天 fallback 链）；
-  /// 只按 [primaryModelName] 排除主后端自身，取剩下的第一个内置生图模型。
-  Future<AiConfig?> getImageGenerationFallbackConfig(String primaryModelName) async {
-    final models = FreeModelService.instance.getImageGenerationModels();
-    for (final model in models) {
-      if (model.modelName == primaryModelName) continue;
-      return FreeModelService.instance.toAiConfig(model);
+  /// 刻意不回落默认对话模型：生图需要的是支持 `images/generations` 的模型，
+  /// 拿一个对话模型顶上去只会得到一次必然失败的调用。
+  Future<AiConfig?> getImageGenerationConfig() async {
+    final roles = await getRoles();
+    final ref = roles.imageGeneration;
+    if (ref == null) return null;
+    final providers = await _providers.getAll();
+    return _resolveRef(providers, ref);
+  }
+
+  /// 厂商条目 + 模型引用 → 请求配置；厂商/模型/密钥/地址任一不可用返回 null
+  AiConfig? _resolveRef(List<AiProvider> providers, AiModelRef? ref) {
+    if (ref == null) return null;
+    final provider =
+        providers.where((p) => p.id == ref.providerId).firstOrNull;
+    if (provider == null) return null;
+    if (!provider.hasModel(ref.modelName)) return null;
+    if (provider.baseUrl.trim().isEmpty) return null;
+    if (!provider.apiKeys.any((key) => key.trim().isNotEmpty)) return null;
+    return AiConfig.fromProvider(provider, ref.modelName);
+  }
+
+  /// 默认厂商优先，其次按创建顺序取第一个「地址 + 密钥 + 模型」齐全的厂商
+  AiProvider? _firstUsableProvider(List<AiProvider> providers) {
+    for (final provider in providers) {
+      if (provider.isDefault && provider.isUsable) return provider;
+    }
+    for (final provider in providers) {
+      if (provider.isUsable) return provider;
     }
     return null;
-  }
-
-  /// 获取角色的有效配置
-  ///
-  /// 如果角色启用了免费模型，返回主模型的 AiConfig；
-  /// 否则走原有逻辑（角色绑定 → 默认配置 → 第一个配置）。
-  Future<AiConfig> getEffectiveConfigForRole(String role) async {
-    final roles = await getRoles();
-
-    // 检查角色是否启用免费模型
-    final useFreeModel = role == 'assistant'
-        ? roles.assistantUseFreeModel
-        : roles.timelineOptimizationUseFreeModel;
-
-    if (useFreeModel) {
-      final models = await FreeModelService.instance.getCachedModels();
-      if (models.isEmpty) {
-        throw Exception('免费模型列表为空，请先在设置中更新免费模型');
-      }
-      // 优先根据角色绑定的具体内置模型 ID，若未指定则 fallback 到全局 preferredId
-      final roleFreeModelId = role == 'assistant'
-          ? roles.assistantFreeModelId
-          : roles.timelineOptimizationFreeModelId;
-      final preferredId = roleFreeModelId ?? await getPreferredFreeModelId();
-      final ordered = FreeModelService.instance.getOrderedModels(
-        models,
-        preferredId,
-      );
-      final rawConfig = FreeModelService.instance.toAiConfig(ordered.first);
-      final normalizedModel = AiService.normalizeModelName(rawConfig.modelName, baseUrl: rawConfig.baseUrl);
-      return normalizedModel != rawConfig.modelName
-          ? rawConfig.copyWith(modelName: normalizedModel)
-          : rawConfig;
-    }
-
-    // 原有逻辑
-    final roleConfig = await getConfigForRole(role);
-    if (roleConfig != null) {
-      final normalized = AiService.normalizeModelName(roleConfig.modelName, baseUrl: roleConfig.baseUrl);
-      return normalized != roleConfig.modelName ? roleConfig.copyWith(modelName: normalized) : roleConfig;
-    }
-    final configs = await _repo.getAllAiConfigs();
-    final defaultConfig = configs.where((c) => c.isDefault).firstOrNull;
-    if (defaultConfig != null) {
-      final normalized = AiService.normalizeModelName(defaultConfig.modelName, baseUrl: defaultConfig.baseUrl);
-      return normalized != defaultConfig.modelName ? defaultConfig.copyWith(modelName: normalized) : defaultConfig;
-    }
-    if (configs.isNotEmpty) {
-      final first = configs.first;
-      final normalized = AiService.normalizeModelName(first.modelName, baseUrl: first.baseUrl);
-      return normalized != first.modelName ? first.copyWith(modelName: normalized) : first;
-    }
-    throw Exception('No AI config available');
   }
 }

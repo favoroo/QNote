@@ -4,7 +4,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
+import 'package:uuid/uuid.dart';
+import 'package:qnote_flutter/config/models.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/storage/ai_provider_repository.dart';
 import 'package:qnote_flutter/core/storage/database_helper.dart';
 import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
@@ -17,9 +20,9 @@ import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/models/todo.dart';
 import 'package:qnote_flutter/models/folder.dart';
+import 'package:qnote_flutter/models/ai_provider.dart';
 import 'package:qnote_flutter/models/date_color_mark.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
-import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/user_profile.dart';
 import 'package:qnote_flutter/models/webdav_config.dart';
@@ -163,8 +166,8 @@ class ExportService {
       data['user_profile'] = profile.toMap();
     }
 
-    final aiConfigs = await _configRepo.getAllAiConfigs();
-    data['ai_configs'] = aiConfigs.map((c) => c.toMap()).toList();
+    final aiProviderList = await AiProviderRepository.instance.getAll();
+    data['ai_providers'] = aiProviderList.map((p) => p.toMap()).toList();
 
     final shortcutConfigs = await _configRepo.getAllShortcutConfigs();
     data['shortcut_configs'] = shortcutConfigs.map((c) => c.toMap()).toList();
@@ -298,10 +301,16 @@ class ExportService {
       await _importUserProfile(profileMap, overwrite);
     }
 
+    if (importData.containsKey('ai_providers')) {
+      final providers = (importData['ai_providers'] as List)
+          .map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      await _importAiProviders(providers, overwrite);
+    }
+    // 旧备份仍带着模型级 ai_configs：按「厂商+地址」归并成厂商条目补进来
     if (importData.containsKey('ai_configs')) {
       final configs = (importData['ai_configs'] as List)
           .map((e) => Map<String, dynamic>.from(e as Map)).toList();
-      await _importAiConfigs(configs, overwrite);
+      await _importLegacyAiConfigs(configs);
     }
 
     if (importData.containsKey('shortcut_configs')) {
@@ -363,7 +372,9 @@ class ExportService {
     if (importData.containsKey('notes')) summary.write(', 笔记=${(importData['notes'] as List).length}');
     if (importData.containsKey('todos')) summary.write(', 待办=${(importData['todos'] as List).length}');
     if (importData.containsKey('folders')) summary.write(', 文件夹=${(importData['folders'] as List).length}');
-    if (importData.containsKey('ai_configs')) summary.write(', AI配置=${(importData['ai_configs'] as List).length}');
+    if (importData.containsKey('ai_providers')) {
+      summary.write(', 模型服务=${(importData['ai_providers'] as List).length}');
+    }
     LoggerService.instance.logImport('数据导入完成', details: summary.toString());
   }
 
@@ -375,6 +386,7 @@ class ExportService {
       'folders',
       'user_profile',
       'ai_configs',
+      'ai_providers',
       'shortcut_configs',
       'chat_sessions',
       'webdav_config',
@@ -412,6 +424,7 @@ class ExportService {
     await db.delete('folders');
     await db.delete('user_profiles');
     await db.delete('ai_configs');
+    await db.delete('ai_providers');
     await db.delete('shortcut_configs');
     await db.delete('chat_sessions');
     // 导入覆盖数据时，不删除同步配置和应用全局配置，防止账号密码及个性化配置丢失
@@ -530,19 +543,57 @@ class ExportService {
     }
   }
 
-  Future<void> _importAiConfigs(
-    List<Map<String, dynamic>> configs,
-    bool merge,
+  Future<void> _importAiProviders(
+    List<Map<String, dynamic>> providers,
+    bool overwrite,
   ) async {
-    for (final map in configs) {
-      if (merge) {
-        final existing = await _configRepo.getDefaultAiConfig();
-        if (existing != null && existing.id == map['id']) continue;
-      }
+    final repo = AiProviderRepository.instance;
+    for (final map in providers) {
       try {
-        await _configRepo.insertAiConfig(AiConfig.fromMap(map));
+        final provider = AiProvider.fromMap(map);
+        if (provider.id.isEmpty || provider.baseUrl.trim().isEmpty) continue;
+        if (!overwrite) {
+          final existing = await repo.getById(provider.id);
+          if (existing != null) continue;
+        }
+        await repo.insertSilently(provider);
       } catch (e) {
-        LoggerService.instance.logImport('导入AI配置失败: ${map['id']}', level: LogLevel.error, details: e.toString());
+        LoggerService.instance.logImport(
+          '导入模型服务失败: ${map['id']}',
+          level: LogLevel.error,
+          details: e.toString(),
+        );
+      }
+    }
+  }
+
+  /// 旧格式备份里的模型级 ai_configs：按「厂商 + 地址」归并成厂商条目导入
+  ///
+  /// 只补不覆盖：老备份里的密钥与地址不该盖掉用户在新版本里已经维护好的厂商条目。
+  Future<void> _importLegacyAiConfigs(List<Map<String, dynamic>> configs) async {
+    final repo = AiProviderRepository.instance;
+    final existing = await repo.getAll();
+    final known = existing
+        .map((p) => '${p.vendorId ?? 'custom'}|${p.baseUrl}|${p.providerType}')
+        .toSet();
+    for (final provider in AiProvider.fromLegacyConfigMaps(configs)) {
+      final key =
+          '${provider.vendorId ?? 'custom'}|${provider.baseUrl}|${provider.providerType}';
+      if (known.contains(key)) continue;
+      try {
+        await repo.insertSilently(
+          provider.copyWith(
+            id: provider.id.isEmpty ? const Uuid().v4() : provider.id,
+            name: getProviderById(provider.vendorId ?? '')?.name ??
+                provider.name,
+          ),
+        );
+      } catch (e) {
+        LoggerService.instance.logImport(
+          '导入旧 AI 配置失败: ${provider.id}',
+          level: LogLevel.error,
+          details: e.toString(),
+        );
       }
     }
   }
@@ -1062,23 +1113,33 @@ class ExportService {
       }
     }
 
-    if (changes.containsKey('ai_configs')) {
-      final tableChanges = Map<String, dynamic>.from(changes['ai_configs'] as Map);
+    if (changes.containsKey('ai_providers')) {
+      final tableChanges = Map<String, dynamic>.from(changes['ai_providers'] as Map);
       final upserts = (tableChanges['upserts'] as List?) ?? [];
       final deletes = (tableChanges['deletes'] as List?) ?? [];
       for (final item in upserts) {
         try {
-          await _configRepo.insertAiConfig(AiConfig.fromMap(Map<String, dynamic>.from(item as Map)));
-        } catch (_) {
-          try {
-            await _configRepo.updateAiConfig(AiConfig.fromMap(Map<String, dynamic>.from(item as Map)));
-          } catch (_) {}
-        }
+          await AiProviderRepository.instance.insertSilently(
+            AiProvider.fromMap(Map<String, dynamic>.from(item as Map)),
+          );
+        } catch (_) {}
       }
       for (final id in deletes) {
         try {
-          await _configRepo.deleteAiConfig(id as String);
+          await AiProviderRepository.instance.delete(id as String);
         } catch (_) {}
+      }
+    }
+
+    // 旧版本设备推送的模型级配置：归并成厂商条目补进来（只补不覆盖）
+    if (changes.containsKey('ai_configs')) {
+      final tableChanges = Map<String, dynamic>.from(changes['ai_configs'] as Map);
+      final upserts = (tableChanges['upserts'] as List?) ?? [];
+      final legacyRows = upserts
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
+      if (legacyRows.isNotEmpty) {
+        await _importLegacyAiConfigs(legacyRows);
       }
     }
 

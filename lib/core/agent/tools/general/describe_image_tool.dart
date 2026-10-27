@@ -4,9 +4,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 
 import 'package:qnote_flutter/core/agent/models/agent_tool.dart';
+import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
-import 'package:qnote_flutter/core/ai/builtin_free_keys.dart';
-import 'package:qnote_flutter/core/ai/free_model_service.dart';
+import 'package:qnote_flutter/core/ai/model_vision_capability.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
@@ -14,16 +14,18 @@ import 'package:qnote_flutter/models/chat_session.dart';
 /// 图片来源形态（决定走哪条取字节路径）
 enum ImageSourceKind { dataUri, url, localPath }
 
-/// 识图工具：把图片交给内置视觉链路，换回一段文字描述
+/// 识图工具：把图片交给当前绑定的模型，换回一段文字描述
 ///
-/// 存在的原因是**对话模型不一定能看图，而网关不会报错**：实测商汤网关上的
-/// `glm-5.2` 收到图片仍返回 200，只是把左红右蓝答成「左=黑色，右=白色」（编造）。
-/// 因此当 `AgentLoop` 判定当前模型不支持图片输入时，会把图片从上下文里剥掉并改用
-/// 本工具：图片走 [BuiltinFreeKeys.createVisionConfig] 这条视觉链路（SenseNova 6.8
-/// flash-lite），只有**文字结论**回到对话模型的上下文里，模型不必也不该假装自己看见了画面。
+/// 存在的原因是**对话模型不一定能看图，而网关不会报错**：实测有的网关对
+/// 不支持图片的模型仍返回 200，并编造画面内容。因此当 `AgentLoop` 判定当前模型
+/// 不支持图片输入时，会把图片从上下文里剥掉并改用本工具：图片走一次独立的
+/// 非流式请求，只有**文字结论**回到对话模型的上下文里，模型不必也不该假装自己看见了画面。
 ///
+/// 识图链路用的是角色绑定的模型（`AiRoleService.getEffectiveConfigForRole`）：
+/// 内置识图模型下线后不再有专用兜底模型，绑定模型被判定为不支持识图时直接
+/// 返回带下一步指引的失败文案，让用户/模型知道该去设置里换模型。
 /// 形态对齐桌面端的 vision 脚本：一段提问 + 一张图 → 文本回复；区别是复用 [AiService]
-/// 而不是手搓 HTTP，从而带上内置 Key 池轮换、限流退避与 `ai_request_stats` 观测。
+/// 而不是手搓 HTTP，从而带上密钥池轮换、限流退避等发信策略。
 class DescribeImageTool extends AgentTool {
   /// 未传 question 时的默认提问：既要描述画面，也要把可读文字抠出来
   static const String defaultQuestion =
@@ -160,7 +162,12 @@ class DescribeImageTool extends AgentTool {
 
   /// 把视觉链路的文本回复包装成工具结果；空回复按失败处理（否则模型会把「没有内容」当成图片是空的）
   @visibleForTesting
-  ToolResult buildVisionResult(String rawPath, String question, String answer) {
+  ToolResult buildVisionResult(
+    String rawPath,
+    String question,
+    String answer, {
+    String modelName = '识图模型',
+  }) {
     final text = answer.trim();
     if (text.isEmpty) {
       return ToolResult.error(
@@ -170,19 +177,19 @@ class DescribeImageTool extends AgentTool {
     }
     LoggerService.instance.logAI(
       'describe_image 识图完成',
-      details: 'model=${BuiltinFreeKeys.visionModelName}, 输入=${_displayLabel(rawPath)}, 结果字数=${text.length}',
+      details: 'model=$modelName, 输入=${_displayLabel(rawPath)}, 结果字数=${text.length}',
     );
     return ToolResult.success(
-      '【识图结果 · ${BuiltinFreeKeys.visionModelName}】\n'
+      '【识图结果 · $modelName】\n'
       '提问：$question\n'
       '图片：${_displayLabel(rawPath)}\n\n'
       '${truncateOutput(text)}\n\n'
-      '以上由内置识图模型给出，当前对话模型并未直接看到画面；请基于它作答，不要补充图片里并不存在的细节。',
+      '以上由识图模型给出，当前对话模型并未直接看到画面；请基于它作答，不要补充图片里并不存在的细节。',
       uiDetails: {
         'type': 'describe_image',
         'path': _displayLabel(rawPath),
         'question': question,
-        'model': BuiltinFreeKeys.visionModelName,
+        'model': modelName,
         'chars': text.length,
       },
     );
@@ -278,13 +285,20 @@ class DescribeImageTool extends AgentTool {
   ///
   /// 必须新建实例而不是复用注入来的那一个 —— 主聊天、悬浮小Q、每日评分共享
   /// `aiServiceProvider` 的同一个 AiService，对它 `updateConfig` 会把用户当前对话模型改掉。
+  ///
+  /// 绑定模型不支持识图时抛出可读异常（而非静默换模型）：内置识图模型已下线，
+  /// 能让这张图被看见的只有用户自己配置的支持识图的模型。
   static Future<String> _requestVisionModel(String question, String imageDataUri) async {
+    final roleConfig = await AiRoleService.instance.getEffectiveConfigForRole('assistant');
+    if (!ModelVisionCapability.supportsVision(roleConfig)) {
+      throw StateError(
+        '当前模型「${roleConfig.modelName}」不支持图片输入（识图）。'
+        '请在「AI 模型配置」中添加或切换到支持识图的模型（模型名通常含 vision / -vl / omni，'
+        '或 Gemini / Claude 系列），也可在设置页对该模型做一次「识图检测」以确认能力',
+      );
+    }
     final service = AiService();
-    service.updateConfig(
-      FreeModelService.instance.toAiConfig(BuiltinFreeKeys.createVisionConfig()),
-      temperature: 0.2,
-      maxTokens: _maxAnswerTokens,
-    );
+    service.updateConfig(roleConfig, temperature: 0.2, maxTokens: _maxAnswerTokens);
     return service.chat([
       ChatMessage(role: 'user', content: question, images: [imageDataUri]),
     ]);

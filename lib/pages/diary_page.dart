@@ -10,12 +10,9 @@ import 'package:intl/intl.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
-import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/date_color_mark.dart';
-import 'package:qnote_flutter/models/free_model_config.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
-import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/providers/diary_progress_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
@@ -28,6 +25,7 @@ import 'package:qnote_flutter/providers/journal_provider.dart';
 import 'package:qnote_flutter/widgets/diary/ai_extract_helper.dart';
 import 'package:qnote_flutter/widgets/search_view.dart';
 import 'package:qnote_flutter/widgets/diary/diary_item.dart';
+import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 import 'package:qnote_flutter/widgets/diary/model_selection_dialog.dart';
 import 'package:qnote_flutter/widgets/diary/diary_input_bar.dart';
 import 'package:qnote_flutter/widgets/diary/cheer_burst_overlay.dart';
@@ -1264,21 +1262,45 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     final contentText = record.content.trim();
     if (contentText.isEmpty && record.photos.isEmpty) return;
 
+    // 未配置模型：批量抽取时静默跳过（入口已统一提示），单条提取时弹引导
+    if (!await AiRoleService.instance.hasUsableConfigForRole('timelineOptimization')) {
+      if (mounted && !_isBatchExtracting) {
+        await showNoModelConfiguredDialog(context, scene: 'AI 提取');
+      }
+      return;
+    }
+    if (!mounted) return;
+
     setState(() {
       _extractingRecordId = record.id;
     });
 
     _cancelToken = CancelToken();
-    final result = await extractExistingRecord(
-      ref: ref,
-      context: context,
-      content: contentText,
-      photos: record.photos,
-      recordTime: record.time,
-      startTime: record.startTime,
-      endTime: record.endTime,
-      cancelToken: _cancelToken,
-    );
+    AiExtractResult? result;
+    try {
+      result = await extractExistingRecord(
+        ref: ref,
+        context: context,
+        content: contentText,
+        photos: record.photos,
+        recordTime: record.time,
+        startTime: record.startTime,
+        endTime: record.endTime,
+        cancelToken: _cancelToken,
+      );
+    } on VisionUnsupportedException catch (e) {
+      if (mounted) {
+        setState(() => _extractingRecordId = null);
+        if (!_isBatchExtracting) {
+          await showVisionUnsupportedDialog(
+            context,
+            modelName: e.modelName,
+            scene: 'AI 提取',
+          );
+        }
+      }
+      return;
+    }
 
     if (result != null && mounted) {
       final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
@@ -1533,6 +1555,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     final allRecords = ref.read(diaryListProvider).valueOrNull;
     if (allRecords == null) return;
 
+    if (!await AiRoleService.instance.hasUsableConfigForRole('timelineOptimization')) {
+      if (mounted) {
+        await showNoModelConfiguredDialog(context, scene: 'AI 批量提取');
+      }
+      return;
+    }
+
     final selectedDate = ref.read(selectedDateProvider);
 
     // Filter records: no displayTag (or default '记录'), not deleted, has content or photos
@@ -1672,55 +1701,16 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   /// Long press on smart extract button to select model
   Future<void> _handleSmartExtractLongPress() async {
     if (_isBatchExtracting) return;
-
-    List<AiConfig> configs = [];
-    try {
-      configs = await ref.read(aiConfigListProvider.future);
-    } catch (_) {}
-
-    // mounted 为 false 时不能再用 context，必须先返回
-    if (!mounted) return;
-
-    final roles = await AiRoleService.instance.getRoles();
-    final currentModelId = roles.timelineOptimizationUseFreeModel
-        ? 'free:${roles.timelineOptimizationFreeModelId ?? kDefaultFreeModelId}'
-        : roles.timelineOptimization;
-    if (!mounted) return;
-
-    final selectedId = await showDialog<String>(
-      context: context,
-      builder: (context) =>
-          ModelSelectionDialog(configs: configs, selectedId: currentModelId),
-    );
-
-    if (selectedId != null && mounted) {
-      final isFree = selectedId.startsWith('free:');
-      final freeModelId = isFree ? selectedId.substring(5) : null;
-      final newRoles = roles.copyWith(
-        timelineOptimization: isFree ? null : selectedId,
-        timelineOptimizationUseFreeModel: isFree,
-        timelineOptimizationFreeModelId: freeModelId,
+    final displayName = await showTimelineModelSelector(context, ref);
+    if (displayName != null && mounted) {
+      Toast.success(
+        context,
+        '已切换：$displayName',
+        duration: const Duration(seconds: 1),
       );
-      await AiRoleService.instance.saveRoles(newRoles);
-      ref.invalidate(aiRolesProvider);
-      if (mounted) {
-        final displayName = isFree
-            ? (kAssistantBuiltinModels
-                    .firstWhere((m) => m['id'] == selectedId,
-                        orElse: () => {'name': selectedId})['name'] ??
-                'QNote内置模型')
-            : (configs
-                    .firstWhere((c) => c.id == selectedId,
-                        orElse: () => configs.first)
-                    .name);
-        Toast.success(
-          context,
-          '已切换：$displayName',
-          duration: const Duration(seconds: 1),
-        );
-      }
     }
   }
+
 
   /// 时间线"每日日记"悬浮按钮：位于智能提取按钮左侧。
   /// 当天已写日记时呈实心书本态，未写时呈描边记录态
@@ -1844,54 +1834,16 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   }
 
   Future<void> _handleAiExtractModelSelect(DiaryRecord record) async {
-    List<AiConfig> configs = [];
-    try {
-      configs = await ref.read(aiConfigListProvider.future);
-    } catch (_) {}
-
-    // mounted 为 false 时不能再用 context，必须先返回
-    if (!mounted) return;
-
-    final roles = await AiRoleService.instance.getRoles();
-    final currentModelId = roles.timelineOptimizationUseFreeModel
-        ? 'free:${roles.timelineOptimizationFreeModelId ?? kDefaultFreeModelId}'
-        : roles.timelineOptimization;
-    if (!mounted) return;
-
-    final selectedId = await showDialog<String>(
-      context: context,
-      builder: (context) =>
-          ModelSelectionDialog(configs: configs, selectedId: currentModelId),
-    );
-
-    if (selectedId != null && mounted) {
-      final isFree = selectedId.startsWith('free:');
-      final freeModelId = isFree ? selectedId.substring(5) : null;
-      final newRoles = roles.copyWith(
-        timelineOptimization: isFree ? null : selectedId,
-        timelineOptimizationUseFreeModel: isFree,
-        timelineOptimizationFreeModelId: freeModelId,
+    final displayName = await showTimelineModelSelector(context, ref);
+    if (displayName != null && mounted) {
+      Toast.success(
+        context,
+        '已切换：$displayName',
+        duration: const Duration(seconds: 1),
       );
-      await AiRoleService.instance.saveRoles(newRoles);
-      ref.invalidate(aiRolesProvider);
-      if (mounted) {
-        final displayName = isFree
-            ? (kAssistantBuiltinModels
-                    .firstWhere((m) => m['id'] == selectedId,
-                        orElse: () => {'name': selectedId})['name'] ??
-                'QNote内置模型')
-            : (configs
-                    .firstWhere((c) => c.id == selectedId,
-                        orElse: () => configs.first)
-                    .name);
-        Toast.success(
-          context,
-          '已切换：$displayName',
-          duration: const Duration(seconds: 1),
-        );
-      }
     }
   }
+
 
   void _confirmBatchExtract() {
     setState(() {

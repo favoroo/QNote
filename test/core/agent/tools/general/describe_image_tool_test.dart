@@ -131,6 +131,7 @@ void main() {
         '/images/a.jpg',
         '图里是什么颜色',
         '  左=红色，右=蓝色  ',
+        modelName: 'gpt-4o-vision',
       );
 
       expect(result.isError, isFalse);
@@ -140,7 +141,7 @@ void main() {
       expect(result.modelOutput, contains('并未直接看到画面'));
       expect(result.uiDetails?['type'], 'describe_image');
       expect(result.uiDetails?['path'], '/images/a.jpg');
-      expect(result.uiDetails?['model'], 'sensenova-6.8-flash-lite');
+      expect(result.uiDetails?['model'], 'gpt-4o-vision');
       // 识图工具返回文字，绝不把图片本体塞回上下文
       expect(result.images, isNull);
     });

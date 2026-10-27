@@ -340,7 +340,7 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
     ref.invalidate(noteListProvider);
     ref.invalidate(todoListProvider);
     ref.invalidate(folderListProvider);
-    ref.invalidate(aiConfigListProvider);
+    ref.invalidate(aiProviderListProvider);
     ref.invalidate(aiRolesProvider);
     ref.invalidate(aiTemperaturesProvider);
     ref.invalidate(shortcutListProvider);

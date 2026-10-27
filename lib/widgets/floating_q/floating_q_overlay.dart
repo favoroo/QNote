@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:qnote_flutter/core/router/app_router.dart';
 import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
+import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/utils/chat_image_dedupe.dart';
@@ -15,6 +16,7 @@ import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
 import 'package:qnote_flutter/widgets/ai/auto_read_toggle_button.dart';
 import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
+import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 import 'package:qnote_flutter/widgets/ai/quick_prompt_dialog.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/widgets/chat/chat_image_view.dart';
@@ -1004,6 +1006,13 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
     // 工作中由发送按钮转为停止按钮，键盘发送路径直接忽略（不清空已输入内容）
     if (fq.phase == FloatingQPhase.working) return;
     if (text.isEmpty && fq.attachedImages.isEmpty) return;
+    // 未配置模型：先弹引导，不清空输入
+    if (!await AiRoleService.instance.hasUsableConfigForRole('assistant')) {
+      if (mounted) {
+        await showNoModelConfiguredDialog(context, scene: '小Q 对话');
+      }
+      return;
+    }
     HapticFeedback.lightImpact();
     _inputController.clear();
     // 发送后无需手动滚动：消息区的 listen 监听到消息数变化会自动滚到底部

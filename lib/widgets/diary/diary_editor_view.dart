@@ -15,19 +15,17 @@ import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/core/utils/q_cursor_context.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
-import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
-import 'package:qnote_flutter/models/free_model_config.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/shortcut_field.dart';
-import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/widgets/unsaved_changes_dialog.dart';
 import 'package:qnote_flutter/widgets/diary/ai_extract_helper.dart';
+import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 import 'package:qnote_flutter/widgets/diary/model_selection_dialog.dart';
 import 'package:qnote_flutter/widgets/diary/edit_tag_time_sheet.dart';
 import 'package:qnote_flutter/widgets/q_text_selection_toolbar.dart';
@@ -1335,46 +1333,68 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     final contentText = _contentController.text.trim();
     if (contentText.isEmpty && _photos.isEmpty) return;
 
+    if (!await AiRoleService.instance.hasUsableConfigForRole('timelineOptimization')) {
+      if (mounted) {
+        await showNoModelConfiguredDialog(context, scene: 'AI 提取');
+      }
+      return;
+    }
+    if (!mounted) return;
+
     setState(() => _isExtracting = true);
 
     _cancelToken = CancelToken();
-    final result = await extractExistingRecord(
-      ref: ref,
-      context: context,
-      content: contentText,
-      photos: _photos,
-      recordTime: _time,
-      startTime: _startTime,
-      endTime: _endTime,
-      onLoadingChanged: (loading) {
-        if (mounted) setState(() => _isExtracting = loading);
-      },
-      cancelToken: _cancelToken,
-    );
+    final AiExtractResult? result;
+    try {
+      result = await extractExistingRecord(
+        ref: ref,
+        context: context,
+        content: contentText,
+        photos: _photos,
+        recordTime: _time,
+        startTime: _startTime,
+        endTime: _endTime,
+        onLoadingChanged: (loading) {
+          if (mounted) setState(() => _isExtracting = loading);
+        },
+        cancelToken: _cancelToken,
+      );
+    } on VisionUnsupportedException catch (e) {
+      if (mounted) {
+        setState(() => _isExtracting = false);
+        await showVisionUnsupportedDialog(
+          context,
+          modelName: e.modelName,
+          scene: 'AI 提取',
+        );
+      }
+      return;
+    }
 
     if (result != null && mounted) {
+      final extracted = result;
       final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
-      final foundShortcut = findShortcutById(result.shortcutId, shortcuts);
+      final foundShortcut = findShortcutById(extracted.shortcutId, shortcuts);
 
       _formControllers.clear();
 
-      if (result.tagEntries.isNotEmpty) {
+      if (extracted.tagEntries.isNotEmpty) {
         final newContent = _photos.isNotEmpty
             ? _mergeNotesWithContent(
-                result.notes,
+                extracted.notes,
                 _contentController.text,
               )
             : _contentController.text;
         setState(() {
-          _tagEntries = result.tagEntries;
-          _tags = result.tagEntries.map((e) => e.name).toList();
-          _displayTag = result.tagEntries.first.name;
+          _tagEntries = extracted.tagEntries;
+          _tags = extracted.tagEntries.map((e) => e.name).toList();
+          _displayTag = extracted.tagEntries.first.name;
           _contentController.text = newContent;
         });
       } else if (foundShortcut != null) {
         final newContent = _photos.isNotEmpty
             ? _mergeNotesWithContent(
-                result.notes,
+                extracted.notes,
                 _contentController.text,
               )
             : _contentController.text;
@@ -1390,14 +1410,14 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         });
       }
 
-      if (result.time.isNotEmpty) {
+      if (extracted.time.isNotEmpty) {
         final baseDate = DateTime(_time.year, _time.month, _time.day);
-        if (result.time['start'] != null) {
-          final parts = (result.time['start'] as String).split(':');
+        if (extracted.time['start'] != null) {
+          final parts = (extracted.time['start'] as String).split(':');
           if (parts.length >= 2) {
             final hour = int.tryParse(parts[0]) ?? _time.hour;
             final minute = int.tryParse(parts[1]) ?? _time.minute;
-            final startOffset = result.time['startOffset'] as int? ?? 0;
+            final startOffset = extracted.time['startOffset'] as int? ?? 0;
             final dt = baseDate.add(
               Duration(days: startOffset, hours: hour, minutes: minute),
             );
@@ -1407,12 +1427,12 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             });
           }
         }
-        if (result.time['end'] != null) {
-          final parts = (result.time['end'] as String).split(':');
+        if (extracted.time['end'] != null) {
+          final parts = (extracted.time['end'] as String).split(':');
           if (parts.length >= 2) {
             final hour = int.tryParse(parts[0]) ?? 0;
             final minute = int.tryParse(parts[1]) ?? 0;
-            final endOffset = result.time['endOffset'] as int? ?? 0;
+            final endOffset = extracted.time['endOffset'] as int? ?? 0;
             setState(() {
               _endTime = baseDate.add(
                 Duration(days: endOffset, hours: hour, minutes: minute),
@@ -1434,54 +1454,16 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   }
 
   Future<void> _showModelMenu() async {
-    List<AiConfig> configs = [];
-    try {
-      configs = await ref.read(aiConfigListProvider.future);
-    } catch (_) {}
-
-    // mounted 为 false 时不能再用 context，必须先返回
-    if (!mounted) return;
-
-    final roles = await AiRoleService.instance.getRoles();
-    final currentModelId = roles.timelineOptimizationUseFreeModel
-        ? 'free:${roles.timelineOptimizationFreeModelId ?? kDefaultFreeModelId}'
-        : roles.timelineOptimization;
-    if (!mounted) return;
-
-    final selectedId = await showDialog<String>(
-      context: context,
-      builder: (context) =>
-          ModelSelectionDialog(configs: configs, selectedId: currentModelId),
-    );
-
-    if (selectedId != null && mounted) {
-      final isFree = selectedId.startsWith('free:');
-      final freeModelId = isFree ? selectedId.substring(5) : null;
-      final newRoles = roles.copyWith(
-        timelineOptimization: isFree ? null : selectedId,
-        timelineOptimizationUseFreeModel: isFree,
-        timelineOptimizationFreeModelId: freeModelId,
+    final displayName = await showTimelineModelSelector(context, ref);
+    if (displayName != null && mounted) {
+      Toast.success(
+        context,
+        '已切换：$displayName',
+        duration: const Duration(seconds: 1),
       );
-      await AiRoleService.instance.saveRoles(newRoles);
-      ref.invalidate(aiRolesProvider);
-      if (mounted) {
-        final displayName = isFree
-            ? (kAssistantBuiltinModels
-                    .firstWhere((m) => m['id'] == selectedId,
-                        orElse: () => {'name': selectedId})['name'] ??
-                'QNote内置模型')
-            : (configs
-                    .firstWhere((c) => c.id == selectedId,
-                        orElse: () => configs.first)
-                    .name);
-        Toast.success(
-          context,
-          '已切换：$displayName',
-          duration: const Duration(seconds: 1),
-        );
-      }
     }
   }
+
 
   String _formatDateTime(DateTime dt) {
     return DateFormat('MM-dd HH:mm').format(dt);

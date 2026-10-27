@@ -4,10 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
+import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/ai/no_model_exception.dart';
 import 'package:qnote_flutter/core/storage/daily_score_service.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/daily_score.dart';
 import 'package:qnote_flutter/providers/daily_score_provider.dart';
+import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 import 'package:qnote_flutter/widgets/statistics/batch_score_adjust_sheet.dart';
 import 'package:qnote_flutter/widgets/statistics/date_navigation_header.dart';
 import 'package:qnote_flutter/widgets/statistics/score_heatmap.dart';
@@ -26,7 +29,13 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
     ref.read(selectedDateProvider.notifier).state = date;
   }
 
-  Future<void> _performScoreAction(BuildContext context, DateTime date, {bool isRescore = false}) async {
+  Future<void> _performScoreAction(DateTime date, {bool isRescore = false}) async {
+    if (!await AiRoleService.instance.hasUsableConfigForRole('assistant')) {
+      if (mounted) {
+        await showNoModelConfiguredDialog(context, scene: 'AI 智能评分');
+      }
+      return;
+    }
     setState(() => _isScoring = true);
     Toast.show(context, '正在分析今日数据...', duration: const Duration(seconds: 15));
     try {
@@ -36,12 +45,16 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
       } else {
         score = await ref.read(dailyScoreProvider.notifier).performScore(date);
       }
-      if (mounted && context.mounted) {
+      if (mounted) {
         Toast.success(context, '评分完成！今日得分 ${score.totalScore} 分');
       }
     } catch (e) {
-      if (mounted && context.mounted) {
-        Toast.error(context, '评分失败：$e');
+      if (mounted) {
+        if (e is NoModelConfiguredException) {
+          await showNoModelConfiguredDialog(context, scene: 'AI 智能评分');
+        } else {
+          Toast.error(context, '评分失败：$e');
+        }
       }
     } finally {
       if (mounted) {
@@ -69,8 +82,8 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
       ),
     );
 
-    if (confirmed == true && mounted && context.mounted) {
-      _performScoreAction(context, date, isRescore: true);
+    if (confirmed == true && mounted) {
+      _performScoreAction(date, isRescore: true);
     }
   }
 
@@ -387,7 +400,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                                   ),
                                   icon: const Icon(Icons.auto_awesome),
                                   label: const Text('开始 AI 智能评分', style: TextStyle(fontWeight: FontWeight.bold)),
-                                  onPressed: () => _performScoreAction(context, selectedDate),
+                                  onPressed: () => _performScoreAction(selectedDate),
                                 ),
                               ),
                             ],

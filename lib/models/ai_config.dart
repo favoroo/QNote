@@ -1,81 +1,83 @@
-class AiConfig {
-  final String id;
-  final String name;
-  final String provider;
-  final String modelName;
-  final String apiKey;
-  final String baseUrl;
-  final bool isDefault;
-  final String? vendorId;
-  final DateTime createdAt;
-  final DateTime updatedAt;
+import 'package:qnote_flutter/models/ai_provider.dart';
 
-  AiConfig({
-    required this.id,
+/// 发信层使用的模型配置（请求时值对象）
+///
+/// **不再是数据库行**：唯一数据源是 [AiProvider] 厂商条目，本对象在每次发起
+/// 请求前由「厂商条目 + 模型名」现场组装，供 [AiService]/识图能力判定/工具链路
+/// 这类只关心「用哪个地址、哪把 Key、哪个模型」的消费方使用。
+///
+/// [apiKey] 是池中首把 Key，仅作兜底；多把 Key 的厂商在真正发信前会被
+/// `ApiKeyPool` 轮换出的 Key 逐请求覆写 header。
+class AiConfig {
+  /// 厂商条目 id（Key 池定位依据）
+  final String providerId;
+
+  /// 展示名，如「DeepSeek · deepseek-v4-flash」
+  final String name;
+
+  /// 接口类型：`openai` | `gemini`
+  final String provider;
+
+  final String modelName;
+
+  /// 发信兜底 Key（厂商条目里密钥池的首把）
+  final String apiKey;
+
+  final String baseUrl;
+
+  /// 厂商模板 id（推理强度等厂商级默认值的来源）
+  final String? vendorId;
+
+  const AiConfig({
+    required this.providerId,
     required this.name,
     required this.provider,
     required this.modelName,
     required this.apiKey,
     required this.baseUrl,
-    this.isDefault = false,
     this.vendorId,
-    required this.createdAt,
-    required this.updatedAt,
   });
 
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'name': name,
-      'provider': provider,
-      'model_name': modelName,
-      'api_key': apiKey,
-      'base_url': baseUrl,
-      'is_default': isDefault ? 1 : 0,
-      'vendor_id': vendorId,
-      'created_at': createdAt.toIso8601String(),
-      'updated_at': updatedAt.toIso8601String(),
-    };
-  }
-
-  factory AiConfig.fromMap(Map<String, dynamic> map) {
+  /// 由厂商条目 + 模型名组装请求配置
+  factory AiConfig.fromProvider(
+    AiProvider provider,
+    String modelName, {
+    String? displayName,
+  }) {
+    final model = provider.models.where((m) => m.id == modelName).firstOrNull;
+    final keys = provider.apiKeys.where((k) => k.trim().isNotEmpty).toList();
     return AiConfig(
-      id: map['id'] as String,
-      name: map['name'] as String? ?? '',
-      provider: map['provider'] as String,
-      modelName: map['model_name'] as String,
-      apiKey: map['api_key'] as String,
-      baseUrl: map['base_url'] as String,
-      isDefault: (map['is_default'] as int? ?? 0) == 1,
-      vendorId: map['vendor_id'] as String?,
-      createdAt: DateTime.parse(map['created_at'] as String),
-      updatedAt: DateTime.parse(map['updated_at'] as String),
+      providerId: provider.id,
+      name: displayName ??
+          (model?.name.isNotEmpty == true ? model!.name : modelName),
+      provider: provider.providerType,
+      modelName: modelName,
+      apiKey: keys.isEmpty ? '' : keys.first,
+      baseUrl: provider.baseUrl,
+      vendorId: provider.vendorId,
     );
   }
 
   AiConfig copyWith({
-    String? id,
+    String? providerId,
     String? name,
     String? provider,
     String? modelName,
     String? apiKey,
     String? baseUrl,
-    bool? isDefault,
     String? vendorId,
-    DateTime? createdAt,
-    DateTime? updatedAt,
   }) {
     return AiConfig(
-      id: id ?? this.id,
+      providerId: providerId ?? this.providerId,
       name: name ?? this.name,
       provider: provider ?? this.provider,
       modelName: modelName ?? this.modelName,
       apiKey: apiKey ?? this.apiKey,
       baseUrl: baseUrl ?? this.baseUrl,
-      isDefault: isDefault ?? this.isDefault,
       vendorId: vendorId ?? this.vendorId,
-      createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
+
+  @override
+  String toString() => 'AiConfig($providerId/$modelName @ $baseUrl)';
 }

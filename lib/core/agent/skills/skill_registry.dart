@@ -308,20 +308,15 @@ description: 系统偏好与配置技能：个性化外观、AI模型分配与�
 - 用户：“把界面主题色换成粉色” → 写入 `{"accentColor": "#E91E8C"}`
 
 ### 1.2 `/settings/ai.json`（AI 模型、角色与参数）
-管理小Q自身及时间线提纯所绑定的模型、温度与 Token 预算：
+管理小Q自身及时间线提纯所绑定的模型、温度与 Token 预算。模型由用户在「设置 → AI 模型配置」中添加
+（一个厂商条目 = 一个地址 + 一组密钥 + 一组已启用模型），App 不再内置任何模型：
+
 ```json
 {
   "roles": {
-    "assistant": {
-      "useFreeModel": true,
-      "freeModelId": "deepseek-flash",
-      "customModelId": null
-    },
-    "timelineOptimization": {
-      "useFreeModel": true,
-      "freeModelId": "deepseek-flash",
-      "customModelId": null
-    }
+    "assistant": {"model": "<厂商id>::<模型名>"},
+    "timelineOptimization": {"model": "<厂商id>::<模型名>"},
+    "imageGeneration": {"model": "<厂商id>::<模型名>"}
   },
   "temperatures": {
     "assistant": {
@@ -333,12 +328,24 @@ description: 系统偏好与配置技能：个性化外观、AI模型分配与�
       "maxTokens": 2048,
       "extractImages": true
     }
-  }
+  },
+  "providers": [
+    {"id": "厂商id", "name": "厂商名", "baseUrl": "https://...", "models": ["模型A", "模型B"], "keyCount": 2, "apiKeys": ["sk-***"]}
+  ]
 }
 ```
+
+字段约定：
+- `roles.*.model` 可写，格式为 `厂商id::模型名`；写 `null` 表示清空绑定（回落到默认厂商的首个已启用模型）。
+- `providers` 是**只读快照**：密钥已掩码；增删厂商、添加密钥、启用/停用模型都必须引导用户去「设置 → AI 模型配置」操作，
+  不要尝试通过写本文件修改（写入会被忽略）。
+- `temperatures` 可写，下轮对话生效。
+
 **场景示例**：
 - 用户：“把你的温度降低点，回答更严谨” → 写入 `{"temperatures": {"assistant": {"temperature": 0.2}}}`
-- 用户：“把小Q切换到 GLM 5.2 模型” → 写入 `{"roles": {"assistant": {"useFreeModel": true, "freeModelId": "glm-5.2"}}}`
+- 用户：“把小Q切换到某个模型” → 先从 `providers` 里找到该模型与其厂商 id，再写入
+  `{"roles": {"assistant": {"model": "<厂商id>::<模型名>"}}}`
+- 用户：“我还没配置模型” → 如实告知并引导去「设置 → AI 模型配置」添加，不要假装已经能用
 
 ### 1.3 `/settings/personality.json`（小Q个性）
 读取或切换小Q的人格设定（只改身份与语气，不影响能力）：

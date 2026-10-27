@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 
+import 'package:qnote_flutter/core/ai/no_model_exception.dart';
+
 /// AI 请求异常的友好化描述工具。
 ///
 /// 小Q的请求失败最终以聊天气泡呈现给用户，原始 DioException 文本（多行英文
@@ -20,7 +22,12 @@ class AiErrorExplainer {
 
     final statusCode = _extractStatusCode(error, raw);
 
-    if (raw.contains('Failed host lookup')) {
+    if (error is NoModelConfiguredException ||
+        raw.contains('尚未配置可用的 AI 模型')) {
+      problem = '还没有可用的 AI 模型';
+      advice = '请到「设置 → AI 模型配置」添加你自己的模型服务（API 地址 + 密钥），'
+          '扫描并启用模型后即可使用；小Q 不再内置模型。';
+    } else if (raw.contains('Failed host lookup')) {
       final host = RegExp(r"Failed host lookup:\s*'?(.+?)'?(?:\s|\(|$)")
           .firstMatch(raw)
           ?.group(1);
@@ -72,11 +79,11 @@ class AiErrorExplainer {
       final isBurst = raw.contains('rps') || raw.contains('exhausted');
       problem = isBurst
           ? '短时间内请求太密集，被服务端的排队保护挡下（HTTP 429 · rps）'
-          : '内置免费模型的额度暂时用满（HTTP 429 · 限流）';
+          : '模型服务额度暂时用满（HTTP 429 · 限流）';
       advice = isBurst
-          ? '小Q 已自动换 Key 重发，通常几秒内自愈；连续追问时可以等上一条回复出来再发。'
-          : '内置 Key 是全 App 用户共享的免费额度，按分钟滚动恢复，等十几秒重发即可。'
-              '若要稳定不限流，可在「设置 → AI 配置」里绑定自己的模型 API Key。';
+          ? '小Q 会自动换下一把 Key 重发，通常几秒内自愈；连续追问时可以等上一条回复出来再发。'
+          : '该 Key 的额度按分钟滚动恢复。若该厂商配置了多把密钥，App 会自动轮询并在冷却后回池；'
+              '也可以到「AI 模型配置」里补充密钥或换一个模型。';
     } else if (statusCode != null && statusCode >= 500) {
       problem = '服务器内部故障（HTTP $statusCode）';
       advice = '服务端暂时不可用，请稍后重试。';

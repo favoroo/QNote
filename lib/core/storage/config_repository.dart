@@ -6,7 +6,6 @@ import 'package:qnote_flutter/core/storage/chat_storage_usage.dart';
 import 'package:qnote_flutter/core/storage/database_helper.dart';
 import 'package:qnote_flutter/core/storage/sync_log_repository.dart';
 import 'package:qnote_flutter/core/utils/chat_image_refs.dart';
-import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/agent_memory.dart';
 import 'package:qnote_flutter/models/agent_skill.dart';
@@ -71,63 +70,6 @@ class ConfigRepository {
     return {
       for (final m in maps) m['key'] as String: m['value'] as String,
     };
-  }
-
-  Future<List<AiConfig>> getAllAiConfigs() async {
-    final db = await _dbHelper.database;
-    final maps = await db.query('ai_configs', orderBy: 'created_at ASC');
-    return maps.map((m) => AiConfig.fromMap(m)).toList();
-  }
-
-  Future<AiConfig?> getDefaultAiConfig() async {
-    final db = await _dbHelper.database;
-    final maps = await db.query(
-      'ai_configs',
-      where: 'is_default = 1',
-      limit: 1,
-    );
-    if (maps.isEmpty) return null;
-    return AiConfig.fromMap(maps.first);
-  }
-
-  Future<AiConfig> insertAiConfig(AiConfig config) async {
-    final db = await _dbHelper.database;
-    await db.insert('ai_configs', config.toMap());
-    await _syncLog.logChange(
-      tableName: 'ai_configs',
-      recordId: config.id,
-      operation: 'insert',
-      data: config.toMap(),
-    );
-    return config;
-  }
-
-  Future<AiConfig> updateAiConfig(AiConfig config) async {
-    final db = await _dbHelper.database;
-    final updated = config.copyWith(updatedAt: DateTime.now());
-    await db.update(
-      'ai_configs',
-      updated.toMap(),
-      where: 'id = ?',
-      whereArgs: [config.id],
-    );
-    await _syncLog.logChange(
-      tableName: 'ai_configs',
-      recordId: config.id,
-      operation: 'update',
-      data: updated.toMap(),
-    );
-    return updated;
-  }
-
-  Future<void> deleteAiConfig(String id) async {
-    final db = await _dbHelper.database;
-    await db.delete('ai_configs', where: 'id = ?', whereArgs: [id]);
-    await _syncLog.logChange(
-      tableName: 'ai_configs',
-      recordId: id,
-      operation: 'delete',
-    );
   }
 
   Future<List<ShortcutConfig>> getAllShortcutConfigs() async {
@@ -678,7 +620,4 @@ class ConfigRepository {
     }
   }
 
-  Future<void> ensureDefaultAiConfigs() async {
-    // 默认配置已移除，直接返回
-  }
 }

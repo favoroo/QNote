@@ -7,11 +7,12 @@ import 'package:qnote_flutter/core/agent/services/quick_prompt_service.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
-import 'package:qnote_flutter/core/ai/free_model_service.dart';
+import 'package:qnote_flutter/core/ai/api_key_pool.dart';
 import 'package:qnote_flutter/core/health/health_sync_service.dart';
 import 'package:qnote_flutter/core/health/screen_usage_service.dart';
 import 'package:qnote_flutter/core/notification/notification_service.dart';
 import 'package:qnote_flutter/core/storage/color_mark_repository.dart';
+import 'package:qnote_flutter/core/storage/ai_provider_repository.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/storage/daily_score_repository.dart';
 import 'package:qnote_flutter/core/storage/daily_score_service.dart';
@@ -27,12 +28,12 @@ import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/core/utils/reminder_utils.dart';
 import 'package:qnote_flutter/models/agent_memory.dart';
 import 'package:qnote_flutter/models/agent_skill.dart';
+import 'package:qnote_flutter/models/ai_model_ref.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/date_color_mark.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/fixed_event_template.dart';
 import 'package:qnote_flutter/models/folder.dart';
-import 'package:qnote_flutter/models/free_model_config.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
@@ -939,23 +940,14 @@ class VirtualWorkspaceService {
       final roles = await _configRepo.getAiRoles() ?? const AiRoles();
       final temps =
           await _configRepo.getAiTemperatures() ?? const AiTemperatures();
-      final customConfigs = await _configRepo.getAllAiConfigs();
-      final freeModels = await FreeModelService.instance.getCachedModels();
+      final providers = await AiProviderRepository.instance.getAll();
       final data = {
         'roles': {
-          'assistant': {
-            'useFreeModel': roles.assistantUseFreeModel,
-            'freeModelId':
-                roles.assistantFreeModelId ?? kDefaultFreeModelId,
-            'customModelId': roles.assistant,
-          },
+          'assistant': {'model': roles.assistant?.encode()},
           'timelineOptimization': {
-            'useFreeModel': roles.timelineOptimizationUseFreeModel,
-            'freeModelId':
-                roles.timelineOptimizationFreeModelId ??
-                kDefaultFreeModelId,
-            'customModelId': roles.timelineOptimization,
+            'model': roles.timelineOptimization?.encode(),
           },
+          'imageGeneration': {'model': roles.imageGeneration?.encode()},
         },
         'temperatures': {
           'assistant': {
@@ -968,28 +960,26 @@ class VirtualWorkspaceService {
             'extractImages': temps.timelineOptimization.extractImages,
           },
         },
-        'customModels': customConfigs
+        'providers': providers
             .map(
-              (c) => {
-                'id': c.id,
-                'name': c.name,
-                'provider': c.provider,
-                'baseUrl': c.baseUrl,
-                'modelName': c.modelName,
-                'isDefault': c.isDefault,
+              (p) => {
+                'id': p.id,
+                'name': p.name,
+                'vendorId': p.vendorId,
+                'baseUrl': p.baseUrl,
+                'providerType': p.providerType,
+                'isDefault': p.isDefault,
+                'keyCount': p.apiKeys.length,
+                // 只读快照：密钥一律掩码，避免明文 Key 进入对话上下文
+                'apiKeys': p.apiKeys.map((k) => ApiKeyPool.maskKey(k)).toList(),
+                'models': p.models.map((m) => m.id).toList(),
               },
             )
             .toList(),
-        'availableFreeModels': freeModels
-            .map(
-              (m) => {
-                'id': m.id,
-                'displayName': m.displayName,
-                'provider': m.provider,
-                'modelName': m.modelName,
-              },
-            )
-            .toList(),
+        'description':
+            'roles.*.model 是「厂商id::模型名」，写 null 表示清空绑定（默认厂商的首个已启用模型生效）；'
+            'providers 为只读快照（密钥已掩码，增删与启用模型请引导用户去「AI 模型配置」操作）；'
+            'temperatures 可直接修改，下轮对话生效',
       };
       return const JsonEncoder.withIndent('  ').convert(data);
     } else if (name == 'personality.json') {
@@ -2485,7 +2475,7 @@ class VirtualWorkspaceService {
       if (decoded is! Map<String, dynamic>) {
         throw Exception('ai.json 必须是 JSON 对象');
       }
-      // 1. 更新 roles
+      // 1. 更新 roles（绑定值为「厂商id::模型名」，写 null 清空绑定）
       if (decoded.containsKey('roles') &&
           decoded['roles'] is Map<String, dynamic>) {
         final rolesMap = decoded['roles'] as Map<String, dynamic>;
@@ -2493,32 +2483,29 @@ class VirtualWorkspaceService {
         if (rolesMap.containsKey('assistant') &&
             rolesMap['assistant'] is Map<String, dynamic>) {
           final ast = rolesMap['assistant'] as Map<String, dynamic>;
-          currentRoles = currentRoles.copyWith(
-            assistantUseFreeModel:
-                ast['useFreeModel'] as bool? ??
-                currentRoles.assistantUseFreeModel,
-            assistantFreeModelId:
-                ast['freeModelId'] as String? ??
-                currentRoles.assistantFreeModelId,
-            assistant: ast.containsKey('customModelId')
-                ? ast['customModelId'] as String?
-                : currentRoles.assistant,
-          );
+          if (ast.containsKey('model')) {
+            currentRoles = currentRoles.copyWith(
+              assistant: AiModelRef.tryParse(ast['model'] as String?),
+            );
+          }
         }
         if (rolesMap.containsKey('timelineOptimization') &&
             rolesMap['timelineOptimization'] is Map<String, dynamic>) {
           final tlo = rolesMap['timelineOptimization'] as Map<String, dynamic>;
-          currentRoles = currentRoles.copyWith(
-            timelineOptimizationUseFreeModel:
-                tlo['useFreeModel'] as bool? ??
-                currentRoles.timelineOptimizationUseFreeModel,
-            timelineOptimizationFreeModelId:
-                tlo['freeModelId'] as String? ??
-                currentRoles.timelineOptimizationFreeModelId,
-            timelineOptimization: tlo.containsKey('customModelId')
-                ? tlo['customModelId'] as String?
-                : currentRoles.timelineOptimization,
-          );
+          if (tlo.containsKey('model')) {
+            currentRoles = currentRoles.copyWith(
+              timelineOptimization: AiModelRef.tryParse(tlo['model'] as String?),
+            );
+          }
+        }
+        if (rolesMap.containsKey('imageGeneration') &&
+            rolesMap['imageGeneration'] is Map<String, dynamic>) {
+          final img = rolesMap['imageGeneration'] as Map<String, dynamic>;
+          if (img.containsKey('model')) {
+            currentRoles = currentRoles.copyWith(
+              imageGeneration: AiModelRef.tryParse(img['model'] as String?),
+            );
+          }
         }
         await _configRepo.saveAiRoles(currentRoles);
       }

@@ -45,27 +45,26 @@ class DatabaseHelper {
     )
   ''';
 
-  /// 免费网关逐请求事实表 DDL（CPA `usage.db` 的 App 侧等价物）
+  /// 厂商条目表 DDL：一个 URL + 一组 API Key + 一组已启用模型
   ///
-  /// 为什么必须是表而不是日志：`LoggerService` 只在 SharedPreferences 里留 35 条，
-  /// 「9 把内置 Key 各自的撞墙率」「换 Key 之后首包要等多久」这类问题问不出来。
-  /// 只存掩码不存明文 Key（本库会随 WebDAV 备份导出）；token 三列可空，
-  /// 因为网关是否上报 usage 取决于 `quota_policy` 的 `send_stream_usage`。
-  static const String _aiRequestStatsDdl = '''
-    CREATE TABLE IF NOT EXISTS ai_request_stats (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      scene TEXT NOT NULL,
-      model_id TEXT NOT NULL,
-      key_mask TEXT NOT NULL DEFAULT '',
-      outcome TEXT NOT NULL,
-      http_status INTEGER,
-      latency_ms INTEGER NOT NULL DEFAULT 0,
-      ttft_ms INTEGER,
-      prompt_tokens INTEGER,
-      completion_tokens INTEGER,
-      cached_tokens INTEGER,
-      hour_bucket TEXT NOT NULL,
-      created_at TEXT NOT NULL
+  /// 取代旧 `ai_configs`（一个模型一行）。密钥与地址属于厂商，模型只是条目下的
+  /// 勾选项，因此「多把 Key 轮询」与「扫描后按需启用多个模型」都落在同一条目上。
+  /// `api_keys`/`models`/`model_catalog` 都是 JSON 字符串列，避免为可变长度数据
+  /// 建从表（导出/同步按整行 toMap 传递，子表还要额外铺一套管道）。
+  static const String _aiProvidersDdl = '''
+    CREATE TABLE IF NOT EXISTS ai_providers (
+      id TEXT PRIMARY KEY,
+      vendor_id TEXT,
+      name TEXT NOT NULL,
+      provider_type TEXT NOT NULL,
+      base_url TEXT NOT NULL,
+      api_keys TEXT NOT NULL,
+      models TEXT NOT NULL,
+      model_catalog TEXT,
+      catalog_updated_at TEXT,
+      is_default INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
     )
   ''';
 
@@ -86,7 +85,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 26,
+      version: 27,
       onConfigure: (db) async {
         // 遇到写锁时等待重试（默认立即抛 database is locked），提升并发访问健壮性
         try {
@@ -283,17 +282,10 @@ class DatabaseHelper {
       await db.execute(_widgetSnapshotDdl);
     } catch (_) {}
 
-    // 兜底：免费网关观测表同理（Web 与开发期热重载只走 onOpen 这条路）。
-    // 这张表的写入是 fire-and-forget 且吞异常，缺表不会报错而是**静默零数据**，
-    // 诊断卡会永远显示「暂无数据」，所以必须在这里补上。
+    // 兜底：厂商条目表同理（Web 与开发期热重载只走 onOpen 这条路）。
+    // 缺表会让「添加模型服务」整条链路写入即抛 no such table，所以必须在这里补上。
     try {
-      await db.execute(_aiRequestStatsDdl);
-      await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_ai_request_stats_hour ON ai_request_stats(hour_bucket)',
-      );
-      await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_ai_request_stats_created ON ai_request_stats(created_at)',
-      );
+      await db.execute(_aiProvidersDdl);
     } catch (_) {}
 
     // 兜底：补 chat_sessions 缺失的 is_pinned 列。这条是**主流程级**而非「置顶不生效」
@@ -599,13 +591,7 @@ class DatabaseHelper {
 
     await db.execute(_screenUsageDailyDdl);
     await db.execute(_widgetSnapshotDdl);
-    await db.execute(_aiRequestStatsDdl);
-    await db.execute(
-      'CREATE INDEX IF NOT EXISTS idx_ai_request_stats_hour ON ai_request_stats(hour_bucket)',
-    );
-    await db.execute(
-      'CREATE INDEX IF NOT EXISTS idx_ai_request_stats_created ON ai_request_stats(created_at)',
-    );
+    await db.execute(_aiProvidersDdl);
 
     // Performance indexes
     await _createIndexes(db);
@@ -953,15 +939,19 @@ class DatabaseHelper {
     }
 
     if (oldVersion < 26) {
-      // 免费网关逐请求观测表：纯新增表，无历史数据可迁移，失败也不影响任何业务链路
+      // 该版本曾创建免费网关逐请求观测表，现已随内置模型一并下线；
+      // v27 分支会把它 DROP 掉（新装库不再创建），此处无需再补建。
+    }
+
+    if (oldVersion < 27) {
+      // 厂商条目表：取代模型级 ai_configs（数据迁移在 Dart 侧完成，
+      // 因为要按「厂商+地址」分组归并密钥与模型，SQL 表达太绕）
       try {
-        await db.execute(_aiRequestStatsDdl);
-        await db.execute(
-          'CREATE INDEX IF NOT EXISTS idx_ai_request_stats_hour ON ai_request_stats(hour_bucket)',
-        );
-        await db.execute(
-          'CREATE INDEX IF NOT EXISTS idx_ai_request_stats_created ON ai_request_stats(created_at)',
-        );
+        await db.execute(_aiProvidersDdl);
+      } catch (_) {}
+      // 内置模型发信诊断表随内置模型下线：只记录过内置 Key 掩码的本地数据，无保留价值
+      try {
+        await db.execute('DROP TABLE IF EXISTS ai_request_stats');
       } catch (_) {}
     }
   }

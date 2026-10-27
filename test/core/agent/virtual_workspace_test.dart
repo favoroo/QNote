@@ -166,8 +166,7 @@ void main() {
       expect(readContent, contains('A2 鲜牛奶'));
       expect(readContent, contains('<!-- id: '));
 
-      // 提取方便面记录的 ID
-      final noodleRecord = currentRecords.firstWhere((r) => r.title == '午餐');
+      // 提取早餐记录的 ID（后续用于单条删除用例）
       final milkRecord = currentRecords.firstWhere((r) => r.title == '早餐');
 
       // 2. 模拟小Q的行为：用 edit_file 替换删除方便面整块（小Q在问题中使用的典型方式）
@@ -262,15 +261,14 @@ void main() {
       expect(aiRead, contains('assistant'));
       expect(aiRead, contains('timelineOptimization'));
 
-      // 2. 更新小Q模型分配与温度参数
+      // 2. 更新小Q模型分配（厂商id::模型名）与温度参数
       final writeAiRes = await vfs.writeFile(
         '/settings/ai.json',
         '''
         {
           "roles": {
             "assistant": {
-              "useFreeModel": true,
-              "freeModelId": "glm-5.2"
+              "model": "provider-deepseek::deepseek-v4-flash"
             }
           },
           "temperatures": {
@@ -286,7 +284,7 @@ void main() {
 
       // 3. 验证再次读取包含修改后的模型与温度
       final aiReadAfter = await vfs.readFile('/settings/ai.json');
-      expect(aiReadAfter, contains('glm-5.2'));
+      expect(aiReadAfter, contains('provider-deepseek::deepseek-v4-flash'));
       expect(aiReadAfter, contains('0.35'));
     });
 

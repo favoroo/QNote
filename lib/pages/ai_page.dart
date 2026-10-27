@@ -10,9 +10,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/providers/user_profile_provider.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
-import 'package:qnote_flutter/models/ai_config.dart';
+import 'package:qnote_flutter/models/ai_model_ref.dart';
+import 'package:qnote_flutter/models/ai_provider.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
-import 'package:qnote_flutter/models/free_model_config.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/models/todo.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
@@ -33,6 +33,7 @@ import 'package:qnote_flutter/widgets/ai/auto_read_toggle_button.dart';
 import 'package:qnote_flutter/widgets/ai/bubble_action_bar.dart';
 import 'package:qnote_flutter/widgets/ai/chat_history_drawer.dart';
 import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
+import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/widgets/ai/user_bubble_reedit_tap.dart';
 import 'package:qnote_flutter/widgets/common/loading_ring.dart';
@@ -76,7 +77,7 @@ class _AiPageState extends ConsumerState<AiPage> {
   Timer? _insetScrollDebounce;
 
   bool _isTyping = false;
-  String? _activeModelId;
+  AiModelRef? _activeModelId;
 
   // 待发送的对话引用文本（用户通过消息框选「给小Q」或点击悬浮球挂起）
   String? _quotedChatText;
@@ -312,27 +313,23 @@ class _AiPageState extends ConsumerState<AiPage> {
 
   Future<void> _initActiveModelId() async {
     final roles = await ref.read(aiRolesProvider.future);
-    if (roles != null && roles.assistantUseFreeModel) {
-      final freeId = roles.assistantFreeModelId ?? kDefaultFreeModelId;
-      if (mounted) setState(() => _activeModelId = 'free:$freeId');
+    final providers = await ref.read(aiProviderListProvider.future);
+    final bound = roles?.assistant;
+    if (bound != null &&
+        providers.any(
+          (p) => p.id == bound.providerId && p.hasModel(bound.modelName),
+        )) {
+      if (mounted) setState(() => _activeModelId = bound);
       return;
     }
-    try {
-      final config = await AiRoleService.instance.getEffectiveConfigForRole(
-        'assistant',
-      );
-      if (mounted) {
-        setState(() => _activeModelId = config.id);
-      }
-    } catch (_) {
-      if (roles?.assistant != null) {
-        if (mounted) setState(() => _activeModelId = roles!.assistant);
-      } else {
-        final config = await ref.read(defaultAiConfigProvider.future);
-        if (config != null && mounted) {
-          setState(() => _activeModelId = config.id);
-        }
-      }
+    final provider = providers.where((p) => p.isDefault && p.isUsable).firstOrNull ??
+        providers.where((p) => p.isUsable).firstOrNull;
+    final model = provider?.firstModel;
+    if (model != null && mounted) {
+      setState(() => _activeModelId = AiModelRef(
+        providerId: provider!.id,
+        modelName: model.id,
+      ));
     }
   }
 
@@ -398,6 +395,12 @@ class _AiPageState extends ConsumerState<AiPage> {
     if (_isTyping || _reeditBusy) {
       return;
     }
+    // 未配置模型：先弹引导，不发消息、也不写入会话
+    if (!await AiRoleService.instance.hasUsableConfigForRole('assistant')) {
+      if (mounted) await showNoModelConfiguredDialog(context, scene: '小Q 对话');
+      return;
+    }
+    if (!mounted) return;
     // 当前会话已有任务在后台生成（如切走后再切回）：拦截发送，避免同会话并发两轮任务
     final activeId = ref.read(currentChatProvider)?.id;
     if (activeId != null &&
@@ -1134,55 +1137,41 @@ class _AiPageState extends ConsumerState<AiPage> {
     // 弹窗与 AiRoles 写入逻辑在共享组件中（悬浮小Q面板长按发送按钮也走此入口）
     final selected = await showAssistantModelSelector(context, ref);
     if (selected == null) return;
-    setState(() => _activeModelId = selected.id);
+    setState(() => _activeModelId = selected.ref);
   }
 
   @override
   Widget build(BuildContext context) {
     final currentChat = ref.watch(currentChatProvider);
-    final aiConfigsAsync = ref.watch(aiConfigListProvider);
+    final providersAsync = ref.watch(aiProviderListProvider);
     final theme = Theme.of(context);
 
     // 监听 aiRolesProvider，保证小Q界面与设置页角色绑定实时同步
     ref.listen<AsyncValue<AiRoles?>>(aiRolesProvider, (prev, next) {
-      if (next is AsyncData<AiRoles?>) {
-        final roles = next.value;
-        if (roles != null) {
-          String? newActiveId;
-          if (roles.assistantUseFreeModel) {
-            final freeId =
-                roles.assistantFreeModelId ?? kDefaultFreeModelId;
-            newActiveId = 'free:$freeId';
-          } else if (roles.assistant != null) {
-            newActiveId = roles.assistant;
-          }
-          if (newActiveId != null && newActiveId != _activeModelId) {
-            setState(() => _activeModelId = newActiveId);
-          }
-        }
+      final bound = next.valueOrNull?.assistant;
+      if (bound != null && bound != _activeModelId) {
+        setState(() => _activeModelId = bound);
       }
     });
 
-    // Listen to aiConfigsAsync to ensure _activeModelId is always valid
-    ref.listen<AsyncValue<List<AiConfig>>>(aiConfigListProvider, (prev, next) {
-      if (next is AsyncData<List<AiConfig>>) {
-        final configs = next.value;
-        // 如果当前是内置免费模型，不受自定义模型列表增删影响
-        if (_activeModelId != null && _activeModelId!.startsWith('free:')) {
-          return;
-        }
-        if (configs.isNotEmpty) {
-          // If current active ID is not in the list, or null, pick the first or default
-          final currentValid = configs.any((c) => c.id == _activeModelId);
-          if (!currentValid) {
-            final defaultCfg =
-                configs.where((c) => c.isDefault).firstOrNull ?? configs.first;
-            setState(() => _activeModelId = defaultCfg.id);
-          }
-        } else {
-          setState(() => _activeModelId = 'free:$kDefaultFreeModelId');
-        }
-      }
+    // 厂商/模型增删改后，校正顶部胶囊指向的模型；失效时回落到默认厂商首个模型
+    ref.listen<AsyncValue<List<AiProvider>>>(aiProviderListProvider, (prev, next) {
+      final providers = next.valueOrNull;
+      if (providers == null) return;
+      final current = _activeModelId;
+      final stillValid = current != null &&
+          providers.any(
+            (p) => p.id == current.providerId && p.hasModel(current.modelName),
+          );
+      if (stillValid) return;
+      final provider = providers.where((p) => p.isDefault && p.isUsable).firstOrNull ??
+          providers.where((p) => p.isUsable).firstOrNull;
+      final model = provider?.firstModel;
+      setState(() {
+        _activeModelId = model == null
+            ? null
+            : AiModelRef(providerId: provider!.id, modelName: model.id);
+      });
     });
 
     ref.listen(currentChatProvider, (prev, next) {
@@ -1289,7 +1278,7 @@ class _AiPageState extends ConsumerState<AiPage> {
       body: Column(
         children: [
           Expanded(child: _buildChatArea(currentChat, theme)),
-          _buildInputArea(aiConfigsAsync, theme),
+          _buildInputArea(providersAsync, theme),
         ],
       ),
     );
@@ -1589,7 +1578,7 @@ class _AiPageState extends ConsumerState<AiPage> {
   }
 
   Widget _buildInputArea(
-    AsyncValue<List<AiConfig>> aiConfigsAsync,
+    AsyncValue<List<AiProvider>> providersAsync,
     ThemeData theme,
   ) {
     final hasAttachments =
@@ -1708,12 +1697,11 @@ class _AiPageState extends ConsumerState<AiPage> {
                               children: [
                                 Flexible(
                                   child: Text(
-                                    assistantModelDisplayName(
-                                          _activeModelId,
-                                          aiConfigsAsync.valueOrNull ??
-                                              const <AiConfig>[],
-                                        ) ??
-                                        '选择模型',
+                                    aiModelDisplayName(
+                                      _activeModelId,
+                                      providersAsync.valueOrNull ??
+                                          const <AiProvider>[],
+                                    ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: theme.textTheme.bodySmall?.copyWith(

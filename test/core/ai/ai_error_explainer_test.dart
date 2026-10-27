@@ -61,7 +61,7 @@ void main() {
         'DioException [bad response]: The request returned an invalid status code of 429',
       );
       expect(tpm, contains('额度暂时用满（HTTP 429 · 限流）'));
-      expect(tpm, contains('共享的免费额度'));
+      expect(tpm, contains('额度按分钟滚动恢复'));
 
       final rpsOptions = RequestOptions(path: '/v1/chat/completions');
       final rpsError = AiErrorExplainer.describe(

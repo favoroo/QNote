@@ -1,189 +1,60 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:qnote_flutter/models/ai_config.dart';
-import 'package:qnote_flutter/models/ai_roles.dart';
-import 'package:qnote_flutter/models/free_model_config.dart';
+
+import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/models/ai_model_ref.dart';
+import 'package:qnote_flutter/models/ai_provider.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
+import 'package:qnote_flutter/widgets/ai/model_picker_sheet.dart';
+import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 
-/// 小Q可用的内置免费模型（id 带 free: 前缀，裸名即网关侧的模型 ID：
-/// CPA 隧道看 config.yaml 的 alias，商汤网关看 `/v1/models` 返回的 id）。
-///
-/// 名称只写模型本身，「内置」语义由选择器的分组标题承载，避免重复。
-/// Gemini 与 Claude 系列内置模型已下线，候选全部走商汤网关，首位即默认头牌。
-const List<Map<String, String>> kAssistantBuiltinModels = [
-  {'id': 'free:$kDefaultFreeModelId', 'name': 'GLM 5.2'},
-  {'id': 'free:deepseek-flash', 'name': 'DeepSeek Flash'},
-  {'id': 'free:sensenova-flash-lite', 'name': 'SenseNova 6.8'},
-];
+export 'package:qnote_flutter/widgets/ai/model_picker_sheet.dart'
+    show aiModelDisplayName, enabledModelEntries;
 
-/// 模型 id → 显示名：free: 前缀查内置表，未收录时回退裸 id；自定义配置查 name
-String? assistantModelDisplayName(String? id, List<AiConfig> configs) {
-  if (id == null) return null;
-  // 哨兵值：未绑定任何模型时视为使用默认免费模型
-  if (id == '__free_model__') return kAssistantBuiltinModels.first['name'];
-  if (id.startsWith('free:')) {
-    for (final m in kAssistantBuiltinModels) {
-      if (m['id'] == id) return m['name'];
-    }
-    return id.substring(5);
-  }
-  for (final config in configs) {
-    if (config.id == id) return config.name;
-  }
-  return id;
-}
-
-/// 弹出小Q模型选择弹窗（AI 主页面与悬浮小Q面板共用入口）。
+/// 弹出小Q 对话模型选择弹层（AI 主页面与悬浮小Q 面板共用入口）
 ///
 /// 选中且与当前不同时写入全局 `AiRoles.assistant` 角色绑定并刷新
-/// [aiRolesProvider]，返回选中项（id + 显示名）；取消或未变更返回 null。
+/// [aiRolesProvider]，返回选中项（ref + 展示名）；取消或未变更返回 null。
 /// 两处界面共用同一角色设置，任一处切换即全局生效。
-Future<({String id, String name})?> showAssistantModelSelector(
+///
+/// 一个已启用模型都没有时不做选择器，直接弹「去添加模型」引导。
+Future<({AiModelRef? ref, String name})?> showAssistantModelSelector(
   BuildContext context,
   WidgetRef ref,
 ) async {
-  final configs = await ref.read(aiConfigListProvider.future);
+  final providers = await ref.read(aiProviderListProvider.future);
   if (!context.mounted) return null;
+
+  if (enabledModelEntries(providers).isEmpty) {
+    await showNoModelConfiguredDialog(context, scene: '切换小Q模型');
+    return null;
+  }
+
   final roles = await ref.read(aiRolesProvider.future);
   if (!context.mounted) return null;
-  // 从角色绑定推导当前选中模型 id；均未绑定时用哨兵值高亮默认免费模型
-  final activeModelId = (roles?.assistantUseFreeModel ?? false)
-      ? 'free:${roles!.assistantFreeModelId ?? kDefaultFreeModelId}'
-      : roles?.assistant ?? '__free_model__';
-  final selected = await showDialog<String>(
-    context: context,
-    builder: (ctx) =>
-        ModelSelectorDialog(configs: configs, activeModelId: activeModelId),
+  final current = roles?.assistant;
+  final result = await showModelPickerSheet(
+    context,
+    providers: providers,
+    selected: current,
+    title: '选择小Q模型',
+    // 已绑定时允许回到「跟随默认」，否则这项没有意义
+    allowUnbind: current != null,
   );
-  if (selected == null || selected == activeModelId) return null;
-  final isFree = selected.startsWith('free:');
-  // copyWith 哨兵语义：只改 assistant 三元组，timeline/生图绑定等原字段保留
-  final newRoles = (roles ?? const AiRoles()).copyWith(
-    // 切换到免费模型时显式传 null 清空自定义配置绑定，反之亦然
-    assistant: isFree ? null : selected,
-    assistantUseFreeModel: isFree,
-    assistantFreeModelId: isFree ? selected.substring(5) : null,
-  );
-  await saveAiRoles(newRoles);
+  if (result == null || result.ref == current) return null;
+
+  await AiRoleService.instance.bindRole('assistant', result.ref);
   ref.invalidate(aiRolesProvider);
-  return (
-    id: selected,
-    name: assistantModelDisplayName(selected, configs) ?? selected,
-  );
+
+  final name = result.ref != null
+      ? aiModelDisplayName(result.ref, providers)
+      : _fallbackModelName(providers);
+  return (ref: result.ref, name: name);
 }
 
-/// 小Q模型选择弹窗：内置免费模型 + 用户自定义配置，单选 radio 样式，
-/// 选中项通过 `Navigator.pop(context, id)` 返回
-class ModelSelectorDialog extends StatelessWidget {
-  final List<AiConfig> configs;
-  final String? activeModelId;
-  const ModelSelectorDialog({
-    super.key,
-    required this.configs,
-    required this.activeModelId,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return SimpleDialog(
-      title: const Text('选择小Q模型'),
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 4, 24, 4),
-          child: Text(
-            '内置免费模型',
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: theme.colorScheme.primary,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-        ...kAssistantBuiltinModels.map((m) {
-          final isSelected = activeModelId == m['id'] ||
-              (activeModelId == '__free_model__' &&
-                  m['id'] == kAssistantBuiltinModels.first['id']);
-          return SimpleDialogOption(
-            onPressed: () => Navigator.pop(context, m['id']),
-            child: Row(
-              children: [
-                Icon(
-                  isSelected
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_unchecked,
-                  color: isSelected
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurfaceVariant,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    m['name']!,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: isSelected ? theme.colorScheme.primary : null,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        }),
-        if (configs.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
-            child: Text(
-              '自定义模型',
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: theme.colorScheme.outline,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ...configs.map((config) {
-          final isActive = config.id == activeModelId;
-          return SimpleDialogOption(
-            onPressed: () => Navigator.pop(context, config.id),
-            child: Row(
-              children: [
-                Icon(
-                  isActive
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_unchecked,
-                  color: isActive
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurfaceVariant,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        config.name,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: isActive ? theme.colorScheme.primary : null,
-                        ),
-                      ),
-                      Text(
-                        '${config.provider} / ${config.modelName}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          );
-        }),
-      ],
-    );
-  }
+String _fallbackModelName(List<AiProvider> providers) {
+  final provider = providers.where((p) => p.isDefault && p.isUsable).firstOrNull ??
+      providers.where((p) => p.isUsable).firstOrNull;
+  final model = provider?.firstModel;
+  return model == null ? '未配置模型' : model.name;
 }

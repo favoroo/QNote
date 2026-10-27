@@ -1,55 +1,44 @@
 import 'dart:convert';
 
-import 'package:qnote_flutter/models/free_model_config.dart';
+import 'package:qnote_flutter/models/ai_model_ref.dart';
 
+/// 角色 → 模型绑定
+///
+/// 每个角色绑定一个 [AiModelRef]（厂商条目 + 模型名）；未绑定时由
+/// `AiRoleService` 回落到默认厂商的首个已启用模型。旧版「是否使用内置免费模型 /
+/// 内置模型 id / 配置 id」字段已随内置模型一并下线：读取旧 JSON 时这些键会被
+/// 忽略，裸配置 id 因无法解析为 [AiModelRef] 自然归位到「未绑定」。
 class AiRoles {
-  final String? assistant;
-  final String? timelineOptimization;
-  // 角色是否使用免费模型
-  final bool assistantUseFreeModel;
-  final bool timelineOptimizationUseFreeModel;
-  // 角色具体使用的免费模型 ID（默认头牌见 `kDefaultFreeModelId`）
-  final String? assistantFreeModelId;
-  final String? timelineOptimizationFreeModelId;
-  // 小Q生图工具绑定的内置生图模型 ID（Gemini 生图下线后目前仅 'sensenova-u1.5-lite'）
-  final String? imageGenerationFreeModelId;
+  /// 小Q 对话模型
+  final AiModelRef? assistant;
+
+  /// 时间线/日记 AI 提取模型
+  final AiModelRef? timelineOptimization;
+
+  /// 小Q 生图工具使用的模型（需支持 OpenAI 兼容 images/generations）
+  final AiModelRef? imageGeneration;
 
   const AiRoles({
     this.assistant,
     this.timelineOptimization,
-    this.assistantUseFreeModel = false,
-    this.timelineOptimizationUseFreeModel = false,
-    this.assistantFreeModelId = kDefaultFreeModelId,
-    this.timelineOptimizationFreeModelId = kDefaultFreeModelId,
-    this.imageGenerationFreeModelId = 'sensenova-u1.5-lite',
+    this.imageGeneration,
   });
 
   Map<String, dynamic> toMap() {
     return {
-      'assistant': assistant,
-      'timelineOptimization': timelineOptimization,
-      'assistantUseFreeModel': assistantUseFreeModel,
-      'timelineOptimizationUseFreeModel': timelineOptimizationUseFreeModel,
-      if (assistantFreeModelId != null) 'assistantFreeModelId': assistantFreeModelId,
-      if (timelineOptimizationFreeModelId != null)
-        'timelineOptimizationFreeModelId': timelineOptimizationFreeModelId,
-      if (imageGenerationFreeModelId != null)
-        'imageGenerationFreeModelId': imageGenerationFreeModelId,
+      if (assistant != null) 'assistant': assistant!.encode(),
+      if (timelineOptimization != null)
+        'timelineOptimization': timelineOptimization!.encode(),
+      if (imageGeneration != null) 'imageGeneration': imageGeneration!.encode(),
     };
   }
 
   factory AiRoles.fromMap(Map<String, dynamic> map) {
     return AiRoles(
-      assistant: map['assistant'] as String?,
-      timelineOptimization: map['timelineOptimization'] as String?,
-      assistantUseFreeModel: map['assistantUseFreeModel'] as bool? ?? false,
-      timelineOptimizationUseFreeModel:
-          map['timelineOptimizationUseFreeModel'] as bool? ?? false,
-      assistantFreeModelId: map['assistantFreeModelId'] as String? ?? kDefaultFreeModelId,
-      timelineOptimizationFreeModelId:
-          map['timelineOptimizationFreeModelId'] as String? ?? kDefaultFreeModelId,
-      imageGenerationFreeModelId:
-          map['imageGenerationFreeModelId'] as String? ?? 'sensenova-u1.5-lite',
+      assistant: AiModelRef.tryParse(map['assistant'] as String?),
+      timelineOptimization:
+          AiModelRef.tryParse(map['timelineOptimization'] as String?),
+      imageGeneration: AiModelRef.tryParse(map['imageGeneration'] as String?),
     );
   }
 
@@ -61,39 +50,20 @@ class AiRoles {
   /// 哨兵值：区分「未传参（保持原值）」与「显式传 null（清空绑定）」
   static const Object _unset = Object();
 
-  /// 复制并修改角色绑定
   AiRoles copyWith({
     Object? assistant = _unset,
     Object? timelineOptimization = _unset,
-    bool? assistantUseFreeModel,
-    bool? timelineOptimizationUseFreeModel,
-    Object? assistantFreeModelId = _unset,
-    Object? timelineOptimizationFreeModelId = _unset,
-    Object? imageGenerationFreeModelId = _unset,
+    Object? imageGeneration = _unset,
   }) {
     return AiRoles(
-      assistant: identical(assistant, _unset)
-          ? this.assistant
-          : assistant as String?,
+      assistant:
+          identical(assistant, _unset) ? this.assistant : assistant as AiModelRef?,
       timelineOptimization: identical(timelineOptimization, _unset)
           ? this.timelineOptimization
-          : timelineOptimization as String?,
-      assistantUseFreeModel:
-          assistantUseFreeModel ?? this.assistantUseFreeModel,
-      timelineOptimizationUseFreeModel:
-          timelineOptimizationUseFreeModel ??
-              this.timelineOptimizationUseFreeModel,
-      assistantFreeModelId: identical(assistantFreeModelId, _unset)
-          ? this.assistantFreeModelId
-          : assistantFreeModelId as String?,
-      timelineOptimizationFreeModelId:
-          identical(timelineOptimizationFreeModelId, _unset)
-              ? this.timelineOptimizationFreeModelId
-              : timelineOptimizationFreeModelId as String?,
-      imageGenerationFreeModelId:
-          identical(imageGenerationFreeModelId, _unset)
-              ? this.imageGenerationFreeModelId
-              : imageGenerationFreeModelId as String?,
+          : timelineOptimization as AiModelRef?,
+      imageGeneration: identical(imageGeneration, _unset)
+          ? this.imageGeneration
+          : imageGeneration as AiModelRef?,
     );
   }
 }
@@ -147,7 +117,7 @@ class AiTemperatures {
     this.assistant = const AiRoleSettings(maxTokens: 32000),
     this.timelineOptimization = const AiRoleSettings(
       temperature: 0.01,
-      // 推理模型（如 SenseNova、DeepSeek-R1）需要足够 token 预算给思维链 + JSON 输出
+      // 推理模型（带思维链的模型）需要足够 token 预算给思维链 + JSON 输出
       // 512 不够，会被 reasoning 耗尽导致 finish_reason: "length" 截断
       maxTokens: 2048,
       extractImages: true,

@@ -12,6 +12,8 @@ import 'package:qnote_flutter/pages/settings/q_memory_page.dart';
 import 'package:qnote_flutter/pages/settings/q_personality_page.dart';
 import 'package:qnote_flutter/pages/settings/q_skills_page.dart';
 import 'package:qnote_flutter/pages/settings/ai_config_page.dart';
+import 'package:qnote_flutter/pages/settings/ai_provider_edit_page.dart';
+import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 import 'package:qnote_flutter/pages/settings/shortcuts_page.dart';
 import 'package:qnote_flutter/pages/settings/fixed_events_page.dart';
 import 'package:qnote_flutter/pages/settings/data_sync_page.dart';
@@ -164,7 +166,27 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/settings/ai-config',
         parentNavigatorKey: rootNavigatorKey,
-        pageBuilder: (context, state) => _fadeTransitionPage(const AiConfigPage()),
+        pageBuilder: (context, state) {
+          final args = state.extra is AiConfigPageArgs
+              ? state.extra as AiConfigPageArgs
+              : const AiConfigPageArgs();
+          return _fadeTransitionPage(AiConfigPage(autoOpenAdd: args.autoOpenAdd));
+        },
+      ),
+      GoRoute(
+        path: '/settings/ai-config/provider',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) {
+          final args = state.extra is AiProviderEditArgs
+              ? state.extra as AiProviderEditArgs
+              : const AiProviderEditArgs();
+          return _fadeTransitionPage(
+            AiProviderEditPage(
+              provider: args.provider,
+              initialVendorId: args.initialVendorId,
+            ),
+          );
+        },
       ),
       GoRoute(
         path: '/settings/shortcuts',
