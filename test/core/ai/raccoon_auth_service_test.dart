@@ -74,8 +74,71 @@ void main() {
     expect(models.last.name, 'Raccoon Chat (默认)');
   });
 
+  test('模型目录带出倍率、限免与上下文等计费信息', () {
+    final models = RaccoonAuthService.modelsFromCatalogForTest({
+      'data': {
+        'categories': [
+          {
+            'models': [
+              {
+                'name': 'sn-sensenova-6-8-flash',
+                'description': 'SenseNova-6.8-Flash',
+                'tags': ['chat', 'vision'],
+                'params': {'context_window': 256000, 'max_tokens': 63999},
+                'billing_multiplier': 0.5,
+                'billing_effective_multiplier': 0,
+                'billing_status': 'limited_free',
+                'billing_status_note': '限免至11月30日',
+              },
+              {
+                'name': 'sn-glm-5-3-flash',
+                'description': 'GLM-5-3-Flash',
+                'tags': ['chat', 'fast'],
+                'params': {'context_window': 1000000},
+                'billing_multiplier': 0.2,
+                'billing_effective_multiplier': 0.2,
+              },
+              {
+                // 厂商没给计费字段：不能凭空标成免费或 1×
+                'name': 'raccoon-8c4485',
+                'display_name': 'Raccoon-Work',
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    final free = models.firstWhere((m) => m.id == 'sn-sensenova-6-8-flash');
+    expect(free.rate, 0);
+    expect(free.rateWas, 0.5);
+    expect(free.isFree, isTrue);
+    expect(free.hasDiscount, isTrue);
+    expect(free.contextWindow, 256000);
+    expect(free.rateNote, '限免至11月30日');
+    expect(free.supportsVision, isTrue);
+
+    final cheap = models.firstWhere((m) => m.id == 'sn-glm-5-3-flash');
+    expect(cheap.rate, 0.2);
+    expect(cheap.rateWas, isNull);
+    expect(cheap.isFree, isFalse);
+    expect(cheap.hasDiscount, isFalse);
+    expect(cheap.contextWindow, 1000000);
+    expect(cheap.rateNote, isNull);
+    // tags 里没有 vision：按厂商明确声明「不支持」处理
+    expect(cheap.supportsVision, isFalse);
+
+    final unknown = models.firstWhere((m) => m.id == 'raccoon-8c4485');
+    expect(unknown.rate, isNull);
+    expect(unknown.isFree, isFalse);
+    expect(unknown.contextWindow, isNull);
+    expect(unknown.supportsVision, isNull);
+  });
+
   test('目录为空时至少给出默认模型，避免启用列表为空', () {
     final models = RaccoonAuthService.modelsFromCatalogForTest({});
     expect(models.single.id, 'raccoon-chat-ml-5-5');
+    expect(models.single.rate, 1);
+    expect(models.single.contextWindow, 180000);
   });
 }

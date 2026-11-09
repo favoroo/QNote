@@ -14,23 +14,62 @@ class AiProviderModel {
   /// 思考强度；null 表示「自动」（不额外干预，由模型服务决定）
   final ReasoningEffort? reasoningEffort;
 
+  /// 实际生效的计费倍率（0 = 当前免费）；null 表示厂商没给这项信息
+  ///
+  /// 按积分计费的厂商（小浣熊、Loomy）用倍率决定一次对话花多少额度，
+  /// 选模型时必须看得见。只随目录缓存，不参与选路逻辑。
+  final num? rate;
+
+  /// 折扣前的原倍率（限时折扣/限免时才有值，用于展示「原 0.5×」）
+  final num? rateWas;
+
+  /// 上下文窗口（tokens）；仅用于界面提示
+  final int? contextWindow;
+
+  /// 厂商对计费的补充说明（如「限免至11月30日」）
+  final String? rateNote;
+
+  /// 厂商 tags 声明的视觉能力；null 表示厂商没声明
+  final bool? supportsVision;
+
   const AiProviderModel({
     required this.id,
     required this.name,
     this.reasoningEffort,
+    this.rate,
+    this.rateWas,
+    this.contextWindow,
+    this.rateNote,
+    this.supportsVision,
   });
+
+  /// 当前是否免费（厂商明说倍率为 0；没给倍率时不算，避免误标「免费」）
+  bool get isFree => rate != null && rate == 0;
+
+  /// 是否正在打折（实际倍率低于原倍率）
+  bool get hasDiscount => rate != null && rateWas != null && rate! < rateWas!;
 
   /// 展示名缺省时回落到模型 ID，避免界面出现空标题
   factory AiProviderModel.of(
     String id, {
     String? name,
     ReasoningEffort? reasoningEffort,
+    num? rate,
+    num? rateWas,
+    int? contextWindow,
+    String? rateNote,
+    bool? supportsVision,
   }) {
     final trimmed = (name ?? '').trim();
     return AiProviderModel(
       id: id,
       name: trimmed.isEmpty ? id : trimmed,
       reasoningEffort: reasoningEffort,
+      rate: rate,
+      rateWas: rateWas,
+      contextWindow: contextWindow,
+      rateNote: rateNote,
+      supportsVision: supportsVision,
     );
   }
 
@@ -38,18 +77,36 @@ class AiProviderModel {
     'id': id,
     'name': name,
     if (reasoningEffort != null) 'reasoning_effort': reasoningEffort!.wireName,
+    if (rate != null) 'rate': rate,
+    if (rateWas != null) 'rate_was': rateWas,
+    if (contextWindow != null) 'context_window': contextWindow,
+    if (rateNote != null && rateNote!.isNotEmpty) 'rate_note': rateNote,
+    if (supportsVision != null) 'vision': supportsVision,
   };
 
   factory AiProviderModel.fromMap(Map<String, dynamic> map) {
     final id = (map['id'] ?? '').toString();
+    final note = map['rate_note']?.toString().trim();
     return AiProviderModel.of(
       id,
       name: map['name'] as String?,
       reasoningEffort: ReasoningEffort.tryParse(
         map['reasoning_effort']?.toString(),
       ),
+      rate: _numOf(map['rate']),
+      rateWas: _numOf(map['rate_was']),
+      contextWindow: _intOf(map['context_window']),
+      rateNote: note == null || note.isEmpty ? null : note,
+      supportsVision: map['vision'] is bool ? map['vision'] as bool : null,
     );
   }
+
+  static num? _numOf(dynamic raw) {
+    if (raw is num) return raw;
+    return num.tryParse(raw?.toString().trim() ?? '');
+  }
+
+  static int? _intOf(dynamic raw) => _numOf(raw)?.floor();
 
   /// 复制并修改思考强度
   ///
@@ -62,8 +119,28 @@ class AiProviderModel {
       reasoningEffort: identical(reasoningEffort, _unsetReasoningEffort)
           ? this.reasoningEffort
           : reasoningEffort as ReasoningEffort?,
+      rate: rate,
+      rateWas: rateWas,
+      contextWindow: contextWindow,
+      rateNote: rateNote,
+      supportsVision: supportsVision,
     );
   }
+
+  /// 保留本地的展示名与思考档位，只把计费/能力元数据换成最新扫描结果
+  ///
+  /// 扫描合并时若整体沿用旧条目，用户改过的名称与档位能留住，但厂商新调的
+  /// 倍率、限免说明就永远刷不进来了。
+  AiProviderModel withMetadataFrom(AiProviderModel fresh) => AiProviderModel(
+    id: id,
+    name: name,
+    reasoningEffort: reasoningEffort,
+    rate: fresh.rate,
+    rateWas: fresh.rateWas,
+    contextWindow: fresh.contextWindow,
+    rateNote: fresh.rateNote,
+    supportsVision: fresh.supportsVision,
+  );
 
   static const Object _unsetReasoningEffort = Object();
 

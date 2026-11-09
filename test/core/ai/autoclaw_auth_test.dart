@@ -56,7 +56,7 @@ void main() {
     adapter.scripts['/userapi/v1/agent-send-code'] = [
       (200, {'code': 0, 'msg': 'ok'}),
     ];
-    adapter.scripts['/userapi/v1/agent-login/'] = [
+    adapter.scripts['/userapi/v1/agent-login'] = [
       (
         200,
         {
@@ -101,9 +101,12 @@ void main() {
     expect(saved.single.id, result.id);
 
     // 登录请求必须带短信验证码（数字）与同一个 device_id
-    final loginBody = adapter.calls
-        .firstWhere((call) => call.path.contains('/agent-login'))
-        .body;
+    final loginCall = adapter.calls.firstWhere(
+      (call) => call.path.contains('/agent-login'),
+    );
+    // 不能带尾斜杠：服务端会 307 到无斜杠地址，而 dart:io 的 POST 不跟随重定向
+    expect(loginCall.path, '/userapi/v1/agent-login');
+    final loginBody = loginCall.body;
     expect(loginBody['code'], 123456);
     expect(loginBody['device_id'], challenge.ticket);
     expect(loginBody['phone'], '13800138000');
@@ -122,6 +125,45 @@ void main() {
       throwsA(isA<FormatException>()),
     );
     expect(adapter.calls, isEmpty);
+  });
+
+  test('登录被 307 重定向时报出 HTTP 状态，不误报「缺少账号信息」', () async {
+    auth.httpClientAdapterForTest = const _EmptyBodyAdapter(307);
+
+    await expectLater(
+      auth.verifyLoginCode(
+        'pAutoClaw',
+        const AccountSmsChallenge(phone: '13800138000', ticket: 'dev-1'),
+        '123456',
+      ),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          contains('HTTP 307'),
+        ),
+      ),
+    );
+  });
+
+  test('静态模型目录带上下文与识图，倍率留空（厂商不暴露）', () async {
+    final models = await auth.fetchModelsForProvider('pAutoClaw');
+
+    expect(models.map((m) => m.id), [
+      'zai_auto',
+      'zai_auto-fast',
+      'zaicoding_glm-5.3',
+      'zai_glm-5.3-flash',
+    ]);
+    expect(models.every((m) => m.contextWindow == 1048576), isTrue);
+    // AutoClaw 按积分池计费、没有逐模型倍率接口：不能默认成 1× 或免费
+    expect(models.every((m) => m.rate == null), isTrue);
+    expect(models.every((m) => m.isFree), isFalse);
+    expect(models.first.supportsVision, isTrue);
+    expect(
+      models.firstWhere((m) => m.id == 'zaicoding_glm-5.3').supportsVision,
+      isFalse,
+    );
   });
 
   test('额度：总余额 + 钱包拆分 + 今日签到状态', () async {
@@ -401,4 +443,21 @@ class _AutoClawAdapter implements HttpClientAdapter {
           Headers.contentTypeHeader: [Headers.jsonContentType],
         },
       );
+}
+
+/// 模拟 dart:io 对 POST 307 的行为：返回空 body，不自动跟随重定向
+class _EmptyBodyAdapter implements HttpClientAdapter {
+  final int status;
+
+  const _EmptyBodyAdapter(this.status);
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async => ResponseBody.fromString('', status);
+
+  @override
+  void close({bool force = false}) {}
 }

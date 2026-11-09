@@ -24,7 +24,8 @@ export 'package:qnote_flutter/core/ai/account_auth_types.dart';
 ///
 /// 接口与请求头来自 magpie 社区插件 `@magpie-community/opencode-autoclaw-auth`：
 /// - 登录：手机验证码 `POST /userapi/v1/agent-send-code` →
-///   `POST /userapi/v1/agent-login/`；
+///   `POST /userapi/v1/agent-login`（不能带尾斜杠，服务端会 307 到无斜杠地址，
+///   而 dart:io 只为 GET/HEAD 自动跟随重定向，POST 会拿到空 body）；
 /// - 刷新：`POST /userapi/v1/refresh`，旧版账号回落到 `agent-refresh`；
 /// - 聊天：`POST {managedHost}/autoclaw-proxy/proxy/autoclaw/chat/completions`，
 ///   鉴权头是 `X-Authorization`，且请求体必须带官方 system prompt 前缀；
@@ -499,7 +500,7 @@ class AutoClawAuthService extends AccountAuthService {
     final deviceId = challenge.ticket;
     final envelope = await _send(
       'POST',
-      '$host/userapi/v1/agent-login/',
+      '$host/userapi/v1/agent-login',
       headers: _bizHeaders(),
       data: {
         'source_id': product,
@@ -517,7 +518,11 @@ class AutoClawAuthService extends AccountAuthService {
       );
     }
     final data = envelope.data;
-    if (data is! Map) throw const FormatException('登录失败：响应缺少账号信息');
+    if (data is! Map) {
+      throw FormatException(
+        '登录失败：响应缺少账号信息（HTTP ${envelope.status}）',
+      );
+    }
     final access = _bareToken(data['access_token']?.toString() ?? '');
     final refresh = _bareToken(data['refresh_token']?.toString() ?? '');
     if (access.isEmpty || refresh.isEmpty) {
@@ -689,11 +694,33 @@ class AutoClawAuthService extends AccountAuthService {
   // ── 模型目录 ─────────────────────────────────────────────
 
   /// AutoClaw 国内的模型由客户端固定目录提供，不额外发请求
+  /// 厂商没有模型目录接口，清单与上下文/识图能力取自官方客户端 2.1.0 内置表；
+  /// AutoClaw 按积分池计费，不对外暴露逐模型倍率，所以倍率字段留空（不编 1×）。
   static const List<AiProviderModel> _catalog = [
-    AiProviderModel(id: 'zai_auto', name: 'GLM Auto'),
-    AiProviderModel(id: 'zai_auto-fast', name: 'GLM Auto Fast'),
-    AiProviderModel(id: 'zaicoding_glm-5.3', name: 'GLM-5.3'),
-    AiProviderModel(id: 'zai_glm-5.3-flash', name: 'GLM-5.3 Flash'),
+    AiProviderModel(
+      id: 'zai_auto',
+      name: 'GLM Auto',
+      contextWindow: 1048576,
+      supportsVision: true,
+    ),
+    AiProviderModel(
+      id: 'zai_auto-fast',
+      name: 'GLM Auto Fast',
+      contextWindow: 1048576,
+      supportsVision: true,
+    ),
+    AiProviderModel(
+      id: 'zaicoding_glm-5.3',
+      name: 'GLM-5.3',
+      contextWindow: 1048576,
+      supportsVision: false,
+    ),
+    AiProviderModel(
+      id: 'zai_glm-5.3-flash',
+      name: 'GLM-5.3 Flash',
+      contextWindow: 1048576,
+      supportsVision: true,
+    ),
   ];
 
   @override
@@ -984,9 +1011,17 @@ class AutoClawAuthService extends AccountAuthService {
     }
     final payload = response.data;
     final map = payload is Map ? Map<String, dynamic>.from(payload) : null;
+    final status = response.statusCode ?? 0;
+    // 2xx/3xx 却没有业务信封，基本是请求被重定向（3xx 空 body）或网关换了回包
+    // 形态：显式报错，否则 code 会默认成 0，最后被误报成「登录失败：响应缺少
+    // 账号信息」，把真正的 HTTP 状态藏起来。
+    if ((map == null || map['code'] == null) && status >= 200 && status < 400) {
+      final hint = status >= 300 ? '，请求被重定向，请检查接口地址' : '';
+      throw FormatException('AutoClaw 响应异常（HTTP $status$hint）');
+    }
     final dataBlock = map?['data'];
     return _Envelope(
-      status: response.statusCode ?? 0,
+      status: status,
       code: _intOf(map?['code']) ?? 0,
       message: (map?['msg'] ?? map?['message'] ?? _messageOfData(dataBlock))
           .toString()

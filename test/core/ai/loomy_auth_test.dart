@@ -248,7 +248,7 @@ void main() {
     expect(saved.single.status, AiAccount.statusExpired);
   });
 
-  test('模型目录：实时目录优先，展示名去掉倍率后缀', () async {
+  test('模型目录：实时目录优先，展示名去掉倍率后缀并落成倍率元数据', () async {
     adapter.scripts['/api/v1/models'] = [
       (
         200,
@@ -258,6 +258,7 @@ void main() {
             {
               'id': 'Kimi-k2.6',
               'name': 'Kimi k2.6 (x6.5)',
+              'context_length': 262144,
               'capabilities': {'vision': true},
             },
             {'id': 'auto', 'name': '自动 · 均衡'},
@@ -271,6 +272,16 @@ void main() {
 
     expect(models.map((m) => m.id), ['Kimi-k2.6', 'auto']);
     expect(models.first.name, 'Kimi k2.6');
+    // (x6.5) 拆成独立倍率，界面才能像小浣熊一样显示徽标
+    expect(models.first.rate, 6.5);
+    expect(models.first.isFree, isFalse);
+    expect(models.first.contextWindow, 262144);
+    expect(models.first.supportsVision, isTrue);
+    // 展示名里没有倍率的模型不编一个默认值
+    expect(models.last.rate, isNull);
+    // 目录没声明能力时保持未知
+    expect(models.last.contextWindow, isNull);
+    expect(models.last.supportsVision, isNull);
   });
 
   test('模型目录拉取失败时回落静态目录', () async {

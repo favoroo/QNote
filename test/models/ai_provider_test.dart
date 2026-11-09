@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:qnote_flutter/models/ai_model_ref.dart';
 import 'package:qnote_flutter/models/ai_provider.dart';
+import 'package:qnote_flutter/models/reasoning_effort.dart';
 
 void main() {
   group('AiModelRef', () {
@@ -220,6 +221,91 @@ void main() {
 
     test('空输入不产生厂商', () {
       expect(AiProvider.fromLegacyConfigMaps(const []), isEmpty);
+    });
+  });
+
+  group('AiProviderModel 计费元数据', () {
+    test('toMap / fromMap 往返保留倍率、上下文、限免说明与识图', () {
+      final model = AiProviderModel.of(
+        'sn-sensenova-6-8-flash',
+        name: 'SenseNova-6.8-Flash',
+        rate: 0,
+        rateWas: 0.5,
+        contextWindow: 256000,
+        rateNote: '限免至11月30日',
+        supportsVision: true,
+      );
+
+      final restored = AiProviderModel.fromMap(model.toMap());
+
+      expect(restored.rate, 0);
+      expect(restored.rateWas, 0.5);
+      expect(restored.contextWindow, 256000);
+      expect(restored.rateNote, '限免至11月30日');
+      expect(restored.supportsVision, isTrue);
+      expect(restored.isFree, isTrue);
+      expect(restored.hasDiscount, isTrue);
+    });
+
+    test('旧 JSON 没有元数据字段时按未知处理，不是 0 / false', () {
+      final restored = AiProviderModel.fromMap({
+        'id': 'm',
+        'name': 'm',
+        'reasoning_effort': 'high',
+      });
+
+      expect(restored.rate, isNull);
+      expect(restored.rateWas, isNull);
+      expect(restored.contextWindow, isNull);
+      expect(restored.rateNote, isNull);
+      expect(restored.supportsVision, isNull);
+      // 没给倍率就不算免费，否则会凭空多出一个「免费」标
+      expect(restored.isFree, isFalse);
+      expect(restored.hasDiscount, isFalse);
+      expect(restored.toMap().containsKey('rate'), isFalse);
+      expect(restored.toMap().containsKey('vision'), isFalse);
+    });
+
+    test('withMetadataFrom 只覆盖元数据，名称与思考档位保持本地设置', () {
+      final local = AiProviderModel.of(
+        'sn-glm-5-3',
+        name: '我改过的名字',
+        reasoningEffort: ReasoningEffort.high,
+        rate: 1,
+        contextWindow: 1000000,
+      );
+      final fresh = AiProviderModel.of(
+        'sn-glm-5-3',
+        name: '厂商新名字',
+        rate: 0.75,
+        rateWas: 1,
+        contextWindow: 1000000,
+        rateNote: '限时 7.5 折',
+        supportsVision: true,
+      );
+
+      final merged = local.withMetadataFrom(fresh);
+
+      expect(merged.name, '我改过的名字');
+      expect(merged.reasoningEffort, ReasoningEffort.high);
+      expect(merged.rate, 0.75);
+      expect(merged.rateWas, 1);
+      expect(merged.rateNote, '限时 7.5 折');
+      expect(merged.supportsVision, isTrue);
+    });
+
+    test('copyWith 保留元数据，只改思考档位', () {
+      final model = AiProviderModel.of(
+        'm',
+        rate: 0.25,
+        contextWindow: 1000000,
+      );
+
+      final updated = model.copyWith(reasoningEffort: ReasoningEffort.low);
+
+      expect(updated.reasoningEffort, ReasoningEffort.low);
+      expect(updated.rate, 0.25);
+      expect(updated.contextWindow, 1000000);
     });
   });
 }

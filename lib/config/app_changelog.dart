@@ -14,6 +14,16 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.86',
+    date: '2026-11-09',
+    notes: [
+      '模型列表新增计费与能力标签：直接显示「免费」、计费倍率、折扣原价、上下文长度与是否支持识图，选模型前一眼看清成本',
+      '模型选择器同步显示这些标签，小浣熊、Loomy、AutoClaw 的模型目录信息随扫描实时刷新，厂商调价或限免到期立刻可见',
+      '修复 AutoClaw 短信登录失败：去掉接口尾斜杠导致的重定向空响应问题，并补充更准确的错误提示',
+      'Loomy 模型的倍率后缀不再混在名称里，改为独立标签展示，模型名更干净',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.85',
     date: '2026-11-09',
     notes: [

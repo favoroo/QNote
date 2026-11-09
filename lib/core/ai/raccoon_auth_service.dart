@@ -1335,17 +1335,78 @@ class RaccoonAuthService extends AccountAuthService {
               (rawName != null && rawName.isNotEmpty && rawName.length <= 64)
               ? rawName
               : id;
-          result.add(AiProviderModel.of(id, name: name));
+          result.add(
+            AiProviderModel.of(
+              id,
+              name: name,
+              rate: _catalogRate(entry),
+              rateWas: _catalogRateWas(entry),
+              contextWindow: _catalogContext(entry),
+              rateNote: _catalogRateNote(entry),
+              supportsVision: _catalogVision(entry),
+            ),
+          );
         }
       }
     }
     // 目录没列默认模型时补上，避免启用列表为空
     if (seen.add('raccoon-chat-ml-5-5')) {
       result.add(
-        AiProviderModel.of('raccoon-chat-ml-5-5', name: 'Raccoon Chat (默认)'),
+        AiProviderModel.of(
+          'raccoon-chat-ml-5-5',
+          name: 'Raccoon Chat (默认)',
+          rate: 1,
+          contextWindow: 180000,
+          supportsVision: false,
+        ),
       );
     }
     return result;
+  }
+
+  /// 目录里的实际生效倍率：优先限时折扣价，其次原价
+  ///
+  /// 倍率是选模型的主要依据（0 = 当前免费），所以宁可取到一个值也不省略：
+  /// 厂商只给 `billing_multiplier` 时就用它。
+  static num? _catalogRate(Map<dynamic, dynamic> entry) =>
+      _numOrNull(entry['billing_effective_multiplier']) ??
+      _numOrNull(entry['billing_multiplier']);
+
+  /// 折扣前的原倍率：只有确实降价了才返回，用于展示「原 0.5×」
+  static num? _catalogRateWas(Map<dynamic, dynamic> entry) {
+    final base = _numOrNull(entry['billing_multiplier']);
+    final effective = _numOrNull(entry['billing_effective_multiplier']);
+    if (base == null || effective == null || effective >= base) return null;
+    return base;
+  }
+
+  /// 厂商给的计费说明（如「限免至11月30日」）
+  static String? _catalogRateNote(Map<dynamic, dynamic> entry) {
+    final note = entry['billing_status_note']?.toString().trim();
+    return note == null || note.isEmpty ? null : note;
+  }
+
+  /// 上下文窗口：目录把参数放在 `params` 里，个别版本提到顶层
+  static int? _catalogContext(Map<dynamic, dynamic> entry) {
+    final params = entry['params'];
+    final fromParams = params is Map
+        ? (params['context_window'] ?? params['contextWindow'])
+        : null;
+    return _numOrNull(fromParams ?? entry['context_window'])?.floor();
+  }
+
+  /// tags 里声明了视觉能力才算支持识图（没声明的一律返回 null，不猜）
+  static bool? _catalogVision(Map<dynamic, dynamic> entry) {
+    final tags = entry['tags'];
+    if (tags is! List) return null;
+    return tags
+        .map((tag) => tag.toString().trim().toLowerCase())
+        .any((tag) => tag == 'vision' || tag == 'image' || tag == 'image-understanding');
+  }
+
+  static num? _numOrNull(dynamic raw) {
+    if (raw is num) return raw;
+    return num.tryParse(raw?.toString().trim() ?? '');
   }
 
   static Map<String, dynamic>? _decodeJwtClaims(String token) {

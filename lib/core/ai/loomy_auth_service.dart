@@ -615,7 +615,18 @@ class LoomyAuthService extends AccountAuthService {
         final rawName = (entry['name'] ?? entry['display_name'] ?? id)
             .toString()
             .trim();
-        models.add(AiProviderModel.of(id, name: splitRateSuffix(rawName).name));
+        // 倍率只藏在展示名尾部（`Kimi k2.6 (x6.5)`）：拆出来单独存，
+        // 界面才能像其他厂商一样把「免费 / 倍率」当徽标展示
+        final split = splitRateSuffix(rawName);
+        models.add(
+          AiProviderModel.of(
+            id,
+            name: split.name,
+            rate: _rateOf(split.rate),
+            contextWindow: _contextOf(entry),
+            supportsVision: _visionOf(entry),
+          ),
+        );
       }
       return models.isEmpty ? List<AiProviderModel>.of(_catalog) : models;
     } catch (e) {
@@ -1031,6 +1042,38 @@ class LoomyAuthService extends AccountAuthService {
       return (name: bare.isEmpty ? trimmed : bare, rate: inner.toLowerCase());
     }
     return (name: trimmed, rate: null);
+  }
+
+  /// 倍率后缀（`x6.5`）→ 数值；解析不出返回 null（当作厂商没给倍率）
+  static num? _rateOf(String? suffix) {
+    if (suffix == null || suffix.trim().isEmpty) return null;
+    return num.tryParse(suffix.trim().replaceFirst(RegExp(r'^[xX]'), ''));
+  }
+
+  /// 上下文窗口：实时目录给 `context_length`，旧版/兼容字段一并兜住
+  static int? _contextOf(Map<dynamic, dynamic> entry) {
+    final limit = entry['limit'];
+    final raw =
+        entry['context_window'] ??
+        entry['context_length'] ??
+        (limit is Map ? limit['context'] : null);
+    if (raw is num) return raw.floor();
+    return num.tryParse(raw?.toString().trim() ?? '')?.floor();
+  }
+
+  /// 视觉能力：优先 `capabilities.vision`，其次看输入模态里有没有图像
+  ///
+  /// 两者都没有时返回 null；厂商没有明确声明就不替它下结论。
+  static bool? _visionOf(Map<dynamic, dynamic> entry) {
+    final caps = entry['capabilities'];
+    if (caps is! Map) return null;
+    final vision = caps['vision'];
+    if (vision is bool) return vision;
+    final modalities = caps['input_modalities'];
+    if (modalities is! List) return null;
+    return modalities.any(
+      (item) => item.toString().trim().toLowerCase() == 'image',
+    );
   }
 
   /// 旧版 DeepSeek 只认 `<image_base64>` 标记，不认 OpenAI 的 image_url 分段

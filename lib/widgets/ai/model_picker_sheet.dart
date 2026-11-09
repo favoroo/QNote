@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:qnote_flutter/models/ai_model_ref.dart';
 import 'package:qnote_flutter/models/ai_provider.dart';
 import 'package:qnote_flutter/models/ai_route_group.dart';
+import 'package:qnote_flutter/widgets/ai/model_meta_badges.dart';
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 
 /// 选择结果：携带选中的 [AiModelRef]（可能指向具体模型，也可能指向路由组）
@@ -393,14 +394,7 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
                               color: isSelected ? colorScheme.primary : null,
                             ),
                           ),
-                          subtitle: model.name == model.id
-                              ? null
-                              : Text(
-                                  model.id,
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
+                          subtitle: _modelSubtitle(theme, model),
                           onTap: () =>
                               Navigator.of(context).pop(ModelPickerResult(ref)),
                         );
@@ -414,4 +408,22 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
       ),
     );
   }
+}
+
+/// 模型行的副标题：模型 ID 与计费/能力徽标併成一行
+///
+/// 按积分计费的厂商（小浣熊、Loomy）里，倍率与限免状态直接决定一次对话花多少
+/// 额度，选模型时必须和模型名一起看到；两者都没有时返回 null，不留空行。
+Widget? _modelSubtitle(ThemeData theme, AiProviderModel model) {
+  final line = [
+    if (model.name != model.id) model.id,
+    ...modelMetaBadges(model),
+  ].join(' · ');
+  if (line.isEmpty) return null;
+  return Text(
+    line,
+    style: theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    ),
+  );
 }

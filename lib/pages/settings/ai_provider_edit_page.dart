@@ -19,6 +19,7 @@ import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_provider.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
+import 'package:qnote_flutter/widgets/ai/model_meta_badges.dart';
 import 'package:qnote_flutter/widgets/ai/raccoon_login_sheet.dart';
 import 'package:qnote_flutter/widgets/ai/reasoning_effort_sheet.dart';
 import 'package:qnote_flutter/widgets/ai/sms_login_sheet.dart';
@@ -664,9 +665,10 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       final seen = <String>{};
       for (final model in models) {
         if (!seen.add(model.id)) continue;
-        // 保留已启用模型的自定义展示名
+        // 名称与思考档位是用户本地设置，保留；倍率/上下文这类厂商元数据
+        // 每次扫描都跟着目录刷新，否则限免到期、调价都看不出来
         final existing = _models.where((m) => m.id == model.id).firstOrNull;
-        merged.add(existing ?? model);
+        merged.add(existing == null ? model : existing.withMetadataFrom(model));
       }
       for (final model in _catalog) {
         if (seen.add(model.id)) merged.add(model);
@@ -677,6 +679,14 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
         _models.add(merged.first);
       }
       setState(() {
+        // 已启用模型也刷新元数据：模型选择器直接读这份列表，只更新目录的话
+        // 用户在选择器里仍然看不到新倍率/限免状态
+        for (var i = 0; i < _models.length; i++) {
+          final fresh = models
+              .where((m) => m.id == _models[i].id)
+              .firstOrNull;
+          if (fresh != null) _models[i] = _models[i].withMetadataFrom(fresh);
+        }
         _scanning = false;
         _catalog = merged;
         _catalogUpdatedAt = DateTime.now();
@@ -712,6 +722,61 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       }
       _dirty = true;
     });
+  }
+
+  /// 模型行的元数据徽标：免费 / 倍率 / 上下文 / 识图 / 限免说明
+  ///
+  /// 数据来自厂商目录（小浣熊的 `billing_*`、Loomy 展示名尾部的 `xN.N`）。
+  /// 倍率直接决定一次对话花多少积分，选模型时要一眼看到。
+  Widget? _modelMetaRow(ThemeData theme, AiProviderModel model) {
+    final colorScheme = theme.colorScheme;
+    final children = <Widget>[];
+
+    for (final label in modelMetaBadges(model)) {
+      final isFree = label == '免费';
+      final isOriginalRate = label.startsWith('原 ');
+      children.add(
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontSize: 11,
+              color: isFree
+                  ? Colors.green.shade700
+                  : (isOriginalRate ? colorScheme.onSurfaceVariant : null),
+              decoration: isOriginalRate ? TextDecoration.lineThrough : null,
+            ),
+          ),
+        ),
+      );
+    }
+    final note = model.rateNote;
+    if (note != null && note.isNotEmpty) {
+      children.add(
+        Text(
+          note,
+          style: theme.textTheme.bodySmall?.copyWith(
+            fontSize: 11,
+            color: Colors.orange.shade700,
+          ),
+        ),
+      );
+    }
+    if (children.isEmpty) return null;
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 2,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: children,
+      ),
+    );
   }
 
   /// 调整某个已启用模型的思考强度
@@ -1928,6 +1993,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                       )
                     : null;
                 final effort = enabledModel?.reasoningEffort;
+                final metaRow = _modelMetaRow(theme, model);
                 final effortLabel = capability == null
                     ? null
                     : (effort == null ? '自动' : capability.labelFor(effort));
@@ -1949,6 +2015,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                               : colorScheme.onSurfaceVariant,
                         ),
                       ),
+                      ?metaRow,
                       if (effortLabel != null)
                         InkWell(
                           onTap: enabledModel == null
