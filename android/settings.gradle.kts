@@ -24,7 +24,11 @@ pluginManagement {
 
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
-    id("com.android.application") version "8.11.1" apply false
+    // AGP 8.11.1 的 lint vital 任务用 Integer.parseInt 解析各已安装平台的
+    // AndroidVersion.ApiLevel，遇到 Android 17 preview 的 "37.0"（带小数的 minor
+    // 版本号）会抛 NumberFormatException，导致所有插件子模块的 lintVitalAnalyzeRelease
+    // 失败、Release 构建中断。8.13+ 已支持 minor 版本平台，升级以修根因。
+    id("com.android.application") version "8.13.1" apply false
     id("org.jetbrains.kotlin.android") version "2.2.20" apply false
 }
 
