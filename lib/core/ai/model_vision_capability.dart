@@ -13,10 +13,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// 让模型对着看不见的画面编造。
 ///
 /// 判定是**纯内存查表**：不发探测请求、不占配额，每轮对话查多少次都是零成本。
-/// 结论来自两处：① 用户在设置页手动「识图检测」后按模型名持久化的结论
+/// 结论来自两处：① 手动/自动「识图检测」后按模型名持久化的结论
 /// （[recordProbeResult]）；② 模型名里的视觉关键词启发式。
 /// 两者都没命中时按**不支持**处理——漏判只多一次提问/换模型，误判则让模型对着
 /// 看不见的画面编造内容，代价差得远。
+///
+/// 需要「能力未知时先实测再决定」的场景（首次发图前）请用
+/// `VisionCapabilityProbe.ensure()`：它会在未知时自动探测并把结论写回本类。
 class ModelVisionCapability {
   ModelVisionCapability._();
 
@@ -55,9 +58,12 @@ class ModelVisionCapability {
   static Future<void> recordProbeResult(String modelName, bool capable) async {
     final name = modelName.trim().toLowerCase();
     if (name.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    // 内存镜像可能还没预热（自动探测早于启动预热完成）：先补读磁盘再合并，
+    // 否则会用「只有当前模型」的新表覆盖掉历史结论
+    _probed ??= _decodePrefs(prefs.getString(_prefsKey));
     final next = Map<String, bool>.of(_probed ?? const <String, bool>{})..[name] = capable;
     _probed = next;
-    final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefsKey, jsonEncode(next));
   }
 
@@ -78,13 +84,23 @@ class ModelVisionCapability {
     return _probed?[name];
   }
 
+  /// 模型名是否带视觉命名线索（纯启发式，不等于实测结论）
+  static bool hasVisionNameHint(String modelName) {
+    final name = modelName.trim().toLowerCase();
+    if (name.isEmpty) return false;
+    return _visionNameHints.any(name.contains);
+  }
+
   /// 判定配置对应的模型能否接收图片输入
+  ///
+  /// 未检测且命名无线索时按不支持处理；需要「先试再定」的场景请改用
+  /// `VisionCapabilityProbe.ensure()`，它会在未知时自动实测并落盘。
   static bool supportsVision(AiConfig config) {
     final modelName = config.modelName.trim().toLowerCase();
     if (modelName.isEmpty) return false;
     final probed = _probed?[modelName];
     if (probed != null) return probed;
-    return _visionNameHints.any(modelName.contains);
+    return hasVisionNameHint(modelName);
   }
 
   /// 磁盘里的缓存被写坏时退回空表，而不是让启动抛异常

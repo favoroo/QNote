@@ -44,6 +44,16 @@ class HealthSyncResult {
   });
 }
 
+/// 上次同步失败的原因（供设置页显示横幅：登录态失效需要引导重新扫码）
+class HealthSyncFailure {
+  const HealthSyncFailure({required this.message, required this.needsRelogin});
+
+  final String message;
+
+  /// true 表示 passToken 已被服务端拒绝，只有重新扫码授权能恢复
+  final bool needsRelogin;
+}
+
 class HealthSyncService {
   final MiFitnessApiClient _apiClient;
   final HealthMetricRepository _healthRepo;
@@ -54,6 +64,8 @@ class HealthSyncService {
   static const String keyLastSyncTime = 'health_sync_last_time';
   static const String keyAutoSync = 'health_sync_auto_sync';
   static const String keyDailyStepTarget = 'health_sync_daily_step_target';
+  static const String keyLastFailure = 'health_sync_last_failure';
+  static const String keyLastFailureNeedsRelogin = 'health_sync_last_failure_relogin';
   static const int defaultDailyStepTarget = 8000;
 
   HealthSyncService({
@@ -80,6 +92,45 @@ class HealthSyncService {
     final str = prefs.getString(keyLastSyncTime);
     if (str == null || str.isEmpty) return null;
     return DateTime.tryParse(str);
+  }
+
+  /// 读取上次同步失败原因（最近一次同步成功则为 null）
+  ///
+  /// 落盘的原因会跨冷启动保留：启动自动同步是 fire-and-forget，失败只在日志里，
+  /// 用户回到设置页看不到任何解释，只会以为「小米健康又坏了」。
+  Future<HealthSyncFailure?> getLastFailure() async {
+    final prefs = await SharedPreferences.getInstance();
+    final message = prefs.getString(keyLastFailure);
+    if (message == null || message.isEmpty) return null;
+    return HealthSyncFailure(
+      message: message,
+      needsRelogin: prefs.getBool(keyLastFailureNeedsRelogin) ?? false,
+    );
+  }
+
+  /// 记录（message 非空）或清除（null）上次同步失败原因
+  Future<void> _saveLastFailure(String? message, {bool needsRelogin = false}) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (message == null) {
+      await prefs.remove(keyLastFailure);
+      await prefs.remove(keyLastFailureNeedsRelogin);
+      return;
+    }
+    await prefs.setString(keyLastFailure, message);
+    await prefs.setBool(keyLastFailureNeedsRelogin, needsRelogin);
+  }
+
+  /// 把一批异常收敛成一句给用户看的文案（登录态问题优先，它决定「重新扫码」还是「稍后重试」）
+  ({String message, bool needsRelogin}) _describeFailure(List<Object> failures) {
+    for (final failure in failures) {
+      if (failure is MiFitnessAuthException) {
+        return (
+          message: failure.needsRelogin ? failure.message : '同步失败：${failure.message}',
+          needsRelogin: failure.needsRelogin,
+        );
+      }
+    }
+    return (message: '同步失败：${failures.first}', needsRelogin: false);
   }
 
   /// 是否自动沉淀为时间线卡片（始终开启，设置页已移除开关）
@@ -155,6 +206,7 @@ class HealthSyncService {
       }
 
       // 2. 同步最近 N 天的每日健康汇总（含步数、睡眠、心率、血氧等），按天生成/更新 23:00 专属聚合卡片
+      final dayFailures = <Object>[];
       for (int i = 0; i <= daysBack; i++) {
         final targetDate = now.subtract(Duration(days: i));
         final dayLabel = i == 0 ? '今天' : '$i天前';
@@ -171,9 +223,19 @@ class HealthSyncService {
             if (cardCreatedOrUpdated) newTimelineCardsCount++;
           }
         } catch (e) {
+          dayFailures.add(e);
           LoggerService.instance.warning('Failed to sync day summary for $targetDate: $e');
         }
       }
+
+      // 一天都没拉到：这是登录态或网络故障（某天真的没数据时云端回 code=0 + 空列表，不走异常）。
+      // 旧实现会照旧返回 success，界面弹「已同步（0 天数据）」，用户以为正常而库里其实一片空白。
+      if (syncedDaysCount == 0 && dayFailures.isNotEmpty) {
+        final reason = _describeFailure(dayFailures);
+        await _saveLastFailure(reason.message, needsRelogin: reason.needsRelogin);
+        return HealthSyncResult(success: false, errorMessage: reason.message);
+      }
+      await _saveLastFailure(null);
 
       // 记录最新同步时间
       final prefs = await SharedPreferences.getInstance();
@@ -189,10 +251,9 @@ class HealthSyncService {
       );
     } catch (e) {
       LoggerService.instance.error('Health sync failed: $e');
-      return HealthSyncResult(
-        success: false,
-        errorMessage: '同步失败: $e',
-      );
+      final reason = _describeFailure([e]);
+      await _saveLastFailure(reason.message, needsRelogin: reason.needsRelogin);
+      return HealthSyncResult(success: false, errorMessage: reason.message);
     }
   }
 
@@ -236,6 +297,7 @@ class HealthSyncService {
       // 记录最新同步时间
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(keyLastSyncTime, DateTime.now().toIso8601String());
+      await _saveLastFailure(null);
 
       return HealthSyncResult(
         success: true,
@@ -245,10 +307,9 @@ class HealthSyncService {
       );
     } catch (e) {
       LoggerService.instance.error('Health sync single date failed: $e');
-      return HealthSyncResult(
-        success: false,
-        errorMessage: '同步失败: $e',
-      );
+      final reason = _describeFailure([e]);
+      await _saveLastFailure(reason.message, needsRelogin: reason.needsRelogin);
+      return HealthSyncResult(success: false, errorMessage: reason.message);
     }
   }
 

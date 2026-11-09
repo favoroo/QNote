@@ -21,7 +21,7 @@ import 'package:qnote_flutter/providers/fixed_event_provider.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
-import 'package:qnote_flutter/core/ai/model_vision_capability.dart';
+import 'package:qnote_flutter/core/ai/vision_capability_probe.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/widgets/time_picker.dart';
@@ -1102,9 +1102,10 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         'timelineOptimization',
       );
       // 要发图而绑定模型看不了图时，内置识图兜底已下线：明确让用户换模型，
-      // 而不是把图片塞给一个看不见画面的模型（它会照常 200 并编造内容）
+      // 而不是把图片塞给一个看不见画面的模型（它会照常 200 并编造内容）。
+      // 能力未知时先自动实测一次：新加的视觉模型不该被默认拦下
       final sendingImage = extractImages && draft.selectedPhotos.isNotEmpty;
-      if (sendingImage && !ModelVisionCapability.supportsVision(roleConfig)) {
+      if (sendingImage && !await VisionCapabilityProbe.ensure(roleConfig)) {
         if (mounted) {
           setState(() {
             _isExtracting = false;

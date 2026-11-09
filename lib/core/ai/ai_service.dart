@@ -5,11 +5,17 @@ import 'package:dio/dio.dart';
 import 'package:qnote_flutter/config/defaults.dart';
 import 'package:qnote_flutter/config/models.dart';
 import 'package:qnote_flutter/core/ai/api_key_pool.dart';
+import 'package:qnote_flutter/core/ai/ai_route_service.dart';
+import 'package:qnote_flutter/core/ai/model_reasoning_capability.dart';
+import 'package:qnote_flutter/core/ai/raccoon_auth_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/ai_provider_repository.dart';
+import 'package:qnote_flutter/core/storage/ai_token_usage_repository.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/core/utils/daily_score_adjust.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
+import 'package:qnote_flutter/models/ai_provider.dart';
+import 'package:qnote_flutter/models/ai_token_usage.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/models/daily_score.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
@@ -23,8 +29,9 @@ class NoUsefulInfoException implements Exception {
   NoUsefulInfoException([this.message]);
 
   @override
-  String toString() =>
-      message != null ? 'NoUsefulInfoException: $message' : 'NoUsefulInfoException';
+  String toString() => message != null
+      ? 'NoUsefulInfoException: $message'
+      : 'NoUsefulInfoException';
 }
 
 /// 带工具流式对话的单个流片段。
@@ -41,16 +48,16 @@ class AiToolStreamChunk {
   final ToolCallProgress? toolProgress;
 
   const AiToolStreamChunk.text(this.text)
-      : reasoningText = null,
-        toolProgress = null;
+    : reasoningText = null,
+      toolProgress = null;
 
   const AiToolStreamChunk.reasoning(this.reasoningText)
-      : text = null,
-        toolProgress = null;
+    : text = null,
+      toolProgress = null;
 
   const AiToolStreamChunk.toolProgress(this.toolProgress)
-      : text = null,
-        reasoningText = null;
+    : text = null,
+      reasoningText = null;
 }
 
 /// 工具调用参数的流式生成进度快照
@@ -60,7 +67,10 @@ class ToolCallProgress {
   /// 截至当前的原始参数 JSON 片段（可能不完整，仅用于展示层提取关键信息）
   final String partialArguments;
 
-  const ToolCallProgress({required this.toolName, required this.partialArguments});
+  const ToolCallProgress({
+    required this.toolName,
+    required this.partialArguments,
+  });
 }
 
 class AiService {
@@ -78,13 +88,31 @@ class AiService {
   AiConfig? _config;
   double _temperature = 0.7;
   int _maxTokens = 2048;
-  String? _reasoningEffort;
+
+  /// 旧版厂商级默认推理强度（厂商模板的 `defaultReasoningEffort`）
+  ///
+  /// 仅作为模型级选择缺失时的兜底；模型级档位见 [AiConfig.reasoningEffort]。
+  String? _legacyReasoningEffort;
+
+  /// 当前端点是否接受思考强度参数
+  ///
+  /// 少数网关把 `reasoning_effort` / `thinking` / `enable_thinking` 当未知字段
+  /// 直接 400；首次被拒后置 false 并原地重发一次，避免「想调思考强度」反而
+  /// 把整条对话链路打死。
+  bool _reasoningParamsSupported = true;
 
   /// 是否锁定用 [_config] 里的 Key 发请求（不参与内置池逐请求轮换）
   ///
   /// 由 [updateConfig] 每次按入参重置，不传即 false —— 忘记重置会让上一次
   /// 「逐把测连通」的锁定语义泄漏到后续真实对话请求里。
   bool _pinApiKey = false;
+
+  /// 当前端点是否接受 `stream_options.include_usage`
+  ///
+  /// OpenAI 兼容端点默认不回流式 usage，必须显式要求末帧补一个 usage 对象；
+  /// 少数网关把未知参数当 400，首次被拒后置 false 并原地重发一次，
+  /// 避免「想看统计」反而把整条对话链路打死。
+  bool _streamUsageSupported = true;
 
   AiConfig? get config => _config;
 
@@ -110,7 +138,8 @@ class AiService {
       cleanedBaseUrl = 'https://generativelanguage.googleapis.com';
     }
 
-    if (config.apiKey.isEmpty || cleanedBaseUrl.isEmpty) {
+    if ((!config.usesAccountAuth && config.apiKey.isEmpty) ||
+        cleanedBaseUrl.isEmpty) {
       throw ArgumentError('AI配置不完整: apiKey或baseUrl为空');
     }
 
@@ -126,27 +155,41 @@ class AiService {
 
     _config = config;
     _pinApiKey = pinApiKey;
+    // 换服务商/地址后重新探测流式 usage 与思考强度参数能力，不能沿用上一家的兼容结论
+    _streamUsageSupported = true;
+    _reasoningParamsSupported = true;
     if (temperature != null) _temperature = temperature;
     if (maxTokens != null) _maxTokens = maxTokens;
     _dio.options.baseUrl = cleanedBaseUrl.endsWith('/')
         ? cleanedBaseUrl
         : '$cleanedBaseUrl/';
 
-    // 从提供商配置读取默认推理强度
-    _reasoningEffort = _resolveReasoningEffort(config);
+    // 从提供商配置读取旧版默认推理强度（模型级选择缺失时兜底）
+    _legacyReasoningEffort = _resolveReasoningEffort(config);
 
     _dio.options.headers['Content-Type'] = 'application/json';
     if (config.provider == 'gemini') {
-      _dio.options.headers['x-goog-api-key'] = config.apiKey;
+      if (config.apiKey.isNotEmpty) {
+        _dio.options.headers['x-goog-api-key'] = config.apiKey;
+      } else {
+        _dio.options.headers.remove('x-goog-api-key');
+      }
       _dio.options.headers.remove('Authorization');
     } else {
-      _dio.options.headers['Authorization'] = 'Bearer ${config.apiKey}';
+      // 订阅账号型的 token 每次发信前由 _beginSend 现取并逐请求覆写；
+      // 这里不写 "Bearer " 空头，避免日志与诊断里出现无意义凭证
+      if (config.apiKey.isNotEmpty) {
+        _dio.options.headers['Authorization'] = 'Bearer ${config.apiKey}';
+      } else {
+        _dio.options.headers.remove('Authorization');
+      }
       _dio.options.headers.remove('x-goog-api-key');
     }
 
     LoggerService.instance.logAI(
       '更新AI配置: 厂商=${config.vendorId ?? 'custom'}, 提供商=${config.provider}, 模型=${config.modelName}',
-      details: '原始URL=${config.baseUrl}, 清理后URL=$cleanedBaseUrl, endpoint=$_generateContentEndpoint',
+      details:
+          '原始URL=${config.baseUrl}, 清理后URL=$cleanedBaseUrl, endpoint=$_generateContentEndpoint',
     );
   }
 
@@ -240,11 +283,16 @@ class AiService {
 
     final scene = trace.scene;
     final sentKey = trace.sentKey;
-    final providerId = _config?.providerId;
+    // 冷却必须打在**本次真正发出去的那次**上：路由组切换成员后 [_config] 可能仍是
+    // 上一个成员，用 [trace] 的厂商快照才不会把冷却记到错的厂商头上
+    final providerId = trace.providerId.isNotEmpty
+        ? trace.providerId
+        : _config?.providerId;
     final hasProviderId = providerId != null && providerId.isNotEmpty;
     final isConnectionError = ApiKeyPool.isConnectionClassError(error);
     final isConnectTimeout =
-        error is DioException && error.type == DioExceptionType.connectionTimeout;
+        error is DioException &&
+        error.type == DioExceptionType.connectionTimeout;
     final keyScoped = ApiKeyPool.isKeyScopedError(error);
     final int maxRetries;
     if (isConnectTimeout) {
@@ -258,7 +306,10 @@ class AiService {
     if (retryCount >= maxRetries) {
       // 深度用尽也要留下一行事实：这把 Key 确实被限流/失效了，不记冷却就会被
       // 下一轮请求立刻再次端上来，白撞同一个 429。
-      if (keyScoped && sentKey != null && hasProviderId) {
+      if (keyScoped &&
+          sentKey != null &&
+          hasProviderId &&
+          trace.authMode == AiProvider.authModeApiKey) {
         ApiKeyPool.instance.markLimited(
           providerId,
           sentKey,
@@ -276,7 +327,10 @@ class AiService {
 
     // Key 作用域故障且池里还有别的 Key：冷却本次这把 + 换下一把重发。
     // 这是「一个厂商多把 Key」的核心收益：撞墙的 Key 不会拖死整条对话。
-    if (keyScoped && sentKey != null && hasProviderId && trace.poolKeys.length >= 2) {
+    if (keyScoped &&
+        sentKey != null &&
+        hasProviderId &&
+        trace.poolKeys.length >= 2) {
       final pool = ApiKeyPool.instance;
       pool.markLimited(
         providerId,
@@ -383,9 +437,9 @@ class AiService {
   /// 这就是「即使成功了也要换下一把」的落点：取 Key 发生在请求发出前的一瞬，
   /// 与成功失败无关，所以整条 AgentLoop 的每一轮、以及并发的日记提取/每日评分
   /// 都各自拿一把，不再共享同一把、也不再互相覆写 Dio 的全局 header。
-  Future<_SendTrace> _beginSend(String scene) async {
-    final config = _config;
-    if (config == null) {
+  Future<_SendTrace> _beginSend(String scene, {AiConfig? config}) async {
+    final effective = config ?? _config;
+    if (effective == null) {
       return _SendTrace(
         scene: scene,
         sentKey: null,
@@ -394,20 +448,49 @@ class AiService {
       );
     }
 
+    // 订阅账号型：token 由账号服务现取（临近过期会先刷新），不走密钥池。
+    // 始终逐请求覆写 header，避免 updateConfig 留下的空/旧凭证被沿用。
+    if (effective.usesAccountAuth) {
+      final token = await RaccoonAuthService.instance.requireAccessToken(
+        effective.providerId,
+      );
+      return _SendTrace(
+        scene: scene,
+        sentKey: token,
+        poolKeys: const [],
+        startedAt: DateTime.now(),
+        providerId: effective.providerId,
+        modelName: effective.modelName,
+        authMode: effective.authMode,
+      );
+    }
+
+    // 本次发信用的配置是否已不是 updateConfig 写入的那一份（路由组切换过成员）：
+    // 这时全局 header 里的凭证属于上一个成员，必须逐请求覆写成本成员自己的 Key
+    final base = _config;
+    final switchedMember =
+        base == null ||
+        base.providerId != effective.providerId ||
+        base.modelName != effective.modelName;
+
     var keys = const <String>[];
-    if (!_pinApiKey && config.providerId.isNotEmpty) {
-      keys = await _readProviderKeys(config.providerId);
+    if (!_pinApiKey && effective.providerId.isNotEmpty) {
+      keys = await _readProviderKeys(effective.providerId);
     }
 
     String? sentKey;
     if (keys.length >= 2) {
       final pool = ApiKeyPool.instance;
-      pool.syncKeys(config.providerId, keys);
-      sentKey = pool.acquireNext(config.providerId, keys);
+      pool.syncKeys(effective.providerId, keys);
+      sentKey = pool.acquireNext(effective.providerId, keys);
       LoggerService.instance.logAI(
         '$scene 本次发信 Key: ${sentKey == null ? '?' : ApiKeyPool.maskKey(sentKey)}',
         details: '厂商密钥池共 ${keys.length} 把',
       );
+    } else if (switchedMember) {
+      sentKey = keys.isNotEmpty
+          ? keys.first
+          : (effective.apiKey.trim().isEmpty ? null : effective.apiKey);
     }
 
     return _SendTrace(
@@ -415,6 +498,9 @@ class AiService {
       sentKey: sentKey,
       poolKeys: keys,
       startedAt: DateTime.now(),
+      providerId: effective.providerId,
+      modelName: effective.modelName,
+      authMode: effective.authMode,
     );
   }
 
@@ -423,7 +509,8 @@ class AiService {
   /// 有了它就能在纯单测里验证「每次请求实际发出的 Authorization 按池轮换」，
   /// 不必为了读一行密钥把 sqflite 整个拉进测试。
   @visibleForTesting
-  static Future<List<String>> Function(String providerId)? providerKeysLoaderForTest;
+  static Future<List<String>> Function(String providerId)?
+  providerKeysLoaderForTest;
 
   /// 读取厂商条目的密钥列表（读失败按「无池」处理，让请求走全局 header）
   Future<List<String>> _readProviderKeys(String providerId) async {
@@ -441,10 +528,7 @@ class AiService {
           .where((key) => key.trim().isNotEmpty)
           .toList();
     } catch (e) {
-      LoggerService.instance.logAI(
-        '读取厂商密钥池失败: $e',
-        level: LogLevel.warning,
-      );
+      LoggerService.instance.logAI('读取厂商密钥池失败: $e', level: LogLevel.warning);
       return const [];
     }
   }
@@ -452,11 +536,15 @@ class AiService {
   /// 由本次真实使用的 Key 生成逐请求 header 覆写（null 交给 Dio 用全局 header）
   ///
   /// Gemini 走 `x-goog-api-key`、其余 OpenAI 兼容端点走 `Authorization`，
-  /// 与 [updateConfig] 写全局 header 的分支保持一致。
-  Map<String, dynamic>? _authOverride(String? key) {
+  /// 与 [updateConfig] 写全局 header 的分支保持一致。鉴权方式按**本次发信的配置**
+  /// 决定：路由组切换成员时可能跨到另一种接口类型，因此另一家的 header 用 null
+  /// 显式移除（Dio 约定的删除语义），避免把旧厂商的凭证一起发出去。
+  Map<String, dynamic>? _authOverride(String? key, AiConfig config) {
     if (key == null) return null;
-    if (_config?.provider == 'gemini') return {'x-goog-api-key': key};
-    return {'Authorization': 'Bearer $key'};
+    if (config.provider == 'gemini') {
+      return {'x-goog-api-key': key, 'Authorization': null};
+    }
+    return {'Authorization': 'Bearer $key', 'x-goog-api-key': null};
   }
 
   /// 把请求头里的凭证换成掩码后再打印（失败诊断用）
@@ -495,17 +583,27 @@ class AiService {
     CancelToken? cancelToken,
   }) async {
     var retryCount = 0;
+    var authRetried = false;
     while (true) {
       final trace = await _beginSend(scene);
       try {
         final response = await _dio.post<T>(
           endpoint,
           data: data,
-          options: Options(headers: _authOverride(trace.sentKey)),
+          options: Options(headers: _authOverride(trace.sentKey, _config!)),
           cancelToken: cancelToken,
         );
+        // 先记账再交给调用方解析：即使响应结构异常，已经产生的 token 也应统计
+        _recordUsagePayload(response.data, trace: trace);
         return response;
       } catch (e) {
+        final config = _config;
+        if (config != null &&
+            await _refreshAccountAuthIfNeeded(config, e, authRetried)) {
+          authRetried = true;
+          retryCount = 0;
+          continue;
+        }
         if (await _shouldRetryAndWait(
           e,
           retryCount,
@@ -520,17 +618,152 @@ class AiService {
     }
   }
 
+  /// 从完整响应体里取 usage 并记账（非流式路径）
+  ///
+  /// 记账失败绝不影响请求：仓储自身吞异常，这里再用 `unawaited` 不阻塞返回。
+  void _recordUsagePayload(Object? data, {_SendTrace? trace}) {
+    _recordParsedUsage(AiTokenUsage.fromResponse(data), trace: trace);
+  }
+
+  /// 把已解析的 usage 累加进本机按日统计
+  ///
+  /// 归属优先用 [trace] 里的发信快照：流式请求持续数十秒，期间并发的日记提取
+  /// 可能已把单例的 `_config` 换成另一个模型，读实例字段会把用量记到错的模型上。
+  ///
+  /// 只统计**服务端明确上报**的用量：网关未回 usage 时无法估算（不同模型的
+  /// 分词器差异极大），宁可少记也不要把估算值混进用户的账单参考。
+  void _recordParsedUsage(AiTokenUsage? usage, {_SendTrace? trace}) {
+    if (usage == null || usage.isEmpty) return;
+    final providerId = trace?.providerId ?? _config?.providerId ?? '';
+    final modelName = trace?.modelName ?? _config?.modelName ?? '';
+    unawaited(
+      AiTokenUsageRepository.instance.record(
+        providerId: providerId,
+        modelName: modelName,
+        usage: usage,
+      ),
+    );
+  }
+
+  /// 网关拒绝思考强度参数时关闭该参数，返回 true 表示应原地重发
+  ///
+  /// 只认 400/422 且响应体点名思考字段的确定性错误：429、超时、5xx 与参数无关，
+  /// 误判成「不支持」会让用户选的档位永久失效。
+  bool _disableReasoningOnReject(Object error) {
+    if (!_reasoningParamsSupported) return false;
+    if (error is! DioException) return false;
+    final status = error.response?.statusCode;
+    if (status != 400 && status != 422) return false;
+    final body = '${error.response?.data ?? ''}'.toLowerCase();
+    const markers = [
+      'reasoning_effort',
+      'reasoning effort',
+      'thinking_budget',
+      'thinkingconfig',
+      'thinking config',
+      'enable_thinking',
+      'thinking',
+    ];
+    if (!markers.any(body.contains)) return false;
+
+    _reasoningParamsSupported = false;
+    LoggerService.instance.logAI(
+      '端点不接受思考强度参数，已关闭该参数后重发',
+      details: 'status=$status, body=${_briefError(body)}',
+      level: LogLevel.warning,
+    );
+    return true;
+  }
+
+  /// 网关拒绝 `stream_options` 时关闭该参数，返回 true 表示应原地重发
+  ///
+  /// 只有 400/422 这类「参数不被接受」的确定性错误才降级：其余错误（429、超时、
+  /// 5xx）与统计参数无关，误判成「不支持」会让统计永久失效。
+  bool _disableStreamUsageOnReject(Object error) {
+    if (!_streamUsageSupported) return false;
+    if (error is! DioException) return false;
+    final status = error.response?.statusCode;
+    if (status != 400 && status != 422) return false;
+    final body = '${error.response?.data ?? ''}'.toLowerCase();
+    // 优先看是否点名了 stream_options；部分网关只回「unknown parameter」也要兜住
+    final mentionsOption =
+        body.contains('stream_options') ||
+        body.contains('stream options') ||
+        body.contains('include_usage');
+    final mentionsUnknown =
+        body.contains('unknown') ||
+        body.contains('unsupported') ||
+        body.contains('invalid');
+    if (!mentionsOption && !mentionsUnknown) return false;
+
+    _streamUsageSupported = false;
+    LoggerService.instance.logAI(
+      '端点不接受 stream_options，已关闭流式 token 统计后重发',
+      details: 'status=$status, body=${_briefError(body)}',
+      level: LogLevel.warning,
+    );
+    return true;
+  }
+
   /// 把异常压成单行摘要，避免重试日志被堆栈刷屏
   String _briefError(Object error) {
     final text = error.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
     return text.length > 160 ? '${text.substring(0, 160)}…' : text;
   }
 
+  /// 组内故障切换：本成员重试预算用尽后换下一个成员重发
+  ///
+  /// 只有「可重试的瞬时/配额故障」才换成员：参数非法这类业务 4xx 换到别的模型同样
+  /// 会失败，白等一轮。返回非 null 表示调用方应把当前成员换成它并重发。
+  AiConfig? _switchRouteMember(
+    AiModelRoute? route,
+    AiConfig failed,
+    Object error,
+  ) {
+    if (route == null) return null;
+    if (!ApiKeyPool.isRecoverableError(error)) return null;
+    return route.next(failed, error);
+  }
+
+  /// 订阅账号型遇到 401：强制刷新一次账号 token，然后让循环重发
+  ///
+  /// 每个请求只做一次（[alreadyRetried]），刷新失败就交回原有重试/报错链路，
+  /// 避免 refresh token 也失效时反复刷新。
+  Future<bool> _refreshAccountAuthIfNeeded(
+    AiConfig config,
+    Object error,
+    bool alreadyRetried,
+  ) async {
+    if (!config.usesAccountAuth || alreadyRetried) return false;
+    if (!_isUnauthorized(error)) return false;
+    try {
+      await RaccoonAuthService.instance.refresh(config.providerId, force: true);
+      LoggerService.instance.logAI(
+        '账号凭证被拒绝，已刷新后重试: ${config.providerId}',
+        level: LogLevel.warning,
+      );
+      return true;
+    } catch (e) {
+      LoggerService.instance.logAI('账号凭证刷新失败: $e', level: LogLevel.warning);
+      return false;
+    }
+  }
+
+  static bool _isUnauthorized(Object error) {
+    if (error is! DioException) return false;
+    return error.response?.statusCode == 401;
+  }
+
   Future<String> chat(
     List<ChatMessage> messages, {
     CancelToken? cancelToken,
+    AiModelRoute? route,
   }) async {
-    final response = await chatResponse(messages, cancelToken: cancelToken);
+    final response = await chatResponse(
+      messages,
+      cancelToken: cancelToken,
+      route: route,
+    );
     return response.content;
   }
 
@@ -539,32 +772,43 @@ class AiService {
     List<ChatMessage> messages, {
     List<Map<String, dynamic>>? tools,
     CancelToken? cancelToken,
+    AiModelRoute? route,
   }) async {
     if (_config == null) throw Exception('AI config not set');
 
     final startTime = DateTime.now();
     LoggerService.instance.logAI(
       '开始对话请求(带工具支持)',
-      details: '模型=${_config!.modelName}, 消息数=${messages.length}, 工具数=${tools?.length ?? 0}',
+      details:
+          '模型=${_config!.modelName}, 消息数=${messages.length}, 工具数=${tools?.length ?? 0}',
     );
 
     int retryCount = 0;
+    // 订阅账号型：401 只刷新一次 token，避免刷新失败时反复打圈
+    var authRetried = false;
+    // 路由组场景下本条请求实际使用的成员；重试/换成员时随 [activeConfig] 更新。
+    // 优先沿用 [route] 里已切换到的成员：一条用户消息内的多步工具循环要保持同一个模型，
+    // 不能每一步都从「已经失败过的第一个成员」重新开头
+    route?.beginRequest();
+    AiConfig activeConfig = route?.active ?? _config!;
 
     while (true) {
       // 每次真正发信前现取一把 Key（成功也换）；非内置池端点返回 null，沿用全局 header
-      final trace = await _beginSend('对话请求');
+      final trace = await _beginSend('对话请求', config: activeConfig);
       final sentKey = trace.sentKey;
       try {
-        String endpoint = _chatEndpoint;
-        final bodyMap = await _prepareChatRequestBody(messages, stream: false, tools: tools);
-        if (_config!.provider == 'gemini') {
-          endpoint = '/v1beta/models/${_config!.modelName}:generateContent';
-        }
+        final endpoint = _absoluteEndpoint(activeConfig, stream: false);
+        final bodyMap = await _prepareChatRequestBody(
+          messages,
+          config: activeConfig,
+          stream: false,
+          tools: tools,
+        );
         final dynamic requestBody = bodyMap;
 
         final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
         LoggerService.instance.logAI(
-          'AI请求 [${_config!.provider}] [${_config!.modelName}] $endpoint'
+          'AI请求 [${activeConfig.provider}] [${activeConfig.modelName}] $endpoint'
           '${sentKey == null ? '' : ' [Key=${ApiKeyPool.maskKey(sentKey)}]'}:'
           '\n${_formatJsonForLogging(sanitizedBody)}',
         );
@@ -572,25 +816,28 @@ class AiService {
         final response = await _dio.post(
           endpoint,
           data: requestBody,
-          options: Options(headers: _authOverride(sentKey)),
+          options: Options(headers: _authOverride(sentKey, activeConfig)),
           cancelToken: cancelToken,
         );
         final duration = DateTime.now().difference(startTime).inMilliseconds;
         final data = response.data;
+        // 先记账再解析正文：即使响应结构异常，已经产生的 token 也应统计
+        _recordUsagePayload(data, trace: trace);
         LoggerService.instance.logAI('AI响应:\n${_formatJsonForLogging(data)}');
 
         String content = '';
         List<ToolCall>? toolCalls;
 
-        if (_config!.provider == 'gemini') {
+        if (activeConfig.provider == 'gemini') {
           content =
               data['candidates']?[0]?['content']?['parts']?[0]?['text'] ?? '';
         } else {
           final choice = data['choices']?[0];
           final message = choice?['message'] as Map<String, dynamic>?;
           content = message?['content'] as String? ?? '';
-          
-          if (message?['tool_calls'] != null && message!['tool_calls'] is List) {
+
+          if (message?['tool_calls'] != null &&
+              message!['tool_calls'] is List) {
             toolCalls = (message['tool_calls'] as List)
                 .whereType<Map<String, dynamic>>()
                 .map((m) => ToolCall.fromMap(m))
@@ -598,9 +845,14 @@ class AiService {
           }
         }
 
+        route?.recordSuccess(
+          activeConfig,
+          elapsed: Duration(milliseconds: duration),
+        );
         LoggerService.instance.logAI(
           '对话完成',
-          details: '耗时=${duration}ms, 响应长度=${content.length}字符, 工具调用数=${toolCalls?.length ?? 0}',
+          details:
+              '耗时=${duration}ms, 响应长度=${content.length}字符, 工具调用数=${toolCalls?.length ?? 0}',
         );
 
         return ChatMessage(
@@ -612,6 +864,13 @@ class AiService {
       } catch (e, stackTrace) {
         // 用户主动中止（Dio CancelToken 触发）：直接抛出，禁止进入重试退避
         if (cancelToken?.isCancelled == true) rethrow;
+        // 端点不认思考强度参数：关掉后原地重发，不让调档把对话打挂
+        if (_disableReasoningOnReject(e)) continue;
+        if (await _refreshAccountAuthIfNeeded(activeConfig, e, authRetried)) {
+          authRetried = true;
+          retryCount = 0;
+          continue;
+        }
         if (await _shouldRetryAndWait(
           e,
           retryCount,
@@ -619,6 +878,14 @@ class AiService {
           cancelToken: cancelToken,
         )) {
           retryCount++;
+          continue;
+        }
+        // 本成员重试预算用尽：交给路由组换下一个成员重发（正文未输出才有意义）
+        final switched = _switchRouteMember(route, activeConfig, e);
+        if (switched != null) {
+          activeConfig = switched;
+          retryCount = 0;
+          authRetried = false;
           continue;
         }
 
@@ -670,16 +937,25 @@ class AiService {
     void Function(Duration hold)? onQuotaHold,
     void Function()? onStreamRetry,
     CancelToken? cancelToken,
+    AiModelRoute? route,
   }) async* {
     if (_config == null) throw Exception('AI config not set');
 
     final startTime = DateTime.now();
     LoggerService.instance.logAI(
       '开始带工具的流式对话请求',
-      details: '模型=${_config!.modelName}, 消息数=${messages.length}, 工具数=${tools?.length ?? 0}',
+      details:
+          '模型=${_config!.modelName}, 消息数=${messages.length}, 工具数=${tools?.length ?? 0}',
     );
 
     int retryCount = 0;
+    // 订阅账号型：401 只刷新一次 token
+    var authRetried = false;
+    // 本条用户消息（含其工具循环）实际使用的成员：路由组每条消息轮换一次，
+    // 消息内部只有在成员失败时才切换（见 catch 里的 _switchRouteMember）；
+    // 切换结果记在 [route.active] 上，下一步推理沿用同一个成员
+    route?.beginRequest();
+    AiConfig activeConfig = route?.active ?? _config!;
 
     while (true) {
       // 两个口径分开记：正文决定**能不能**重发，是否流出过任何碎片决定重发前
@@ -687,18 +963,23 @@ class AiService {
       bool hasDeliveredText = false;
       bool partiallyStreamed = false;
       // 每轮（含重试）都重新取一把 Key：这就是「成功也换」在 AgentLoop 每轮推理上的效果
-      final trace = await _beginSend('带工具流式对话');
+      final trace = await _beginSend('带工具流式对话', config: activeConfig);
       final sentKey = trace.sentKey;
       try {
-        final dynamic bodyMap = await _prepareChatRequestBody(messages, stream: true, tools: tools);
+        final dynamic bodyMap = await _prepareChatRequestBody(
+          messages,
+          config: activeConfig,
+          stream: true,
+          tools: tools,
+        );
         final dynamic requestBody = jsonEncode(bodyMap);
 
         final response = await _dio.post<ResponseBody>(
-          _chatEndpoint,
+          _absoluteEndpoint(activeConfig, stream: true),
           data: requestBody,
           options: Options(
             responseType: ResponseType.stream,
-            headers: _authOverride(sentKey),
+            headers: _authOverride(sentKey, activeConfig),
           ),
           cancelToken: cancelToken,
         );
@@ -715,6 +996,9 @@ class AiService {
         final Map<int, Map<String, dynamic>> toolCallBuilders = {};
         // 参数生成进度上报的节流时间点（跨工具共享，首次上报不受节流限制）
         DateTime? lastProgressAt;
+        // 流式 usage 通常只在末帧出现；部分网关（Gemini）每个 chunk 都带累计值，
+        // 反复覆盖后取最后一次即最终口径
+        AiTokenUsage? streamUsage;
 
         await for (final chunk in stream) {
           buffer += utf8.decode(chunk, allowMalformed: true);
@@ -726,9 +1010,16 @@ class AiService {
             if (trimmed.isEmpty || !trimmed.startsWith('data:')) continue;
             final data = trimmed.substring(5).trim();
             if (data == '[DONE]') {
-              final duration = DateTime.now().difference(startTime).inMilliseconds;
+              final duration = DateTime.now()
+                  .difference(startTime)
+                  .inMilliseconds;
               LoggerService.instance.logAI(
                 'AI带工具流式响应完成 [耗时=${duration}ms]:\n$accumulatedResponse',
+              );
+              _recordParsedUsage(streamUsage, trace: trace);
+              route?.recordSuccess(
+                activeConfig,
+                elapsed: Duration(milliseconds: duration),
               );
               _deliverToolCalls(toolCallBuilders, onToolCallsReady);
               return;
@@ -744,26 +1035,29 @@ class AiService {
                 throw Exception('AI Stream Error: ${json['error']}');
               }
 
-              // usage 末帧（choices 为空数组）：仅作流式解析标记，不再落库
-              // （历史 ai_request_stats 诊断表已随厂商条目重构移除）
+              // usage 末帧（choices 为空数组）必须在这里先取：
+              // 下面访问 choices[0] 会在空数组上抛 RangeError 并被内层 catch 吞掉
+              final chunkUsage = AiTokenUsage.fromResponse(json);
+              if (chunkUsage != null) streamUsage = chunkUsage;
 
               final choice = json['choices']?[0];
               final delta = choice?['delta'] as Map<String, dynamic>?;
 
               // 首个可见增量即为「用户等了多久才开始看到东西」，是换 Key 策略
               // 最关心的指标（前缀缓存被轮换打掉时会首先反映在这里）
-              if ((delta?['content'] is String && (delta!['content'] as String).isNotEmpty) ||
+              if ((delta?['content'] is String &&
+                      (delta!['content'] as String).isNotEmpty) ||
                   (delta?['reasoning_content'] is String &&
                       (delta!['reasoning_content'] as String).isNotEmpty) ||
                   (delta?['reasoning'] is String &&
                       (delta!['reasoning'] as String).isNotEmpty) ||
-                  delta?['tool_calls'] is List) {
-              }
+                  delta?['tool_calls'] is List) {}
 
               // 0. 思考/推理增量：智谱 GLM、DeepSeek reasoner 等用 reasoning_content，
               //    SenseNova 用 reasoning；供「思考中」状态卡实时滚动展示
               final reasoning =
-                  (delta?['reasoning_content'] ?? delta?['reasoning']) as String?;
+                  (delta?['reasoning_content'] ?? delta?['reasoning'])
+                      as String?;
               if (reasoning != null && reasoning.isNotEmpty) {
                 partiallyStreamed = true;
                 yield AiToolStreamChunk.reasoning(reasoning);
@@ -784,22 +1078,26 @@ class AiService {
                 for (final tc in toolCallsDelta) {
                   if (tc is! Map<String, dynamic>) continue;
                   final idx = tc['index'] as int? ?? 0;
-                  final builder = toolCallBuilders.putIfAbsent(idx, () => {
-                    'id': '',
-                    'name': '',
-                    'arguments': StringBuffer(),
-                  });
+                  final builder = toolCallBuilders.putIfAbsent(
+                    idx,
+                    () => {'id': '', 'name': '', 'arguments': StringBuffer()},
+                  );
 
                   if (tc['id'] != null) {
-                    builder['id'] = (builder['id'] as String) + (tc['id'] as String);
+                    builder['id'] =
+                        (builder['id'] as String) + (tc['id'] as String);
                   }
                   final func = tc['function'] as Map<String, dynamic>?;
                   if (func != null) {
                     if (func['name'] != null) {
-                      builder['name'] = (builder['name'] as String) + (func['name'] as String);
+                      builder['name'] =
+                          (builder['name'] as String) +
+                          (func['name'] as String);
                     }
                     if (func['arguments'] != null) {
-                      (builder['arguments'] as StringBuffer).write(func['arguments']);
+                      (builder['arguments'] as StringBuffer).write(
+                        func['arguments'],
+                      );
                     }
                   }
 
@@ -835,11 +1133,22 @@ class AiService {
         }
 
         // 流自然结束但没有 [DONE]（部分网关会这样收流）：同样算一次成功发信
+        _recordParsedUsage(streamUsage, trace: trace);
+        route?.recordSuccess(activeConfig);
         _deliverToolCalls(toolCallBuilders, onToolCallsReady);
         return;
       } catch (e, stackTrace) {
         // 用户主动中止（Dio CancelToken 触发）：直接抛出，禁止进入重试退避
         if (cancelToken?.isCancelled == true) rethrow;
+        // 端点不认思考强度参数：关掉后原地重发，不让调档把对话打挂
+        if (_disableReasoningOnReject(e)) continue;
+        // 端点不认 stream_options：关掉统计参数后原地重发，不让统计影响对话
+        if (_disableStreamUsageOnReject(e)) continue;
+        if (await _refreshAccountAuthIfNeeded(activeConfig, e, authRetried)) {
+          authRetried = true;
+          retryCount = 0;
+          continue;
+        }
         if (await _shouldRetryAndWait(
           e,
           retryCount,
@@ -852,6 +1161,18 @@ class AiService {
         )) {
           retryCount++;
           continue;
+        }
+        // 本成员重试预算用尽：路由组换下一个成员重发（正文已输出则绝不换，
+        // 否则会把同一条回答从两个模型各说一遍）
+        if (!hasDeliveredText) {
+          final switched = _switchRouteMember(route, activeConfig, e);
+          if (switched != null) {
+            if (partiallyStreamed) onStreamRetry?.call();
+            activeConfig = switched;
+            retryCount = 0;
+            authRetried = false;
+            continue;
+          }
         }
         LoggerService.instance.logAI(
           '带工具流式对话失败: $e',
@@ -870,7 +1191,8 @@ class AiService {
     if (toolCallBuilders.isEmpty || onToolCallsReady == null) return;
     final List<ToolCall> completedCalls = [];
     for (final b in toolCallBuilders.values) {
-      final id = b['id'] as String? ?? 'call_${DateTime.now().millisecondsSinceEpoch}';
+      final id =
+          b['id'] as String? ?? 'call_${DateTime.now().millisecondsSinceEpoch}';
       final name = b['name'] as String? ?? '';
       final argsStr = (b['arguments'] as StringBuffer).toString();
       Map<String, dynamic> args = {};
@@ -886,7 +1208,10 @@ class AiService {
     }
   }
 
-  Stream<String> chatStream(List<ChatMessage> messages) async* {
+  Stream<String> chatStream(
+    List<ChatMessage> messages, {
+    AiModelRoute? route,
+  }) async* {
     if (_config == null) throw Exception('AI config not set');
 
     final startTime = DateTime.now();
@@ -896,28 +1221,37 @@ class AiService {
     );
 
     int retryCount = 0;
+    // 订阅账号型：401 只刷新一次 token
+    var authRetried = false;
+    route?.beginRequest();
+    AiConfig activeConfig = route?.active ?? _config!;
 
     while (true) {
       bool hasDeliveredText = false;
-      final trace = await _beginSend('普通流式对话');
+      final trace = await _beginSend('普通流式对话', config: activeConfig);
       final sentKey = trace.sentKey;
       try {
-        final dynamic bodyMap = await _prepareChatRequestBody(messages, stream: true);
+        final dynamic bodyMap = await _prepareChatRequestBody(
+          messages,
+          config: activeConfig,
+          stream: true,
+        );
         final dynamic requestBody = jsonEncode(bodyMap);
 
         final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
         LoggerService.instance.logAI(
-          'AI流式请求 [${_config!.provider}] [${_config!.modelName}] $_chatEndpoint'
+          'AI流式请求 [${activeConfig.provider}] [${activeConfig.modelName}] '
+          '${_absoluteEndpoint(activeConfig, stream: true)}'
           '${sentKey == null ? '' : ' [Key=${ApiKeyPool.maskKey(sentKey)}]'}:'
           '\n${_formatJsonForLogging(sanitizedBody)}',
         );
 
         final response = await _dio.post<ResponseBody>(
-          _chatEndpoint,
+          _absoluteEndpoint(activeConfig, stream: true),
           data: requestBody,
           options: Options(
             responseType: ResponseType.stream,
-            headers: _authOverride(sentKey),
+            headers: _authOverride(sentKey, activeConfig),
           ),
         );
 
@@ -930,6 +1264,7 @@ class AiService {
         String buffer = '';
         int totalChars = 0;
         final accumulatedResponse = StringBuffer();
+        AiTokenUsage? streamUsage;
         await for (final chunk in stream) {
           buffer += utf8.decode(chunk, allowMalformed: true);
           final lines = buffer.split('\n');
@@ -946,6 +1281,8 @@ class AiService {
               LoggerService.instance.logAI(
                 'AI流式响应完成 [总输出=$totalChars字符] [耗时=${duration}ms]:\n$accumulatedResponse',
               );
+              _recordParsedUsage(streamUsage, trace: trace);
+              route?.recordSuccess(activeConfig);
               return;
             }
 
@@ -953,13 +1290,19 @@ class AiService {
               final json = jsonDecode(data) as Map<String, dynamic>;
               if (json.containsKey('error')) {
                 final errObj = json['error'];
-                final errMsg = errObj is Map ? (errObj['message'] ?? errObj.toString()) : errObj.toString();
+                final errMsg = errObj is Map
+                    ? (errObj['message'] ?? errObj.toString())
+                    : errObj.toString();
                 throw Exception('AI Stream Error: $errMsg');
               }
 
+              final chunkUsage = AiTokenUsage.fromResponse(json);
+              if (chunkUsage != null) streamUsage = chunkUsage;
+
               String? text;
-              if (_config!.provider == 'gemini') {
-                text = json['candidates']?[0]?['content']?['parts']?[0]?['text'];
+              if (activeConfig.provider == 'gemini') {
+                text =
+                    json['candidates']?[0]?['content']?['parts']?[0]?['text'];
               } else {
                 text = json['choices']?[0]?['delta']?['content'];
               }
@@ -981,8 +1324,17 @@ class AiService {
         LoggerService.instance.logAI(
           'AI流式响应结束 [总输出=$totalChars字符] [耗时=${duration}ms]:\n$accumulatedResponse',
         );
+        _recordParsedUsage(streamUsage, trace: trace);
+        route?.recordSuccess(activeConfig);
         return;
       } catch (e, stackTrace) {
+        if (_disableReasoningOnReject(e)) continue;
+        if (_disableStreamUsageOnReject(e)) continue;
+        if (await _refreshAccountAuthIfNeeded(activeConfig, e, authRetried)) {
+          authRetried = true;
+          retryCount = 0;
+          continue;
+        }
         if (await _shouldRetryAndWait(
           e,
           retryCount,
@@ -991,6 +1343,15 @@ class AiService {
         )) {
           retryCount++;
           continue;
+        }
+        if (!hasDeliveredText) {
+          final switched = _switchRouteMember(route, activeConfig, e);
+          if (switched != null) {
+            activeConfig = switched;
+            retryCount = 0;
+            authRetried = false;
+            continue;
+          }
         }
 
         String details = stackTrace.toString();
@@ -1010,20 +1371,105 @@ class AiService {
     }
   }
 
-  String get _chatEndpoint {
-    if (_config!.provider == 'gemini') {
-      return 'v1beta/models/${_config!.modelName}:streamGenerateContent?alt=sse';
+  /// 相对路径端点（日志与沿用 dio 全局 baseUrl 的旧链路使用）
+  String _relativeChatEndpoint(AiConfig config, {bool stream = false}) {
+    if (config.provider == 'gemini') {
+      return stream
+          ? 'v1beta/models/${config.modelName}:streamGenerateContent?alt=sse'
+          : 'v1beta/models/${config.modelName}:generateContent';
     }
-    final baseUrl = _config!.baseUrl;
+    // 小浣熊的基址本身已含 /api/web/llm/v2，聊天路径直接拼 chat/completions
+    if (config.vendorId == 'raccoon') {
+      return 'chat/completions';
+    }
+    final baseUrl = config.baseUrl;
     if (baseUrl.endsWith('/v1') || baseUrl.endsWith('/v1/')) {
       return 'chat/completions';
     }
     return 'v1/chat/completions';
   }
 
+  /// 绝对端点：路由组切换成员时 baseUrl 会变，必须用绝对地址发请求，
+  /// 否则会沿用 dio 上一次写入的全局 baseUrl 打到上一个成员的地址上。
+  String _absoluteEndpoint(AiConfig config, {bool stream = false}) {
+    final base = _cleanUrl(config.baseUrl);
+    return '$base/${_relativeChatEndpoint(config, stream: stream)}';
+  }
+
+  /// 旧版厂商级默认推理强度
+  ///
+  /// 与 [updateConfig] 写入的默认配置一致时沿用会话级取值（避免每次请求重扫厂商表）；
+  /// 路由组切到别的成员时按该成员配置重新推断（不同厂商默认值不同）。
+  String? _legacyEffortFor(AiConfig config) {
+    final base = _config;
+    if (base != null &&
+        base.providerId == config.providerId &&
+        base.modelName == config.modelName) {
+      return _legacyReasoningEffort;
+    }
+    return _resolveReasoningEffort(config);
+  }
+
+  /// 把思考强度写进 OpenAI 兼容请求体
+  ///
+  /// 模型级显式选择优先；未选择（自动）时沿用旧版厂商默认值，保证升级前后行为一致。
+  /// 模型能力未命中或端点已拒绝该参数时不发任何字段。
+  void _applyReasoningEffort(Map<String, dynamic> body, AiConfig config) {
+    if (!_reasoningParamsSupported) return;
+    final explicit = config.reasoningEffort;
+    if (explicit != null) {
+      _reasoningCapabilityFor(config)?.applyToOpenAiBody(body, explicit);
+      return;
+    }
+    final legacy = _legacyEffortFor(config);
+    if (legacy != null) {
+      body['reasoning_effort'] = legacy;
+    }
+  }
+
+  ModelReasoningCapability? _reasoningCapabilityFor(AiConfig config) {
+    return ModelReasoningCapability.resolve(
+      modelName: config.modelName,
+      providerType: config.provider,
+      vendorId: config.vendorId,
+    );
+  }
+
+  /// 统一构建 Gemini 的 generationConfig
+  ///
+  /// 识图/评分/多模态等多处调用点原本各写一份字面量，漏改任何一处都会让
+  /// 「思考强度」在对应场景静默失效，这里收敛成唯一入口。
+  Map<String, dynamic> _geminiGenerationConfig(
+    AiConfig config, {
+    String? responseMimeType,
+    double? temperature,
+    int? maxTokens,
+  }) {
+    final generationConfig = <String, dynamic>{
+      'temperature': temperature ?? _temperature,
+      'maxOutputTokens': maxTokens ?? _maxTokens,
+    };
+    if (responseMimeType != null) {
+      generationConfig['responseMimeType'] = responseMimeType;
+    }
+    final effort = config.reasoningEffort;
+    if (_reasoningParamsSupported && effort != null) {
+      final thinkingConfig = _reasoningCapabilityFor(
+        config,
+      )?.geminiThinkingConfig(effort);
+      if (thinkingConfig != null) {
+        generationConfig['thinkingConfig'] = thinkingConfig;
+      }
+    }
+    return generationConfig;
+  }
+
   String get _generateContentEndpoint {
     if (_config!.provider == 'gemini') {
       return 'v1beta/models/${_config!.modelName}:generateContent';
+    }
+    if (_config!.vendorId == 'raccoon') {
+      return 'chat/completions';
     }
     final baseUrl = _config!.baseUrl;
     if (baseUrl.endsWith('/v1') || baseUrl.endsWith('/v1/')) {
@@ -1035,12 +1481,13 @@ class AiService {
   /// 统一构建普通对话与流式对话的请求体，兼容多模态图片输入与不同供应商协议
   Future<dynamic> _prepareChatRequestBody(
     List<ChatMessage> messages, {
+    required AiConfig config,
     bool stream = false,
     List<Map<String, dynamic>>? tools,
   }) async {
     final imageRepo = ImageRepository();
 
-    if (_config!.provider == 'gemini') {
+    if (config.provider == 'gemini') {
       String? systemInstruction;
       final List<Map<String, dynamic>> contents = [];
 
@@ -1084,19 +1531,13 @@ class AiService {
             }
           }
 
-          contents.add({
-            'role': role,
-            'parts': parts,
-          });
+          contents.add({'role': role, 'parts': parts});
         }
       }
 
       final bodyMap = <String, dynamic>{
         'contents': contents,
-        'generationConfig': {
-          'temperature': _temperature,
-          'maxOutputTokens': _maxTokens,
-        },
+        'generationConfig': _geminiGenerationConfig(config),
       };
       if (systemInstruction != null) {
         bodyMap['systemInstruction'] = {
@@ -1108,7 +1549,7 @@ class AiService {
       return bodyMap;
     }
 
-    final isOmni = _config!.modelName.toLowerCase().contains('omni');
+    final isOmni = config.modelName.toLowerCase().contains('omni');
     final formattedMessages = <Map<String, dynamic>>[];
 
     for (final m in messages) {
@@ -1122,7 +1563,9 @@ class AiService {
         continue;
       }
 
-      if (m.role == 'assistant' && m.toolCalls != null && m.toolCalls!.isNotEmpty) {
+      if (m.role == 'assistant' &&
+          m.toolCalls != null &&
+          m.toolCalls!.isNotEmpty) {
         // 含有工具调用的助手消息
         formattedMessages.add({
           'role': 'assistant',
@@ -1154,17 +1597,11 @@ class AiService {
           if (b64List.isNotEmpty) {
             contentList.add({
               'type': 'input_image',
-              'input_image': {
-                'type': 'base64',
-                'data': b64List,
-              },
+              'input_image': {'type': 'base64', 'data': b64List},
             });
           }
         }
-        formattedMessages.add({
-          'role': m.role,
-          'content': contentList,
-        });
+        formattedMessages.add({'role': m.role, 'content': contentList});
       } else if (hasImages) {
         final contentList = <Map<String, dynamic>>[
           if (m.content.isNotEmpty) {'type': 'text', 'text': m.content},
@@ -1198,16 +1635,18 @@ class AiService {
             );
           }
         }
-        formattedMessages.add({
-          'role': m.role,
-          'content': contentList,
-        });
+        formattedMessages.add({'role': m.role, 'content': contentList});
       } else {
         formattedMessages.add({'role': m.role, 'content': m.content});
       }
     }
 
-    final bodyMap = _buildBaseBody(messages: formattedMessages, stream: stream, tools: tools);
+    final bodyMap = _buildBaseBody(
+      config: config,
+      messages: formattedMessages,
+      stream: stream,
+      tools: tools,
+    );
     if (isOmni) {
       bodyMap['sessionId'] = DateTime.now().millisecondsSinceEpoch.toString();
       bodyMap['output_modalities'] = ['text'];
@@ -1217,26 +1656,32 @@ class AiService {
 
   /// 构建 OpenAI 兼容接口的基础请求体，统一注入通用参数。
   Map<String, dynamic> _buildBaseBody({
+    required AiConfig config,
     required List<dynamic> messages,
     bool stream = false,
     Map<String, dynamic>? responseFormat,
     List<Map<String, dynamic>>? tools,
   }) {
     final body = <String, dynamic>{
-      'model': _config!.modelName,
+      'model': config.modelName,
       'messages': messages,
       'temperature': _temperature,
       'max_tokens': _maxTokens,
     };
-    if (stream) body['stream'] = true;
+    if (stream) {
+      body['stream'] = true;
+      // OpenAI 兼容端点默认不回流式 usage，必须显式要求末帧补一个 usage 对象；
+      // 不认该参数的网关会被 [_disableStreamUsageOnReject] 识别并自动降级重发。
+      if (_streamUsageSupported) {
+        body['stream_options'] = {'include_usage': true};
+      }
+    }
     if (responseFormat != null) body['response_format'] = responseFormat;
     if (tools != null && tools.isNotEmpty) {
       body['tools'] = tools;
       body['tool_choice'] = 'auto';
     }
-    if (_reasoningEffort != null) {
-      body['reasoning_effort'] = _reasoningEffort;
-    }
+    _applyReasoningEffort(body, config);
     return body;
   }
 
@@ -1257,7 +1702,10 @@ class AiService {
     for (final provider in aiProviders) {
       if (provider.defaultReasoningEffort == null) continue;
       final providerUrl = provider.defaultBaseUrl.toLowerCase();
-      if (providerUrl.isNotEmpty && baseUrl.contains(providerUrl.replaceAll('https://', '').replaceAll('http://', ''))) {
+      if (providerUrl.isNotEmpty &&
+          baseUrl.contains(
+            providerUrl.replaceAll('https://', '').replaceAll('http://', ''),
+          )) {
         return provider.defaultReasoningEffort;
       }
     }
@@ -1460,11 +1908,10 @@ class AiService {
               {'text': systemPrompt},
             ],
           },
-          'generationConfig': {
-            'temperature': _temperature,
-            'maxOutputTokens': _maxTokens,
-            'responseMimeType': 'application/json',
-          },
+          'generationConfig': _geminiGenerationConfig(
+            _config!,
+            responseMimeType: 'application/json',
+          ),
         };
       } else {
         final isOmni = _config!.modelName.toLowerCase().contains('omni');
@@ -1489,6 +1936,7 @@ class AiService {
         ];
 
         final bodyMap = _buildBaseBody(
+          config: _config!,
           messages: formattedMessages,
           responseFormat: {'type': 'json_object'},
         );
@@ -1509,6 +1957,7 @@ class AiService {
     );
 
     int retryCount = 0;
+    var authRetried = false;
 
     while (true) {
       // 每次发信前现取一把 Key：日记提取与主聊天共用同一个 AiService 单例，
@@ -1519,10 +1968,11 @@ class AiService {
         final response = await _dio.post(
           _generateContentEndpoint,
           data: requestBody,
-          options: Options(headers: _authOverride(sentKey)),
+          options: Options(headers: _authOverride(sentKey, _config!)),
           cancelToken: cancelToken,
         );
         // 检测推理模型是否因 max_tokens 不足导致输出截断
+        _recordUsagePayload(response.data, trace: trace);
         final finishReason = _extractFinishReason(response.data);
         if (finishReason == 'length') {
           LoggerService.instance.logAI(
@@ -1556,7 +2006,8 @@ class AiService {
           List<Map<String, dynamic>>? foundList;
           if (jsonResult['tags'] is List &&
               (jsonResult['tags'] as List).every((e) => e is Map)) {
-            foundList = (jsonResult['tags'] as List).cast<Map<String, dynamic>>();
+            foundList = (jsonResult['tags'] as List)
+                .cast<Map<String, dynamic>>();
           } else if (jsonResult['results'] is List &&
               (jsonResult['results'] as List).every((e) => e is Map)) {
             foundList = (jsonResult['results'] as List)
@@ -1580,15 +2031,17 @@ class AiService {
         }
 
         if (results.isEmpty) {
-          LoggerService.instance.logAI(
-            '统一提取完成',
-            details: '结果为空，未提取到有用信息',
-          );
+          LoggerService.instance.logAI('统一提取完成', details: '结果为空，未提取到有用信息');
           return [];
         }
 
         return results.map(_convertSimplifiedExtractResult).toList();
       } catch (e, stackTrace) {
+        if (await _refreshAccountAuthIfNeeded(_config!, e, authRetried)) {
+          authRetried = true;
+          retryCount = 0;
+          continue;
+        }
         if (await _shouldRetryAndWait(
           e,
           retryCount,
@@ -1625,7 +2078,8 @@ class AiService {
     final startTime = DateTime.now();
     LoggerService.instance.logAI(
       '开始图片识别请求',
-      details: '模型=${_config!.modelName}, 有文本=${userText != null && userText.isNotEmpty}',
+      details:
+          '模型=${_config!.modelName}, 有文本=${userText != null && userText.isNotEmpty}',
     );
 
     final requestBody = _buildImageChatRequestBody(
@@ -1641,6 +2095,7 @@ class AiService {
     );
 
     int retryCount = 0;
+    var authRetried = false;
 
     while (true) {
       final trace = await _beginSend('图片识别');
@@ -1649,19 +2104,26 @@ class AiService {
         final response = await _dio.post(
           _generateContentEndpoint,
           data: requestBody,
-          options: Options(headers: _authOverride(sentKey)),
+          options: Options(headers: _authOverride(sentKey, _config!)),
           cancelToken: cancelToken,
         );
         final result = _extractTextFromResponse(response.data);
+        _recordUsagePayload(response.data, trace: trace);
         LoggerService.instance.logAI(
           '图片识别响应:\n${_formatJsonForLogging(response.data)}',
         );
         LoggerService.instance.logAI(
           '图片识别完成',
-          details: '耗时=${DateTime.now().difference(startTime).inMilliseconds}ms, 响应长度=${result.length}字符',
+          details:
+              '耗时=${DateTime.now().difference(startTime).inMilliseconds}ms, 响应长度=${result.length}字符',
         );
         return result;
       } catch (e, stackTrace) {
+        if (await _refreshAccountAuthIfNeeded(_config!, e, authRetried)) {
+          authRetried = true;
+          retryCount = 0;
+          continue;
+        }
         if (await _shouldRetryAndWait(
           e,
           retryCount,
@@ -1709,20 +2171,14 @@ class AiService {
       ];
       return {
         'contents': [
-          {
-            'role': 'user',
-            'parts': parts,
-          },
+          {'role': 'user', 'parts': parts},
         ],
         'systemInstruction': {
           'parts': [
             {'text': systemPrompt},
           ],
         },
-        'generationConfig': {
-          'temperature': _temperature,
-          'maxOutputTokens': _maxTokens,
-        },
+        'generationConfig': _geminiGenerationConfig(_config!),
       };
     }
 
@@ -1760,6 +2216,7 @@ class AiService {
     }
 
     return _buildBaseBody(
+      config: _config!,
       messages: [
         {'role': 'system', 'content': systemPrompt},
         {
@@ -1803,11 +2260,10 @@ class AiService {
             {'text': systemPrompt},
           ],
         },
-        'generationConfig': {
-          'temperature': _temperature,
-          'maxOutputTokens': _maxTokens,
-          'responseMimeType': 'application/json',
-        },
+        'generationConfig': _geminiGenerationConfig(
+          _config!,
+          responseMimeType: 'application/json',
+        ),
       };
     }
 
@@ -1844,6 +2300,7 @@ class AiService {
     }
 
     return _buildBaseBody(
+      config: _config!,
       messages: [
         {'role': 'system', 'content': systemPrompt},
         {
@@ -2211,7 +2668,8 @@ class AiService {
     final trimmed = str.trim();
     if (trimmed.startsWith('data:image/')) return true;
     if (trimmed.startsWith('/') && trimmed.length > 1000) return true;
-    if (trimmed.length > 2000 && RegExp(r'^[A-Za-z0-9+/=]+$').hasMatch(trimmed)) {
+    if (trimmed.length > 2000 &&
+        RegExp(r'^[A-Za-z0-9+/=]+$').hasMatch(trimmed)) {
       return true;
     }
     if (trimmed.length > 5000 &&
@@ -2274,10 +2732,14 @@ class AiService {
     if (m.sleepDurationMinutes > 0) {
       final sleepH = m.sleepDurationMinutes ~/ 60;
       final sleepM = m.sleepDurationMinutes % 60;
-      final sleepScoreStr = m.sleepScore != null ? ' (得分: ${m.sleepScore})' : '';
+      final sleepScoreStr = m.sleepScore != null
+          ? ' (得分: ${m.sleepScore})'
+          : '';
       // 时长为当天各段之和（含午睡），入睡/醒来则是主睡眠段，两者口径需分别标注以免 AI 误判
       lines.add('- 全天睡眠时长: $sleepH小时$sleepM分$sleepScoreStr');
-      lines.add('  - 深睡: ${m.deepSleepMinutes}分 | 浅睡: ${m.lightSleepMinutes}分 | REM: ${m.remSleepMinutes}分 | 清醒: ${m.awakeMinutes}分');
+      lines.add(
+        '  - 深睡: ${m.deepSleepMinutes}分 | 浅睡: ${m.lightSleepMinutes}分 | REM: ${m.remSleepMinutes}分 | 清醒: ${m.awakeMinutes}分',
+      );
       final startHm = HealthDailyMetrics.sleepTimeToHHmm(m.sleepStartTime);
       final endHm = HealthDailyMetrics.sleepTimeToHHmm(m.sleepEndTime);
       if (startHm != null && endHm != null) {
@@ -2302,7 +2764,9 @@ class AiService {
       lines.add('- 单次运动记录:');
       for (final s in sports) {
         final durMin = s.durationSeconds ~/ 60;
-        lines.add('  - ${s.title} (${s.category}): $durMin分钟, ${(s.distanceMeters / 1000).toStringAsFixed(2)}km, ${s.calories}kcal${s.avgHeartRate != null ? ', 均心率${s.avgHeartRate}' : ''}');
+        lines.add(
+          '  - ${s.title} (${s.category}): $durMin分钟, ${(s.distanceMeters / 1000).toStringAsFixed(2)}km, ${s.calories}kcal${s.avgHeartRate != null ? ', 均心率${s.avgHeartRate}' : ''}',
+        );
       }
     }
 
@@ -2371,7 +2835,8 @@ class AiService {
     final screenStr = _buildScreenDataText(screenUsage);
 
     final systemPrompt = defaultSystemPrompts['daily_score_system'] ?? '';
-    final userPrompt = '请根据上述规则和以下数据进行评分与分析。\n\n[当日记录]\n${recordsStr.toString()}\n\n[健康数据]\n$healthStr\n\n[屏幕使用时间]\n$screenStr\n\n[用户信息]\n${userInfo ?? "无"}';
+    final userPrompt =
+        '请根据上述规则和以下数据进行评分与分析。\n\n[当日记录]\n${recordsStr.toString()}\n\n[健康数据]\n$healthStr\n\n[屏幕使用时间]\n$screenStr\n\n[用户信息]\n${userInfo ?? "无"}';
 
     dynamic requestBody;
     final String endpoint = _generateContentEndpoint;
@@ -2391,11 +2856,10 @@ class AiService {
             {'text': systemPrompt},
           ],
         },
-        'generationConfig': {
-          'temperature': _temperature,
-          'maxOutputTokens': _maxTokens,
-          'responseMimeType': 'application/json',
-        },
+        'generationConfig': _geminiGenerationConfig(
+          _config!,
+          responseMimeType: 'application/json',
+        ),
       };
     } else {
       final isOmni = _config!.modelName.toLowerCase().contains('omni');
@@ -2420,6 +2884,7 @@ class AiService {
       ];
 
       final bodyMap = _buildBaseBody(
+        config: _config!,
         messages: formattedMessages,
         responseFormat: {'type': 'json_object'},
       );
@@ -2447,7 +2912,8 @@ class AiService {
       'AI评分分析响应:\n${_formatJsonForLogging(response.data)}',
     );
 
-    final jsonResult = _parseJsonFromAiContent(responseContent) as Map<String, dynamic>;
+    final jsonResult =
+        _parseJsonFromAiContent(responseContent) as Map<String, dynamic>;
 
     final canScore = jsonResult['canScore'] ?? true;
     if (!canScore) {
@@ -2455,7 +2921,9 @@ class AiService {
     }
 
     // 钳位：模型偶尔会返回超界分值，未钳位的分会把统计页的分数环画爆
-    final totalScore = clampScore((jsonResult['totalScore'] as num?)?.toInt() ?? 60);
+    final totalScore = clampScore(
+      (jsonResult['totalScore'] as num?)?.toInt() ?? 60,
+    );
     final rawDimensionScores = jsonResult['dimensionScores'] as Map? ?? {};
     final dimensionScores = rawDimensionScores.map(
       (k, v) => MapEntry(k.toString(), clampScore((v as num?)?.toInt() ?? 60)),
@@ -2474,7 +2942,10 @@ class AiService {
     );
   }
 
-  Future<bool> checkImageRecognition(AiConfig config, String imageBase64) async {
+  Future<bool> checkImageRecognition(
+    AiConfig config,
+    String imageBase64,
+  ) async {
     updateConfig(config, temperature: 0.1, maxTokens: 50);
 
     dynamic requestBody;
@@ -2493,10 +2964,11 @@ class AiService {
             ],
           },
         ],
-        'generationConfig': {
-          'temperature': 0.1,
-          'maxOutputTokens': 200,
-        },
+        'generationConfig': _geminiGenerationConfig(
+          config,
+          temperature: 0.1,
+          maxTokens: 200,
+        ),
       };
       endpoint = 'v1beta/models/${config.modelName}:generateContent';
     } else {
@@ -2524,11 +2996,9 @@ class AiService {
       }
 
       requestBody = _buildBaseBody(
+        config: _config!,
         messages: [
-          {
-            'role': 'user',
-            'content': contentList,
-          },
+          {'role': 'user', 'content': contentList},
         ],
       );
       requestBody['temperature'] = 0.1;
@@ -2556,18 +3026,12 @@ class AiService {
   }
 }
 
-/// 一次发信的观测上下文：本次真正用的 Key、起算时刻、以及流式首字时刻
-///
-/// 之所以要把这三样捆在一起透传，而不是各站点各自记：`AiService` 是单例，
-/// 主聊天、悬浮小Q、日记提取、每日评分并发用它，任何「上次取到的 Key」这种
-/// 实例字段都会串台（历史上 Dio 全局 header 串台就是同一类问题）。
-/// 观测行必须归因到**真正发出这个请求的那把 Key**，所以只能随请求走。
-/// 一次发信的上下文：本次真正用的 Key、本次携带的密钥池快照、起算时刻
+/// 一次发信的观测上下文：本次真正用的 Key、本次携带的密钥池快照、起算时刻
 ///
 /// 之所以要把这些捆在一起透传，而不是各站点各自读实例字段：`AiService` 是
 /// 单例，主聊天、悬浮小Q、日记提取、每日评分并发用它，任何「上次取到的 Key」
 /// 这种实例字段都会串台（历史上 Dio 全局 header 串台就是同一类问题）。
-/// 冷却记账必须归因到**真正发出这个请求的那把 Key**，所以只能随请求走。
+/// 冷却记账与 token 统计都必须归因到**真正发出这个请求的那次发信**，所以只能随请求走。
 class _SendTrace {
   /// 发信场景，用于日志定位（`对话请求`、`带工具流式对话` 等）
   final String scene;
@@ -2578,6 +3042,16 @@ class _SendTrace {
   /// 本次请求携带的厂商密钥池快照（单 Key / 无池时为空）
   final List<String> poolKeys;
 
+  /// 发信时的厂商条目 id 与模型名快照
+  ///
+  /// token 统计必须用这份快照而不是回调时刻的 [_config]：流式请求持续数十秒，
+  /// 期间并发的日记提取可能已把单例的配置换成另一个模型。
+  final String providerId;
+  final String modelName;
+
+  /// 本次发信的凭证类型（`api_key` | `raccoon`），用于 401 时决定是否刷新账号
+  final String authMode;
+
   /// 起表时刻（不含取 Key 与整池排队等待）
   final DateTime startedAt;
 
@@ -2586,5 +3060,8 @@ class _SendTrace {
     required this.sentKey,
     this.poolKeys = const [],
     required this.startedAt,
+    this.providerId = '',
+    this.modelName = '',
+    this.authMode = 'api_key',
   });
 }

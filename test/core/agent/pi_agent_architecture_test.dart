@@ -10,6 +10,7 @@ import 'package:qnote_flutter/core/agent/tools/general/grep_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/list_dir_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/read_file_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/write_file_tool.dart';
+import 'package:qnote_flutter/core/ai/ai_route_service.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 
@@ -35,6 +36,7 @@ class MockAiService extends AiService {
     void Function(Duration hold)? onQuotaHold,
     void Function()? onStreamRetry,
     CancelToken? cancelToken,
+    AiModelRoute? route,
   }) async* {
     for (final progress in progressChunks) {
       yield AiToolStreamChunk.toolProgress(progress);
@@ -58,6 +60,7 @@ class MidStreamCancelAiService extends AiService {
     void Function(Duration hold)? onQuotaHold,
     void Function()? onStreamRetry,
     CancelToken? cancelToken,
+    AiModelRoute? route,
   }) async* {
     yield const AiToolStreamChunk.text('第一段');
     // 模拟用户点停止后 Dio CancelToken 断连：流挂起片刻后抛出取消异常
@@ -79,6 +82,7 @@ class InterruptedThenRetriedAiService extends AiService {
     void Function(Duration hold)? onQuotaHold,
     void Function()? onStreamRetry,
     CancelToken? cancelToken,
+    AiModelRoute? route,
   }) async* {
     yield const AiToolStreamChunk.reasoning('被掐断的半截思考');
     // 相当于 AiService 决定重发时发出的复位通知

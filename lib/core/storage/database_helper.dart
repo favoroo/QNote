@@ -58,6 +58,7 @@ class DatabaseHelper {
       name TEXT NOT NULL,
       provider_type TEXT NOT NULL,
       base_url TEXT NOT NULL,
+      auth_mode TEXT NOT NULL DEFAULT 'api_key',
       api_keys TEXT NOT NULL,
       models TEXT NOT NULL,
       model_catalog TEXT,
@@ -65,6 +66,64 @@ class DatabaseHelper {
       is_default INTEGER DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
+    )
+  ''';
+
+  /// 订阅账号登录态表 DDL
+  ///
+  /// 与 `ai_providers` 分开：refresh token 是长期凭据，不写 `sync_log`、
+  /// 不进备份导出清单，避免随 WebDAV 同步到别的设备或落在备份文件里。
+  /// 一个厂商条目一份登录态，`provider_id` 直接做主键。
+  static const String _aiAccountsDdl = '''
+    CREATE TABLE IF NOT EXISTS ai_accounts (
+      provider_id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL DEFAULT 'raccoon',
+      access_token TEXT NOT NULL,
+      refresh_token TEXT NOT NULL DEFAULT '',
+      expires_at TEXT,
+      uid TEXT,
+      display_name TEXT,
+      phone TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  ''';
+
+  /// 模型路由组表 DDL
+  ///
+  /// 一个组 = 一组已启用模型 + 一个选路策略，角色可把它当「虚拟模型」绑定。
+  /// `members` 是 JSON 字符串列（成员厂商/模型/权重/启用），与 `ai_providers.models`
+  /// 同一套做法：整行 `toMap()` 随 WebDAV 同步与备份走，不必为可变长度成员建从表。
+  static const String _aiRouteGroupsDdl = '''
+    CREATE TABLE IF NOT EXISTS ai_route_groups (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      strategy TEXT NOT NULL DEFAULT 'rotate',
+      members TEXT NOT NULL DEFAULT '[]',
+      pinned_member TEXT,
+      prefer_vision INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  ''';
+
+  /// Token 用量按日聚合表 DDL
+  ///
+  /// 按 `(date, provider_id, model_name)` 聚合：用户要看的是累计消耗，一个模型
+  /// 一天最多一行，长期使用也不会膨胀。纯本机观测数据，不参与 WebDAV 同步与
+  /// 备份导出（换设备后累计没有意义，多端合并还会把计数写冲突）。
+  static const String _aiTokenUsageDdl = '''
+    CREATE TABLE IF NOT EXISTS ai_token_usage_daily (
+      date TEXT NOT NULL,
+      provider_id TEXT NOT NULL DEFAULT '',
+      model_name TEXT NOT NULL DEFAULT '',
+      prompt_tokens INTEGER NOT NULL DEFAULT 0,
+      completion_tokens INTEGER NOT NULL DEFAULT 0,
+      total_tokens INTEGER NOT NULL DEFAULT 0,
+      request_count INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (date, provider_id, model_name)
     )
   ''';
 
@@ -85,7 +144,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 27,
+      version: 30,
       onConfigure: (db) async {
         // 遇到写锁时等待重试（默认立即抛 database is locked），提升并发访问健壮性
         try {
@@ -286,6 +345,33 @@ class DatabaseHelper {
     // 缺表会让「添加模型服务」整条链路写入即抛 no such table，所以必须在这里补上。
     try {
       await db.execute(_aiProvidersDdl);
+    } catch (_) {}
+
+    // 兜底：Token 用量聚合表（同属 Web / 热重载只走 onOpen 的场景）
+    try {
+      await db.execute(_aiTokenUsageDdl);
+    } catch (_) {}
+
+    // 兜底：模型路由组表（同上；缺表会让路由组保存直接抛 no such table）
+    try {
+      await db.execute(_aiRouteGroupsDdl);
+    } catch (_) {}
+
+    // 兜底：订阅账号登录态表，以及 ai_providers 的 auth_mode 列。
+    // Web 与开发期热重载只走 onOpen，缺列会让整行 toMap() 写入直接抛错。
+    try {
+      await db.execute(_aiAccountsDdl);
+    } catch (_) {}
+    try {
+      final providerColumns = await db.rawQuery('PRAGMA table_info(ai_providers)');
+      final providerColNames =
+          providerColumns.map((c) => c['name'] as String).toSet();
+      if (providerColNames.isNotEmpty &&
+          !providerColNames.contains('auth_mode')) {
+        await db.execute(
+          "ALTER TABLE ai_providers ADD COLUMN auth_mode TEXT NOT NULL DEFAULT 'api_key'",
+        );
+      }
     } catch (_) {}
 
     // 兜底：补 chat_sessions 缺失的 is_pinned 列。这条是**主流程级**而非「置顶不生效」
@@ -592,6 +678,9 @@ class DatabaseHelper {
     await db.execute(_screenUsageDailyDdl);
     await db.execute(_widgetSnapshotDdl);
     await db.execute(_aiProvidersDdl);
+    await db.execute(_aiTokenUsageDdl);
+    await db.execute(_aiRouteGroupsDdl);
+    await db.execute(_aiAccountsDdl);
 
     // Performance indexes
     await _createIndexes(db);
@@ -952,6 +1041,36 @@ class DatabaseHelper {
       // 内置模型发信诊断表随内置模型下线：只记录过内置 Key 掩码的本地数据，无保留价值
       try {
         await db.execute('DROP TABLE IF EXISTS ai_request_stats');
+      } catch (_) {}
+    }
+
+    if (oldVersion < 28) {
+      // Token 用量按日聚合表：AI 配置页的累计消耗卡片从这里读
+      try {
+        await db.execute(_aiTokenUsageDdl);
+      } catch (_) {}
+    }
+
+    if (oldVersion < 29) {
+      // 模型路由组表：一组已启用模型 + 选路策略，供角色绑定成「虚拟模型」
+      try {
+        await db.execute(_aiRouteGroupsDdl);
+      } catch (_) {}
+    }
+
+    if (oldVersion < 30) {
+      // 订阅账号登录态表 + 厂商条目的凭证类型列（商汤小浣熊）
+      try {
+        await db.execute(_aiAccountsDdl);
+      } catch (_) {}
+      try {
+        final columns = await db.rawQuery('PRAGMA table_info(ai_providers)');
+        final names = columns.map((c) => c['name'] as String).toSet();
+        if (names.isNotEmpty && !names.contains('auth_mode')) {
+          await db.execute(
+            "ALTER TABLE ai_providers ADD COLUMN auth_mode TEXT NOT NULL DEFAULT 'api_key'",
+          );
+        }
       } catch (_) {}
     }
   }

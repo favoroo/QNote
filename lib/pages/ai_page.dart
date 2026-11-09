@@ -12,6 +12,7 @@ import 'package:qnote_flutter/providers/user_profile_provider.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/models/ai_model_ref.dart';
 import 'package:qnote_flutter/models/ai_provider.dart';
+import 'package:qnote_flutter/models/ai_route_group.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/models/todo.dart';
@@ -19,6 +20,7 @@ import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/ai/model_reasoning_capability.dart';
 import 'package:qnote_flutter/core/agent/agent_tool_labels.dart';
 import 'package:qnote_flutter/core/utils/chat_reedit.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
@@ -35,11 +37,12 @@ import 'package:qnote_flutter/widgets/ai/chat_history_drawer.dart';
 import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
+import 'package:qnote_flutter/widgets/ai/reasoning_effort_sheet.dart';
 import 'package:qnote_flutter/widgets/ai/user_bubble_reedit_tap.dart';
 import 'package:qnote_flutter/widgets/common/loading_ring.dart';
 import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
 import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
-import 'package:qnote_flutter/widgets/common/thought_tail_scroll_view.dart';
+import 'package:qnote_flutter/widgets/common/thinking_process_view.dart';
 import 'package:qnote_flutter/core/agent/services/agent_interaction_service.dart';
 import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
 import 'package:qnote_flutter/core/agent/services/q_text_quote.dart';
@@ -314,23 +317,42 @@ class _AiPageState extends ConsumerState<AiPage> {
   Future<void> _initActiveModelId() async {
     final roles = await ref.read(aiRolesProvider.future);
     final providers = await ref.read(aiProviderListProvider.future);
+    final groups = await ref.read(aiRouteGroupListProvider.future);
     final bound = roles?.assistant;
-    if (bound != null &&
-        providers.any(
-          (p) => p.id == bound.providerId && p.hasModel(bound.modelName),
-        )) {
+    if (bound != null && isBindingUsable(bound, providers, groups)) {
       if (mounted) setState(() => _activeModelId = bound);
       return;
     }
-    final provider = providers.where((p) => p.isDefault && p.isUsable).firstOrNull ??
+    final provider =
+        providers.where((p) => p.isDefault && p.isUsable).firstOrNull ??
         providers.where((p) => p.isUsable).firstOrNull;
     final model = provider?.firstModel;
     if (model != null && mounted) {
-      setState(() => _activeModelId = AiModelRef(
-        providerId: provider!.id,
-        modelName: model.id,
-      ));
+      setState(
+        () => _activeModelId = AiModelRef(
+          providerId: provider!.id,
+          modelName: model.id,
+        ),
+      );
     }
+  }
+
+  /// 顶部胶囊指向的绑定若已失效（厂商/模型/路由组被删），回落到默认厂商首个模型
+  void _syncActiveBindingIfStale(
+    List<AiProvider> providers,
+    List<AiRouteGroup> groups,
+  ) {
+    final current = _activeModelId;
+    if (isBindingUsable(current, providers, groups)) return;
+    final provider =
+        providers.where((p) => p.isDefault && p.isUsable).firstOrNull ??
+        providers.where((p) => p.isUsable).firstOrNull;
+    final model = provider?.firstModel;
+    setState(() {
+      _activeModelId = model == null
+          ? null
+          : AiModelRef(providerId: provider!.id, modelName: model.id);
+    });
   }
 
   @override
@@ -664,7 +686,11 @@ class _AiPageState extends ConsumerState<AiPage> {
     final anchor = _reeditAnchor;
     if (index == null || anchor == null || _reeditBusy) return;
     final messages = session?.messages ?? const <ChatMessage>[];
-    if (!isReeditAnchorValid(messages: messages, index: index, anchor: anchor) ||
+    if (!isReeditAnchorValid(
+          messages: messages,
+          index: index,
+          anchor: anchor,
+        ) ||
         reeditableUserIndex(messages) != index) {
       _exitReeditMode();
     }
@@ -762,7 +788,10 @@ class _AiPageState extends ConsumerState<AiPage> {
     final userMessage = messages[userIndex];
 
     // 该轮（含其后轮次）记录过数据修改时需二次确认：重试前的回退会撤销这些修改
-    final changeCount = countTurnUndoChanges(messages, fromUserIndex: userIndex);
+    final changeCount = countTurnUndoChanges(
+      messages,
+      fromUserIndex: userIndex,
+    );
     if (changeCount > 0) {
       final confirmed = await showDialog<bool>(
         context: context,
@@ -1140,10 +1169,52 @@ class _AiPageState extends ConsumerState<AiPage> {
     setState(() => _activeModelId = selected.ref);
   }
 
+  /// 当前绑定对应的具体模型（路由组返回 null：组内成员档位可能不同，
+  /// 统一在厂商编辑页按模型调整，输入区不提供会误导人的全局档位）
+  ({AiProvider provider, AiProviderModel model})? _resolveActiveModelEntry(
+    List<AiProvider> providers,
+  ) {
+    final binding = _activeModelId;
+    if (binding == null || binding.isRouteGroup) return null;
+    final provider = providers
+        .where((p) => p.id == binding.providerId)
+        .firstOrNull;
+    final model = provider?.models
+        .where((m) => m.id == binding.modelName)
+        .firstOrNull;
+    if (provider == null || model == null) return null;
+    return (provider: provider, model: model);
+  }
+
+  /// 输入区调整当前模型的思考强度：直接写回厂商条目，下一轮请求即生效
+  Future<void> _openReasoningEffort(
+    ({AiProvider provider, AiProviderModel model}) entry,
+  ) async {
+    final result = await showReasoningEffortSheet(
+      context,
+      modelName: entry.model.id,
+      providerType: entry.provider.providerType,
+      vendorId: entry.provider.vendorId,
+      selected: entry.model.reasoningEffort,
+    );
+    if (result == null || !mounted) return;
+    final updatedModels = entry.provider.models
+        .map(
+          (m) => m.id == entry.model.id
+              ? m.copyWith(reasoningEffort: result.effort)
+              : m,
+        )
+        .toList();
+    await ref
+        .read(aiProviderListProvider.notifier)
+        .updateProvider(entry.provider.copyWith(models: updatedModels));
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentChat = ref.watch(currentChatProvider);
     final providersAsync = ref.watch(aiProviderListProvider);
+    final routeGroupsAsync = ref.watch(aiRouteGroupListProvider);
     final theme = Theme.of(context);
 
     // 监听 aiRolesProvider，保证小Q界面与设置页角色绑定实时同步
@@ -1154,24 +1225,28 @@ class _AiPageState extends ConsumerState<AiPage> {
       }
     });
 
-    // 厂商/模型增删改后，校正顶部胶囊指向的模型；失效时回落到默认厂商首个模型
-    ref.listen<AsyncValue<List<AiProvider>>>(aiProviderListProvider, (prev, next) {
+    // 厂商/模型/路由组增删改后，校正顶部胶囊指向的绑定；失效时回落到默认厂商首个模型
+    ref.listen<AsyncValue<List<AiProvider>>>(aiProviderListProvider, (
+      prev,
+      next,
+    ) {
       final providers = next.valueOrNull;
       if (providers == null) return;
-      final current = _activeModelId;
-      final stillValid = current != null &&
-          providers.any(
-            (p) => p.id == current.providerId && p.hasModel(current.modelName),
-          );
-      if (stillValid) return;
-      final provider = providers.where((p) => p.isDefault && p.isUsable).firstOrNull ??
-          providers.where((p) => p.isUsable).firstOrNull;
-      final model = provider?.firstModel;
-      setState(() {
-        _activeModelId = model == null
-            ? null
-            : AiModelRef(providerId: provider!.id, modelName: model.id);
-      });
+      _syncActiveBindingIfStale(
+        providers,
+        routeGroupsAsync.valueOrNull ?? const <AiRouteGroup>[],
+      );
+    });
+    ref.listen<AsyncValue<List<AiRouteGroup>>>(aiRouteGroupListProvider, (
+      prev,
+      next,
+    ) {
+      final groups = next.valueOrNull;
+      if (groups == null) return;
+      _syncActiveBindingIfStale(
+        providersAsync.valueOrNull ?? const <AiProvider>[],
+        groups,
+      );
     });
 
     ref.listen(currentChatProvider, (prev, next) {
@@ -1278,7 +1353,7 @@ class _AiPageState extends ConsumerState<AiPage> {
       body: Column(
         children: [
           Expanded(child: _buildChatArea(currentChat, theme)),
-          _buildInputArea(providersAsync, theme),
+          _buildInputArea(providersAsync, routeGroupsAsync, theme),
         ],
       ),
     );
@@ -1579,6 +1654,7 @@ class _AiPageState extends ConsumerState<AiPage> {
 
   Widget _buildInputArea(
     AsyncValue<List<AiProvider>> providersAsync,
+    AsyncValue<List<AiRouteGroup>> routeGroupsAsync,
     ThemeData theme,
   ) {
     final hasAttachments =
@@ -1596,6 +1672,18 @@ class _AiPageState extends ConsumerState<AiPage> {
       ),
     );
     final busy = _isTyping || isSessionBusy;
+
+    // 思考强度胶囊只对具体模型展示；能力表未命中时整颗隐藏
+    final activeModelEntry = _resolveActiveModelEntry(
+      providersAsync.valueOrNull ?? const <AiProvider>[],
+    );
+    final activeReasoningCapability = activeModelEntry == null
+        ? null
+        : ModelReasoningCapability.resolve(
+            modelName: activeModelEntry.model.id,
+            providerType: activeModelEntry.provider.providerType,
+            vendorId: activeModelEntry.provider.vendorId,
+          );
 
     return Material(
       color: theme.colorScheme.surface,
@@ -1676,42 +1764,98 @@ class _AiPageState extends ConsumerState<AiPage> {
                     ),
                     const SizedBox(width: 8),
                     // 模型选择按钮（与长按发送按钮共用同一弹窗入口）：
-                    // Expanded+右对齐保证按钮始终贴右边距，长模型名自动截断
+                    // 右侧依次是思考强度胶囊与模型名，长模型名自动截断
                     Expanded(
                       child: Align(
                         alignment: Alignment.centerRight,
-                        child: GestureDetector(
-                          onTap: _openModelSelector,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.surfaceContainerHighest
-                                  .withValues(alpha: 0.5),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    aiModelDisplayName(
-                                      _activeModelId,
-                                      providersAsync.valueOrNull ??
-                                          const <AiProvider>[],
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (activeReasoningCapability != null &&
+                                activeModelEntry != null) ...[
+                              GestureDetector(
+                                onTap: () =>
+                                    _openReasoningEffort(activeModelEntry),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: theme
+                                        .colorScheme
+                                        .surfaceContainerHighest
+                                        .withValues(alpha: 0.5),
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.psychology_outlined,
+                                        size: 14,
+                                        color:
+                                            theme.colorScheme.onSurfaceVariant,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        '思考：${activeReasoningCapability.labelFor(activeModelEntry.model.reasoningEffort)}',
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: theme
+                                                  .colorScheme
+                                                  .onSurfaceVariant,
+                                            ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ],
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+                            Flexible(
+                              child: GestureDetector(
+                                onTap: _openModelSelector,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: theme
+                                        .colorScheme
+                                        .surfaceContainerHighest
+                                        .withValues(alpha: 0.5),
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          aiBindingDisplayName(
+                                            _activeModelId,
+                                            providersAsync.valueOrNull ??
+                                                const <AiProvider>[],
+                                            routeGroupsAsync.valueOrNull ??
+                                                const <AiRouteGroup>[],
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                                color: theme
+                                                    .colorScheme
+                                                    .onSurfaceVariant,
+                                              ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
+                          ],
                         ),
                       ),
                     ),
@@ -3631,14 +3775,21 @@ class _GenericToolFeedbackWidgetState
         ),
         borderRadius: const BorderRadius.horizontal(right: Radius.circular(6)),
       ),
-      blockquotePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      blockquotePadding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 8,
+      ),
       listBullet: TextStyle(color: theme.colorScheme.onSurface),
     );
 
     Widget buildBody() => ConstrainedBox(
       constraints: const BoxConstraints(maxHeight: 220),
       child: SingleChildScrollView(
-        child: MarkdownBody(data: message.content, selectable: false, styleSheet: markdownSheet),
+        child: MarkdownBody(
+          data: message.content,
+          selectable: false,
+          styleSheet: markdownSheet,
+        ),
       ),
     );
 
@@ -3658,7 +3809,11 @@ class _GenericToolFeedbackWidgetState
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.error_outline, size: 14, color: theme.colorScheme.error),
+                Icon(
+                  Icons.error_outline,
+                  size: 14,
+                  color: theme.colorScheme.error,
+                ),
                 const SizedBox(width: 4),
                 Text(
                   label,
@@ -3691,7 +3846,9 @@ class _GenericToolFeedbackWidgetState
         children: [
           // 头部折叠条：工具标签 + 关键信息摘要，点击展开/收起正文
           InkWell(
-            onTap: hasBody ? () => setState(() => _isExpanded = !_isExpanded) : null,
+            onTap: hasBody
+                ? () => setState(() => _isExpanded = !_isExpanded)
+                : null,
             borderRadius: BorderRadius.circular(10),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -3712,7 +3869,9 @@ class _GenericToolFeedbackWidgetState
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.85,
+                        ),
                       ),
                     ),
                   ),
@@ -4287,135 +4446,19 @@ class _TypingBubble extends StatelessWidget {
   }
 }
 
-/// 思考过程展示：折叠态呈现简洁的「思考过程」标签胶囊（不滚动文字），点击平滑展开查看完整思考富文本
-class _ThoughtProcessView extends StatefulWidget {
+/// 已结束消息的思考过程：折叠态单行展示最新思考，点击展开全文
+class _ThoughtProcessView extends StatelessWidget {
   final String thought;
 
   const _ThoughtProcessView({required this.thought});
 
   @override
-  State<_ThoughtProcessView> createState() => _ThoughtProcessViewState();
-}
-
-class _ThoughtProcessViewState extends State<_ThoughtProcessView> {
-  bool _isExpanded = false;
-
-  @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return AnimatedSize(
-      duration: AppDurations.medium,
-      curve: Curves.easeOutCubic,
-      child: Container(
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest.withValues(
-            alpha: 0.4,
-          ),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: theme.colorScheme.primary.withValues(alpha: 0.18),
-            width: 1,
-          ),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () => setState(() => _isExpanded = !_isExpanded),
-            borderRadius: BorderRadius.circular(10),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // 顶部单行胶囊栏：静态标签 + 展开箭头（不再滚动显示思考文字）
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.psychology_outlined,
-                        size: 15,
-                        color: theme.colorScheme.primary,
-                      ),
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 5,
-                          vertical: 1.5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withValues(
-                            alpha: 0.12,
-                          ),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          '思考过程',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.primary,
-                            letterSpacing: 0.2,
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                      AnimatedRotation(
-                        turns: _isExpanded ? 0.5 : 0,
-                        duration: AppDurations.normal,
-                        child: Icon(
-                          Icons.keyboard_arrow_down_rounded,
-                          size: 16,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                  // 展开态：完整富文本思考过程（支持长文本内部滚动）
-                  if (_isExpanded) ...[
-                    const SizedBox(height: 8),
-                    Container(
-                      width: double.infinity,
-                      constraints: const BoxConstraints(maxHeight: 220),
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surfaceContainerLow,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: theme.colorScheme.outlineVariant.withValues(
-                            alpha: 0.4,
-                          ),
-                        ),
-                      ),
-                      child: SingleChildScrollView(
-                        child: Text(
-                          widget.thought,
-                          style: TextStyle(
-                            fontSize: 12,
-                            height: 1.55,
-                            color: theme.colorScheme.onSurface.withValues(
-                              alpha: 0.9,
-                            ),
-                            fontStyle: FontStyle.italic,
-                            fontFamily: 'monospace',
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+    return ThinkingProcessView(thought: thought);
   }
 }
 
-/// 「思考中」状态卡内的实时思考区：模型思考增量（reasoning_content）限高滚动展示，
-/// 视觉沿用 [_ThoughtProcessView] 的胶囊语言，滚动与贴底跟随由 [ThoughtTailScrollView] 承担
+/// 「思考中」状态卡内的实时思考区：折叠态单行滚动展示最新思考，展开看全文
 class _LiveThoughtView extends ConsumerWidget {
   const _LiveThoughtView();
 
@@ -4425,37 +4468,9 @@ class _LiveThoughtView extends ConsumerWidget {
     if (thought == null || thought.trim().isEmpty) {
       return const SizedBox.shrink();
     }
-    final theme = Theme.of(context);
-    return AnimatedSize(
-      duration: AppDurations.fast,
-      curve: Curves.easeOut,
-      alignment: Alignment.topCenter,
-      child: Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: Container(
-          width: double.infinity,
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest.withValues(
-              alpha: 0.4,
-            ),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: theme.colorScheme.primary.withValues(alpha: 0.18),
-            ),
-          ),
-          child: ThoughtTailScrollView(
-            text: thought.trim(),
-            maxHeight: 96,
-            textStyle: TextStyle(
-              fontSize: 12,
-              height: 1.5,
-              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
-              fontStyle: FontStyle.italic,
-            ),
-          ),
-        ),
-      ),
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: ThinkingProcessView(thought: thought.trim(), isStreaming: true),
     );
   }
 }

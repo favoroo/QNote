@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -8,16 +9,20 @@ import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/api_key_pool.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/ai_provider_repository.dart';
+import 'package:qnote_flutter/core/storage/ai_token_usage_repository.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
+import 'package:qnote_flutter/models/ai_token_usage.dart';
 
 /// 生图工具：让小Q 具备 AI 文生图能力
 ///
 /// 走**用户自配的生图模型**（`AiRoles.imageGeneration` 绑定）：OpenAI 兼容的
-/// `POST {baseUrl}/images/generations`，显式只带 `model / prompt / size / n` 四个
+/// `POST {baseUrl}/images/generations`，默认只带 `model / prompt / size / n` 四个
 /// 参数 —— 不同中转对 `watermark`、`response_format` 这类扩展参数的容忍度不同，
-/// 未知参数导致的 400 是确定性错误，会把每一次生图都打死；返回的 `b64_json` 与
-/// `url` 两种形态都解析（url 走下载再落盘）。
+/// 未知参数导致的 400 是确定性错误，会把每一次生图都打死。唯一例外是 SenseNova：
+/// 其图片接口默认给生成图打官方 Logo 水印（`watermark` 缺省 `true`），需显式下发
+/// `watermark: false` 才能拿到纯图；若网关仍以 400/422 拒绝，会自动剥掉该参数重试
+/// 一次。返回的 `b64_json` 与 `url` 两种形态都解析（url 走下载再落盘）。
 ///
 /// 生成结果统一保存（原生端落盘 `images/ai/` 子目录，Web 端直接使用 data URI），
 /// 把路径回传给模型，由模型用 write_file / edit_file 放到笔记、时间线、日记等指定位置；
@@ -241,6 +246,43 @@ class GenerateImageTool extends AgentTool {
     );
   }
 
+  /// 组装 images/generations 请求体
+  ///
+  /// 默认保持最小参数集，避免未知参数触发网关 400；SenseNova 的图片接口默认
+  /// 给结果打官方 Logo 水印，这里按厂商显式关闭。厂商判定覆盖三种配置方式：
+  /// 选中 SenseNova 厂商模板、自定义地址填 `sensenova.cn`、模型名含 `sensenova`
+  /// （经中转访问的情况）。
+  @visibleForTesting
+  static Map<String, dynamic> buildGenerationRequestBody(
+    AiConfig config,
+    String prompt,
+    String size,
+  ) {
+    return {
+      'model': config.modelName,
+      'prompt': prompt,
+      'n': 1,
+      if (size.isNotEmpty) 'size': size,
+      if (supportsWatermarkSwitch(config)) 'watermark': false,
+    };
+  }
+
+  /// 是否为明确支持 `watermark` 参数的厂商（目前仅 SenseNova）
+  @visibleForTesting
+  static bool supportsWatermarkSwitch(AiConfig config) {
+    if (config.provider != 'openai') {
+      return false;
+    }
+    if (config.vendorId == 'sensenova') {
+      return true;
+    }
+    final host = Uri.tryParse(config.baseUrl)?.host.toLowerCase() ?? '';
+    if (host == 'sensenova.cn' || host.endsWith('.sensenova.cn')) {
+      return true;
+    }
+    return config.modelName.toLowerCase().contains('sensenova');
+  }
+
   /// OpenAI 兼容生图请求：POST {baseUrl}/images/generations
   ///
   /// 与文本链路共用同一套发信策略：**每次尝试现取一把 Key**（多 Key 厂商按池轮询），
@@ -260,9 +302,13 @@ class GenerateImageTool extends AgentTool {
       keys = [config.apiKey.trim()];
     }
     final pooled = keys.length >= 2;
-    final maxAttempts = pooled
-        ? keys.length.clamp(2, ApiKeyPool.maxRotationAttempts)
-        : 1;
+    final requestBody = buildGenerationRequestBody(config, prompt, size);
+    // 网关拒绝扩展参数时额外给一次「剥掉 watermark」的机会，
+    // 避免去水印参数在未知网关上把每次生图都打成 400（400 不会产生费用）
+    var canStripWatermark = requestBody.containsKey('watermark');
+    final maxAttempts =
+        (pooled ? keys.length.clamp(2, ApiKeyPool.maxRotationAttempts) : 1) +
+            (canStripWatermark ? 1 : 0);
 
     Object? lastError;
     for (var attempt = 0; attempt < maxAttempts; attempt++) {
@@ -273,12 +319,7 @@ class GenerateImageTool extends AgentTool {
       try {
         final response = await dio.post<Map<String, dynamic>>(
           '${config.baseUrl}/images/generations',
-          data: {
-            'model': config.modelName,
-            'prompt': prompt,
-            'n': 1,
-            if (size.isNotEmpty) 'size': size,
-          },
+          data: requestBody,
           options: Options(headers: _authHeaderFor(config, sentKey)),
         );
         final body = response.data;
@@ -291,9 +332,32 @@ class GenerateImageTool extends AgentTool {
           return const ImageParseOutcome.empty(
               summary: 'body=null（HTTP 响应体无法解析为 JSON）');
         }
+        // 生图网关多数只回 usage（prompt 计费），同样计入本机累计消耗
+        final usage = AiTokenUsage.fromResponse(body);
+        if (usage != null) {
+          unawaited(
+            AiTokenUsageRepository.instance.record(
+              providerId: config.providerId,
+              modelName: config.modelName,
+              usage: usage,
+            ),
+          );
+        }
         return parseGenerationImagesDetailed(body);
       } on DioException catch (e) {
         lastError = e;
+        // 网关不认识 watermark 时剥掉参数重试，优先保证生图本身可用
+        final status = e.response?.statusCode;
+        if (canStripWatermark && (status == 400 || status == 422)) {
+          canStripWatermark = false;
+          requestBody.remove('watermark');
+          LoggerService.instance.logAI(
+            '生图请求被网关拒绝，去掉 watermark 参数后重试',
+            details: 'status=$status, ${e.message}',
+            level: LogLevel.warning,
+          );
+          continue;
+        }
         final keyScoped = ApiKeyPool.isKeyScopedError(e);
         // 389/401/403 这类 Key 级故障：冷却本次这把，池里还有别的就直接换
         if (keyScoped && pooled) {

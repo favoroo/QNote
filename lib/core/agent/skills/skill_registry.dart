@@ -321,11 +321,11 @@ description: 系统偏好与配置技能：个性化外观、AI模型分配与�
   "temperatures": {
     "assistant": {
       "temperature": 0.7,
-      "maxTokens": 4096
+      "maxTokens": 64000
     },
     "timelineOptimization": {
       "temperature": 0.01,
-      "maxTokens": 2048,
+      "maxTokens": 12000,
       "extractImages": true
     }
   },

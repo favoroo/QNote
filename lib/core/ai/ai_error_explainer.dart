@@ -26,7 +26,7 @@ class AiErrorExplainer {
         raw.contains('尚未配置可用的 AI 模型')) {
       problem = '还没有可用的 AI 模型';
       advice = '请到「设置 → AI 模型配置」添加你自己的模型服务（API 地址 + 密钥），'
-          '扫描并启用模型后即可使用；小Q 不再内置模型。';
+          '扫描并启用模型后即可使用。';
     } else if (raw.contains('Failed host lookup')) {
       final host = RegExp(r"Failed host lookup:\s*'?(.+?)'?(?:\s|\(|$)")
           .firstMatch(raw)

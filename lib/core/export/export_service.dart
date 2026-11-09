@@ -1,13 +1,15 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 import 'package:qnote_flutter/config/models.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/ai_provider_repository.dart';
+import 'package:qnote_flutter/core/storage/ai_route_group_repository.dart';
 import 'package:qnote_flutter/core/storage/database_helper.dart';
 import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
@@ -21,6 +23,7 @@ import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/models/todo.dart';
 import 'package:qnote_flutter/models/folder.dart';
 import 'package:qnote_flutter/models/ai_provider.dart';
+import 'package:qnote_flutter/models/ai_route_group.dart';
 import 'package:qnote_flutter/models/date_color_mark.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
@@ -169,6 +172,9 @@ class ExportService {
     final aiProviderList = await AiProviderRepository.instance.getAll();
     data['ai_providers'] = aiProviderList.map((p) => p.toMap()).toList();
 
+    final routeGroups = await AiRouteGroupRepository.instance.getAll();
+    data['ai_route_groups'] = routeGroups.map((g) => g.toMap()).toList();
+
     final shortcutConfigs = await _configRepo.getAllShortcutConfigs();
     data['shortcut_configs'] = shortcutConfigs.map((c) => c.toMap()).toList();
 
@@ -238,6 +244,12 @@ class ExportService {
     await importFromJsonString(jsonString, overwrite: overwrite);
   }
 
+  /// 覆盖导入前，本轮写入失败的记录（供导入结束后统一判定成败）
+  ///
+  /// 用实例字段而非参数透传，是为了不把 14 个 `_importXxx` 的签名全部拉长；
+  /// 每次 [importFromJsonString] 入口都会重置，且各调用方都是串行使用。
+  final List<String> _importFailures = [];
+
   Future<void> importFromJsonString(
     String jsonString, {
     bool overwrite = true,
@@ -264,105 +276,121 @@ class ExportService {
     // 转换旧架构数据格式
     importData = _transformOldArchitectureData(importData);
 
-    _validateBackupData(importData);
+    _validateBackupData(importData, requireCoreTables: overwrite);
 
     final db = await DatabaseHelper.instance.database;
+
+    // 覆盖导入会先清空本地库，一旦清完才发现文件有问题就无处回退。
+    // 因此先落一份本地快照（不含图片 base64，避免把磁盘写满），给用户留回滚余地。
+    String? snapshotPath;
+    if (overwrite) {
+      snapshotPath = await _writePreImportSnapshot();
+      if (snapshotPath == null) {
+        throw Exception('导入前的本地快照保存失败，为避免数据丢失已取消导入');
+      }
+    }
+
+    _importFailures.clear();
+
+    // 先把所有表解析成强类型列表，再清库写入。
+    // 解析放在清库之后的话，某条记录不是对象时会「已清库 + 抛异常」，
+    // 用户看到导入失败但数据已经没了。
+    List<Map<String, dynamic>> parseList(String key) =>
+        ((importData[key] as List?) ?? const [])
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+    Map<String, dynamic> parseMap(String key) =>
+        Map<String, dynamic>.from(importData[key] as Map);
+
+    final folders = parseList('folders');
+    final records = parseList('diary_records');
+    final notes = parseList('notes');
+    final todos = parseList('todos');
+    final providers = parseList('ai_providers');
+    final routeGroups = parseList('ai_route_groups');
+    final legacyConfigs = parseList('ai_configs');
+    final shortcutConfigs = parseList('shortcut_configs');
+    final sessions = parseList('chat_sessions');
+    final marks = parseList('date_color_marks');
+    final states = parseList('body_states');
+    final dailyScores = parseList('daily_scores');
+    final templates = parseList('fixed_event_templates');
+    final profileMap =
+        importData.containsKey('user_profile') ? parseMap('user_profile') : null;
+    final webdavMap =
+        importData.containsKey('webdav_config') ? parseMap('webdav_config') : null;
+    final rolesMap = importData.containsKey('ai_roles') ? parseMap('ai_roles') : null;
+    final tempsMap =
+        importData.containsKey('ai_temperatures') ? parseMap('ai_temperatures') : null;
 
     if (overwrite) {
       await _clearAllData(db);
     }
 
     if (importData.containsKey('folders')) {
-      final folders = (importData['folders'] as List)
-          .map((e) => Map<String, dynamic>.from(e as Map)).toList();
       await _importFolders(folders, overwrite);
     }
 
     if (importData.containsKey('diary_records')) {
-      final records = (importData['diary_records'] as List)
-          .map((e) => Map<String, dynamic>.from(e as Map)).toList();
       await _importDiaryRecords(records, overwrite);
     }
 
     if (importData.containsKey('notes')) {
-      final notes = (importData['notes'] as List)
-          .map((e) => Map<String, dynamic>.from(e as Map)).toList();
       await _importNotes(notes, overwrite);
     }
 
     if (importData.containsKey('todos')) {
-      final todos = (importData['todos'] as List)
-          .map((e) => Map<String, dynamic>.from(e as Map)).toList();
       await _importTodos(todos, overwrite);
     }
 
-    if (importData.containsKey('user_profile')) {
-      final profileMap = Map<String, dynamic>.from(importData['user_profile'] as Map);
+    if (profileMap != null) {
       await _importUserProfile(profileMap, overwrite);
     }
 
     if (importData.containsKey('ai_providers')) {
-      final providers = (importData['ai_providers'] as List)
-          .map((e) => Map<String, dynamic>.from(e as Map)).toList();
       await _importAiProviders(providers, overwrite);
+    }
+    if (importData.containsKey('ai_route_groups')) {
+      await _importAiRouteGroups(routeGroups, overwrite);
     }
     // 旧备份仍带着模型级 ai_configs：按「厂商+地址」归并成厂商条目补进来
     if (importData.containsKey('ai_configs')) {
-      final configs = (importData['ai_configs'] as List)
-          .map((e) => Map<String, dynamic>.from(e as Map)).toList();
-      await _importLegacyAiConfigs(configs);
+      await _importLegacyAiConfigs(legacyConfigs);
     }
 
     if (importData.containsKey('shortcut_configs')) {
-      final configs = (importData['shortcut_configs'] as List)
-          .map((e) => Map<String, dynamic>.from(e as Map)).toList();
-      await _importShortcutConfigs(configs, overwrite);
+      await _importShortcutConfigs(shortcutConfigs, overwrite);
     }
 
     if (importData.containsKey('chat_sessions')) {
-      final sessions = (importData['chat_sessions'] as List)
-          .map((e) => Map<String, dynamic>.from(e as Map)).toList();
       await _importChatSessions(sessions, overwrite);
     }
 
-    if (importData.containsKey('webdav_config')) {
-      final webdavMap = Map<String, dynamic>.from(importData['webdav_config'] as Map);
+    if (webdavMap != null) {
       await _importWebdavConfig(webdavMap, overwrite);
     }
 
     if (importData.containsKey('date_color_marks')) {
-      final marks = (importData['date_color_marks'] as List)
-          .map((e) => Map<String, dynamic>.from(e as Map)).toList();
       await _importColorMarks(marks, overwrite);
     }
 
-    if (importData.containsKey('ai_roles')) {
-      final rolesMap = Map<String, dynamic>.from(importData['ai_roles'] as Map);
-      final roles = AiRoles.fromMap(rolesMap);
-      await _configRepo.saveAiRoles(roles);
+    if (rolesMap != null) {
+      await _configRepo.saveAiRoles(AiRoles.fromMap(rolesMap));
     }
 
-    if (importData.containsKey('ai_temperatures')) {
-      final tempsMap = Map<String, dynamic>.from(importData['ai_temperatures'] as Map);
-      final temps = AiTemperatures.fromMap(tempsMap);
-      await _configRepo.saveAiTemperatures(temps);
+    if (tempsMap != null) {
+      await _configRepo.saveAiTemperatures(AiTemperatures.fromMap(tempsMap));
     }
 
     if (importData.containsKey('body_states')) {
-      final states = (importData['body_states'] as List)
-          .map((e) => Map<String, dynamic>.from(e as Map)).toList();
       await _importBodyStates(states, overwrite);
     }
 
     if (importData.containsKey('daily_scores')) {
-      final dailyScores = (importData['daily_scores'] as List)
-          .map((e) => Map<String, dynamic>.from(e as Map)).toList();
       await _importDailyScores(dailyScores, overwrite);
     }
 
     if (importData.containsKey('fixed_event_templates')) {
-      final templates = (importData['fixed_event_templates'] as List)
-          .map((e) => Map<String, dynamic>.from(e as Map)).toList();
       await _importFixedEventTemplates(templates, overwrite);
     }
 
@@ -375,10 +403,45 @@ class ExportService {
     if (importData.containsKey('ai_providers')) {
       summary.write(', 模型服务=${(importData['ai_providers'] as List).length}');
     }
-    LoggerService.instance.logImport('数据导入完成', details: summary.toString());
+    if (importData.containsKey('ai_route_groups')) {
+      summary.write(', 路由组=${(importData['ai_route_groups'] as List).length}');
+    }
+
+    // 覆盖模式下本地已被清空，此时再吞掉写入错误就等于「静默丢数据 + 报成功」。
+    // 只要有一条记录没落库，就整体判定失败，并把快照位置告诉用户。
+    if (_importFailures.isNotEmpty) {
+      final failedCount = _importFailures.length;
+      final preview = _importFailures.take(5).join('；');
+      final more = failedCount > 5 ? ' 等 $failedCount 条' : '';
+      _importFailures.clear();
+      LoggerService.instance.logImport(
+        '数据导入存在失败记录',
+        level: LogLevel.error,
+        details: '$summary；失败: $preview$more；快照=$snapshotPath',
+      );
+      throw Exception(
+        '有 $failedCount 条记录导入失败: $preview$more'
+        '${snapshotPath != null ? '\n导入前的本地快照已保存在: $snapshotPath' : ''}',
+      );
+    }
+
+    LoggerService.instance.logImport(
+      '数据导入完成',
+      details: '$summary${snapshotPath != null ? ', 导入前快照=$snapshotPath' : ''}',
+    );
   }
 
-  void _validateBackupData(Map<String, dynamic> data) {
+  /// 校验备份文件是否可用于「覆盖导入」。
+  ///
+  /// 覆盖模式会先清空本地全部数据表，因此这里必须严格：只认字段名白名单是不够的，
+  /// `{}` 或 `{"export_version": 2}` 这类合法 JSON 会清库后导入 0 条并提示成功。
+  /// 所以要求至少包含一张核心数据表，且各表类型必须是数组/对象。
+  ///
+  /// [requireCoreTables] 仅在覆盖模式为 true：合并模式不会清库，空备份无副作用。
+  void _validateBackupData(
+    Map<String, dynamic> data, {
+    bool requireCoreTables = true,
+  }) {
     final validKeys = {
       'diary_records',
       'notes',
@@ -387,6 +450,7 @@ class ExportService {
       'user_profile',
       'ai_configs',
       'ai_providers',
+      'ai_route_groups',
       'shortcut_configs',
       'chat_sessions',
       'webdav_config',
@@ -415,25 +479,210 @@ class ExportService {
         throw Exception('无效的备份数据: 未知字段 "$key"');
       }
     }
+
+    // 核心数据表：备份里至少要出现一张，否则就是空壳文件
+    if (requireCoreTables) {
+      const coreTables = {
+        'diary_records',
+        'notes',
+        'todos',
+        'folders',
+        'chat_sessions',
+        'shortcut_configs',
+        'ai_providers',
+        'ai_route_groups',
+        'ai_configs',
+      };
+      final presentTables = data.keys.where(coreTables.contains).toSet();
+      if (presentTables.isEmpty) {
+        throw Exception('备份文件不含任何可导入的数据表，已取消导入（当前数据未改动）');
+      }
+    }
+
+    // 类型校验：表必须是数组，单对象配置必须是对象
+    const listKeys = {
+      'diary_records',
+      'notes',
+      'todos',
+      'folders',
+      'ai_configs',
+      'ai_providers',
+      'ai_route_groups',
+      'shortcut_configs',
+      'chat_sessions',
+      'date_color_marks',
+      'body_states',
+      'daily_scores',
+      'fixed_event_templates',
+    };
+    const mapKeys = {
+      'user_profile',
+      'webdav_config',
+      'ai_roles',
+      'ai_temperatures',
+    };
+    for (final key in listKeys) {
+      final value = data[key];
+      if (value != null && value is! List) {
+        throw Exception('无效的备份数据: "$key" 应为数组，实际为 ${value.runtimeType}');
+      }
+    }
+    for (final key in mapKeys) {
+      final value = data[key];
+      if (value != null && value is! Map) {
+        throw Exception('无效的备份数据: "$key" 应为对象，实际为 ${value.runtimeType}');
+      }
+    }
   }
 
+  /// 记录一条导入失败：既写日志，也累积到 [_importFailures] 供整体判定。
+  void _recordImportFailure(String label, Object error) {
+    _importFailures.add(label);
+    LoggerService.instance.logImport(
+      '导入失败: $label',
+      level: LogLevel.error,
+      details: error.toString(),
+    );
+  }
+
+  /// 覆盖导入前把当前数据写成一份本地快照，返回文件路径。
+  ///
+  /// 不含图片 base64：快照的目的只是「清库后还能把文字数据捞回来」，
+  /// 带上图片会让 MB 级文件翻几倍，反而拖垮导入前这段本就不宽裕的时间。
+  Future<String?> _writePreImportSnapshot() async {
+    try {
+      final data = await exportAllToMap(includeImages: false);
+      final appDir = await getApplicationDocumentsDirectory();
+      final dir = Directory(p.join(appDir.path, 'import_snapshots'));
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      final stamp = DateTime.now()
+          .toIso8601String()
+          .replaceAll(':', '-')
+          .split('.')
+          .first;
+      final file = File(p.join(dir.path, 'pre_import_$stamp.json'));
+      await file.writeAsString(jsonEncode(data));
+      await _pruneOldImportSnapshots(dir);
+      LoggerService.instance.logImport('已保存导入前本地快照', details: file.path);
+      return file.path;
+    } catch (e, stackTrace) {
+      LoggerService.instance.logImport(
+        '保存导入前本地快照失败',
+        level: LogLevel.error,
+        details: '${e.toString()}\n$stackTrace',
+      );
+      return null;
+    }
+  }
+
+  /// 只保留最近 5 份导入前快照，避免备份目录无限增长。
+  Future<void> _pruneOldImportSnapshots(Directory dir) async {
+    try {
+      final files = await dir
+          .list()
+          .where((f) => f is File && p.basename(f.path).startsWith('pre_import_'))
+          .cast<File>()
+          .toList();
+      if (files.length <= 5) return;
+      files.sort((a, b) => b.path.compareTo(a.path));
+      for (final file in files.skip(5)) {
+        await file.delete();
+      }
+    } catch (_) {
+      // 清理失败不影响导入本身
+    }
+  }
+
+  /// 覆盖导入前要清空的表（不碰同步配置与全局配置）。
+  ///
+  /// 这里和「清空所有本地数据」共用同一份清单，避免两处各自维护后漏表。
+  static const List<String> importClearedTables = [
+    'diary_records',
+    'notes',
+    'todos',
+    'folders',
+    'user_profiles',
+    'ai_configs',
+    'ai_providers',
+    'ai_route_groups',
+    'shortcut_configs',
+    'chat_sessions',
+    'date_color_marks',
+    'body_states',
+    'daily_scores',
+    'fixed_event_templates',
+  ];
+
+  /// 「清空所有本地数据」要清空的表：在导入清单之上补齐同步配置、健康/用量与变更日志。
+  ///
+  /// sync_log 必须一起清：残留的变更记录会让下次同步把清空前的内容当增量重新推上云端，
+  /// 数据会「复活」。webdav_configs / app_configs 也在其中——用户明确点了「清空所有」。
+  static const List<String> fullWipeTables = [
+    ...importClearedTables,
+    'webdav_configs',
+    'app_configs',
+    'health_daily_metrics',
+    'health_sport_records',
+    'screen_usage_daily',
+    'ai_token_usage_daily',
+    'ai_accounts',
+    'widget_snapshot',
+    'sync_log',
+  ];
+
+  /// 清空本地业务数据（覆盖导入用），不删同步配置与全局配置。
   Future<void> _clearAllData(Database db) async {
-    await db.delete('diary_records');
-    await db.delete('notes');
-    await db.delete('todos');
-    await db.delete('folders');
-    await db.delete('user_profiles');
-    await db.delete('ai_configs');
-    await db.delete('ai_providers');
-    await db.delete('shortcut_configs');
-    await db.delete('chat_sessions');
-    // 导入覆盖数据时，不删除同步配置和应用全局配置，防止账号密码及个性化配置丢失
-    // await db.delete('webdav_configs');
-    await db.delete('date_color_marks');
-    await db.delete('body_states');
-    await db.delete('daily_scores');
-    await db.delete('fixed_event_templates');
-    // await db.delete('app_configs');
+    for (final table in importClearedTables) {
+      await db.delete(table);
+    }
+  }
+
+  /// 清空所有本地数据：数据库业务表 + 磁盘图片目录 + SharedPreferences。
+  ///
+  /// 与「导入覆盖」的区别是这里连同步配置、健康数据和变更日志一起清掉，
+  /// 语义与 UI 上「清空所有本地数据」的承诺一致。返回删除的图片文件数。
+  Future<int> wipeAllLocalData() async {
+    final db = await DatabaseHelper.instance.database;
+    for (final table in fullWipeTables.toSet()) {
+      await db.delete(table);
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+
+    // 数据库已清空，磁盘上 images/ 下的文件再无任何引用，一并删掉；
+    // 不删的话「清空所有数据」后磁盘占用不变，用户会以为没生效。
+    int deletedImages = 0;
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final imagesDir = Directory(p.join(appDir.path, 'images'));
+      if (await imagesDir.exists()) {
+        await for (final entity in imagesDir.list(recursive: true)) {
+          if (entity is File) {
+            try {
+              await entity.delete();
+              deletedImages++;
+            } catch (_) {
+              // 单个文件删不掉不影响整体清理
+            }
+          }
+        }
+      }
+    } catch (e) {
+      LoggerService.instance.logDatabase(
+        '清空图片目录失败',
+        level: LogLevel.warning,
+        details: e.toString(),
+      );
+    }
+
+    LoggerService.instance.logDatabase(
+      '已清空所有本地数据',
+      details: '表=${fullWipeTables.toSet().length}, 图片=$deletedImages',
+    );
+    return deletedImages;
   }
 
   Future<void> _importFolders(
@@ -448,7 +697,7 @@ class ExportService {
       try {
         await _folderRepo.insert(Folder.fromMap(map));
       } catch (e) {
-        LoggerService.instance.logImport('导入文件夹失败: ${map['id']}', level: LogLevel.error, details: e.toString());
+        _recordImportFailure('文件夹 ${map['id']}', e);
       }
     }
   }
@@ -480,7 +729,7 @@ class ExportService {
         }
         await _diaryRepo.insert(DiaryRecord.fromMap(map));
       } catch (e) {
-        LoggerService.instance.logImport('导入日记失败: ${map['id']}', level: LogLevel.error, details: e.toString());
+        _recordImportFailure('日记 ${map['id']}', e);
       }
     }
   }
@@ -512,7 +761,7 @@ class ExportService {
         }
         await _noteRepo.insert(Note.fromMap(map));
       } catch (e) {
-        LoggerService.instance.logImport('导入笔记失败: ${map['id']}', level: LogLevel.error, details: e.toString());
+        _recordImportFailure('笔记 ${map['id']}', e);
       }
     }
   }
@@ -529,7 +778,7 @@ class ExportService {
       try {
         await _todoRepo.insert(Todo.fromMap(map));
       } catch (e) {
-        LoggerService.instance.logImport('导入待办失败: ${map['id']}', level: LogLevel.error, details: e.toString());
+        _recordImportFailure('待办 ${map['id']}', e);
       }
     }
   }
@@ -539,7 +788,7 @@ class ExportService {
       final profile = UserProfile.fromMap(map);
       await _configRepo.upsertUserProfile(profile);
     } catch (e) {
-      LoggerService.instance.logImport('导入用户资料失败', level: LogLevel.error, details: e.toString());
+      _recordImportFailure('用户资料', e);
     }
   }
 
@@ -558,11 +807,29 @@ class ExportService {
         }
         await repo.insertSilently(provider);
       } catch (e) {
-        LoggerService.instance.logImport(
-          '导入模型服务失败: ${map['id']}',
-          level: LogLevel.error,
-          details: e.toString(),
-        );
+        _recordImportFailure('模型服务 ${map['id']}', e);
+      }
+    }
+  }
+
+  Future<void> _importAiRouteGroups(
+    List<Map<String, dynamic>> groups,
+    bool overwrite,
+  ) async {
+    final repo = AiRouteGroupRepository.instance;
+    for (final map in groups) {
+      try {
+        final group = AiRouteGroup.fromMap(map);
+        if (group.id.isEmpty) continue;
+        // 组至少要有一个成员，否则绑上它的角色会解析失败只剩回落
+        if (group.members.isEmpty) continue;
+        if (!overwrite) {
+          final existing = await repo.getById(group.id);
+          if (existing != null) continue;
+        }
+        await repo.insertSilently(group);
+      } catch (e) {
+        _recordImportFailure('路由组 ${map['id']}', e);
       }
     }
   }
@@ -589,11 +856,7 @@ class ExportService {
           ),
         );
       } catch (e) {
-        LoggerService.instance.logImport(
-          '导入旧 AI 配置失败: ${provider.id}',
-          level: LogLevel.error,
-          details: e.toString(),
-        );
+        _recordImportFailure('旧 AI 配置 ${provider.id}', e);
       }
     }
   }
@@ -610,7 +873,7 @@ class ExportService {
       try {
         await _configRepo.insertShortcutConfig(ShortcutConfig.fromMap(map));
       } catch (e) {
-        LoggerService.instance.logImport('导入快捷配置失败: ${map['id']}', level: LogLevel.error, details: e.toString());
+        _recordImportFailure('快捷配置 ${map['id']}', e);
       }
     }
   }
@@ -629,7 +892,7 @@ class ExportService {
       try {
         await _configRepo.insertChatSession(ChatSession.fromMap(map));
       } catch (e) {
-        LoggerService.instance.logImport('导入聊天会话失败: ${map['id']}', level: LogLevel.error, details: e.toString());
+        _recordImportFailure('对话 ${map['id']}', e);
       }
     }
   }
@@ -647,7 +910,7 @@ class ExportService {
       }
       await _configRepo.upsertWebdavConfig(WebdavConfig.fromMap(map));
     } catch (e) {
-      LoggerService.instance.logImport('导入WebDAV配置失败', level: LogLevel.error, details: e.toString());
+      _recordImportFailure('WebDAV 配置', e);
     }
   }
 
@@ -658,7 +921,9 @@ class ExportService {
     for (final map in marks) {
       try {
         await _colorMarkRepo.insert(DateColorMark.fromMap(map));
-      } catch (_) {}
+      } catch (e) {
+        _recordImportFailure('日期标记 ${map['id']}', e);
+      }
     }
   }
 
@@ -682,7 +947,9 @@ class ExportService {
           map,
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
-      } catch (_) {}
+      } catch (e) {
+        _recordImportFailure('身体状态 ${map['id']}', e);
+      }
     }
   }
 
@@ -706,7 +973,9 @@ class ExportService {
           map,
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
-      } catch (_) {}
+      } catch (e) {
+        _recordImportFailure('每日评分 ${map['id']}', e);
+      }
     }
   }
 
@@ -730,13 +999,15 @@ class ExportService {
           map,
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
-      } catch (_) {}
+      } catch (e) {
+        _recordImportFailure('固定事件 ${map['id']}', e);
+      }
     }
   }
 
   Map<String, dynamic> _transformOldArchitectureData(Map<String, dynamic> data) {
     // 检测是否为旧架构：检查 qnote_ 前缀或 metadata 格式
-    bool isOld = data.keys.any((k) => k.startsWith('qnote_'));
+    final isOld = data.keys.any((k) => k.startsWith('qnote_'));
     if (!isOld) return data;
 
     LoggerService.instance.logImport('正在转换旧架构数据格式...');
@@ -1127,6 +1398,24 @@ class ExportService {
       for (final id in deletes) {
         try {
           await AiProviderRepository.instance.delete(id as String);
+        } catch (_) {}
+      }
+    }
+
+    if (changes.containsKey('ai_route_groups')) {
+      final tableChanges = Map<String, dynamic>.from(changes['ai_route_groups'] as Map);
+      final upserts = (tableChanges['upserts'] as List?) ?? [];
+      final deletes = (tableChanges['deletes'] as List?) ?? [];
+      for (final item in upserts) {
+        try {
+          await AiRouteGroupRepository.instance.insertSilently(
+            AiRouteGroup.fromMap(Map<String, dynamic>.from(item as Map)),
+          );
+        } catch (_) {}
+      }
+      for (final id in deletes) {
+        try {
+          await AiRouteGroupRepository.instance.delete(id as String);
         } catch (_) {}
       }
     }

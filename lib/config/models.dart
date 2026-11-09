@@ -14,6 +14,9 @@ class AiProviderConfig {
   final bool requiresApiKeyForFetch; // 获取模型列表是否需要 API Key
   final String? defaultReasoningEffort; // 默认推理强度（low/medium/high/none）
 
+  /// 凭证类型：`api_key`（默认）或 `raccoon`（订阅账号登录）
+  final String authMode;
+
   const AiProviderConfig({
     required this.id,
     required this.name,
@@ -27,6 +30,7 @@ class AiProviderConfig {
     this.authType = 'bearer',
     this.requiresApiKeyForFetch = true,
     this.defaultReasoningEffort,
+    this.authMode = 'api_key',
   });
 }
 
@@ -205,6 +209,26 @@ final aiProviders = <AiProviderConfig>[
       'agnes-video-2.0',
     ],
     modelsEndpoint: '/v1/models',
+  ),
+  const AiProviderConfig(
+    id: 'raccoon',
+    name: '商汤小浣熊（账号登录）',
+    provider: 'openai',
+    defaultBaseUrl: 'https://xiaohuanxiong.com/api/web/llm/v2',
+    models: [
+      'raccoon-8c4485',
+      'sn-sensenova-6-8-flash',
+      'sn-sensenova-6-8-flash-lite',
+      'sn-glm-5-3',
+      'sn-kimi-k3',
+      'sn-glm-5-3-flash',
+      'sn-deepseek-v4-1-flash',
+      'raccoon-chat-ml-5-5',
+    ],
+    modelsEndpoint: '/model_catalog',
+    authType: 'bearer',
+    requiresApiKeyForFetch: false,
+    authMode: 'raccoon',
   ),
   const AiProviderConfig(
     id: 'sensenova',

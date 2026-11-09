@@ -6,6 +6,7 @@ import 'package:qnote_flutter/core/agent/services/q_voice_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:qnote_flutter/core/tts/tts_player.dart';
+import 'package:qnote_flutter/core/tts/tts_service.dart' show TtsException;
 import 'package:qnote_flutter/models/chat_session.dart';
 
 void main() {
@@ -212,6 +213,36 @@ void main() {
       // 留出事件循环窗口，确认清场后没有任何 speak 发生
       await Future<void>.delayed(const Duration(milliseconds: 100));
       expect(spokenTexts, isEmpty);
+    });
+
+    test('在线合成失败：整场降级设备语音念完，并给出降级说明', () async {
+      SharedPreferences.setMockInitialValues({});
+      spokenTexts.clear();
+      stopCount = 0;
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final player = container.read(ttsPlaybackProvider.notifier);
+      // 真实场景：Edge 服务端换了令牌算法，握手被 403 拒绝；预取的后续段
+      // 也必然一起失败，不能因此把整场判为「中途失败」
+      player.synthesizeOverride = (text, voice, rate) async =>
+          throw const TtsException('handshake_failed', '语音服务握手被拒绝（HTTP 403）');
+
+      player.beginSpeech('msg_degrade', voice: 'zh-CN-XiaoxiaoNeural', rate: 1.0);
+      player.enqueueSpeech('第一段。');
+      player.enqueueSpeech('第二段。');
+      player.finishSpeech();
+
+      await waitUntil(
+        () =>
+            container.read(ttsPlaybackProvider).status == TtsPlaybackStatus.idle,
+        timeoutMessage: '降级场次未能正常收尾（预取失败把整场打断了？）',
+      );
+      final state = container.read(ttsPlaybackProvider);
+      // 降级对本场是成功的：不报错，但必须留下用户可见的说明
+      expect(state.error, isNull);
+      expect(state.notice, contains('HTTP 403'));
+      // 两段都由设备语音念出来，而不是首段之后就中断
+      expect(spokenTexts, ['第一段。', '第二段。']);
     });
   });
 }

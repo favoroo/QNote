@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
@@ -33,6 +34,10 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
   DateTime? _lastSyncTime;
   bool _autoSync = true;
   int _stepTarget = 8000; // 每日目标步数，默认 8000
+
+  /// 上次同步失败原因：启动自动同步是 fire-and-forget，失败只写日志，不读出来用户
+  /// 只会看到「数据不更新」而不知道是登录态坏了
+  HealthSyncFailure? _lastFailure;
 
   // 日期浏览状态
   late DateTime _selectedDate;
@@ -95,6 +100,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
     final lastSync = await syncService.getLastSyncTime();
     final autoSync = await syncService.getAutoSync();
     final stepTarget = await syncService.getDailyStepTarget();
+    final lastFailure = await syncService.getLastFailure();
 
     if (mounted) {
       setState(() {
@@ -102,6 +108,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
         _lastSyncTime = lastSync;
         _autoSync = autoSync;
         _stepTarget = stepTarget;
+        _lastFailure = lastFailure;
         _isLoading = false;
       });
       await _loadDateData(_selectedDate);
@@ -173,6 +180,9 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
         await _loadState();
       } else {
         Toast.error(context, res.errorMessage ?? '同步失败');
+        // 失败原因已在 service 内落盘，这里同步回读到横幅，用户不用翻日志
+        final lastFailure = await syncService.getLastFailure();
+        if (mounted) setState(() => _lastFailure = lastFailure);
       }
     } catch (e) {
       if (showProgress && rootNav != null) {
@@ -291,10 +301,15 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
         await _loadDateData(_selectedDate);
         final lastSync = await syncService.getLastSyncTime();
         if (mounted) {
-          setState(() => _lastSyncTime = lastSync);
+          setState(() {
+            _lastSyncTime = lastSync;
+            _lastFailure = null;
+          });
         }
       } else {
         Toast.error(context, res.errorMessage ?? '同步失败');
+        final lastFailure = await syncService.getLastFailure();
+        if (mounted) setState(() => _lastFailure = lastFailure);
       }
     } catch (e) {
       if (mounted) Toast.error(context, '同步异常: $e');
@@ -393,6 +408,12 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
           : ListView(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               children: [
+                // 0. 上次同步失败提示：登录态失效时否则用户只看到「数据不更新」，没有任何解释
+                if (_lastFailure != null && isAuthed) ...[
+                  _buildSyncFailureBanner(context),
+                  const SizedBox(height: 12),
+                ],
+
                 // 1. 日期切换导航栏
                 _buildDateNavBar(context),
                 const SizedBox(height: 12),
@@ -440,6 +461,64 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                 const SizedBox(height: 16),
               ],
             ),
+    );
+  }
+
+  /// 上次同步失败横幅：把「数据怎么不更新了」的原因摆到页面上，并给出下一步动作
+  Widget _buildSyncFailureBanner(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final needsRelogin = _lastFailure!.needsRelogin;
+
+    return Card(
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      color: colorScheme.errorContainer.withValues(alpha: 0.45),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.large),
+        side: BorderSide(color: colorScheme.error.withValues(alpha: 0.35)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              needsRelogin ? Icons.link_off_rounded : Icons.sync_problem_rounded,
+              size: 20,
+              color: colorScheme.error,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    needsRelogin ? '小米登录态已失效' : '上次同步未完成',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _lastFailure!.message,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 4),
+            TextButton(
+              onPressed: _isSyncing
+                  ? null
+                  : (needsRelogin ? _showQrLoginDialog : () => _handleSyncNow()),
+              child: Text(needsRelogin ? '重新登录' : '重试'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1715,9 +1794,22 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
               title: const Text('自动同步'),
               value: _autoSync,
               onChanged: (val) async {
+                // 这里先 setState 再写库（乐观更新），所以写失败必须把开关拨回去，
+                // 否则界面显示已开启而实际没存上。
                 setState(() => _autoSync = val);
                 final syncService = ref.read(healthSyncServiceProvider);
-                await syncService.setAutoSync(val);
+                try {
+                  await syncService.setAutoSync(val);
+                } catch (e) {
+                  if (!mounted) return;
+                  setState(() => _autoSync = !val);
+                  Toast.error(this.context, '保存失败，请重试');
+                  LoggerService.instance.logDatabase(
+                    '切换健康数据自动同步失败',
+                    level: LogLevel.error,
+                    details: e.toString(),
+                  );
+                }
               },
             ),
             const Divider(height: 1),

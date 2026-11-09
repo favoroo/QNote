@@ -4,8 +4,8 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'edge_tts_drm.dart';
 import 'edge_ws.dart';
-import 'tts_exception.dart';
 
 /// 原生端 Edge TTS WebSocket 传输实现。
 ///
@@ -15,10 +15,9 @@ import 'tts_exception.dart';
 /// 403。手动握手可让 `HttpClient.userAgent` 覆盖为 Chrome UA。
 Future<EdgeWsConnection> connectEdgeWsImpl(Uri uri, Duration timeout) async {
   final client = HttpClient();
-  // 覆盖语义：请求头里的 UA 必须用这一入口，绝不能再经 headers 传入
-  client.userAgent =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-      '(KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0';
+  // 覆盖语义：请求头里的 UA 必须用这一入口，绝不能再经 headers 传入。
+  // UA 与 Sec-MS-GEC 令牌声明的 Chromium 版本共用一处常量，避免版本漂移
+  client.userAgent = EdgeTtsDrm.edgeUserAgent;
   client.connectionTimeout = timeout;
   try {
     // HttpClient 不支持 wss scheme，升级握手走 https GET（同一 TLS 端点）
@@ -81,7 +80,7 @@ class _IoEdgeWsConnection implements EdgeWsConnection {
         if (data is String) return EdgeWsTextFrame(data);
         if (data is Uint8List) return EdgeWsBinaryFrame(data);
         if (data is List<int>) return EdgeWsBinaryFrame(data);
-        throw TtsException('unknown_frame', '语音服务返回了未知帧类型');
+        throw const TtsException('unknown_frame', '语音服务返回了未知帧类型');
       });
 
   @override

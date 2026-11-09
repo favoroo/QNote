@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:qnote_flutter/core/agent/engine/agent_loop.dart';
 import 'package:qnote_flutter/core/agent/engine/tool_dispatcher.dart';
+import 'package:qnote_flutter/core/ai/ai_route_service.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 
@@ -18,6 +19,7 @@ class _RecordingAiService extends AiService {
     void Function(Duration hold)? onQuotaHold,
     void Function()? onStreamRetry,
     CancelToken? cancelToken,
+    AiModelRoute? route,
   }) async* {
     captured.add(List.of(messages));
     yield const AiToolStreamChunk.text('好的');

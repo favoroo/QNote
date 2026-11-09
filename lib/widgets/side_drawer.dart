@@ -13,6 +13,7 @@ import 'package:qnote_flutter/pages/settings/data_sync_page.dart';
 import 'package:qnote_flutter/pages/settings/mi_fitness_settings_page.dart';
 import 'package:qnote_flutter/pages/settings/screen_usage_page.dart';
 import 'package:qnote_flutter/pages/settings/about_page.dart';
+import 'package:qnote_flutter/providers/drawer_nav_provider.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 
 /// 侧边栏（抽屉）。
@@ -21,6 +22,11 @@ import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 /// 14 用于行内横向缩进与图标到文字的间距，16 用于卡片外边距，24 用于头部与
 /// 底部区域的左右基线。行高交给 ListTile 的默认 [VisualDensity.standard]
 /// （约 56），不再用负 density 压缩，避免整列贴边、难以扫读。
+///
+/// 抽屉一关，[DrawerController] 就会卸载整棵子树（内嵌 Navigator 连同页面栈一起
+/// 消失），所以「上次停在哪」由 [DrawerNavMemory] 记在抽屉之外：关闭时写入，
+/// 在 [kDrawerResumeWindow] 内重新打开则把页面栈直接重建回该入口，超过窗口视作
+/// 一次新的「找设置」动作，回到一级菜单。
 class SideDrawer extends ConsumerStatefulWidget {
   const SideDrawer({super.key});
 
@@ -30,6 +36,36 @@ class SideDrawer extends ConsumerStatefulWidget {
 
 class _SideDrawerState extends ConsumerState<SideDrawer> {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+
+  /// 抽屉关闭即整棵子树被卸载，`dispose` 里 context 已失效不能再走 `ref`，
+  /// 因此 initState 先抓住记忆对象留到关闭时写回。
+  late final DrawerNavMemory _navMemory;
+
+  /// 本次打开抽屉时还原到的入口；null 表示从一级菜单开始
+  _MenuEntry? _resumeEntry;
+
+  /// 当前停留的入口 id（在入口页内再压的深层页面仍归属该入口）
+  String? _currentEntryId;
+
+  late final NavigatorObserver _routeTracker;
+
+  @override
+  void initState() {
+    super.initState();
+    _navMemory = ref.read(drawerNavMemoryProvider);
+    // 过期判断只在此刻做一次：之后抽屉内的导航都是用户当下的真实位置
+    final resumeId = _navMemory.resumableEntryId();
+    _resumeEntry = resumeId == null ? null : _entryById(resumeId);
+    _currentEntryId = _resumeEntry?.id;
+    _routeTracker = _DrawerEntryTracker((entryId) => _currentEntryId = entryId);
+  }
+
+  @override
+  void dispose() {
+    // 关闭抽屉时记下位置，供 kDrawerResumeWindow 内重新打开时还原
+    _navMemory.recordClosed(entryId: _currentEntryId);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -63,14 +99,21 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
             },
             child: Navigator(
               key: _navigatorKey,
+              observers: [_routeTracker],
+              // 抽屉每次打开都是全新子树，初始栈只能在这里生成：
+              // 一级菜单 +（可选）上次停留的入口
+              onGenerateInitialRoutes: (navigator, initialRoute) {
+                return [
+                  _menuRoute(),
+                  if (_resumeEntry != null) _entryRoute(_resumeEntry!),
+                ];
+              },
               onGenerateRoute: (settings) {
-                WidgetBuilder builder;
-                if (settings.name == '/') {
-                  builder = (context) => _buildMenu(context);
-                } else {
-                  builder = (context) => settings.arguments as Widget;
-                }
-                return MaterialPageRoute(builder: builder, settings: settings);
+                if (settings.name == _menuRouteName) return _menuRoute();
+                final id = settings.name!.substring(_entryRoutePrefix.length);
+                final entry = _entryById(id);
+                // 入口清单已变（版本升级删过条目）时退回菜单，不把用户丢在空路由上
+                return entry == null ? _menuRoute() : _entryRoute(entry);
               },
             ),
           ),
@@ -151,7 +194,7 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
                             ),
                           _DrawerMenuItem(
                             entry: _menuEntries[i],
-                            onTap: () => _navigateTo(context, _menuEntries[i].page),
+                            onTap: () => _navigateTo(context, _menuEntries[i]),
                           ),
                         ],
                       ],
@@ -181,37 +224,133 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
     );
   }
 
-  void _navigateTo(BuildContext context, Widget page) {
-    _navigatorKey.currentState!.pushNamed('/page', arguments: page);
+  void _navigateTo(BuildContext context, _MenuEntry entry) {
+    _navigatorKey.currentState!.pushNamed('$_entryRoutePrefix${entry.id}');
+  }
+
+  Route<void> _menuRoute() {
+    return MaterialPageRoute<void>(
+      settings: const RouteSettings(name: _menuRouteName),
+      builder: (context) => _buildMenu(context),
+    );
+  }
+
+  Route<void> _entryRoute(_MenuEntry entry) {
+    return MaterialPageRoute<void>(
+      settings: RouteSettings(name: '$_entryRoutePrefix${entry.id}'),
+      builder: (context) => entry.page,
+    );
+  }
+}
+
+/// 内嵌导航的路由命名：一级菜单固定 `/`，各入口为 `/entry/<id>`。
+const String _menuRouteName = '/';
+const String _entryRoutePrefix = '/entry/';
+
+/// 抽屉内嵌 Navigator 的观察者：把「当前停在哪个入口」同步给 [SideDrawer]。
+///
+/// 页面栈变化只有这一个出口，比在每个入口页里埋回调可靠——用户在入口页里再进
+/// 更新日志、日志查看等深层页面后返回，归属关系也不会丢。
+class _DrawerEntryTracker extends NavigatorObserver {
+  _DrawerEntryTracker(this.onEntryChanged);
+
+  final void Function(String? entryId) onEntryChanged;
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _sync(route);
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _sync(previousRoute);
+  }
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _sync(previousRoute);
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    _sync(newRoute);
+  }
+
+  /// 只认「当前栈顶」的路由。
+  ///
+  /// 还原上次位置时，初始栈会一次性塞入菜单 + 入口两条路由，通知按后进先出的顺序
+  /// 分发，菜单那条最后到达；若不筛栈顶，会把刚还原的入口又覆盖回菜单。
+  void _sync(Route<dynamic>? route) {
+    if (route != null && !route.isCurrent) return;
+    final name = route?.settings.name;
+    if (name == _menuRouteName) {
+      onEntryChanged(null);
+    } else if (name != null && name.startsWith(_entryRoutePrefix)) {
+      onEntryChanged(name.substring(_entryRoutePrefix.length));
+    }
+    // 入口页之下再压的深层页面（更新日志、日志查看等）不改归属：
+    // 它们属于当前入口，从这类页面关掉抽屉仍应回到该入口
   }
 }
 
 /// 抽屉菜单项描述：icon 与 iconWidget 二选一
 class _MenuEntry {
+  /// 稳定 id：用于记住「上次停在哪个入口」，必须与展示文案解耦
+  final String id;
   final IconData? icon;
   final Widget? iconWidget;
   final String label;
   final Widget page;
 
-  const _MenuEntry({this.icon, this.iconWidget, required this.label, required this.page});
+  const _MenuEntry({
+    required this.id,
+    this.icon,
+    this.iconWidget,
+    required this.label,
+    required this.page,
+  });
+}
+
+/// 按 id 查入口；找不到（版本升级删过条目）时返回 null，由调用方退回菜单
+_MenuEntry? _entryById(String id) {
+  for (final entry in _menuEntries) {
+    if (entry.id == id) return entry;
+  }
+  return null;
 }
 
 /// 抽屉入口清单：扁平一屏陈列，统一品牌色，不再按「设置/其他」分组
 const List<_MenuEntry> _menuEntries = [
-  _MenuEntry(icon: Icons.person_outline, label: '个人信息', page: UserProfilePage()),
+  _MenuEntry(id: 'profile', icon: Icons.person_outline, label: '个人信息', page: UserProfilePage()),
   _MenuEntry(
+    id: 'q-settings',
     iconWidget: QAvatar(size: 36, withBackground: true),
     label: '小Q设置',
     page: QSettingsPage(),
   ),
-  _MenuEntry(icon: Icons.tune_rounded, label: 'AI 模型配置', page: AiConfigPage()),
-  _MenuEntry(icon: Icons.hexagon_outlined, label: '快捷按钮管理', page: ShortcutsPage()),
-  _MenuEntry(icon: Icons.event_repeat, label: '固定事件管理', page: FixedEventsPage()),
-  _MenuEntry(icon: Icons.sync_rounded, label: '数据与同步', page: DataSyncPage()),
-  _MenuEntry(icon: Icons.favorite_border_rounded, label: '小米运动健康', page: MiFitnessSettingsPage()),
-  _MenuEntry(icon: Icons.hourglass_bottom_rounded, label: '屏幕使用时间', page: ScreenUsagePage()),
-  _MenuEntry(icon: Icons.palette_outlined, label: '个性化设置', page: PersonalizationPage()),
-  _MenuEntry(icon: Icons.info_outline, label: '关于 QNote', page: AboutPage()),
+  _MenuEntry(id: 'ai-config', icon: Icons.tune_rounded, label: 'AI 模型配置', page: AiConfigPage()),
+  _MenuEntry(id: 'shortcuts', icon: Icons.hexagon_outlined, label: '快捷按钮管理', page: ShortcutsPage()),
+  _MenuEntry(id: 'fixed-events', icon: Icons.event_repeat, label: '固定事件管理', page: FixedEventsPage()),
+  _MenuEntry(id: 'data', icon: Icons.sync_rounded, label: '数据与同步', page: DataSyncPage()),
+  _MenuEntry(
+    id: 'mi-fitness',
+    icon: Icons.favorite_border_rounded,
+    label: '小米运动健康',
+    page: MiFitnessSettingsPage(),
+  ),
+  _MenuEntry(
+    id: 'screen-usage',
+    icon: Icons.hourglass_bottom_rounded,
+    label: '屏幕使用时间',
+    page: ScreenUsagePage(),
+  ),
+  _MenuEntry(
+    id: 'personalization',
+    icon: Icons.palette_outlined,
+    label: '个性化设置',
+    page: PersonalizationPage(),
+  ),
+  _MenuEntry(id: 'about', icon: Icons.info_outline, label: '关于 QNote', page: AboutPage()),
 ];
 
 class _DrawerMenuItem extends StatelessWidget {

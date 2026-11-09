@@ -30,8 +30,8 @@ Future<void> showNoModelConfiguredDialog(
         title: const Text('还没有可用的 AI 模型'),
         content: Text(
           scene.isEmpty
-              ? 'QNote 不再内置模型，需要你先添加自己的模型服务：填入 API 地址与密钥，'
-                  '扫描出模型后按需启用即可。\n\n整个过程一分钟左右，加密钥后即可正常使用。'
+              ? '请先添加你自己的模型服务：填入 API 地址与密钥，'
+                  '扫描出模型后按需启用即可。\n\n整个过程一分钟左右，添加密钥后即可正常使用。'
               : '$scene需要调用 AI 模型，但你现在还没有添加任何模型服务。\n\n'
                   '在「AI 模型配置」里填入 API 地址与密钥，扫描出模型后按需启用即可。',
           style: theme.textTheme.bodyMedium,
@@ -85,9 +85,9 @@ Future<void> showVisionUnsupportedDialog(
         ),
         title: const Text('当前模型不支持识图'),
         content: Text(
-          '$scene需要把图片交给模型识别，但当前绑定的「$modelName」不支持图片输入。\n\n'
-          '请切换到支持识图的模型：模型名通常含 vision / -vl / omni，或属于 '
-          'Gemini / Claude 系列；也可以在设置页对该模型做一次「识图检测」确认能力。'
+          '$scene需要把图片交给模型识别，但当前「时间线提取」绑定的「$modelName」经识图检测判定不支持图片输入。\n\n'
+          '请在「AI 模型配置 → 模型分配」中把「时间线提取」换成支持识图的模型：模型名通常含 vision / -vl / omni，'
+          '或属于 Gemini / Claude 系列；也可以到设置页对该模型重新做一次「识图检测」覆盖旧结论。'
           '如果不需要图片，关闭「提取图片内容」后重试。',
           style: theme.textTheme.bodyMedium,
         ),

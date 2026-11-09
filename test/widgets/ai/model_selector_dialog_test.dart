@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:qnote_flutter/models/ai_model_ref.dart';
 import 'package:qnote_flutter/models/ai_provider.dart';
+import 'package:qnote_flutter/models/ai_route_group.dart';
 import 'package:qnote_flutter/widgets/ai/model_picker_sheet.dart';
 
 AiProvider _provider({
@@ -29,8 +30,8 @@ Future<ModelPickerResult?> _openAndTap(
   WidgetTester tester, {
   required List<AiProvider> providers,
   required AiModelRef? selected,
+  List<AiRouteGroup> groups = const [],
   String? tapText,
-  bool allowUnbind = false,
 }) async {
   ModelPickerResult? popped;
   await tester.pumpWidget(
@@ -43,8 +44,8 @@ Future<ModelPickerResult?> _openAndTap(
                 popped = await showModelPickerSheet(
                   context,
                   providers: providers,
+                  groups: groups,
                   selected: selected,
-                  allowUnbind: allowUnbind,
                 );
               },
               child: const Text('open'),
@@ -91,21 +92,126 @@ void main() {
     expect(find.text('去添加模型'), findsOneWidget);
   });
 
-  testWidgets('允许 unbind 时展示「跟随默认模型」选项', (tester) async {
+  testWidgets('不再展示「跟随默认模型」选项，直接选择具体模型', (tester) async {
     final providers = [
       _provider(id: 'p1', name: '默认厂商', models: ['model-a'], isDefault: true),
     ];
 
-    final result = await _openAndTap(
+    await _openAndTap(
       tester,
       providers: providers,
       selected: const AiModelRef(providerId: 'p1', modelName: 'model-a'),
-      tapText: '跟随默认模型',
-      allowUnbind: true,
     );
 
-    expect(result, isNotNull);
-    expect(result!.ref, isNull, reason: '选择「跟随默认」应返回 null 引用');
+    // 确认已彻底移除「跟随默认模型」选项
+    expect(find.text('跟随默认模型'), findsNothing);
+    expect(find.text('使用默认厂商的首个已启用模型'), findsNothing);
+  });
+
+  testWidgets('路由组渲染在厂商分组之上，点击返回组引用', (tester) async {
+    final providers = [
+      _provider(id: 'p1', name: '我的中转', models: ['model-a', 'model-b']),
+    ];
+    final groups = [
+      AiRouteGroup(
+        id: 'g1',
+        name: '主模型池',
+        strategy: RouteStrategy.rotate,
+        members: const [
+          RouteGroupMember(providerId: 'p1', modelName: 'model-a'),
+          RouteGroupMember(providerId: 'p1', modelName: 'model-b'),
+        ],
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
+      ),
+    ];
+
+    ModelPickerResult? popped;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: TextButton(
+                onPressed: () async {
+                  popped = await showModelPickerSheet(
+                    context,
+                    providers: providers,
+                    groups: groups,
+                    selected: null,
+                  );
+                },
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('路由组'), findsOneWidget);
+    expect(find.text('2 个模型 · 轮流'), findsOneWidget);
+
+    await tester.tap(find.text('主模型池'));
+    await tester.pumpAndSettle();
+
+    expect(popped, isNotNull);
+    expect(popped!.ref.isRouteGroup, isTrue);
+    expect(popped!.ref, AiModelRef.routeGroup('g1'));
+  });
+
+  testWidgets('成员模型被停用的路由组仍可见但标出失效', (tester) async {
+    final providers = [
+      _provider(id: 'p1', name: '我的中转', models: ['model-a']),
+    ];
+    final groups = [
+      AiRouteGroup(
+        id: 'g1',
+        name: '失效组',
+        members: const [
+          RouteGroupMember(providerId: 'gone', modelName: 'x'),
+        ],
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
+      ),
+    ];
+
+    await _openAndTap(tester, providers: providers, groups: groups, selected: null);
+
+    expect(find.text('轮流 · 成员模型均已停用'), findsOneWidget);
+  });
+
+  test('aiBindingDisplayName 区分路由组与具体模型', () {
+    final providers = [
+      _provider(id: 'p1', name: '我的中转', models: ['model-a']),
+    ];
+    final groups = [
+      AiRouteGroup(
+        id: 'g1',
+        name: '主模型池',
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
+      ),
+    ];
+
+    expect(
+      aiBindingDisplayName(AiModelRef.routeGroup('g1'), providers, groups),
+      '主模型池',
+    );
+    expect(
+      aiBindingDisplayName(
+        const AiModelRef(providerId: 'p1', modelName: 'model-a'),
+        providers,
+        groups,
+      ),
+      '我的中转 · model-a',
+    );
+    expect(
+      aiBindingDisplayName(AiModelRef.routeGroup('missing'), providers, groups),
+      '未配置模型',
+    );
   });
 
   test('aiModelDisplayName 按厂商名 + 模型名展示，缺失时回落裸模型名', () {

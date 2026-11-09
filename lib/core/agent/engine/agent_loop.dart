@@ -6,6 +6,7 @@ import 'package:qnote_flutter/core/agent/engine/agent_cancellation_token.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_events.dart';
 import 'package:qnote_flutter/core/agent/engine/tool_dispatcher.dart';
 import 'package:qnote_flutter/core/agent/models/agent_tool.dart';
+import 'package:qnote_flutter/core/ai/ai_route_service.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
@@ -46,6 +47,11 @@ class AgentLoop {
   /// 下面 catch 里「抛异常才剥图重试」的兜底对这类模型永远不会触发。
   final bool supportsImageInput;
 
+  /// 角色绑定路由组时的组内切换器；成员失败时由 [AiService] 换下一个成员重发
+  ///
+  /// 只在**正文未输出**前生效：已经吐给用户的内容不能从另一个模型重来一遍。
+  final AiModelRoute? route;
+
   AgentLoop({
     required this.aiService,
     required this.dispatcher,
@@ -57,6 +63,7 @@ class AgentLoop {
     this.transformContext,
     this.onQuotaHold,
     this.supportsImageInput = true,
+    this.route,
   });
 
   /// 运行 ReAct 循环
@@ -163,6 +170,7 @@ class AgentLoop {
             onQuotaHold: onQuotaHold,
             onStreamRetry: () => streamResetPending = true,
             cancelToken: httpCancelToken,
+            route: route,
           );
 
           await for (final chunk in stream) {
@@ -587,7 +595,7 @@ class AgentLoop {
               '3) 关键决定；4) 未完成事项。控制在 300 字以内。',
         ),
         ChatMessage(role: 'user', content: transcript),
-      ], cancelToken: httpCancelToken);
+      ], cancelToken: httpCancelToken, route: route);
       if (llmSummary.trim().isNotEmpty) return llmSummary.trim();
     } catch (e) {
       // 用户主动中止：向上抛出由主循环按中止收尾，禁止降级为机械摘要后继续跑完任务

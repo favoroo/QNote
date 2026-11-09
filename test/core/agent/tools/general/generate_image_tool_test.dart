@@ -27,6 +27,81 @@ void main() {
     });
   });
 
+  group('GenerateImageTool.buildGenerationRequestBody（SenseNova 去水印）', () {
+    AiConfig config({
+      String provider = 'openai',
+      String? vendorId,
+      String baseUrl = 'https://token.sensenova.cn/v1',
+      String modelName = 'sensenova-u1.5-lite',
+    }) {
+      return AiConfig(
+        providerId: 'p1',
+        name: 'test',
+        provider: provider,
+        modelName: modelName,
+        apiKey: 'k',
+        baseUrl: baseUrl,
+        vendorId: vendorId,
+      );
+    }
+
+    test('选中 SenseNova 厂商模板时显式关闭水印', () {
+      final body = GenerateImageTool.buildGenerationRequestBody(
+        config(vendorId: 'sensenova'),
+        '一只猫',
+        '2048x2048',
+      );
+      expect(body['watermark'], isFalse);
+      expect(body['model'], 'sensenova-u1.5-lite');
+      expect(body['n'], 1);
+      expect(body['size'], '2048x2048');
+    });
+
+    test('自定义条目按地址或模型名识别 SenseNova', () {
+      final byHost = GenerateImageTool.buildGenerationRequestBody(
+        config(vendorId: 'custom', modelName: 'image-v2'),
+        '猫',
+        '',
+      );
+      expect(byHost['watermark'], isFalse);
+      expect(byHost.containsKey('size'), isFalse);
+
+      final byModel = GenerateImageTool.buildGenerationRequestBody(
+        config(
+          vendorId: 'custom',
+          baseUrl: 'https://relay.example.com/v1',
+          modelName: 'SenseNova-U1.5-Lite',
+        ),
+        '猫',
+        '',
+      );
+      expect(byModel['watermark'], isFalse);
+    });
+
+    test('其他厂商保持最小参数集，不下发 watermark', () {
+      final body = GenerateImageTool.buildGenerationRequestBody(
+        config(
+          vendorId: 'custom',
+          baseUrl: 'https://api.openai.com/v1',
+          modelName: 'gpt-image-1',
+        ),
+        '猫',
+        '1024x1024',
+      );
+      expect(body.containsKey('watermark'), isFalse);
+      expect(body['size'], '1024x1024');
+    });
+
+    test('Gemini 链路不下发 watermark', () {
+      final body = GenerateImageTool.buildGenerationRequestBody(
+        config(provider: 'gemini', vendorId: 'sensenova'),
+        '猫',
+        '',
+      );
+      expect(body.containsKey('watermark'), isFalse);
+    });
+  });
+
   group('GenerateImageTool.parseGenerationImages（SenseNova images/generations 结构）', () {
     test('解析 b64_json 数组', () {
       final refs = GenerateImageTool.parseGenerationImages({
@@ -415,7 +490,7 @@ void main() {
 const String aValidBase64 = 'SGVsbG8gUUhOb3RlIQ==';
 
 /// 两份生图模型的测试配置：仅用于文案与分类断言，不含真实 Key、不发起网络请求
-final AiConfig geminiConfig = AiConfig(
+const AiConfig geminiConfig = AiConfig(
   providerId: 'provider-gemini',
   name: 'gemini-3.1-flash-image',
   provider: 'openai',
@@ -424,7 +499,7 @@ final AiConfig geminiConfig = AiConfig(
   baseUrl: 'https://images.example/v1',
 );
 
-final AiConfig sensenovaConfig = AiConfig(
+const AiConfig sensenovaConfig = AiConfig(
   providerId: 'provider-sensenova',
   name: 'sensenova-u1.5-lite',
   provider: 'openai',

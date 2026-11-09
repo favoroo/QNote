@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:qnote_flutter/core/agent/models/agent_tool.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
-import 'package:qnote_flutter/core/ai/model_vision_capability.dart';
+import 'package:qnote_flutter/core/ai/vision_capability_probe.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 
@@ -53,13 +53,14 @@ class ViewImageTool extends AgentTool {
 
     // 当前模型看不了图时，压一张 base64 注入上下文只会喂给一个读不懂它的请求
     // （实测网关对不支持图片的模型照常返回 200，模型于是凭空编画面），
-    // 因此在这里就改指 describe_image，别让它拿到一份可被编造的素材
+    // 因此在这里就改指 describe_image，别让它拿到一份可被编造的素材。
+    // 能力未知时先自动实测一次：新加的视觉模型不该被默认拦下
     final boundConfig = await _assistantConfig();
-    if (boundConfig != null && !ModelVisionCapability.supportsVision(boundConfig)) {
+    if (boundConfig != null && !await VisionCapabilityProbe.ensure(boundConfig)) {
       return ToolResult.error(
         '当前对话模型不支持图片输入，view_image 加载了也看不到画面。'
         '请改用识图工具：describe_image(path: "$path", question: "写下你要问的具体问题")，'
-        '它会把图片交给内置识图模型并返回文字结果。',
+        '它会把图片交给「时间线提取」绑定的识图模型并返回文字结果。',
       );
     }
 
@@ -101,12 +102,9 @@ class ViewImageTool extends AgentTool {
   /// 读当前小Q绑定的生效配置，用于判断能不能看图；读不到时返回 null（按原流程继续）
   ///
   /// 刻意不因配置读取失败就拒绝执行：那是比"模型看不了图"更罕见的故障，
-  /// 拦掉一次正常的看图反而更糟。
+  /// 拦掉一次正常的看图反而更糟。用 peek 语义读取：这里只是判能力、
+  /// **不发请求**，不能把路由组的轮次提前消耗掉。
   Future<AiConfig?> _assistantConfig() async {
-    try {
-      return await AiRoleService.instance.getEffectiveConfigForRole('assistant');
-    } catch (_) {
-      return null;
-    }
+    return await AiRoleService.instance.peekConfigForRole('assistant');
   }
 }

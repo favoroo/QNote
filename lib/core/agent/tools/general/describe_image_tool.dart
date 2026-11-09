@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:qnote_flutter/core/agent/models/agent_tool.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
-import 'package:qnote_flutter/core/ai/model_vision_capability.dart';
+import 'package:qnote_flutter/core/ai/vision_capability_probe.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
@@ -21,9 +21,10 @@ enum ImageSourceKind { dataUri, url, localPath }
 /// 不支持图片输入时，会把图片从上下文里剥掉并改用本工具：图片走一次独立的
 /// 非流式请求，只有**文字结论**回到对话模型的上下文里，模型不必也不该假装自己看见了画面。
 ///
-/// 识图链路用的是角色绑定的模型（`AiRoleService.getEffectiveConfigForRole`）：
-/// 内置识图模型下线后不再有专用兜底模型，绑定模型被判定为不支持识图时直接
-/// 返回带下一步指引的失败文案，让用户/模型知道该去设置里换模型。
+/// 识图链路复用「时间线提取」角色绑定的模型（`AiRoleService.getEffectiveConfigForRole`）：
+/// 不占用小Q对话模型，用户可以一边用纯文本模型聊天、一边给提取配视觉模型；
+/// 该角色模型被判定为不支持识图时直接返回带下一步指引的失败文案，
+/// 让用户/模型知道该去设置里换模型。
 /// 形态对齐桌面端的 vision 脚本：一段提问 + 一张图 → 文本回复；区别是复用 [AiService]
 /// 而不是手搓 HTTP，从而带上密钥池轮换、限流退避等发信策略。
 class DescribeImageTool extends AgentTool {
@@ -289,11 +290,13 @@ class DescribeImageTool extends AgentTool {
   /// 绑定模型不支持识图时抛出可读异常（而非静默换模型）：内置识图模型已下线，
   /// 能让这张图被看见的只有用户自己配置的支持识图的模型。
   static Future<String> _requestVisionModel(String question, String imageDataUri) async {
-    final roleConfig = await AiRoleService.instance.getEffectiveConfigForRole('assistant');
-    if (!ModelVisionCapability.supportsVision(roleConfig)) {
+    // 复用「时间线提取」角色：识图与小Q对话解耦，纯文本对话模型也能识图。
+    // 能力未知时先自动实测一次，避免把新加的视觉模型误判为不支持
+    final roleConfig = await AiRoleService.instance.getEffectiveConfigForRole('timelineOptimization');
+    if (!await VisionCapabilityProbe.ensure(roleConfig)) {
       throw StateError(
-        '当前模型「${roleConfig.modelName}」不支持图片输入（识图）。'
-        '请在「AI 模型配置」中添加或切换到支持识图的模型（模型名通常含 vision / -vl / omni，'
+        '当前识图模型「${roleConfig.modelName}」不支持图片输入（识图）。'
+        '请在「AI 模型配置」中把「时间线提取」模型换成支持识图的模型（模型名通常含 vision / -vl / omni，'
         '或 Gemini / Claude 系列），也可在设置页对该模型做一次「识图检测」以确认能力',
       );
     }

@@ -63,6 +63,48 @@ class MiQrLoginSession {
   });
 }
 
+/// 小米登录态相关的**确定性**失败（凭据被服务端拒绝、账号服务回业务错误码），
+/// 与网络抖动区分开：只有 [needsRelogin] 为 true 才表示必须重新扫码授权。
+class MiFitnessAuthException implements Exception {
+  MiFitnessAuthException(this.message, {this.needsRelogin = false});
+
+  final String message;
+  final bool needsRelogin;
+
+  @override
+  String toString() => message;
+}
+
+/// passport 登录响应解析结果（扫码长轮询与 passToken 免密续期共用同一套字段规则）
+class MiPassportLogin {
+  const MiPassportLogin({
+    this.code = -1,
+    this.securityStatus = 0,
+    this.userId = '',
+    this.cUserId = '',
+    this.passToken = '',
+    this.ssecurity = '',
+    this.nonce,
+    this.location = '',
+  });
+
+  final int code;
+
+  /// 非 0 表示小米要求安全确认（notification），此时凭据本身可能仍然有效
+  final int securityStatus;
+  final String userId;
+  final String cUserId;
+  final String passToken;
+  final String ssecurity;
+
+  /// clientSign 要用它原文拼串（JSON 里是数字，pragma 里可能是字符串），故保留原始类型
+  final Object? nonce;
+  final String location;
+
+  /// 换取 serviceToken 所需的三要素是否齐全
+  bool get hasStsInputs => ssecurity.isNotEmpty && nonce != null && location.isNotEmpty;
+}
+
 /// 扫码等待状态
 enum MiQrPollStatus {
   waiting,
@@ -105,10 +147,10 @@ class MiFitnessAuthService {
 
   /// 解析 passport 系接口的响应体
   ///
-  /// 小米为防 JSON 劫持，会在正文外包一层 `&&&START&&&` / `&&&END&&&`，而
-  /// `serviceLoginAuth2` 又把 Content-Type 标成 `application/json`——交给 Dio 默认的
-  /// JSON transformer 会在 offset 0 直接抛 FormatException（历史踩坑：静默刷新登录态
-  /// 因此从来没成功过一次，serviceToken 一过期就再也拿不到数据）。
+  /// 小米为防 JSON 劫持，会在正文外包一层 `&&&START&&&` / `&&&END&&&`，而 passport 接口
+  /// 又把 Content-Type 标成 `application/json`——交给 Dio 默认的 JSON transformer 会在
+  /// offset 0 直接抛 FormatException（历史踩坑：静默刷新登录态因此从来没成功过一次，
+  /// serviceToken 一过期就再也拿不到数据）。扫码与续期两条链路都走这里剥壳。
   static Map<String, dynamic> parsePassportResponse(dynamic body) {
     var text = body == null ? '' : (body is String ? body : body.toString());
     text = text.trim();
@@ -125,6 +167,67 @@ class MiFitnessAuthService {
       throw FormatException('小米 passport 响应不是 JSON 对象', text);
     }
     return decoded;
+  }
+
+  /// 从 Set-Cookie 头里精确取某个 cookie 的值
+  ///
+  /// 必须比对完整名字：健康票据的 cookie 名是 `miothealth_serviceToken`，用宽松的
+  /// `serviceToken=` 子串匹配会顺带命中它（名字前缀被吃掉），一旦服务端同时下发
+  /// `serviceToken`（账号域票据）就会取错值。Dio 把每条 cookie 放在 list 的一个元素里，
+  /// 但同一元素仍可能挤多条，故按 `;`/`,` 边界逐段匹配。
+  static String? findCookie(List<String>? setCookieHeaders, String name) {
+    final pattern = RegExp('(?:^|[;,\\s])${RegExp.escape(name)}=([^;,\\s]*)');
+    for (final header in setCookieHeaders ?? const <String>[]) {
+      final value = pattern.firstMatch(header)?.group(1);
+      if (value != null && value.isNotEmpty) return value;
+    }
+    return null;
+  }
+
+  /// 解析响应头 `Extension-Pragma`：passport 在个别链路上把 ssecurity/nonce 放在这里
+  /// 而非 JSON 正文，只读 JSON 会判成「响应不完整」。
+  static Map<String, dynamic> parseExtensionPragma(List<String>? pragmaHeaders) {
+    final raw = (pragmaHeaders == null || pragmaHeaders.isEmpty) ? null : pragmaHeaders.first;
+    if (raw == null || raw.isEmpty) return const {};
+    try {
+      final decoded = json.decode(raw);
+      return decoded is Map<String, dynamic> ? decoded : const {};
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  /// 解析 passport 登录响应，字段优先级与官方 APK 的 `processLoginContent` 一致
+  ///
+  /// `userId`/`passToken`/`cUserId` 依次取 JSON → 响应 Cookie → 本地已有值：服务端会
+  /// **轮换** passToken，而轮换值有时只走 Set-Cookie，只读 JSON 会让旧 token 被一直用
+  /// 到失效。`ssecurity`/`nonce` 依次取 JSON → Extension-Pragma 头。
+  static MiPassportLogin parsePassportLogin(
+    Map<String, dynamic> json, {
+    List<String>? setCookieHeaders,
+    Map<String, dynamic> pragma = const {},
+    MiAuthCredentials? known,
+  }) {
+    String pick(String name, String? stored) {
+      final fromJson = json[name]?.toString() ?? '';
+      if (fromJson.isNotEmpty) return fromJson;
+      final fromCookie = findCookie(setCookieHeaders, name);
+      if (fromCookie != null && fromCookie.isNotEmpty) return fromCookie;
+      return stored ?? '';
+    }
+
+    final jsonSsecurity = json['ssecurity']?.toString() ?? '';
+    final pragmaSsecurity = pragma['ssecurity']?.toString() ?? '';
+    return MiPassportLogin(
+      code: (json['code'] as num?)?.toInt() ?? -1,
+      securityStatus: (json['securityStatus'] as num?)?.toInt() ?? 0,
+      userId: pick('userId', known?.userId),
+      cUserId: pick('cUserId', known?.cUserId),
+      passToken: pick('passToken', known?.passToken),
+      ssecurity: jsonSsecurity.isNotEmpty ? jsonSsecurity : pragmaSsecurity,
+      nonce: json['nonce'] ?? pragma['nonce'],
+      location: json['location']?.toString() ?? '',
+    );
   }
 
   /// 初始化并加载已存储凭据
@@ -204,12 +307,17 @@ class MiFitnessAuthService {
         return MiQrPollResult(status: MiQrPollStatus.expired, errorMsg: '二维码已过期');
       } else if (code == 0) {
         // 扫码成功，拿到 passToken 与 location 重定向地址
-        final location = jsonMap['location'] as String? ?? '';
-        final ssecurity = jsonMap['ssecurity'] as String? ?? '';
-        final userId = jsonMap['userId']?.toString() ?? '';
-        final cUserId = jsonMap['cUserId'] as String?;
-        final passToken = jsonMap['passToken'] as String?;
-        final nonce = jsonMap['nonce'];
+        // passToken/userId/cUserId 在个别链路上只走 Set-Cookie，故统一走 parsePassportLogin
+        final login = parsePassportLogin(
+          jsonMap,
+          setCookieHeaders: res.headers['set-cookie'],
+        );
+        final location = login.location;
+        final ssecurity = login.ssecurity;
+        final userId = login.userId;
+        final cUserId = login.cUserId;
+        final passToken = login.passToken;
+        final nonce = login.nonce;
 
         if (location.isNotEmpty && nonce != null && ssecurity.isNotEmpty) {
           // 通过 location 换取真正的 serviceToken
@@ -257,7 +365,11 @@ class MiFitnessAuthService {
     }
   }
 
-  /// 换取 serviceToken
+  /// 用 location 换 serviceToken
+  ///
+  /// 官方 APK 就是从**这一跳**的 `Set-Cookie` 里读票据、不跟随跳转（`findCookie` 已按
+  /// 名字精确匹配），故这里保持 `followRedirects: false`；读取时优先取
+  /// `<sid>_serviceToken`，再退回 `serviceToken`。
   Future<MiAuthCredentials?> _exchangeServiceToken({
     required String location,
     required dynamic nonce,
@@ -268,6 +380,7 @@ class MiFitnessAuthService {
   }) async {
     try {
       final clientSign = MiFitnessCrypto.buildClientSign(nonce, ssecurity);
+      // location 一定带 query（带 sign 参数），故直接追加；clientSign 已 URL 编码
       final url = '$location&clientSign=$clientSign';
 
       final res = await _dio.get(
@@ -278,18 +391,10 @@ class MiFitnessAuthService {
         ),
       );
 
-      String serviceToken = '';
-      // 从 Set-Cookie 中提取 serviceToken
-      final cookies = res.headers['set-cookie'] ?? [];
-      for (final cookie in cookies) {
-        if (cookie.contains('serviceToken=')) {
-          final match = RegExp(r'serviceToken=([^;]+)').firstMatch(cookie);
-          if (match != null) {
-            serviceToken = match.group(1) ?? '';
-            break;
-          }
-        }
-      }
+      final cookies = res.headers['set-cookie'];
+      final serviceToken = findCookie(cookies, '${sid}_serviceToken') ??
+          findCookie(cookies, 'serviceToken') ??
+          '';
 
       return MiAuthCredentials(
         userId: userId,
@@ -309,72 +414,100 @@ class MiFitnessAuthService {
   Future<MiAuthCredentials>? _refreshing;
 
   /// 用 passToken 静默换取新的 serviceToken（无需重新扫码）。
-  /// 成功返回新凭据（已保存到本地）；passToken 被服务端拒绝时会清理本地凭据；
-  /// 两种失败路径均抛出带原因的异常，供上层 Toast 提示。
+  ///
+  /// 成功返回新凭据（已保存到本地）；passToken 被服务端明确拒绝（code=70016）时清理
+  /// 本地凭据。所有失败路径都抛 [MiFitnessAuthException]，`needsRelogin` 区分「凭据死了
+  /// 要重新扫码」与「临时故障，下次再试」。
   Future<MiAuthCredentials> refreshServiceToken() {
     return _refreshing ??= _doRefreshServiceToken().whenComplete(() => _refreshing = null);
   }
 
+  /// passToken 免密续期，复刻官方 App 的 `XMPassport.loginByPassToken`
+  ///
+  /// 必须走 `GET /pass/serviceLogin` 且把 passToken/userId 放进 **Cookie**：这是小米账号
+  /// 服务认的免密链路（与扫码长轮询共用同一套响应解析）。历史实现用
+  /// `POST /pass/serviceLoginAuth2` 把 passToken 当**表单字段**发，服务端回
+  /// `code=70016 登录验证失败`，而当时把任意非 0 code 都当成凭据作废直接清本地凭据，
+  /// 于是每次 serviceToken 过期都必然要求重新扫码。
   Future<MiAuthCredentials> _doRefreshServiceToken() async {
     final creds = await loadCredentials();
-    final passToken = creds?.passToken ?? '';
-    if (creds == null || passToken.isEmpty) {
-      throw Exception('本地缺少 passToken，无法静默刷新小米登录态，请重新扫码授权');
+    if (creds == null || (creds.passToken ?? '').isEmpty || creds.userId.isEmpty) {
+      throw MiFitnessAuthException(
+        '本地缺少 passToken/userId，无法静默刷新小米登录态，请重新扫码授权',
+        needsRelogin: true,
+      );
     }
 
-    // 只把「服务端明确回了业务错误」当作凭据作废：请求失败或响应读不懂时凭据状态未知，
-    // 不清本地凭据，保留 passToken 下次再试（HTTP 非 200 与 code != 0 在下面各自判定）。
     Response res;
-    Map<String, dynamic> jsonMap;
     try {
-      res = await _dio.post(
-        '$accountBase/pass/serviceLoginAuth2',
-        data: {
-          'sid': sid,
-          'qs': '%3Fsid%3D$sid',
-          '_json': 'true',
-          'passToken': passToken,
-          'userId': creds.userId,
-        },
+      res = await _dio.get(
+        '$accountBase/pass/serviceLogin',
+        queryParameters: {'sid': sid, '_json': 'true'},
         options: Options(
-          contentType: Headers.formUrlEncodedContentType,
-          // 关闭自动重定向：passToken 失效时服务端会 302 到登录页，以此区分「被拒绝」与「网络异常」
+          headers: {
+            'Cookie': 'userId=${creds.userId}; passToken=${creds.passToken}',
+          },
+          // 关闭自动重定向：passToken 失效时服务端会跳到登录页，以此区分「被拒绝」与「网络异常」
           followRedirects: false,
           validateStatus: (status) => status != null && status < 500,
         ),
       );
+    } catch (e) {
+      throw MiFitnessAuthException('刷新小米登录态失败（请求异常）：$e');
+    }
+
+    // HTTP 非 200（3xx 跳登录页、5xx 账号服务故障）时凭据状态未知，保留本地凭据下次再试：
+    // 旧实现在这里清凭据，一次服务端抖动就要用户重新扫码。
+    if (res.statusCode != 200) {
+      throw MiFitnessAuthException('刷新小米登录态失败：serviceLogin HTTP ${res.statusCode}');
+    }
+
+    Map<String, dynamic> jsonMap;
+    try {
       jsonMap = parsePassportResponse(res.data);
     } catch (e) {
-      throw Exception('刷新小米登录态失败（请求异常）：$e');
+      throw MiFitnessAuthException('刷新小米登录态失败（响应无法解析）：$e');
     }
 
-    // 走到这里说明拿到了可解析的 passport 响应，后续失败均为确定性拒绝：清理本地凭据
-    if (res.statusCode != 200) {
+    final login = parsePassportLogin(
+      jsonMap,
+      setCookieHeaders: res.headers['set-cookie'],
+      pragma: parseExtensionPragma(res.headers['extension-pragma']),
+      known: creds,
+    );
+
+    // 70016 = 凭据无效，是唯一能确定 passToken 已死的错误码（与官方 App 的
+    // InvalidCredentialException 对应）；其余 code 一律只报错、不动本地凭据
+    if (login.code == 70016) {
       await clearCredentials();
-      throw Exception('小米登录态已失效（serviceLoginAuth2 HTTP ${res.statusCode}），请重新扫码授权');
+      throw MiFitnessAuthException(
+        '小米登录态已失效（passToken 被拒绝），请重新扫码授权',
+        needsRelogin: true,
+      );
     }
-
-    final code = jsonMap['code'] as int? ?? -1;
-    final location = jsonMap['location'] as String? ?? '';
-    final nonce = jsonMap['nonce'];
-    final ssecurity = jsonMap['ssecurity'] as String? ?? '';
-
-    if (code != 0 || location.isEmpty || nonce == null || ssecurity.isEmpty) {
-      await clearCredentials();
-      throw Exception('小米登录态已失效（passToken 被拒绝 code=$code），请重新扫码授权');
+    if (login.code != 0) {
+      throw MiFitnessAuthException('小米账号服务返回异常（code=${login.code}），本次未刷新登录态');
+    }
+    // 安全确认（notification）不是凭据作废，但后台无法静默完成，提示用户去小米端确认
+    if (login.securityStatus != 0) {
+      throw MiFitnessAuthException('小米账号要求安全确认，请在小米 App 中确认后重试');
+    }
+    if (!login.hasStsInputs) {
+      throw MiFitnessAuthException('小米账号服务未返回完整登录凭证，本次未刷新登录态');
     }
 
     // 与扫码成功后的流程一致：通过 location 重定向换取新的 serviceToken
     final newCreds = await _exchangeServiceToken(
-      location: location,
-      nonce: nonce,
-      ssecurity: ssecurity,
-      userId: jsonMap['userId']?.toString() ?? creds.userId,
-      cUserId: jsonMap['cUserId'] as String? ?? creds.cUserId,
-      passToken: jsonMap['passToken'] as String? ?? passToken,
+      location: login.location,
+      nonce: login.nonce,
+      ssecurity: login.ssecurity,
+      userId: login.userId,
+      cUserId: login.cUserId,
+      // passToken 轮换值必须落盘：一直用旧值会到点失效，只有跟着服务端走才能长期免密
+      passToken: login.passToken,
     );
     if (newCreds == null || newCreds.serviceToken.isEmpty) {
-      throw Exception('刷新小米登录态失败：未换取到新的 serviceToken，请重新扫码授权');
+      throw MiFitnessAuthException('刷新小米登录态失败：未换取到新的 serviceToken，本次未刷新登录态');
     }
 
     // 必须落盘：否则下次冷启动读到的还是过期 serviceToken，每个指标都要先吃一次 401 再刷新

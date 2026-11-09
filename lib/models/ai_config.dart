@@ -1,4 +1,5 @@
 import 'package:qnote_flutter/models/ai_provider.dart';
+import 'package:qnote_flutter/models/reasoning_effort.dart';
 
 /// 发信层使用的模型配置（请求时值对象）
 ///
@@ -20,13 +21,22 @@ class AiConfig {
 
   final String modelName;
 
-  /// 发信兜底 Key（厂商条目里密钥池的首把）
+  /// 发信兜底 Key（厂商条目里密钥池的首把；订阅账号型为空，发信前现取）
   final String apiKey;
 
   final String baseUrl;
 
+  /// 凭证类型：`api_key` | `raccoon`
+  ///
+  /// 订阅账号型由 `RaccoonAuthService` 在每次发信前取 token，
+  /// [apiKey] 不参与鉴权。
+  final String authMode;
+
   /// 厂商模板 id（推理强度等厂商级默认值的来源）
   final String? vendorId;
+
+  /// 模型级思考强度；null 表示「自动」（沿用厂商默认或不干预）
+  final ReasoningEffort? reasoningEffort;
 
   const AiConfig({
     required this.providerId,
@@ -35,8 +45,13 @@ class AiConfig {
     required this.modelName,
     required this.apiKey,
     required this.baseUrl,
+    this.authMode = AiProvider.authModeApiKey,
     this.vendorId,
+    this.reasoningEffort,
   });
+
+  /// 是否由订阅账号提供凭证
+  bool get usesAccountAuth => authMode != AiProvider.authModeApiKey;
 
   /// 由厂商条目 + 模型名组装请求配置
   factory AiConfig.fromProvider(
@@ -48,13 +63,16 @@ class AiConfig {
     final keys = provider.apiKeys.where((k) => k.trim().isNotEmpty).toList();
     return AiConfig(
       providerId: provider.id,
-      name: displayName ??
+      name:
+          displayName ??
           (model?.name.isNotEmpty == true ? model!.name : modelName),
       provider: provider.providerType,
       modelName: modelName,
       apiKey: keys.isEmpty ? '' : keys.first,
       baseUrl: provider.baseUrl,
+      authMode: provider.authMode,
       vendorId: provider.vendorId,
+      reasoningEffort: model?.reasoningEffort,
     );
   }
 
@@ -65,7 +83,9 @@ class AiConfig {
     String? modelName,
     String? apiKey,
     String? baseUrl,
+    String? authMode,
     String? vendorId,
+    ReasoningEffort? reasoningEffort,
   }) {
     return AiConfig(
       providerId: providerId ?? this.providerId,
@@ -74,7 +94,9 @@ class AiConfig {
       modelName: modelName ?? this.modelName,
       apiKey: apiKey ?? this.apiKey,
       baseUrl: baseUrl ?? this.baseUrl,
+      authMode: authMode ?? this.authMode,
       vendorId: vendorId ?? this.vendorId,
+      reasoningEffort: reasoningEffort ?? this.reasoningEffort,
     );
   }
 

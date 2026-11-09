@@ -3,26 +3,20 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import 'edge_tts_drm.dart';
 import 'edge_ws.dart';
 
 /// Edge TTS（微软朗读接口）协议客户端。
 ///
 /// 免费无需密钥；协议为非官方 WebSocket：握手后发送 speech.config 与 SSML
 /// 两帧文本，接收二进制帧（2 字节大端头长 + 文本头 + mp3 负载），直到
-/// `Path:turn.end` 文本帧结束。SSML 转义与 Sec-MS-GEC 令牌算法对齐上游
-/// edge-tts（rany2）实现，详见 `_generateSecMsGec` 注释。
+/// `Path:turn.end` 文本帧结束。SSML 转义对齐上游 edge-tts（rany2），访问令牌
+/// 由 [EdgeTtsDrm] 生成（v2 摘要算法，版本标签 `2-`，旧令牌已被服务端 403）。
 class EdgeTtsClient {
   EdgeTtsClient._();
 
-  static const String _trustedClientToken =
-      '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
-  static const String _chromiumFullVersion = '143.0.3650.75';
-  static const String _chromeUserAgent =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-      '(KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0';
   static const String _wssUrl =
       'wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1';
   /// 帧间空闲超时。分段朗读后单段只有一两百字，45 秒只会把失败感知拖得更久，
@@ -41,10 +35,10 @@ class EdgeTtsClient {
   }) async {
     final connectionId = _randomHex(16);
     final uri = Uri.parse(
-      '$_wssUrl?TrustedClientToken=$_trustedClientToken'
+      '$_wssUrl?TrustedClientToken=${EdgeTtsDrm.trustedClientToken}'
       '&ConnectionId=$connectionId'
-      '&Sec-MS-GEC=${_generateSecMsGec(DateTime.now().toUtc())}'
-      '&Sec-MS-GEC-Version=1-$_chromiumFullVersion',
+      '&Sec-MS-GEC=${EdgeTtsDrm.generateSecMsGec()}'
+      '&Sec-MS-GEC-Version=${EdgeTtsDrm.secMsGecVersion}',
     );
 
     final connection = await (connect ?? connectEdgeWs)(uri);
@@ -143,23 +137,6 @@ class EdgeTtsClient {
     return delta > 0 ? '+$delta%' : '$delta%';
   }
 
-  /// Sec-MS-GEC 令牌：UTC 秒 + Windows epoch（1601）偏移，向下取整到 5 分钟
-  /// 边界，转 100ns 间隔后拼接可信令牌做 SHA256，大写 hex。
-  /// （对齐 edge-tts DRM.generate_sec_ms_gec，issue #290）
-  static String _generateSecMsGec(DateTime utcNow) {
-    var ticks = utcNow.millisecondsSinceEpoch ~/ 1000;
-    ticks += 11644473600;
-    ticks -= ticks % 300;
-    ticks *= 10000000;
-    final strToHash = '$ticks$_trustedClientToken';
-    return sha256.convert(utf8.encode(strToHash)).toString().toUpperCase();
-  }
-
-  /// [visibleForTesting]：固定时间下的令牌期望值可离线断言
-  @visibleForTesting
-  static String generateSecMsGecFor(DateTime utcNow) =>
-      _generateSecMsGec(utcNow);
-
   /// 协议帧时间戳（毫秒精度 UTC，如 2026-09-19T04:23:04.123Z）
   static String _protocolTimestamp(DateTime utcNow) =>
       '${utcNow.toIso8601String().substring(0, 23)}Z';
@@ -172,6 +149,6 @@ class EdgeTtsClient {
     ).join();
   }
 
-  /// 供测试注入：Chrome UA（握手头由传输层固定引用，此处暴露常量语义）
-  static String get chromeUserAgent => _chromeUserAgent;
+  /// 握手用的 Edge 风格 UA（版本号与 Sec-MS-GEC 令牌声明保持一致）
+  static String get chromeUserAgent => EdgeTtsDrm.edgeUserAgent;
 }

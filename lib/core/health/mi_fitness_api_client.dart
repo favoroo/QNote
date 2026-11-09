@@ -143,6 +143,11 @@ class MiFitnessApiClient {
       );
     }
 
+    // 刷新后的新票仍被拒：不是「票据过期」而是签名/参数问题，直接抛出（不清凭据，避免误判）
+    if (response.statusCode == 401) {
+      throw MiFitnessAuthException('小米云端拒绝了刷新后的登录态（HTTP 401），请重新扫码授权');
+    }
+
     if (response.statusCode != 200) {
       throw Exception('小米云端接口响应异常 HTTP ${response.statusCode}: ${response.data}');
     }
@@ -248,7 +253,13 @@ class MiFitnessApiClient {
       _fetchStandingData(startTime: startOfDay, endTime: endOfDay),
       guarded(() => fetchFitnessData(startTime: startOfDay, endTime: endOfDay, key: 'resting_heart_rate')),
     ]);
-    if (failures.length >= directFetchCount) throw failures.first;
+    if (failures.length >= directFetchCount) {
+      // 登录态问题优先上抛：它决定了「要重新扫码」还是「稍后重试」，不能被其它指标的错误盖掉
+      throw failures.firstWhere(
+        (e) => e is MiFitnessAuthException,
+        orElse: () => failures.first,
+      );
+    }
 
     final stepsData = results[0];
     final sleepData = results[1];

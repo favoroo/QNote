@@ -1,6 +1,3 @@
-import 'dart:convert';
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,22 +8,30 @@ import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/model_vision_capability.dart';
 import 'package:qnote_flutter/core/ai/no_model_exception.dart';
+import 'package:qnote_flutter/core/ai/raccoon_auth_service.dart';
+import 'package:qnote_flutter/core/ai/vision_capability_probe.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_provider.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
+import 'package:qnote_flutter/models/ai_route_group.dart';
 import 'package:qnote_flutter/pages/settings/ai_provider_edit_page.dart';
+import 'package:qnote_flutter/pages/settings/ai_route_group_edit_page.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/widgets/ai/model_picker_sheet.dart';
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
+import 'package:qnote_flutter/widgets/ai/token_usage_card.dart';
 import 'package:qnote_flutter/widgets/app_error_state.dart';
 
-/// AI 模型配置页：服务商列表 + 三个角色的模型分配 + 参数与工具开关
+/// AI 模型配置页：服务商列表 + 三个角色的模型分配 + 工具开关
 ///
 /// 数据模型是「厂商条目」：一个条目 = 一个 URL + 一组 API Key + 一组已启用模型。
 /// 因此这一页只做两件事：
 /// 1. 管理条目（增删改、设为默认、进详情页管密钥与模型）；
 /// 2. 把已启用模型分配给角色（小Q 对话 / 时间线提取 / 生图）。
+///
+/// 温度 / 最大 tokens / 提取图片等运行参数不在此页暴露：调参对普通用户学习成本
+/// 过高，统一走 [AiRoleSettings] 的内置默认值（老用户存量配置仍生效）。
 class AiConfigPage extends ConsumerStatefulWidget {
   final bool autoOpenAdd;
 
@@ -38,7 +43,6 @@ class AiConfigPage extends ConsumerStatefulWidget {
 
 class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   AiRoles _roles = const AiRoles();
-  AiTemperatures _roleSettings = const AiTemperatures();
   Set<String> _disabledTools = {};
   bool _toolsLoaded = false;
   bool _testingImageRecognition = false;
@@ -54,6 +58,11 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     _loadRoles();
     _loadDisabledTools();
     _restoreImageTestResults();
+    // 统计卡的数据由发信热路径后台累加，进入页面时重新聚合一次才看得到最新值
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.invalidate(aiTokenUsageSummaryProvider);
+    });
     if (widget.autoOpenAdd) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || _autoAddHandled) return;
@@ -65,11 +74,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
 
   Future<void> _loadRoles() async {
     final roles = await AiRoleService.instance.getRoles();
-    final temps = await AiRoleService.instance.getTemperatures();
     if (!mounted) return;
     setState(() {
       _roles = roles;
-      _roleSettings = temps;
     });
     _restoreImageTestResults();
   }
@@ -79,6 +86,8 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     for (final roleKey in const ['assistant', 'timelineOptimization']) {
       final ref0 = roleKey == 'assistant' ? _roles.assistant : _roles.timelineOptimization;
       if (ref0 == null) continue;
+      // 路由组没有单一模型名可查：识图结论按成员模型名持久化，组本身不落结论
+      if (ref0.isRouteGroup) continue;
       final known = ModelVisionCapability.probeConclusion(ref0.modelName);
       if (known != null) {
         _imageTestByRole[roleKey] = known ? '支持识别' : '不支持图片识别';
@@ -153,8 +162,11 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       builder: (ctx) => AlertDialog(
         title: const Text('删除模型服务'),
         content: Text(
-          '将删除「${provider.name}」及其 ${provider.apiKeys.length} 把密钥、'
-          '${provider.models.length} 个已启用模型，引用它的角色绑定会被清空。',
+          provider.usesAccountAuth
+              ? '将删除「${provider.name}」及其本地登录态、'
+                  '${provider.models.length} 个已启用模型，引用它的角色绑定会被清空。'
+              : '将删除「${provider.name}」及其 ${provider.apiKeys.length} 把密钥、'
+                  '${provider.models.length} 个已启用模型，引用它的角色绑定会被清空。',
         ),
         actions: [
           TextButton(
@@ -174,6 +186,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     if (confirmed != true || !mounted) return;
 
     try {
+      if (provider.usesAccountAuth) {
+        await RaccoonAuthService.instance.logout(provider.id);
+      }
       await ref.read(aiProviderListProvider.notifier).deleteProvider(provider.id);
       await AiRoleService.instance.pruneStaleRoleBindings();
       ref.invalidate(aiRolesProvider);
@@ -193,8 +208,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
 
   Future<void> _pickRoleModel(String roleKey) async {
     final providers = await ref.read(aiProviderListProvider.future);
+    final groups = await ref.read(aiRouteGroupListProvider.future);
     if (!mounted) return;
-    if (enabledModelEntries(providers).isEmpty) {
+    if (enabledModelEntries(providers).isEmpty && groups.isEmpty) {
       await showNoModelConfiguredDialog(context, scene: _roleLabel(roleKey));
       return;
     }
@@ -203,12 +219,15 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       'timelineOptimization' => _roles.timelineOptimization,
       _ => _roles.imageGeneration,
     };
+    final effective = isBindingUsable(current, providers, groups)
+        ? current
+        : (roleKey == 'imageGeneration' ? null : defaultModelRef(providers));
     final result = await showModelPickerSheet(
       context,
       providers: providers,
-      selected: current,
+      groups: groups,
+      selected: effective,
       title: '选择${_roleLabel(roleKey)}',
-      allowUnbind: current != null,
     );
     if (result == null || result.ref == current || !mounted) return;
 
@@ -223,18 +242,19 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         _ => '生图模型',
       };
 
-  /// 角色当前生效的展示名：绑定 → 默认/首个可用厂商的首个模型 → 未配置
-  String _roleDisplayName(String roleKey, List<AiProvider> providers) {
+  /// 角色当前生效的展示名：绑定（模型或路由组）→ 默认/首个可用厂商的首个模型 → 未配置
+  String _roleDisplayName(
+    String roleKey,
+    List<AiProvider> providers,
+    List<AiRouteGroup> groups,
+  ) {
     final bound = switch (roleKey) {
       'assistant' => _roles.assistant,
       'timelineOptimization' => _roles.timelineOptimization,
       _ => _roles.imageGeneration,
     };
-    if (bound != null &&
-        providers.any(
-          (p) => p.id == bound.providerId && p.hasModel(bound.modelName),
-        )) {
-      return aiModelDisplayName(bound, providers);
+    if (isBindingUsable(bound, providers, groups)) {
+      return aiBindingDisplayName(bound, providers, groups);
     }
     // 生图刻意不回落对话模型：对话模型通常不支持 images/generations
     if (roleKey == 'imageGeneration') return '未配置（生图暂不可用）';
@@ -266,7 +286,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     }
 
     try {
-      final imgBase64 = await _generateTestImageBase64();
+      final imgBase64 = await VisionCapabilityProbe.generateProbeImageBase64();
       final service = AiService();
       final success = await service.checkImageRecognition(effective, imgBase64);
       // 结论按模型名落盘：下次进页面直接回显，不必重发这张探测图
@@ -282,136 +302,6 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     } finally {
       if (mounted) setState(() => _testingImageRecognition = false);
     }
-  }
-
-  /// 生成「白底黑字 11」的探测图：数字短、对比强，模型看得见就一定能答对
-  Future<String> _generateTestImageBase64() async {
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder, const Rect.fromLTWH(0, 0, 100, 100));
-    canvas.drawRect(
-      const Rect.fromLTWH(0, 0, 100, 100),
-      Paint()..color = Colors.white,
-    );
-    final textPainter = TextPainter(
-      text: const TextSpan(
-        text: '11',
-        style: TextStyle(
-          color: Colors.black,
-          fontSize: 60,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    );
-    textPainter.layout();
-    textPainter.paint(canvas, const Offset(10, 10));
-    final image = await recorder.endRecording().toImage(100, 100);
-    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    return base64Encode(bytes!.buffer.asUint8List());
-  }
-
-  // ── 角色参数 ─────────────────────────────────────────────
-
-  Future<void> _editRoleParameters(String roleKey) async {
-    final settings = roleKey == 'assistant'
-        ? _roleSettings.assistant
-        : _roleSettings.timelineOptimization;
-    final tokensCtl = TextEditingController(text: settings.maxTokens.toString());
-    var temperature = settings.temperature;
-    var extractImages = settings.extractImages;
-
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) {
-          final theme = Theme.of(ctx);
-          return AlertDialog(
-            title: Text('${_roleLabel(roleKey)}参数'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text('温度', style: theme.textTheme.labelMedium),
-                      const Spacer(),
-                      Text(
-                        temperature.toStringAsFixed(2),
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          color: theme.colorScheme.primary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Slider(
-                    value: temperature.clamp(0.0, 2.0),
-                    min: 0,
-                    max: 2,
-                    divisions: 40,
-                    onChanged: (v) => setDialogState(() => temperature = v),
-                  ),
-                  const SizedBox(height: 4),
-                  Text('最大输出 tokens', style: theme.textTheme.labelMedium),
-                  const SizedBox(height: 4),
-                  TextField(
-                    controller: tokensCtl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  if (roleKey == 'timelineOptimization') ...[
-                    const SizedBox(height: 8),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      value: extractImages,
-                      title: const Text('提取图片内容'),
-                      subtitle: const Text('上传图片时一并交给模型识别'),
-                      onChanged: (v) => setDialogState(() => extractImages = v),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(false),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(ctx).pop(true),
-                child: const Text('保存'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-    if (saved != true || !mounted) {
-      tokensCtl.dispose();
-      return;
-    }
-
-    final parsedTokens = int.tryParse(tokensCtl.text.trim());
-    tokensCtl.dispose();
-    if (parsedTokens == null || parsedTokens <= 0) {
-      Toast.warning(context, '最大输出 tokens 需为正整数');
-      return;
-    }
-
-    final newSettings = settings.copyWith(
-      temperature: temperature,
-      maxTokens: parsedTokens,
-      extractImages: extractImages,
-    );
-    final updated = roleKey == 'assistant'
-        ? _roleSettings.copyWith(assistant: newSettings)
-        : _roleSettings.copyWith(timelineOptimization: newSettings);
-    await AiRoleService.instance.saveTemperatures(updated);
-    ref.invalidate(aiTemperaturesProvider);
-    if (mounted) setState(() => _roleSettings = updated);
   }
 
   // ── 构建 ─────────────────────────────────────────────────
@@ -439,13 +329,17 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         data: (providers) => ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
           children: [
-            _buildIntroCard(theme),
-            const SizedBox(height: 8),
+            const TokenUsageCard(),
             _buildProvidersSection(theme, providers),
             const SizedBox(height: 4),
-            _buildRoleSection(theme, providers),
+            _buildRouteGroupsSection(theme, providers),
             const SizedBox(height: 4),
-            _buildParametersSection(theme),
+            _buildRoleSection(
+              theme,
+              providers,
+              ref.watch(aiRouteGroupListProvider).valueOrNull ??
+                  const <AiRouteGroup>[],
+            ),
             const SizedBox(height: 4),
             _buildToolSwitchCard(theme),
           ],
@@ -454,42 +348,11 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     );
   }
 
-  Widget _buildIntroCard(ThemeData theme) {
-    final colorScheme = theme.colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.4),
-        ),
-      ),
-      padding: const EdgeInsets.all(14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.info_outline_rounded, size: 18, color: colorScheme.primary),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'QNote 不再内置模型。添加你自己的模型服务（API 地址 + 密钥）后，'
-              '扫描出模型并按需启用即可；同一地址可以填多把密钥自动轮询。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-                height: 1.5,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildProvidersSection(ThemeData theme, List<AiProvider> providers) {
     if (providers.isEmpty) {
-      return NoModelGuideCard(
+      return const NoModelGuideCard(
         scene: '',
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: EdgeInsets.symmetric(vertical: 16),
       );
     }
     return Column(
@@ -568,7 +431,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${provider.apiKeys.length} 把密钥 · ${provider.models.length} 个模型已启用',
+                        provider.usesAccountAuth
+                            ? '账号登录 · ${provider.models.length} 个模型已启用'
+                            : '${provider.apiKeys.length} 把密钥 · ${provider.models.length} 个模型已启用',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: colorScheme.onSurfaceVariant,
                         ),
@@ -609,6 +474,160 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     );
   }
 
+  // ── 模型路由组 ───────────────────────────────────────────
+
+  Widget _buildRouteGroupsSection(ThemeData theme, List<AiProvider> providers) {
+    final groupsAsync = ref.watch(aiRouteGroupListProvider);
+    final groups = groupsAsync.valueOrNull ?? const <AiRouteGroup>[];
+    final canCreate = enabledModelEntries(providers).isNotEmpty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle(
+          theme,
+          '模型路由组',
+          '把多个模型组成一个「虚拟模型」，按策略轮流调用以分散限流',
+        ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: TextButton.icon(
+              onPressed: canCreate ? () => _editRouteGroup(null) : null,
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: const Text('新建路由组'),
+            ),
+          ),
+        ),
+        if (groups.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 14),
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+              ),
+            ),
+            child: Text(
+              canCreate
+                  ? '还没有路由组。勾选多个已启用模型即可建立一个组，'
+                      '之后在「模型分配」里把角色指向这个组。'
+                  : '先添加模型服务并启用至少一个模型，才能建立路由组。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          )
+        else
+          ...groups.map((group) => _routeGroupCard(theme, providers, group)),
+      ],
+    );
+  }
+
+  Future<void> _editRouteGroup(AiRouteGroup? group) async {
+    await context.push(
+      '/settings/ai-config/route-group',
+      extra: AiRouteGroupEditArgs(group: group),
+    );
+    if (mounted) await _loadRoles();
+  }
+
+  Widget _routeGroupCard(
+    ThemeData theme,
+    List<AiProvider> providers,
+    AiRouteGroup group,
+  ) {
+    final colorScheme = theme.colorScheme;
+    final liveMembers = group.enabledMembers
+        .map((m) => aiModelDisplayName(m.ref, providers, fallback: m.modelName))
+        .toList();
+    final preview = liveMembers.take(3).toList();
+    final remaining = liveMembers.length - preview.length;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => _editRouteGroup(group),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+              ),
+            ),
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.alt_route_rounded,
+                      size: 20,
+                      color: colorScheme.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        group.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    _badge(theme, group.strategy.label, colorScheme.primary),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  routeGroupSummary(group, providers),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                if (liveMembers.isEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '成员模型均已停用，绑定它的角色会回落到默认模型',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.error,
+                    ),
+                  ),
+                ] else ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      ...preview.map(
+                        (name) => _badge(
+                          theme,
+                          name,
+                          colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      if (remaining > 0)
+                        _badge(theme, '+$remaining', colorScheme.outline),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _badge(ThemeData theme, String text, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
@@ -626,11 +645,15 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     );
   }
 
-  Widget _buildRoleSection(ThemeData theme, List<AiProvider> providers) {
+  Widget _buildRoleSection(
+    ThemeData theme,
+    List<AiProvider> providers,
+    List<AiRouteGroup> groups,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionTitle(theme, '模型分配', '同一个模型可分配给多个角色'),
+        _sectionTitle(theme, '模型分配', '同一个模型/路由组可分配给多个角色'),
         Container(
           decoration: BoxDecoration(
             color: theme.cardColor,
@@ -641,11 +664,11 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           ),
           child: Column(
             children: [
-              _roleTile(theme, 'assistant', providers),
+              _roleTile(theme, 'assistant', providers, groups),
               _divider(theme),
-              _roleTile(theme, 'timelineOptimization', providers),
+              _roleTile(theme, 'timelineOptimization', providers, groups),
               _divider(theme),
-              _roleTile(theme, 'imageGeneration', providers),
+              _roleTile(theme, 'imageGeneration', providers, groups),
             ],
           ),
         ),
@@ -662,9 +685,14 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     );
   }
 
-  Widget _roleTile(ThemeData theme, String roleKey, List<AiProvider> providers) {
+  Widget _roleTile(
+    ThemeData theme,
+    String roleKey,
+    List<AiProvider> providers,
+    List<AiRouteGroup> groups,
+  ) {
     final colorScheme = theme.colorScheme;
-    final display = _roleDisplayName(roleKey, providers);
+    final display = _roleDisplayName(roleKey, providers, groups);
     final configured = !display.startsWith('未配置');
     final isAssistant = roleKey == 'assistant';
     final rawTest = _imageTestByRole[roleKey];
@@ -710,7 +738,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                 ],
               ),
             ),
-            if (configured) ...[
+            if (configured && roleKey != 'imageGeneration') ...[
               if (rawTest != null)
                 Padding(
                   padding: const EdgeInsets.only(right: 6),
@@ -739,57 +767,6 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildParametersSection(ThemeData theme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _sectionTitle(theme, '角色参数', '温度、输出长度与图片提取'),
-        Container(
-          decoration: BoxDecoration(
-            color: theme.cardColor,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-            ),
-          ),
-          child: Column(
-            children: [
-              _parameterTile(theme, 'assistant'),
-              _divider(theme),
-              _parameterTile(theme, 'timelineOptimization'),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _parameterTile(ThemeData theme, String roleKey) {
-    final settings = roleKey == 'assistant'
-        ? _roleSettings.assistant
-        : _roleSettings.timelineOptimization;
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-      leading: Icon(
-        roleKey == 'assistant'
-            ? Icons.tune_rounded
-            : Icons.tune_rounded,
-        size: 20,
-      ),
-      title: Text(_roleLabel(roleKey), style: const TextStyle(fontSize: 14)),
-      subtitle: Text(
-        '温度 ${settings.temperature.toStringAsFixed(2)} · '
-        '最大 ${settings.maxTokens} tokens'
-        '${roleKey == 'timelineOptimization' ? ' · ${settings.extractImages ? '提取图片' : '不提取图片'}' : ''}',
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-      ),
-      trailing: const Icon(Icons.chevron_right_rounded),
-      onTap: () => _editRoleParameters(roleKey),
     );
   }
 

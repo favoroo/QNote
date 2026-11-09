@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:qnote_flutter/models/ai_model_ref.dart';
+import 'package:qnote_flutter/models/reasoning_effort.dart';
 
 /// 厂商条目下的一个模型（已启用列表与扫描目录共用同一结构）
 class AiProviderModel {
@@ -10,20 +11,61 @@ class AiProviderModel {
   /// 展示名，默认与 [id] 相同，可保留旧配置的自定义名
   final String name;
 
-  const AiProviderModel({required this.id, required this.name});
+  /// 思考强度；null 表示「自动」（不额外干预，由模型服务决定）
+  final ReasoningEffort? reasoningEffort;
+
+  const AiProviderModel({
+    required this.id,
+    required this.name,
+    this.reasoningEffort,
+  });
 
   /// 展示名缺省时回落到模型 ID，避免界面出现空标题
-  factory AiProviderModel.of(String id, {String? name}) {
+  factory AiProviderModel.of(
+    String id, {
+    String? name,
+    ReasoningEffort? reasoningEffort,
+  }) {
     final trimmed = (name ?? '').trim();
-    return AiProviderModel(id: id, name: trimmed.isEmpty ? id : trimmed);
+    return AiProviderModel(
+      id: id,
+      name: trimmed.isEmpty ? id : trimmed,
+      reasoningEffort: reasoningEffort,
+    );
   }
 
-  Map<String, dynamic> toMap() => {'id': id, 'name': name};
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'name': name,
+    if (reasoningEffort != null) 'reasoning_effort': reasoningEffort!.wireName,
+  };
 
   factory AiProviderModel.fromMap(Map<String, dynamic> map) {
     final id = (map['id'] ?? '').toString();
-    return AiProviderModel.of(id, name: map['name'] as String?);
+    return AiProviderModel.of(
+      id,
+      name: map['name'] as String?,
+      reasoningEffort: ReasoningEffort.tryParse(
+        map['reasoning_effort']?.toString(),
+      ),
+    );
   }
+
+  /// 复制并修改思考强度
+  ///
+  /// 用哨兵区分「不传该字段」与「显式置为自动（null）」，避免 `copyWith`
+  /// 无法清空选择。
+  AiProviderModel copyWith({Object? reasoningEffort = _unsetReasoningEffort}) {
+    return AiProviderModel(
+      id: id,
+      name: name,
+      reasoningEffort: identical(reasoningEffort, _unsetReasoningEffort)
+          ? this.reasoningEffort
+          : reasoningEffort as ReasoningEffort?,
+    );
+  }
+
+  static const Object _unsetReasoningEffort = Object();
 
   static List<AiProviderModel> listFromJson(String? raw) {
     if (raw == null || raw.trim().isEmpty) return const [];
@@ -49,10 +91,13 @@ class AiProviderModel {
 
   @override
   bool operator ==(Object other) =>
-      other is AiProviderModel && other.id == id && other.name == name;
+      other is AiProviderModel &&
+      other.id == id &&
+      other.name == name &&
+      other.reasoningEffort == reasoningEffort;
 
   @override
-  int get hashCode => Object.hash(id, name);
+  int get hashCode => Object.hash(id, name, reasoningEffort);
 
   @override
   String toString() => 'AiProviderModel($id)';
@@ -64,6 +109,12 @@ class AiProviderModel {
 /// 模型只是厂商下的勾选项，因此「同一厂商多把 Key 轮询」与「扫描后按需启用多个
 /// 模型」都落在同一条目上，与 CLIProxyAPI 的 provider + api-keys 语义一致。
 class AiProvider {
+  /// 凭证类型：普通 API Key 池
+  static const String authModeApiKey = 'api_key';
+
+  /// 订阅账号登录（商汤小浣熊）：密钥来自账号 token，不写 `api_keys`
+  static const String authModeRaccoon = 'raccoon';
+
   final String id;
 
   /// 指向 `lib/config/models.dart` 的厂商模板（自定义地址为 `custom`）
@@ -77,7 +128,13 @@ class AiProvider {
 
   final String baseUrl;
 
-  /// API Key 池（至少一把；多把时发信层自动轮询）
+  /// 凭证类型：`api_key`（默认）或 `raccoon`
+  ///
+  /// 订阅账号型厂商的 token 由 [RaccoonAuthService] 在每次发信前现取，
+  /// 不落在 `api_keys` 里，也不会随备份导出。
+  final String authMode;
+
+  /// API Key 池（普通厂商至少一把；订阅账号型为空）
   final List<String> apiKeys;
 
   /// 已启用模型（会出现在所有模型选择器里）
@@ -100,6 +157,7 @@ class AiProvider {
     required this.name,
     required this.providerType,
     required this.baseUrl,
+    this.authMode = authModeApiKey,
     required this.apiKeys,
     this.models = const [],
     this.modelCatalog = const [],
@@ -109,11 +167,16 @@ class AiProvider {
     required this.updatedAt,
   });
 
-  /// 厂商下是否还有可用的「地址 + 密钥」组合
+  /// 是否由订阅账号提供凭证
+  bool get usesAccountAuth => authMode != authModeApiKey;
+
+  /// 是否已有可用凭证（账号型交给登录态判断，发信层再校验）
+  bool get hasCredentials =>
+      usesAccountAuth || apiKeys.any((key) => key.trim().isNotEmpty);
+
+  /// 厂商下是否还有可用的「地址 + 凭证」组合
   bool get isUsable =>
-      baseUrl.trim().isNotEmpty &&
-      apiKeys.any((key) => key.trim().isNotEmpty) &&
-      models.isNotEmpty;
+      baseUrl.trim().isNotEmpty && hasCredentials && models.isNotEmpty;
 
   /// 首个已启用模型，作为未绑定角色时的默认选择
   AiProviderModel? get firstModel => models.isEmpty ? null : models.first;
@@ -121,8 +184,7 @@ class AiProvider {
   AiModelRef refFor(String modelName) =>
       AiModelRef(providerId: id, modelName: modelName);
 
-  bool hasModel(String modelName) =>
-      models.any((m) => m.id == modelName);
+  bool hasModel(String modelName) => models.any((m) => m.id == modelName);
 
   Map<String, dynamic> toMap() {
     return {
@@ -131,6 +193,7 @@ class AiProvider {
       'name': name,
       'provider_type': providerType,
       'base_url': baseUrl,
+      'auth_mode': authMode,
       'api_keys': jsonEncode(apiKeys),
       'models': AiProviderModel.listToJson(models),
       'model_catalog': AiProviderModel.listToJson(modelCatalog),
@@ -150,10 +213,14 @@ class AiProvider {
           : ((map['vendor_id'] as String?) ?? '自定义'),
       providerType: (map['provider_type'] as String?) ?? 'openai',
       baseUrl: (map['base_url'] as String?) ?? '',
+      authMode: (map['auth_mode'] as String?)?.trim().isNotEmpty == true
+          ? (map['auth_mode'] as String).trim()
+          : authModeApiKey,
       apiKeys: _decodeKeys(map['api_keys']),
       models: AiProviderModel.listFromJson(map['models'] as String?),
-      modelCatalog:
-          AiProviderModel.listFromJson(map['model_catalog'] as String?),
+      modelCatalog: AiProviderModel.listFromJson(
+        map['model_catalog'] as String?,
+      ),
       catalogUpdatedAt: _parseTime(map['catalog_updated_at'] as String?),
       isDefault: (map['is_default'] as int? ?? 0) == 1,
       createdAt: _parseTime(map['created_at'] as String?) ?? DateTime.now(),
@@ -167,6 +234,7 @@ class AiProvider {
     String? name,
     String? providerType,
     String? baseUrl,
+    String? authMode,
     List<String>? apiKeys,
     List<AiProviderModel>? models,
     List<AiProviderModel>? modelCatalog,
@@ -177,11 +245,13 @@ class AiProvider {
   }) {
     return AiProvider(
       id: id ?? this.id,
-      vendorId:
-          identical(vendorId, _unset) ? this.vendorId : vendorId as String?,
+      vendorId: identical(vendorId, _unset)
+          ? this.vendorId
+          : vendorId as String?,
       name: name ?? this.name,
       providerType: providerType ?? this.providerType,
       baseUrl: baseUrl ?? this.baseUrl,
+      authMode: authMode ?? this.authMode,
       apiKeys: apiKeys ?? this.apiKeys,
       models: models ?? this.models,
       modelCatalog: modelCatalog ?? this.modelCatalog,
@@ -229,7 +299,8 @@ class AiProvider {
       final vendorId = (map['vendor_id'] as String?)?.trim() ?? '';
       final baseUrl = ((map['base_url'] as String?) ?? '').trim();
       final providerType = ((map['provider'] as String?) ?? 'openai').trim();
-      final groupKey = '${vendorId.isEmpty ? 'custom' : vendorId}|$baseUrl|$providerType';
+      final groupKey =
+          '${vendorId.isEmpty ? 'custom' : vendorId}|$baseUrl|$providerType';
       if (!grouped.containsKey(groupKey)) {
         grouped[groupKey] = [];
         order.add(groupKey);
@@ -254,7 +325,9 @@ class AiProvider {
 
         final modelName = ((row['model_name'] as String?) ?? '').trim();
         if (modelName.isNotEmpty && modelIds.add(modelName)) {
-          models.add(AiProviderModel.of(modelName, name: row['name'] as String?));
+          models.add(
+            AiProviderModel.of(modelName, name: row['name'] as String?),
+          );
         }
 
         if ((row['is_default'] as int? ?? 0) == 1) isDefault = true;
@@ -273,18 +346,22 @@ class AiProvider {
       if (keys.isEmpty && models.isEmpty) continue;
 
       final vendorId = (first['vendor_id'] as String?)?.trim();
-      providers.add(AiProvider(
-        id: (first['id'] as String?) ?? '',
-        vendorId: (vendorId == null || vendorId.isEmpty) ? 'custom' : vendorId,
-        name: vendorId == null || vendorId.isEmpty ? '自定义服务' : vendorId,
-        providerType: ((first['provider'] as String?) ?? 'openai'),
-        baseUrl: ((first['base_url'] as String?) ?? '').trim(),
-        apiKeys: keys,
-        models: models,
-        isDefault: isDefault,
-        createdAt: createdAt ?? DateTime.now(),
-        updatedAt: updatedAt ?? createdAt ?? DateTime.now(),
-      ));
+      providers.add(
+        AiProvider(
+          id: (first['id'] as String?) ?? '',
+          vendorId: (vendorId == null || vendorId.isEmpty)
+              ? 'custom'
+              : vendorId,
+          name: vendorId == null || vendorId.isEmpty ? '自定义服务' : vendorId,
+          providerType: ((first['provider'] as String?) ?? 'openai'),
+          baseUrl: ((first['base_url'] as String?) ?? '').trim(),
+          apiKeys: keys,
+          models: models,
+          isDefault: isDefault,
+          createdAt: createdAt ?? DateTime.now(),
+          updatedAt: updatedAt ?? createdAt ?? DateTime.now(),
+        ),
+      );
     }
     return providers;
   }

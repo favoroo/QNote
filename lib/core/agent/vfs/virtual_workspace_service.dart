@@ -13,6 +13,7 @@ import 'package:qnote_flutter/core/health/screen_usage_service.dart';
 import 'package:qnote_flutter/core/notification/notification_service.dart';
 import 'package:qnote_flutter/core/storage/color_mark_repository.dart';
 import 'package:qnote_flutter/core/storage/ai_provider_repository.dart';
+import 'package:qnote_flutter/core/storage/ai_route_group_repository.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/storage/daily_score_repository.dart';
 import 'package:qnote_flutter/core/storage/daily_score_service.dart';
@@ -941,6 +942,7 @@ class VirtualWorkspaceService {
       final temps =
           await _configRepo.getAiTemperatures() ?? const AiTemperatures();
       final providers = await AiProviderRepository.instance.getAll();
+      final routeGroups = await AiRouteGroupRepository.instance.getAll();
       final data = {
         'roles': {
           'assistant': {'model': roles.assistant?.encode()},
@@ -968,6 +970,7 @@ class VirtualWorkspaceService {
                 'vendorId': p.vendorId,
                 'baseUrl': p.baseUrl,
                 'providerType': p.providerType,
+                'authMode': p.authMode,
                 'isDefault': p.isDefault,
                 'keyCount': p.apiKeys.length,
                 // 只读快照：密钥一律掩码，避免明文 Key 进入对话上下文
@@ -976,9 +979,28 @@ class VirtualWorkspaceService {
               },
             )
             .toList(),
+        // 路由组快照：小Q 需要知道「绑定的那串 id 是什么组、组里有哪些模型」
+        'routeGroups': routeGroups
+            .map(
+              (g) => {
+                'id': g.id,
+                'name': g.name,
+                'strategy': g.strategy.id,
+                'members': g.members
+                    .map((m) => {
+                          'model': m.encode(),
+                          'weight': m.weight,
+                          'enabled': m.enabled,
+                        })
+                    .toList(),
+              },
+            )
+            .toList(),
         'description':
-            'roles.*.model 是「厂商id::模型名」，写 null 表示清空绑定（默认厂商的首个已启用模型生效）；'
+            'roles.*.model 是「厂商id::模型名」，也可以是路由组（「组id::__route_group__」，'
+            '见 routeGroups）；写 null 表示清空绑定（默认厂商的首个已启用模型生效）；'
             'providers 为只读快照（密钥已掩码，增删与启用模型请引导用户去「AI 模型配置」操作）；'
+            'routeGroups 为只读快照（成员顺序/策略/权重请在设置页编辑）；'
             'temperatures 可直接修改，下轮对话生效',
       };
       return const JsonEncoder.withIndent('  ').convert(data);

@@ -6,10 +6,14 @@ import 'package:qnote_flutter/config/defaults.dart';
 import 'package:qnote_flutter/core/ai/ai_error_explainer.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
-import 'package:qnote_flutter/core/ai/model_vision_capability.dart';
+import 'package:qnote_flutter/core/ai/ai_route_service.dart';
+import 'package:qnote_flutter/core/ai/vision_capability_probe.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/refresh/refresh_failure_notice.dart';
+import 'package:qnote_flutter/core/storage/ai_account_repository.dart';
 import 'package:qnote_flutter/core/storage/ai_provider_repository.dart';
+import 'package:qnote_flutter/core/storage/ai_route_group_repository.dart';
+import 'package:qnote_flutter/core/storage/ai_token_usage_repository.dart';
 import 'package:qnote_flutter/core/agent/agent_tool_labels.dart';
 import 'package:qnote_flutter/core/agent/agent_tool_registry.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_cancellation_token.dart';
@@ -33,8 +37,10 @@ import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/providers/agent_support.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
+import 'package:qnote_flutter/models/ai_route_group.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/models/ai_provider.dart';
+import 'package:qnote_flutter/models/ai_token_usage.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/models/todo.dart';
 import 'package:uuid/uuid.dart';
@@ -77,6 +83,16 @@ final aiProviderListProvider =
     AsyncNotifierProvider<AiProviderListNotifier, List<AiProvider>>(() {
       return AiProviderListNotifier();
     });
+
+/// 本机累计 token 消耗（AI 配置页顶部统计卡）
+///
+/// 纯本地观测表聚合，不参与云同步，因此不需要监听 [WorkspaceEventBus]；
+/// 页面每次进入时 `invalidate` 一次即可拿到最新值。
+final aiTokenUsageSummaryProvider = FutureProvider<AiTokenUsageSummary>((
+  ref,
+) async {
+  return AiTokenUsageRepository.instance.getSummary();
+});
 
 /// 厂商条目列表：界面上的模型来源、模型选择器、角色绑定都从这里读
 class AiProviderListNotifier extends AsyncNotifier<List<AiProvider>> {
@@ -129,6 +145,8 @@ class AiProviderListNotifier extends AsyncNotifier<List<AiProvider>> {
 
   Future<void> deleteProvider(String id) async {
     await AiProviderRepository.instance.delete(id);
+    // 订阅账号型厂商的本地登录态跟着条目一起删，避免留下无主的长期凭据
+    await AiAccountRepository.instance.delete(id);
     // 内存移除 + 收敛默认标记（默认项可能刚被删掉）
     state = AsyncData(
       (state.valueOrNull ?? []).where((p) => p.id != id).toList(),
@@ -150,6 +168,72 @@ class AiProviderListNotifier extends AsyncNotifier<List<AiProvider>> {
 final defaultAiProviderProvider = FutureProvider<AiProvider?>((ref) async {
   return AiProviderRepository.instance.getDefault();
 });
+
+/// 模型路由组列表：AI 配置页的分区、模型选择器的「路由组」区、角色解析都从这里读
+final aiRouteGroupListProvider =
+    AsyncNotifierProvider<AiRouteGroupListNotifier, List<AiRouteGroup>>(() {
+      return AiRouteGroupListNotifier();
+    });
+
+class AiRouteGroupListNotifier extends AsyncNotifier<List<AiRouteGroup>> {
+  @override
+  Future<List<AiRouteGroup>> build() async {
+    void onWorkspaceChange(WorkspaceChangeEvent event) {
+      if (event.path == '/settings/ai.json') {
+        refresh();
+      }
+    }
+
+    WorkspaceEventBus.instance.addListener(onWorkspaceChange);
+    ref.onDispose(() {
+      WorkspaceEventBus.instance.removeListener(onWorkspaceChange);
+    });
+    return AiRouteGroupRepository.instance.getAll();
+  }
+
+  Future<void> refresh() async {
+    try {
+      state = AsyncData(await AiRouteGroupRepository.instance.getAll());
+    } catch (e, st) {
+      RefreshFailureNotice.report(
+        source: '模型路由组',
+        error: e,
+        stackTrace: st,
+        retry: () {
+          refresh();
+        },
+      );
+    }
+  }
+
+  Future<AiRouteGroup> saveGroup(AiRouteGroup group) async {
+    final saved = await AiRouteGroupRepository.instance.upsert(group);
+    // 组配置（成员顺序/策略/权重）变了，旧的轮询游标与成员冷却必须清掉，
+    // 否则用户会看到「改了顺序但轮次没变」
+    AiRouteService.instance.resetGroup(saved.id, members: saved.members);
+    final current = state.valueOrNull ?? const <AiRouteGroup>[];
+    final exists = current.any((g) => g.id == saved.id);
+    state = AsyncData(
+      exists
+          ? current.map((g) => g.id == saved.id ? saved : g).toList()
+          : [...current, saved],
+    );
+    return saved;
+  }
+
+  /// 删除路由组：同时清理指向它的角色绑定，避免界面留下失效的「已选模型」
+  Future<void> deleteGroup(String id) async {
+    await AiRouteGroupRepository.instance.delete(id);
+    AiRouteService.instance.resetGroup(id);
+    state = AsyncData(
+      (state.valueOrNull ?? const <AiRouteGroup>[])
+          .where((g) => g.id != id)
+          .toList(),
+    );
+    await AiRoleService.instance.pruneStaleRoleBindings();
+    ref.invalidate(aiRolesProvider);
+  }
+}
 
 Future<void> saveAiRoles(AiRoles roles) async {
   final repo = ConfigRepository.instance;
@@ -866,12 +950,21 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         disabledTools: disabledTools,
       );
       
-      // 预先配置好 AiService：统一使用角色绑定的生效模型配置
-      final assistantConfig = await AiRoleService.instance
-          .getEffectiveConfigForRole('assistant');
-      // 当前模型能否看图：同时决定提示词措辞与本轮图片是否进上下文
-      final supportsVisionInput =
-          ModelVisionCapability.supportsVision(assistantConfig);
+      // 本轮上下文里是否带图片：决定路由组是否优先选支持识图的成员
+      final runHasImages =
+          updatedMessages.any((m) => m.images?.isNotEmpty ?? false);
+      // 预先配置好 AiService：统一使用角色绑定的生效模型配置。
+      // 绑定路由组时按组策略选出一个成员，并把组内切换器交给 AgentLoop：
+      // 成员被限流/超时且正文未输出时自动换下一个成员重发。
+      // 本轮带图片时优先选支持识图的成员（否则会把图片发给看不见画面的模型）
+      final assistantResolution = await AiRoleService.instance.resolveForRole(
+        'assistant',
+        preferVision: runHasImages,
+      );
+      final assistantConfig = assistantResolution.config;
+      // 当前模型能否看图：同时决定提示词措辞与本轮图片是否进上下文。
+      // 能力未知时先自动实测一次并落盘，避免把新加的视觉模型误判为不支持
+      final supportsVisionInput = await VisionCapabilityProbe.ensure(assistantConfig);
       aiService.updateConfig(
         assistantConfig,
         temperature: roleSettings.temperature,
@@ -884,6 +977,7 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         maxTurns: 60,
         // 模型看不了图时，图片在发请求前就被换成 describe_image 引导，避免它编造画面
         supportsImageInput: supportsVisionInput,
+        route: assistantResolution.route,
         // 整池限流时不报错、不静默：把排队秒数写到状态行，用户知道还在等
         onQuotaHold: (hold) => _setRunStatus(run, '服务商限流 · 排队 ${hold.inSeconds}s 后重试'),
         afterToolCall: (call, result) async {

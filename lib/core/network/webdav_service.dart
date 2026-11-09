@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
@@ -464,7 +463,7 @@ class WebdavService {
 
       final configRepo = ConfigRepository.instance;
       final deltaCountStr = await configRepo.getAppConfig('sync_delta_count') ?? '0';
-      int deltaCount = int.tryParse(deltaCountStr) ?? 0;
+      final deltaCount = int.tryParse(deltaCountStr) ?? 0;
 
       final remoteManifest = await downloadManifest();
       final hasRemoteSnapshot = remoteManifest != null;
@@ -519,7 +518,22 @@ class WebdavService {
       'delta_count': 0,
       'has_delta': false,
     };
-    await uploadManifest(manifest);
+    // manifest 是「云端清单」的唯一真相来源。它写失败时本地变更日志绝不能清，
+    // 否则用户看到同步成功，而云端快照版本还停留在旧值、本地变更也无从重放。
+    final manifestUploaded = await uploadManifest(manifest);
+    if (!manifestUploaded) {
+      LoggerService.instance.logSync(
+        '全量快照已上传，但 manifest 写入失败',
+        level: LogLevel.error,
+      );
+      return SyncResult(
+        success: false,
+        wasFullSync: true,
+        changeCount: 0,
+        uploadSizeBytes: uploadSize,
+        error: '云端清单（manifest）写入失败，本地变更记录已保留，请稍后重试',
+      );
+    }
 
     await syncLog.clearAll();
     await configRepo.setAppConfig('sync_delta_count', '0');
@@ -586,12 +600,31 @@ class WebdavService {
       'delta_count': newDeltaCount,
       'has_delta': true,
     };
-    await uploadManifest(manifest);
+    final manifestUploaded = await uploadManifest(manifest);
+    if (!manifestUploaded) {
+      LoggerService.instance.logSync(
+        '增量数据已上传，但 manifest 写入失败',
+        level: LogLevel.error,
+      );
+      // 注意：此时增量文件已上云，但清单未更新。保留本地变更日志是安全的——
+      // 下次同步会重新上传同一批 upserts（幂等），最终由清单追平。
+      return SyncResult(
+        success: false,
+        wasFullSync: false,
+        changeCount: currentDeltaCount,
+        uploadSizeBytes: uploadSize,
+        error: '云端清单（manifest）写入失败，本地变更记录已保留，请稍后重试',
+      );
+    }
 
     await syncLog.clearAll();
     await configRepo.setAppConfig('sync_delta_count', newDeltaCount.toString());
 
-    final changeCount = await syncLog.getChangeCount();
+    // clearAll 之后统计恒为 0，这里用本次实际上传的变更数回报。
+    final changeCount = delta['changes'] is Map
+        ? (delta['changes'] as Map).values
+            .fold<int>(0, (sum, v) => sum + _countDeltaRecords(v))
+        : 0;
 
     LoggerService.instance.logSync(
       '增量上传成功',
@@ -604,6 +637,15 @@ class WebdavService {
       changeCount: changeCount,
       uploadSizeBytes: uploadSize,
     );
+  }
+
+  /// 统计单张表的增量记录数（upserts + deletes），供同步结果回报。
+  int _countDeltaRecords(Object? tableChanges) {
+    if (tableChanges is! Map) return 0;
+    final upserts = tableChanges['upserts'];
+    final deletes = tableChanges['deletes'];
+    return (upserts is List ? upserts.length : 0) +
+        (deletes is List ? deletes.length : 0);
   }
 
   Map<String, dynamic> _mergeDeltas(
@@ -920,13 +962,20 @@ class WebdavService {
         if (success) downloadCount++;
       }
 
-      // 6. 删除逻辑：云端存在但本地数据库不引用，且本地物理也不存在（或者已被用户删除） -> 从云端删除
-      final deleteFromRemoteTargets = remoteImages.difference(activeImages);
-      int deleteCount = 0;
-      for (final rel in deleteFromRemoteTargets) {
-        onProgress?.call('正在清理云端旧图片: ${deleteCount + 1}/${deleteFromRemoteTargets.length}');
-        final success = await deleteFile('images/$rel');
-        if (success) deleteCount++;
+      // 6. 云端孤儿图片：只统计，不删除。
+      //
+      // 这里原本会 `deleteFile` 掉「云端有、本地库不引用」的图片，但在多设备下这是
+      // 数据丢失：日常同步只有上传没有下载，设备 B 的库里根本还没有设备 A 刚建的
+      // 日记，B 的 activeImages 自然不含 A 的图片，一同步就把 A 刚传上去的图删了。
+      // 要安全删除必须能证明「所有设备都已不再引用」，当前同步模型给不出这个证明
+      // （同步日志里的 image_changes 用的是合成文件名，和真实 uuid 文件名对不上），
+      // 所以宁可让云端留一点冗余，也不做无法回退的删除。
+      final remoteOrphans = remoteImages.difference(activeImages);
+      if (remoteOrphans.isNotEmpty) {
+        LoggerService.instance.logSync(
+          '检测到云端未被本地引用的图片（已跳过删除）',
+          details: '数量=${remoteOrphans.length}，示例=${remoteOrphans.take(5).join(', ')}',
+        );
       }
 
       // 7. 清理本地物理存在的、但在数据库中没有引用的图片
@@ -938,8 +987,11 @@ class WebdavService {
       final chatReferenced = (await ChatImageGc.instance.collectReferencedImageKeys())
           .map((name) => '${ChatImageGc.subfolder}/$name')
           .toSet();
-      final localCleanupTargets = localPhysicalImages
-          .difference(activeImages.union(chatReferenced));
+      // 库里一条图片引用都没有，多半是数据还没恢复/还没同步下来，此时清理等于删库，
+      // 因此直接跳过本地清理（真正的孤儿留给「立即回收」处理）。
+      final localCleanupTargets = activeImages.isEmpty
+          ? const <String>{}
+          : localPhysicalImages.difference(activeImages.union(chatReferenced));
       for (final rel in localCleanupTargets) {
         final localPath = p.join(appDir.path, 'images', rel);
         try {
@@ -947,7 +999,7 @@ class WebdavService {
         } catch (_) {}
       }
 
-      LoggerService.instance.logSync('图片同步完成! 上传=$uploadCount, 下载=$downloadCount, 清理云端=$deleteCount, 清理本地=${localCleanupTargets.length}');
+      LoggerService.instance.logSync('图片同步完成! 上传=$uploadCount, 下载=$downloadCount, 清理本地=${localCleanupTargets.length}, 云端未引用=$remoteOrphans.length');
       return true;
     } catch (e, stackTrace) {
       LoggerService.instance.logSync('图片同步失败: $e', level: LogLevel.error, details: stackTrace.toString());

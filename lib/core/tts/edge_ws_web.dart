@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:js_interop';
-import 'dart:typed_data';
 
 import 'package:web/web.dart' as web;
 
 import 'edge_ws.dart';
-import 'tts_exception.dart';
 
 /// Web 端 Edge TTS WebSocket 传输实现（浏览器标准 WebSocket）。
 ///

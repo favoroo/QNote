@@ -13,6 +13,7 @@ import 'package:qnote_flutter/pages/settings/q_personality_page.dart';
 import 'package:qnote_flutter/pages/settings/q_skills_page.dart';
 import 'package:qnote_flutter/pages/settings/ai_config_page.dart';
 import 'package:qnote_flutter/pages/settings/ai_provider_edit_page.dart';
+import 'package:qnote_flutter/pages/settings/ai_route_group_edit_page.dart';
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 import 'package:qnote_flutter/pages/settings/shortcuts_page.dart';
 import 'package:qnote_flutter/pages/settings/fixed_events_page.dart';
@@ -186,6 +187,16 @@ final routerProvider = Provider<GoRouter>((ref) {
               initialVendorId: args.initialVendorId,
             ),
           );
+        },
+      ),
+      GoRoute(
+        path: '/settings/ai-config/route-group',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) {
+          final args = state.extra is AiRouteGroupEditArgs
+              ? state.extra as AiRouteGroupEditArgs
+              : const AiRouteGroupEditArgs();
+          return _fadeTransitionPage(AiRouteGroupEditPage(group: args.group));
         },
       ),
       GoRoute(

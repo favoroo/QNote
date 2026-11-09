@@ -6,34 +6,36 @@ import 'package:qnote_flutter/core/tts/edge_tts_client.dart';
 import 'package:qnote_flutter/core/tts/edge_ws.dart';
 
 void main() {
-  group('EdgeTtsClient.generateSecMsGecFor', () {
-    test('与上游 edge-tts DRM 算法对齐（固定时间戳期望值）', () {
-      // UTC 2026-09-19 04:23:04Z，期望值由同一算法在 Python 端独立计算
-      final utc = DateTime.utc(2026, 9, 19, 4, 23, 4);
+  group('EdgeTtsClient 握手参数', () {
+    test('URL 携带 v2 令牌与 Sec-MS-GEC-Version=2-（v1 令牌已被服务端 403）', () async {
+      Uri? captured;
+      final connection = _FakeConnection([
+        const EdgeWsTextFrame('Path:turn.end'),
+      ]);
+      try {
+        await EdgeTtsClient.synthesize(
+          text: '你好',
+          voice: 'zh-CN-XiaoxiaoNeural',
+          rate: 1.0,
+          connect: (uri) async {
+            captured = uri;
+            return connection;
+          },
+        );
+      } on TtsException {
+        // 假连接只有 turn.end、没有音频，会抛 empty_audio；此处只关心握手参数
+      }
+      final query = captured!.queryParameters;
+      expect(query['Sec-MS-GEC-Version'], '2-143.0.3650.75');
       expect(
-        EdgeTtsClient.generateSecMsGecFor(utc),
-        'F1FEBCBC5A69A5C5A5BFF0B2E470829DAD8963EE0A9D1365D48A1FCEF795E7FD',
+        query['Sec-MS-GEC'],
+        matches(RegExp(r'^[0-9A-F]{16}-[0-9A-F]{64}$')),
       );
+      expect(query['TrustedClientToken'], '6A5AA1D4EAFF4E9FB37E23D68491D6F4');
     });
 
-    test('5 分钟边界内的时间产生相同令牌', () {
-      final a = EdgeTtsClient.generateSecMsGecFor(
-        DateTime.utc(2026, 9, 19, 4, 20, 1),
-      );
-      final b = EdgeTtsClient.generateSecMsGecFor(
-        DateTime.utc(2026, 9, 19, 4, 24, 59),
-      );
-      expect(a, b);
-    });
-
-    test('跨 5 分钟边界令牌变化', () {
-      final a = EdgeTtsClient.generateSecMsGecFor(
-        DateTime.utc(2026, 9, 19, 4, 24, 59),
-      );
-      final b = EdgeTtsClient.generateSecMsGecFor(
-        DateTime.utc(2026, 9, 19, 4, 25, 1),
-      );
-      expect(a, isNot(b));
+    test('握手 UA 的 Edg 版本与令牌声明一致', () {
+      expect(EdgeTtsClient.chromeUserAgent, contains('Edg/143.0.0.0'));
     });
   });
 

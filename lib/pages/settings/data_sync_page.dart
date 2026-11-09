@@ -5,8 +5,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:qnote_flutter/core/ai/raccoon_auth_service.dart';
 import 'package:qnote_flutter/core/export/export_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/network/sync_scheduler.dart';
@@ -14,13 +14,16 @@ import 'package:qnote_flutter/core/network/webdav_service.dart';
 import 'package:qnote_flutter/core/storage/chat_image_gc.dart';
 import 'package:qnote_flutter/core/storage/chat_storage_usage.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
-import 'package:qnote_flutter/core/storage/database_helper.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/pages/settings/sync_settings_page.dart';
+import 'package:qnote_flutter/providers/agent_memory_provider.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
+import 'package:qnote_flutter/providers/daily_score_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
+import 'package:qnote_flutter/providers/fixed_event_provider.dart';
 import 'package:qnote_flutter/providers/folder_provider.dart';
 import 'package:qnote_flutter/providers/note_provider.dart';
+import 'package:qnote_flutter/providers/quick_prompt_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/providers/sync_provider.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
@@ -193,7 +196,37 @@ class _DataSyncPageState extends ConsumerState<DataSyncPage> {
   }
 }
 
-/// 备份与恢复分区：本地 JSON 导出导入 + 云端恢复
+/// 数据被整体替换后（导入 / 云端恢复 / 清空），刷新所有相关 Provider。
+///
+/// 两个 Tab 都会触发整体替换，因此放在文件级共用，避免两边清单不一致。
+void _invalidateAllData(WidgetRef ref) {
+  ref.invalidate(diaryListProvider);
+  ref.invalidate(noteListProvider);
+  ref.invalidate(todoListProvider);
+  ref.invalidate(folderListProvider);
+  ref.invalidate(aiProviderListProvider);
+  ref.invalidate(aiRouteGroupListProvider);
+  ref.invalidate(aiRolesProvider);
+  ref.invalidate(aiTemperaturesProvider);
+  ref.invalidate(shortcutListProvider);
+  ref.invalidate(userProfileProvider);
+  ref.invalidate(chatSessionListProvider);
+  ref.invalidate(webdavConfigProvider);
+  ref.invalidate(diaryColorMarkProvider);
+  // 固定事件模板、每日评分、快捷提示、智能体记忆也都在备份/清空的覆盖范围内，
+  // 漏刷新的表现是清空后这些列表仍显示旧内容。
+  ref.invalidate(fixedEventListProvider);
+  ref.invalidate(fixedEventNotifierProvider);
+  ref.invalidate(dailyScoreProvider);
+  ref.invalidate(dailyScoreHistoryProvider);
+  ref.invalidate(dailyScoreHeatmapProvider);
+  ref.invalidate(quickPromptListProvider);
+  ref.invalidate(agentMemoryListProvider);
+  // 清空/恢复后订阅登录态可能已被清掉，进程内缓存不能继续用
+  RaccoonAuthService.instance.clearCache();
+}
+
+/// 备份与恢复分区：本地 JSON 导出导入、云端恢复
 class _BackupRestoreTab extends ConsumerStatefulWidget {
   const _BackupRestoreTab();
 
@@ -226,6 +259,13 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
   }
 
   Future<void> _handleImport() async {
+    // 同步进行中导入会与上传线程互相覆盖：上传可能正把旧快照推上去，
+    // 而导入又把本地换成另一份数据。
+    if (SyncScheduler.instance.status == SyncStatus.syncing) {
+      Toast.warning(context, '正在同步中，请稍后再导入');
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -271,7 +311,7 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
         await _exportService.importFromJson(filePath.trim());
       }
       if (mounted) {
-        _invalidateAllData();
+        _invalidateAllData(ref);
         Toast.success(context, '导入成功');
       }
     } catch (e, stackTrace) {
@@ -327,27 +367,11 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
 
     final scheduler = SyncScheduler.instance;
     if (scheduler.status == SyncStatus.success) {
-      _invalidateAllData();
+      _invalidateAllData(ref);
       Toast.success(context, '本地数据已成功从云端恢复！');
     } else if (scheduler.status == SyncStatus.error) {
       Toast.error(context, '恢复失败: ${scheduler.lastError ?? "请确认云端是否存在有效备份"}');
     }
-  }
-
-  /// 数据被整体替换后，刷新所有相关 Provider
-  void _invalidateAllData() {
-    ref.invalidate(diaryListProvider);
-    ref.invalidate(noteListProvider);
-    ref.invalidate(todoListProvider);
-    ref.invalidate(folderListProvider);
-    ref.invalidate(aiProviderListProvider);
-    ref.invalidate(aiRolesProvider);
-    ref.invalidate(aiTemperaturesProvider);
-    ref.invalidate(shortcutListProvider);
-    ref.invalidate(userProfileProvider);
-    ref.invalidate(chatSessionListProvider);
-    ref.invalidate(webdavConfigProvider);
-    ref.invalidate(diaryColorMarkProvider);
   }
 
   @override
@@ -521,6 +545,13 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
   }
 
   Future<void> _handleClearData() async {
+    // 同步进行中清库会让远端与本地互相覆盖：上传线程可能正在把清空前/清空后的
+    // 半截状态推上去，下一次拉取又把旧数据写回来。
+    if (SyncScheduler.instance.status == SyncStatus.syncing) {
+      Toast.warning(context, '正在同步中，请稍后再清空数据');
+      return;
+    }
+
     final firstConfirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -564,25 +595,23 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
 
     setState(() => _isClearing = true);
     try {
-      final db = await DatabaseHelper.instance.database;
-      await db.delete('diary_records');
-      await db.delete('notes');
-      await db.delete('todos');
-      await db.delete('folders');
-      await db.delete('user_profiles');
-      await db.delete('ai_configs');
-      await db.delete('shortcut_configs');
-      await db.delete('chat_sessions');
-      await db.delete('webdav_configs');
-      await db.delete('date_color_marks');
-      await db.delete('body_states');
-      await db.delete('app_configs');
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.clear();
-      if (mounted) {
-        Toast.success(context, '已清除');
-      }
-    } catch (e) {
+      // 表清单、磁盘图片、SharedPreferences 统一由 ExportService 处理，
+      // 避免这里和导入覆盖各自维护一份后漏表（历史漏过 ai_providers）。
+      final deletedImages = await ExportService().wipeAllLocalData();
+      await _loadChatUsage();
+      if (!mounted) return;
+      // 不刷新 Provider 的话界面仍显示旧数据，用户会以为没清干净。
+      _invalidateAllData(ref);
+      Toast.success(
+        context,
+        deletedImages > 0 ? '已清除（含 $deletedImages 张图片）' : '已清除',
+      );
+    } catch (e, stackTrace) {
+      LoggerService.instance.logDatabase(
+        '清空本地数据失败',
+        level: LogLevel.error,
+        details: '${e.toString()}\n$stackTrace',
+      );
       if (mounted) {
         Toast.error(context, '清除失败');
       }

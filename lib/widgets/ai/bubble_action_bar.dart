@@ -40,6 +40,13 @@ class BubbleActionBar extends ConsumerWidget {
       final error = next.error;
       if (error != null && error.isNotEmpty) {
         Toast.error(context, '语音朗读失败：$error');
+        return;
+      }
+      // 降级说明在本场朗读期间一直挂在状态上（段间刷新会重复上报），故比对去重：
+      // 用户选了在线音色却听到设备语音时，这是他唯一能看到的解释
+      final notice = next.notice;
+      if (notice != null && notice != prev?.notice) {
+        Toast.warning(context, notice);
       }
     });
 

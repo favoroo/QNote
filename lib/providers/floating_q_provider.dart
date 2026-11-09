@@ -22,7 +22,7 @@ import 'package:qnote_flutter/core/agent/vfs/virtual_workspace_service.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
 import 'package:qnote_flutter/core/ai/ai_error_explainer.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
-import 'package:qnote_flutter/core/ai/model_vision_capability.dart';
+import 'package:qnote_flutter/core/ai/vision_capability_probe.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/tts/streaming_speech_session.dart';
 import 'package:qnote_flutter/core/tts/tts_player.dart';
@@ -624,11 +624,18 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       final roleSettings = await AiRoleService.instance.getSettingsForRole(
         'assistant',
       );
-      final assistantConfig = await AiRoleService.instance
-          .getEffectiveConfigForRole('assistant');
-      // 当前模型能否看图：同时决定提示词措辞与本轮图片是否进上下文
-      final supportsVisionInput =
-          ModelVisionCapability.supportsVision(assistantConfig);
+      // 绑定路由组时按组策略选成员并把组内切换器交给 AgentLoop；本轮带图片时
+      // 优先选支持识图的成员，避免把图片发给看不见画面的模型
+      final runHasImages =
+          _sessionMessages.any((m) => m.images?.isNotEmpty ?? false);
+      final assistantResolution = await AiRoleService.instance.resolveForRole(
+        'assistant',
+        preferVision: runHasImages,
+      );
+      final assistantConfig = assistantResolution.config;
+      // 当前模型能否看图：同时决定提示词措辞与本轮图片是否进上下文。
+      // 能力未知时先自动实测一次并落盘，避免把新加的视觉模型误判为不支持
+      final supportsVisionInput = await VisionCapabilityProbe.ensure(assistantConfig);
       aiService.updateConfig(
         assistantConfig,
         temperature: roleSettings.temperature,
@@ -649,6 +656,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
         maxTurns: 60,
         // 当前模型看不了图时，本轮图片在发请求前就换成 describe_image 引导（与主聊天一致）
         supportsImageInput: supportsVisionInput,
+        route: assistantResolution.route,
         // 整池限流时不报错、不静默：与主聊天一致，把排队秒数写到悬浮窗状态行
         onQuotaHold: (hold) => _setStatus('服务商限流 · 排队 ${hold.inSeconds}s 后重试'),
         afterToolCall: (call, result) async {

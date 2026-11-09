@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
-import 'package:qnote_flutter/core/ai/model_vision_capability.dart';
+import 'package:qnote_flutter/core/ai/vision_capability_probe.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
@@ -71,8 +71,9 @@ Future<AiExtractResult?> extractExistingRecord({
     final aiTempsAsync = ref.read(aiTemperaturesProvider);
     final extractImages = aiTempsAsync.valueOrNull?.timelineOptimization.extractImages ?? false;
     final bool shouldSendImage = extractImages && photos.isNotEmpty;
-    // 要发图而绑定模型看不了图时，内置识图兜底已下线：交给调用方弹窗引导换模型
-    if (shouldSendImage && !ModelVisionCapability.supportsVision(roleConfig)) {
+    // 要发图而绑定模型看不了图时，内置识图兜底已下线：交给调用方弹窗引导换模型。
+    // 能力未知的模型先自动实测一次再决定，避免新加的视觉模型被默认拦下
+    if (shouldSendImage && !await VisionCapabilityProbe.ensure(roleConfig)) {
       throw VisionUnsupportedException(roleConfig.modelName);
     }
     aiService.updateConfig(

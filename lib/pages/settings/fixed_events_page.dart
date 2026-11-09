@@ -9,6 +9,7 @@ import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/shortcut_field.dart';
 import 'package:qnote_flutter/providers/fixed_event_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
+import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/widgets/time_scroll_picker.dart';
 
@@ -219,9 +220,22 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
               value: template.isEnabled,
               onChanged: (value) async {
                 final updated = template.copyWith(isEnabled: value);
-                await ref
-                    .read(fixedEventNotifierProvider.notifier)
-                    .update(updated);
+                // 开关值来自 notifier state，写库失败时界面会自然回弹；
+                // 但异常若不接住会变成未捕获异步错误，用户看不到任何反馈。
+                try {
+                  await ref
+                      .read(fixedEventNotifierProvider.notifier)
+                      .update(updated);
+                } catch (e) {
+                  if (context.mounted) {
+                    Toast.error(context, '保存失败，请重试');
+                  }
+                  LoggerService.instance.logDatabase(
+                    '切换固定事件启用状态失败',
+                    level: LogLevel.error,
+                    details: e.toString(),
+                  );
+                }
               },
             ),
             const SizedBox(width: 8),

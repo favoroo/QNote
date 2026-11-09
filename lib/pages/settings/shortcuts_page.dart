@@ -5,6 +5,7 @@ import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/shortcut_field.dart';
 import 'package:qnote_flutter/models/shortcut_category.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
+import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 
 class ShortcutsPage extends ConsumerStatefulWidget {
@@ -152,7 +153,22 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
               value: config.isVisible,
               onChanged: (value) async {
                 final updated = config.copyWith(isVisible: value);
-                await ref.read(shortcutListNotifierProvider.notifier).update(updated);
+                // 开关值来自 notifier state，失败时会自然回弹；这里接住异常是为了
+                // 不让它变成未捕获异步错误，并给用户一个明确的失败反馈。
+                try {
+                  await ref
+                      .read(shortcutListNotifierProvider.notifier)
+                      .update(updated);
+                } catch (e) {
+                  if (context.mounted) {
+                    Toast.error(context, '保存失败，请重试');
+                  }
+                  LoggerService.instance.logDatabase(
+                    '切换快捷按钮显示状态失败',
+                    level: LogLevel.error,
+                    details: e.toString(),
+                  );
+                }
               },
             ),
             const SizedBox(width: 8),

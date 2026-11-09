@@ -8,7 +8,7 @@ import 'dart:typed_data';
 
 import 'package:audio_session/audio_session.dart';
 import 'package:crypto/crypto.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 
@@ -34,10 +34,17 @@ class TtsPlaybackState {
   /// 最近一次失败的中文描述（供 UI Toast），成功/停止时为 null
   final String? error;
 
+  /// 本场朗读的降级说明（供 UI 提示一次），无降级时为 null。
+  ///
+  /// 与 [error] 分开：在线音色握手失败后整场改用设备语音，朗读是成功的（不该报错），
+  /// 但用户听不到所选音色，不提示就会被当成「音色选择没生效」。
+  final String? notice;
+
   const TtsPlaybackState({
     this.messageId,
     this.status = TtsPlaybackStatus.idle,
     this.error,
+    this.notice,
   });
 
   static const TtsPlaybackState idle = TtsPlaybackState();
@@ -97,6 +104,14 @@ class TtsPlayer extends Notifier<TtsPlaybackState> implements SpeechSink {
 
   /// 在线通道的失败原因，与系统语音的失败一起报给用户，便于区分网络与设备问题
   String? _onlineFailureReason;
+
+  /// 本场朗读的降级说明（首段在线失败时写入，随状态发布给 UI 提示一次）
+  String? _sessionNotice;
+
+  /// 合成入口的可替换实现（仅测试注入，避免单测真的联网）
+  @visibleForTesting
+  Future<Uint8List> Function(String text, String voice, double rate)?
+      synthesizeOverride;
 
   @override
   TtsPlaybackState build() => TtsPlaybackState.idle;
@@ -165,6 +180,7 @@ class TtsPlayer extends Notifier<TtsPlaybackState> implements SpeechSink {
     _useSystemVoice = voice == QVoiceConfig.systemVoiceId;
     _sessionRate = rate;
     _onlineFailureReason = null;
+    _sessionNotice = null;
 
     final queue = SpeechQueue(
       prefetch: SpeechTuning.prefetchDepth,
@@ -267,7 +283,10 @@ class TtsPlayer extends Notifier<TtsPlaybackState> implements SpeechSink {
     if (gen != _generation) return;
 
     final failure = segment.error;
-    if (failure != null) {
+    // 已决定整场走系统语音时，后续段的合成失败不再是失败：预取是并发的，
+    // 首段失败前它们就已发出，且必然一起失败（同一个网络/握手问题）。
+    // 不豁免的话降级场次会念完首段就以"中途失败"中断并弹错误
+    if (failure != null && !_useSystemVoice) {
       if (segment.index > 0) {
         throw failure is TtsException
             ? failure
@@ -275,6 +294,11 @@ class TtsPlayer extends Notifier<TtsPlaybackState> implements SpeechSink {
       }
       _onlineFailureReason =
           failure is TtsException ? failure.message : '$failure';
+      // 降级对本场是成功的（只是换了音色），不报错但必须说一声：
+      // 否则用户选什么音色都听到设备语音，还以为音色设置坏了
+      _sessionNotice = '在线音色不可用（$_onlineFailureReason），本场改用设备语音';
+      // 置位后本场余下段落不再尝试在线合成，预取失败也不再判为失败
+      _useSystemVoice = true;
       LoggerService.instance.logAI('Edge TTS 首段失败，整场改用系统语音: $_onlineFailureReason');
     }
 
@@ -286,6 +310,7 @@ class TtsPlayer extends Notifier<TtsPlaybackState> implements SpeechSink {
       state = TtsPlaybackState(
         messageId: _sessionMessageId,
         status: TtsPlaybackStatus.playing,
+        notice: _sessionNotice,
       );
       // 段间不再清队列：原生靠 awaitSpeakCompletion 串行，浏览器靠自带队列续播
       await TtsService.speakNative(
@@ -299,10 +324,16 @@ class TtsPlayer extends Notifier<TtsPlaybackState> implements SpeechSink {
   }
 
   /// 本场念完：复位为空闲（保留 messageId，让该条按钮回到"朗读"态）
+  ///
+  /// 降级说明（[_sessionNotice]）同样留到下一场开始才清：本场刚念完时用户正好
+  /// 会回看这条气泡，说明还在状态里更好排查；UI 靠比对旧值去重，不会重复弹。
   void _closeSession() {
     _sessionActive = false;
     _queue = null;
-    state = TtsPlaybackState(messageId: _sessionMessageId);
+    state = TtsPlaybackState(
+      messageId: _sessionMessageId,
+      notice: _sessionNotice,
+    );
   }
 
   /// 本场失败：状态复位并带上用户可读的原因
@@ -332,7 +363,10 @@ class TtsPlayer extends Notifier<TtsPlaybackState> implements SpeechSink {
     final digest = md5.convert(utf8.encode('$voice|$rate|$text')).toString();
     final cached = _cache[digest];
     if (cached != null) return cached;
-    final bytes = await TtsService.synthesize(text: text, voice: voice, rate: rate);
+    final override = synthesizeOverride;
+    final bytes = await (override != null
+        ? override(text, voice, rate)
+        : TtsService.synthesize(text: text, voice: voice, rate: rate));
     _cache.remove(digest);
     _cache[digest] = bytes;
     while (_cache.length > _maxCacheEntries) {

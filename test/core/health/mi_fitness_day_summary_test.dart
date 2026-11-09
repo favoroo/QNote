@@ -4,11 +4,17 @@ import 'package:qnote_flutter/core/health/mi_fitness_auth_service.dart';
 
 /// 按 key 返回预置数据、并可指定某些 key 抛异常的假客户端（不触网）
 class _StubMiFitnessApiClient extends MiFitnessApiClient {
-  _StubMiFitnessApiClient({required this.dataByKey, this.failingKeys = const {}})
-      : super(MiFitnessAuthService());
+  _StubMiFitnessApiClient({
+    required this.dataByKey,
+    this.failingKeys = const {},
+    this.authFailingKeys = const {},
+  }) : super(MiFitnessAuthService());
 
   final Map<String, List<Map<String, dynamic>>> dataByKey;
   final Set<String> failingKeys;
+
+  /// 这些 key 抛登录态异常（决定「重新扫码」还是「稍后重试」，不能被其它错误盖掉）
+  final Set<String> authFailingKeys;
 
   @override
   Future<List<Map<String, dynamic>>> fetchFitnessData({
@@ -16,6 +22,9 @@ class _StubMiFitnessApiClient extends MiFitnessApiClient {
     required DateTime endTime,
     required String key,
   }) async {
+    if (authFailingKeys.contains(key)) {
+      throw MiFitnessAuthException('模拟登录态失效', needsRelogin: true);
+    }
     if (failingKeys.contains(key)) {
       throw Exception('模拟故障: $key');
     }
@@ -79,6 +88,22 @@ void main() {
       expect(summary.steps, equals(0));
       expect(summary.sleepDurationMinutes, equals(0));
       expect(summary.standingCount, equals(0));
+    });
+
+    test('登录态失效优先上抛：不被其它指标的普通故障盖掉', () async {
+      final client = _StubMiFitnessApiClient(
+        dataByKey: {},
+        // 除 steps 外都是普通故障：若按完成顺序取首条异常，很可能报成泛化错误
+        failingKeys: {'sleep', 'heart_rate', 'spo2', 'stress', 'resting_heart_rate'},
+        authFailingKeys: {'steps'},
+      );
+
+      await expectLater(
+        client.fetchDaySummary(date),
+        throwsA(
+          isA<MiFitnessAuthException>().having((e) => e.needsRelogin, 'needsRelogin', isTrue),
+        ),
+      );
     });
   });
 }

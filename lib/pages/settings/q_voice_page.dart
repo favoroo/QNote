@@ -62,6 +62,13 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
       final error = next.error;
       if (error != null && error.isNotEmpty) {
         Toast.error(context, '语音试听失败：$error');
+        return;
+      }
+      // 在线音色不可用时会整场降级为设备语音：试听听到的是设备音色，
+      // 不提示一句就会被当成「选了音色却没生效」
+      final notice = next.notice;
+      if (notice != null && notice != prev?.notice) {
+        Toast.warning(context, notice);
       }
     });
 
