@@ -24,11 +24,15 @@ AiModelRef? defaultModelRef(List<AiProvider> providers) {
 }
 
 /// 厂商条目里全部已启用模型（按厂商顺序展开）
+///
+/// 已停用的厂商整条跳过：选择器、路由组成员源与页面空态判断都汇聚到这里，
+/// 在入口过滤一次就不必各处再判 `provider.enabled`。
 List<({AiProvider provider, AiProviderModel model})> enabledModelEntries(
   List<AiProvider> providers,
 ) {
   final entries = <({AiProvider provider, AiProviderModel model})>[];
   for (final provider in providers) {
+    if (!provider.enabled) continue;
     for (final model in provider.models) {
       entries.add((provider: provider, model: model));
     }
@@ -51,14 +55,18 @@ String aiModelDisplayName(
   return '${provider.name} · ${model?.name ?? ref.modelName}';
 }
 
-/// 组内「厂商与模型都还在」的成员数（用于选择器里提示成员失效）
+/// 组内「厂商未停用且模型都还在」的成员数（用于选择器里提示成员失效）
 int routeGroupLiveMemberCount(AiRouteGroup group, List<AiProvider> providers) {
   var live = 0;
   for (final member in group.enabledMembers) {
     final provider = providers
         .where((p) => p.id == member.providerId)
         .firstOrNull;
-    if (provider != null && provider.hasModel(member.modelName)) live++;
+    if (provider != null &&
+        provider.enabled &&
+        provider.hasModel(member.modelName)) {
+      live++;
+    }
   }
   return live;
 }
@@ -331,6 +339,8 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
                     const SizedBox(height: 2),
                   ],
                   ...widget.providers.expand((provider) {
+                    // 停用的厂商不出现在选择器里（模型仍在条目里保留着）
+                    if (!provider.enabled) return const <Widget>[];
                     final models = provider.models
                         .where((m) => _matches(provider, m))
                         .toList();

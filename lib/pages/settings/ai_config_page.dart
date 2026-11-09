@@ -12,6 +12,7 @@ import 'package:qnote_flutter/core/ai/vision_capability_probe.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/ai_account_routing.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
+import 'package:qnote_flutter/models/ai_model_ref.dart';
 import 'package:qnote_flutter/models/ai_provider.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/ai_route_group.dart';
@@ -202,6 +203,25 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     if (mounted) Toast.success(context, '已将「${provider.name}」设为默认');
   }
 
+  /// 停用/启用整个厂商条目（可逆，不动密钥、模型与角色绑定）
+  Future<void> _setProviderEnabled(AiProvider provider, bool enabled) async {
+    try {
+      await ref
+          .read(aiProviderListProvider.notifier)
+          .setProviderEnabled(provider.id, enabled);
+      // 该厂商不再参与选路，角色行的生效模型会跟着回落，重新算一次展示名
+      await _loadRoles();
+      if (mounted) {
+        Toast.success(
+          context,
+          enabled ? '已启用「${provider.name}」' : '已停用「${provider.name}」',
+        );
+      }
+    } catch (e) {
+      if (mounted) Toast.error(context, '${enabled ? '启用' : '停用'}失败：$e');
+    }
+  }
+
   // ── 角色模型分配 ─────────────────────────────────────────
 
   Future<void> _pickRoleModel(String roleKey) async {
@@ -240,6 +260,25 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         _ => '生图模型',
       };
 
+  /// 绑定仍指向存在的模型/组，但所属厂商被手动停用时的提示文案
+  ///
+  /// 与「未配置」区分开：绑定没丢，重新启用厂商即恢复，不提示会让用户以为
+  /// 自己配的模型凭空消失了。
+  String? _disabledBindingHint(
+    AiModelRef? ref,
+    List<AiProvider> providers,
+    List<AiRouteGroup> groups,
+  ) {
+    if (ref == null) return null;
+    // 真失效（厂商/模型已删）由陈旧绑定清理负责，这里不管
+    if (!isBindingResolvable(ref, providers, groups)) return null;
+    if (isBindingUsable(ref, providers, groups)) return null;
+    final name = ref.isRouteGroup
+        ? groups.where((g) => g.id == ref.providerId).firstOrNull?.name
+        : providers.where((p) => p.id == ref.providerId).firstOrNull?.name;
+    return name == null ? null : '「$name」已停用';
+  }
+
   /// 角色当前生效的展示名：绑定（模型或路由组）→ 默认/首个可用厂商的首个模型 → 未配置
   String _roleDisplayName(
     String roleKey,
@@ -254,12 +293,16 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     if (isBindingUsable(bound, providers, groups)) {
       return aiBindingDisplayName(bound, providers, groups);
     }
+    final hint = _disabledBindingHint(bound, providers, groups);
     // 生图刻意不回落对话模型：对话模型通常不支持 images/generations
-    if (roleKey == 'imageGeneration') return '未配置（生图暂不可用）';
+    if (roleKey == 'imageGeneration') {
+      return hint == null ? '未配置（生图暂不可用）' : '$hint，生图暂不可用';
+    }
     final provider = providers.where((p) => p.isDefault && p.isUsable).firstOrNull ??
         providers.where((p) => p.isUsable).firstOrNull;
     final model = provider?.firstModel;
-    return model == null ? '未配置' : '跟随默认 · ${model.name}';
+    if (model == null) return hint ?? '未配置';
+    return hint == null ? '跟随默认 · ${model.name}' : '$hint，暂用 ${model.name}';
   }
 
   Future<void> _testModelImageRecognition(String roleKey) async {
@@ -356,7 +399,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionTitle(theme, '模型服务', '点击卡片管理密钥与已启用模型'),
+        _sectionTitle(theme, '模型服务', '点击卡片管理密钥与已启用模型，右上角菜单可临时停用'),
         ...providers.map((provider) => _providerCard(theme, provider)),
       ],
     );
@@ -364,6 +407,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
 
   Widget _providerCard(ThemeData theme, AiProvider provider) {
     final colorScheme = theme.colorScheme;
+    final disabled = !provider.enabled;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
@@ -386,12 +430,14 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                   width: 38,
                   height: 38,
                   decoration: BoxDecoration(
-                    color: colorScheme.primary.withValues(alpha: 0.1),
+                    color: disabled
+                        ? colorScheme.surfaceContainerHighest
+                        : colorScheme.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
                     Icons.hub_rounded,
-                    color: colorScheme.primary,
+                    color: disabled ? colorScheme.outline : colorScheme.primary,
                     size: 20,
                   ),
                 ),
@@ -409,9 +455,16 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                               overflow: TextOverflow.ellipsis,
                               style: theme.textTheme.titleSmall?.copyWith(
                                 fontWeight: FontWeight.bold,
+                                color: disabled
+                                    ? colorScheme.onSurfaceVariant
+                                    : null,
                               ),
                             ),
                           ),
+                          if (disabled) ...[
+                            const SizedBox(width: 6),
+                            _badge(theme, '已停用', colorScheme.outline),
+                          ],
                           if (provider.isDefault) ...[
                             const SizedBox(width: 6),
                             _badge(theme, '默认', colorScheme.primary),
@@ -446,16 +499,23 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                     switch (value) {
                       case 'default':
                         _setDefaultProvider(provider);
+                      case 'toggle':
+                        _setProviderEnabled(provider, disabled);
                       case 'delete':
                         _deleteProvider(provider);
                     }
                   },
                   itemBuilder: (ctx) => [
-                    if (!provider.isDefault)
+                    // 停用的厂商不参与选路，设为默认没有意义
+                    if (provider.enabled && !provider.isDefault)
                       const PopupMenuItem(
                         value: 'default',
                         child: Text('设为默认'),
                       ),
+                    PopupMenuItem(
+                      value: 'toggle',
+                      child: Text(disabled ? '启用' : '停用'),
+                    ),
                     PopupMenuItem(
                       value: 'delete',
                       child: Text(
@@ -543,6 +603,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     final liveMembers = group.enabledMembers
         .map((m) => aiModelDisplayName(m.ref, providers, fallback: m.modelName))
         .toList();
+    // 成员是否还能解析出来要另算：厂商被停用/模型被停用的成员名字照旧显示，
+    // 但它们已经不参与选路，组其实处于「绑了也用不上」的状态
+    final liveCount = routeGroupLiveMemberCount(group, providers);
     final preview = liveMembers.take(3).toList();
     final remaining = liveMembers.length - preview.length;
 
@@ -593,7 +656,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                     color: colorScheme.onSurfaceVariant,
                   ),
                 ),
-                if (liveMembers.isEmpty) ...[
+                if (liveCount == 0) ...[
                   const SizedBox(height: 4),
                   Text(
                     '成员模型均已停用，绑定它的角色会回落到默认模型',

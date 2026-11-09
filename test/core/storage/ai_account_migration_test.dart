@@ -89,10 +89,13 @@ void main() {
     final names = providerColumns.map((c) => c['name'] as String).toSet();
     expect(names.contains('account_routing'), isTrue);
     expect(names.contains('account_affinity'), isTrue);
+    // v32 的厂商级停用开关：老库补列后按「启用」处理，不能把老用户的服务停掉
+    expect(names.contains('enabled'), isTrue);
 
     final provider = (await db.query('ai_providers')).single;
     expect(provider['account_routing'], 'rotate');
     expect(provider['account_affinity'], 'session');
+    expect(provider['enabled'], 1);
   });
 
   test('已经是 v31 结构时重复执行不破坏数据（onOpen 兜底幂等）', () async {

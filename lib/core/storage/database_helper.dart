@@ -66,6 +66,7 @@ class DatabaseHelper {
       model_catalog TEXT,
       catalog_updated_at TEXT,
       is_default INTEGER DEFAULT 0,
+      enabled INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
@@ -152,7 +153,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 31,
+      version: 32,
       onConfigure: (db) async {
         // 遇到写锁时等待重试（默认立即抛 database is locked），提升并发访问健壮性
         try {
@@ -1091,6 +1092,20 @@ class DatabaseHelper {
       // （该表本来就不参与同步）。
       await ensureMultiAccountSchema(db);
     }
+
+    if (oldVersion < 32) {
+      // 厂商级「停用」开关。web 与开发期热重载只走 onOpen，那里也有一份同样的
+      // 列检查（见 ensureMultiAccountSchema）
+      try {
+        final columns = await db.rawQuery('PRAGMA table_info(ai_providers)');
+        final names = columns.map((c) => c['name'] as String).toSet();
+        if (names.isNotEmpty && !names.contains('enabled')) {
+          await db.execute(
+            'ALTER TABLE ai_providers ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1',
+          );
+        }
+      } catch (_) {}
+    }
   }
 
   /// v31 的多账号 schema 迁移（`_onUpgrade` 与 `onOpen` 共用）
@@ -1156,6 +1171,11 @@ class DatabaseHelper {
       if (names.isNotEmpty && !names.contains('account_affinity')) {
         await db.execute(
           "ALTER TABLE ai_providers ADD COLUMN account_affinity TEXT NOT NULL DEFAULT 'session'",
+        );
+      }
+      if (names.isNotEmpty && !names.contains('enabled')) {
+        await db.execute(
+          'ALTER TABLE ai_providers ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1',
         );
       }
     } catch (_) {}

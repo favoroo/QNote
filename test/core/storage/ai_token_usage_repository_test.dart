@@ -27,10 +27,10 @@ void main() {
   });
 
   AiTokenUsage usage(int prompt, int completion) => AiTokenUsage(
-        promptTokens: prompt,
-        completionTokens: completion,
-        totalTokens: prompt + completion,
-      );
+    promptTokens: prompt,
+    completionTokens: completion,
+    totalTokens: prompt + completion,
+  );
 
   Future<void> insertDay(String date, int total) async {
     await db.insert(AiTokenUsageRepository.table, {
@@ -41,6 +41,26 @@ void main() {
       'completion_tokens': total ~/ 2,
       'total_tokens': total,
       'request_count': 1,
+      'updated_at': DateTime.now().toIso8601String(),
+    });
+  }
+
+  Future<void> insertUsage({
+    required String date,
+    required String providerId,
+    required String modelName,
+    required int prompt,
+    required int completion,
+    required int requests,
+  }) async {
+    await db.insert(AiTokenUsageRepository.table, {
+      'date': date,
+      'provider_id': providerId,
+      'model_name': modelName,
+      'prompt_tokens': prompt,
+      'completion_tokens': completion,
+      'total_tokens': prompt + completion,
+      'request_count': requests,
       'updated_at': DateTime.now().toIso8601String(),
     });
   }
@@ -103,6 +123,106 @@ void main() {
     final summary = await repo.getSummary();
     expect(summary.hasData, isFalse);
     expect(summary.totalTokens, 0);
+  });
+
+  test('明细按时间范围聚合，并按厂商 / 模型降序排行', () async {
+    final today = AiTokenUsageRepository.dateKeyOf(DateTime.now());
+    final threeDaysAgo = AiTokenUsageRepository.dateKeyOf(
+      DateTime.now().subtract(const Duration(days: 3)),
+    );
+    final tenDaysAgo = AiTokenUsageRepository.dateKeyOf(
+      DateTime.now().subtract(const Duration(days: 10)),
+    );
+    final fortyDaysAgo = AiTokenUsageRepository.dateKeyOf(
+      DateTime.now().subtract(const Duration(days: 40)),
+    );
+
+    // p1 同厂商两个模型：厂商维度必须折叠成 150，而不是只取最大模型
+    await insertUsage(
+      date: today,
+      providerId: 'p1',
+      modelName: 'm1',
+      prompt: 60,
+      completion: 40,
+      requests: 2,
+    );
+    await insertUsage(
+      date: today,
+      providerId: 'p1',
+      modelName: 'm2',
+      prompt: 30,
+      completion: 20,
+      requests: 1,
+    );
+    await insertUsage(
+      date: threeDaysAgo,
+      providerId: 'p2',
+      modelName: 'm3',
+      prompt: 120,
+      completion: 80,
+      requests: 4,
+    );
+    await insertUsage(
+      date: tenDaysAgo,
+      providerId: 'p2',
+      modelName: 'm3',
+      prompt: 240,
+      completion: 160,
+      requests: 8,
+    );
+    await insertUsage(
+      date: fortyDaysAgo,
+      providerId: 'p3',
+      modelName: 'm4',
+      prompt: 480,
+      completion: 320,
+      requests: 16,
+    );
+
+    final todayDetail = await repo.getDetail(AiTokenUsagePeriod.today);
+    expect(todayDetail.period, AiTokenUsagePeriod.today);
+    expect(todayDetail.summary.totalTokens, 150);
+    expect(todayDetail.summary.promptTokens, 90);
+    expect(todayDetail.summary.completionTokens, 60);
+    expect(todayDetail.summary.requestCount, 3);
+    expect(todayDetail.averagePerRequest, 50);
+    expect(todayDetail.providers.single.providerId, 'p1');
+    expect(todayDetail.providers.single.totalTokens, 150);
+    expect(todayDetail.providers.single.requestCount, 3);
+    expect(todayDetail.models.map((item) => item.modelName), [
+      'm1',
+      'm2',
+    ], reason: '模型排行按 token 降序');
+    expect(todayDetail.models.first.totalTokens, 100);
+    expect(todayDetail.models.first.requestCount, 2);
+
+    final week = await repo.getDetail(AiTokenUsagePeriod.week);
+    expect(week.summary.totalTokens, 350, reason: '今日 150 + 3 天前 200');
+    expect(
+      week.providers.map((item) => item.providerId),
+      ['p2', 'p1'],
+      reason: '厂商排行按 token 降序，200 > 150',
+    );
+    expect(week.providers.first.requestCount, 4);
+
+    final month = await repo.getDetail(AiTokenUsagePeriod.month);
+    expect(month.summary.totalTokens, 750, reason: '近 30 天含 10 天前，不含 40 天前');
+    expect(month.providers.first.providerId, 'p2');
+    expect(month.providers.first.totalTokens, 600);
+    expect(month.providers.first.requestCount, 12);
+
+    final all = await repo.getDetail(AiTokenUsagePeriod.all);
+    expect(all.summary.totalTokens, 1550);
+    expect(all.providers.map((item) => item.providerId), ['p3', 'p2', 'p1']);
+    expect(all.models.length, 4);
+  });
+
+  test('明细空表退化为空态而不是抛错', () async {
+    final detail = await repo.getDetail(AiTokenUsagePeriod.all);
+    expect(detail.hasData, isFalse);
+    expect(detail.providers, isEmpty);
+    expect(detail.models, isEmpty);
+    expect(detail.averagePerRequest, 0);
   });
 
   test('dateKeyOf 输出定宽日期键', () {

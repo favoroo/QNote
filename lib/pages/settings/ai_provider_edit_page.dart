@@ -16,6 +16,7 @@ import 'package:qnote_flutter/models/ai_account_routing.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_provider.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
+import 'package:qnote_flutter/models/raccoon_account_quota.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/widgets/ai/raccoon_login_sheet.dart';
 import 'package:qnote_flutter/widgets/ai/reasoning_effort_sheet.dart';
@@ -71,6 +72,11 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
   /// 账号选号策略与亲和时长（账号型专用，随条目保存）
   late String _accountRouting;
   late String _accountAffinity;
+
+  /// 账号额度：accountId → 本次打开编辑页期间的查询结果/进行中/错误
+  final Map<String, RaccoonAccountQuota> _quotas = {};
+  final Set<String> _quotaLoading = {};
+  final Map<String, String> _quotaErrors = {};
 
   bool _dirty = false;
   bool _saving = false;
@@ -129,14 +135,78 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
         forceReload: true,
       );
       if (!mounted) return;
+      // 退出登录/换账号后，旧账号的额度与错误不该继续挂在界面上
+      final ids = accounts.map((account) => account.id).toSet();
+      _quotas.removeWhere((id, _) => !ids.contains(id));
+      _quotaErrors.removeWhere((id, _) => !ids.contains(id));
       setState(() {
         _accounts = accounts;
         _accountLoading = false;
       });
+      _autoFetchQuotas();
     } catch (_) {
       if (!mounted) return;
       setState(() => _accountLoading = false);
     }
+  }
+
+  /// 首次进入（或刚登录完）给每个可用账号自动查一次额度；
+  /// 已查过的账号不重复打接口，避免改备注/切启停时反复触发网络请求
+  void _autoFetchQuotas() {
+    for (final account in _accounts) {
+      if (!account.enabled || account.isExpired) continue;
+      if (_quotas.containsKey(account.id) ||
+          _quotaErrors.containsKey(account.id)) {
+        continue;
+      }
+      if (_quotaLoading.contains(account.id)) continue;
+      _fetchQuota(account);
+    }
+  }
+
+  /// 查询/刷新单个账号的积分
+  Future<void> _fetchQuota(AiAccount account) async {
+    if (_quotaLoading.contains(account.id)) return;
+    setState(() {
+      _quotaLoading.add(account.id);
+      _quotaErrors.remove(account.id);
+    });
+    try {
+      final quota = await RaccoonAuthService.instance.fetchQuota(account);
+      if (!mounted) return;
+      final stillListed = _accounts.any((item) => item.id == account.id);
+      setState(() {
+        _quotaLoading.remove(account.id);
+        if (stillListed) _quotas[account.id] = quota;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      final stillListed = _accounts.any((item) => item.id == account.id);
+      setState(() {
+        _quotaLoading.remove(account.id);
+        if (stillListed) _quotaErrors[account.id] = _quotaErrorMessage(e);
+      });
+      if (e is RaccoonAuthRequiredException) {
+        // 登录态被服务端拒绝：拉一次账号列表，让「已过期」状态立刻显示出来
+        await _loadAccounts();
+      }
+    }
+  }
+
+  /// 刷新全部可用账号的积分
+  Future<void> _refreshAllQuotas() async {
+    final targets = _accounts
+        .where((account) => account.enabled && !account.isExpired)
+        .toList();
+    await Future.wait(targets.map(_fetchQuota));
+  }
+
+  String _quotaErrorMessage(Object error) {
+    final text = error
+        .toString()
+        .replaceFirst('FormatException: ', '')
+        .replaceFirst('Exception: ', '');
+    return text.length > 80 ? '${text.substring(0, 80)}…' : text;
   }
 
   @override
@@ -221,6 +291,11 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
           RaccoonLoginSheet(providerId: _providerId, accountId: accountId),
     );
     if (account == null || !mounted) return;
+    // 重新登录可能换成了另一个厂商账号：旧积分属于上一个账号，不能继续展示
+    setState(() {
+      _quotas.remove(account.id);
+      _quotaErrors.remove(account.id);
+    });
     await _loadAccounts();
     if (!mounted) return;
     setState(() => _dirty = true);
@@ -546,8 +621,9 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       for (final model in _catalog) {
         if (seen.add(model.id)) merged.add(model);
       }
-      // 新账号首次扫描时默认启用第一个模型，避免用户还要再去勾一次
-      if (_models.isEmpty && merged.isNotEmpty) {
+      // 首次扫描（还没有任何目录）时默认启用第一个模型，避免用户还要再去勾一次；
+      // 已有目录说明用户自己管理过勾选，哪怕现在一个都没启用也照他的意愿来
+      if (_models.isEmpty && _catalog.isEmpty && merged.isNotEmpty) {
         _models.add(merged.first);
       }
       setState(() {
@@ -746,10 +822,8 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       Toast.warning(context, '请至少启用一个账号，否则无法调用');
       return false;
     }
-    if (_models.isEmpty) {
-      Toast.warning(context, '请至少启用一个模型（可先扫描模型列表）');
-      return false;
-    }
+    // 刻意允许「一个模型都不启用」：停用全部模型 = 让这个厂商暂时退出选路，
+    // 密钥与目录都留着，下次勾回来即可。绑定失效的角色会在下面被自动收敛。
 
     setState(() => _saving = true);
     try {
@@ -1151,6 +1225,35 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (_accounts.isNotEmpty) ...[
+            Row(
+              children: [
+                Text(
+                  '小浣熊账号',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: _quotaLoading.isEmpty ? _refreshAllQuotas : null,
+                  icon: _quotaLoading.isEmpty
+                      ? const Icon(Icons.refresh_rounded, size: 16)
+                      : const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                  label: Text(_quotaLoading.isEmpty ? '刷新额度' : '查询中'),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+          ],
           if (_accounts.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
@@ -1367,10 +1470,99 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                   ),
                 ),
               ),
+            Padding(
+              padding: const EdgeInsets.only(left: 30, top: 2),
+              child: _quotaLine(theme, account),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  /// 账号行里的额度：积分 + 套餐 + 更新时间，右侧是单账号刷新
+  Widget _quotaLine(ThemeData theme, AiAccount account) {
+    final colorScheme = theme.colorScheme;
+    final quota = _quotas[account.id];
+    final loading = _quotaLoading.contains(account.id);
+    final error = _quotaErrors[account.id];
+
+    final String text;
+    if (quota != null) {
+      final parts = <String>['积分 ${_formatPoints(quota.availablePoints)}'];
+      if (quota.hasPlan) parts.add(quota.plan);
+      final expires = quota.planExpiresAt;
+      if (expires != null) parts.add('至 ${_formatQuotaDate(expires)}');
+      parts.add('${_formatQuotaClock(quota.fetchedAt)} 更新');
+      text = parts.join(' · ');
+    } else if (loading) {
+      text = '正在查询积分…';
+    } else if (error != null) {
+      text = '额度查询失败：$error';
+    } else {
+      text = '积分未查询';
+    }
+
+    return Row(
+      children: [
+        Icon(
+          Icons.toll_outlined,
+          size: 14,
+          color: error != null
+              ? colorScheme.error
+              : colorScheme.onSurfaceVariant,
+        ),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            text,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: error != null
+                  ? colorScheme.error
+                  : colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        SizedBox(
+          width: 32,
+          height: 32,
+          child: loading
+              ? const Padding(
+                  padding: EdgeInsets.all(8),
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : IconButton(
+                  padding: EdgeInsets.zero,
+                  iconSize: 16,
+                  tooltip: '查询这个账号的积分',
+                  onPressed: () => _fetchQuota(account),
+                  icon: const Icon(Icons.refresh_rounded),
+                ),
+        ),
+      ],
+    );
+  }
+
+  String _formatPoints(int value) {
+    final text = value.abs().toString();
+    final buffer = StringBuffer();
+    for (var i = 0; i < text.length; i++) {
+      if (i > 0 && (text.length - i) % 3 == 0) buffer.write(',');
+      buffer.write(text[i]);
+    }
+    return value < 0 ? '-$buffer' : buffer.toString();
+  }
+
+  String _formatQuotaDate(DateTime time) {
+    final local = time.toLocal();
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${local.year}-${two(local.month)}-${two(local.day)}';
+  }
+
+  String _formatQuotaClock(DateTime time) {
+    final local = time.toLocal();
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${two(local.hour)}:${two(local.minute)}';
   }
 
   String _formatAccountTime(DateTime time) {

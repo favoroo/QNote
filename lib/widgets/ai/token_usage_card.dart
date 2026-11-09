@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/core/utils/token_usage_format.dart';
 import 'package:qnote_flutter/models/ai_token_usage.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
+import 'package:qnote_flutter/widgets/ai/token_usage_detail_sheet.dart';
 
 /// AI 配置页顶部的 Token 消耗统计卡
 ///
@@ -11,6 +12,7 @@ import 'package:qnote_flutter/providers/ai_provider.dart';
 /// 再补今日与近 7 天两个窗口。不猜价格、不估算缺失用量——不同模型分词器与
 /// 计费规则差异太大，估算值混进来反而让用户不敢信这张卡。
 ///
+/// 点击卡片打开 [TokenUsageDetailSheet]，按时间范围查看厂商 / 模型排行。
 /// 数据来自本机 `ai_token_usage_daily` 表（不参与云同步），因此文案明确写「本机」。
 class TokenUsageCard extends ConsumerWidget {
   const TokenUsageCard({super.key});
@@ -20,29 +22,36 @@ class TokenUsageCard extends ConsumerWidget {
     final theme = Theme.of(context);
     final summaryAsync = ref.watch(aiTokenUsageSummaryProvider);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
-      ),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      child: summaryAsync.when(
-        loading: () => const SizedBox(
-          height: 96,
-          child: Center(
-            child: SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
+    return Material(
+      color: theme.cardColor,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => showTokenUsageDetailSheet(context),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
             ),
           ),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          child: summaryAsync.when(
+            loading: () => const SizedBox(
+              height: 96,
+              child: Center(
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
+            // 统计读失败不该在配置页摆一块红脸：退化成空态即可，不影响模型配置本身
+            error: (e, st) => _content(theme, AiTokenUsageSummary.empty),
+            data: (summary) => _content(theme, summary),
+          ),
         ),
-        // 统计读失败不该在配置页摆一块红脸：退化成空态即可，不影响模型配置本身
-        error: (e, st) => _content(theme, AiTokenUsageSummary.empty),
-        data: (summary) => _content(theme, summary),
       ),
     );
   }
@@ -54,7 +63,11 @@ class TokenUsageCard extends ConsumerWidget {
       children: [
         Row(
           children: [
-            Icon(Icons.data_usage_rounded, size: 16, color: colorScheme.primary),
+            Icon(
+              Icons.data_usage_rounded,
+              size: 16,
+              color: colorScheme.primary,
+            ),
             const SizedBox(width: 6),
             Text(
               'Token 消耗',
@@ -68,6 +81,12 @@ class TokenUsageCard extends ConsumerWidget {
               style: theme.textTheme.labelSmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
+            ),
+            const SizedBox(width: 2),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 16,
+              color: colorScheme.onSurfaceVariant,
             ),
           ],
         ),

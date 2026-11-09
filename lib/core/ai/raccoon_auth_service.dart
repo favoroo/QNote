@@ -12,6 +12,7 @@ import 'package:qnote_flutter/core/storage/ai_account_repository.dart';
 import 'package:qnote_flutter/models/ai_account.dart';
 import 'package:qnote_flutter/models/ai_account_routing.dart';
 import 'package:qnote_flutter/models/ai_provider.dart';
+import 'package:qnote_flutter/models/raccoon_account_quota.dart';
 
 /// 订阅账号没有可用登录态：发信前抛出，交给界面提示重新登录
 class RaccoonAuthRequiredException implements Exception {
@@ -329,6 +330,18 @@ class RaccoonAuthService {
   @visibleForTesting
   static Future<String?> Function(String providerId)? accessTokenLoaderForTest;
 
+  /// 测试注入：登录落库（默认写 `ai_accounts` 表）；注入后纯内存，不碰 sqflite
+  @visibleForTesting
+  static Future<void> Function(AiAccount account)? accountSaverForTest;
+
+  /// 测试注入：替换换取授权失败后的退避等待（默认 400ms → 1200ms）
+  @visibleForTesting
+  static Future<void> Function(int attempt)? exchangeRetryWaitForTest;
+
+  /// 测试注入：额度接口 401 后刷新账号（默认走 `refreshAccount`）
+  @visibleForTesting
+  static Future<AiAccount> Function(AiAccount account)? accountRefresherForTest;
+
   /// 发信前取 token 的严格版本：没有可用登录态直接抛给上层提示
   Future<String> requireAccessToken(String providerId) async {
     final token = await accessTokenFor(providerId);
@@ -360,7 +373,7 @@ class RaccoonAuthService {
     final stored = await _repository.getById(accountId);
     if (stored == null) {
       _cache.remove(accountId);
-      throw RaccoonAuthRequiredException(
+      throw const RaccoonAuthRequiredException(
         '',
         message: '账号已被删除，请重新登录',
       );
@@ -431,11 +444,21 @@ class RaccoonAuthService {
     String providerId, {
     String? accountId,
   }) async {
-    final loopback = await startRaccoonLoopbackLogin();
-    final result = () async {
-      final code = await loopback.code;
-      return exchangeCode(providerId, code, accountId: accountId);
-    }();
+    AiAccount? account;
+    final loopback = await startRaccoonLoopbackLogin(
+      // 换取放进回环请求里：失败时浏览器页面直接显示「登录未完成」，
+      // 不会出现网页提示成功、App 里却报错的错位
+      onCode: (code) async {
+        account = await exchangeCode(providerId, code, accountId: accountId);
+      },
+    );
+    final result = loopback.code.then((_) {
+      final signedIn = account;
+      if (signedIn == null) {
+        throw const FormatException('换取登录凭证失败');
+      }
+      return signedIn;
+    });
     return RaccoonLoginHandle(
       url: loopback.url,
       result: result,
@@ -444,6 +467,11 @@ class RaccoonAuthService {
   }
 
   /// 授权码换 token
+  ///
+  /// 浏览器回环登录里授权码是「刚签发就交换」：厂商后端偶发还没把这条码同步到
+  /// 兑换节点，第一次会以 `200035` 或空的 2xx 拒绝，隔一两秒用同一个码再换就能
+  /// 成功——现象就是网页登录报错、把同一个回调链接复制出来粘贴反而能登录。
+  /// 因此这里对「可能还没生效」的失败做两次短退避重试；确定性拒绝立即抛出。
   Future<AiAccount> exchangeCode(
     String providerId,
     String code, {
@@ -453,31 +481,104 @@ class RaccoonAuthService {
     if (trimmed.isEmpty) {
       throw const FormatException('授权码为空');
     }
-    try {
-      final response = await _dio.post<dynamic>(
-        '$authBase/login_with_authorization_code',
-        data: {'authorization_code': trimmed},
-      );
-      final access = _tokenFromResponse(response.data, 'access_token');
-      final refresh = _tokenFromResponse(response.data, 'refresh_token');
-      if (access == null || access.isEmpty || refresh == null) {
-        throw FormatException(_vendorError(response.data, '换取登录凭证失败'));
+    final tokens = await _exchangeTokens(trimmed);
+    return _persistLogin(
+      providerId,
+      access: tokens.access,
+      refresh: tokens.refresh,
+      accountId: accountId,
+    );
+  }
+
+  /// 换取 access/refresh token（含重试）
+  ///
+  /// 落库放在重试之外：授权码一次性，重试只会重复交换，不该把库写入错误一起重来。
+  Future<({String access, String refresh})> _exchangeTokens(
+    String code,
+  ) async {
+    Object? lastError;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) {
+        final wait = exchangeRetryWaitForTest;
+        if (wait != null) {
+          await wait(attempt);
+        } else {
+          // 400ms → 1200ms：给厂商侧授权码入库留时间，又不太拖慢失败提示
+          await Future<void>.delayed(
+            Duration(milliseconds: attempt == 1 ? 400 : 1200),
+          );
+        }
       }
-      return _persistLogin(
-        providerId,
-        access: access,
-        refresh: refresh,
-        accountId: accountId,
+      try {
+        return await _exchangeTokensOnce(code);
+      } on _ExchangeFailure catch (failure) {
+        lastError = failure.error;
+        LoggerService.instance.logAI(
+          '小浣熊换取登录凭证失败（第 ${attempt + 1} 次）',
+          level: LogLevel.warning,
+          details: failure.detail,
+        );
+        if (!failure.retryable) throw failure.error;
+      }
+    }
+    throw lastError ?? const FormatException('换取登录凭证失败');
+  }
+
+  Future<({String access, String refresh})> _exchangeTokensOnce(
+    String code,
+  ) async {
+    final Response<dynamic> response;
+    try {
+      response = await _dio.post<dynamic>(
+        '$authBase/login_with_authorization_code',
+        data: {'authorization_code': code},
       );
     } on DioException catch (e) {
       final payload = e.response?.data;
-      if (payload is Map && '${payload['code']}' == '200035') {
-        throw const FormatException('授权码已失效，请重新发起网页登录');
+      final status = e.response?.statusCode;
+      final vendorCode = _vendorCode(payload);
+      if (vendorCode == '200035') {
+        throw _ExchangeFailure(
+          const FormatException('授权码已失效，请重新发起网页登录'),
+          retryable: true,
+          detail: 'HTTP ${status ?? '-'} code=200035',
+        );
       }
-      throw FormatException(
-        _vendorError(payload, '换取登录凭证失败（HTTP ${e.response?.statusCode}）'),
+      throw _ExchangeFailure(
+        FormatException(
+          _vendorError(payload, '换取登录凭证失败（HTTP ${status ?? '网络异常'}）'),
+        ),
+        // 5xx / 429 / 超时 / 连接中断都可能是瞬时抖动；其余 4xx 是确定性拒绝
+        retryable:
+            status == null || status >= 500 || status == 429 || status == 408,
+        detail: 'HTTP ${status ?? '-'} code=${vendorCode ?? '-'} '
+            '${_vendorError(payload, _preview(payload))}',
       );
     }
+
+    final payload = response.data;
+    final access = _tokenFromResponse(payload, 'access_token');
+    final refresh = _tokenFromResponse(payload, 'refresh_token');
+    final vendorCode = _vendorCode(payload);
+    if (vendorCode == '200035') {
+      // 有的网关把业务错误包成 2xx：同样按「授权码已失效」处理并重试
+      throw _ExchangeFailure(
+        const FormatException('授权码已失效，请重新发起网页登录'),
+        retryable: true,
+        detail: 'HTTP ${response.statusCode} code=200035',
+      );
+    }
+    if (access == null || access.isEmpty || refresh == null) {
+      throw _ExchangeFailure(
+        FormatException(
+          _vendorError(payload, '换取登录凭证失败（HTTP ${response.statusCode}）'),
+        ),
+        retryable: true,
+        detail: 'HTTP ${response.statusCode} code=${vendorCode ?? '-'} '
+            '响应缺少 access_token/refresh_token: ${_preview(payload)}',
+      );
+    }
+    return (access: access, refresh: refresh);
   }
 
   /// 手动兜底：粘贴完整回调链接、JWT，或 `{"access_token":...,"refresh_token":...}`
@@ -715,9 +816,201 @@ class RaccoonAuthService {
     throw RaccoonAuthRequiredException(providerId);
   }
 
+  // ── 账号额度 ─────────────────────────────────────────────
+
+  /// 查询单个账号的当前积分与套餐（只返回结果，缓存交给界面）
+  ///
+  /// 余额接口 `/points/v1/balance` 对网页端也可能返回 403（厂商侧限制），此时
+  /// 回落到客户端开屏调用的 `/office/v3/setting_info`，两处都是 `available_points`。
+  /// 服务端不认 token（401 / 200001 / 200003）时强制刷新一次再试，仍被拒才标记
+  /// 账号过期——与发信层的 401 处理口径一致，不把「额度查不到」当成「登录失效」。
+  Future<RaccoonAccountQuota> fetchQuota(AiAccount account) async {
+    final token = await accessTokenForAccount(account);
+    if (token == null || token.trim().isEmpty) {
+      throw RaccoonAuthRequiredException(account.providerId);
+    }
+    try {
+      return await _readQuota(token);
+    } on _QuotaAuthRejected {
+      final refresher = accountRefresherForTest;
+      final AiAccount refreshed;
+      try {
+        refreshed = refresher != null
+            ? await refresher(account)
+            : await refreshAccount(account.id, force: true);
+      } on RaccoonAuthRequiredException {
+        rethrow;
+      }
+      try {
+        return await _readQuota(refreshed.accessToken);
+      } on _QuotaAuthRejected {
+        await _markExpiredAccount(refreshed);
+        throw RaccoonAuthRequiredException(
+          account.providerId,
+          message: '小浣熊登录已失效，请重新登录',
+        );
+      }
+    }
+  }
+
+  Future<RaccoonAccountQuota> _readQuota(String token) async {
+    int? available;
+    Object? balanceError;
+    try {
+      available = _pointsOf(
+        await _quotaGet('/api/web/points/v1/balance', token),
+      );
+    } on _QuotaAuthRejected {
+      rethrow;
+    } catch (e) {
+      // 403 等拒绝不是登录失效：留到下面回落 setting_info
+      balanceError = e;
+    }
+    if (available == null) {
+      try {
+        available = _pointsOf(
+          await _quotaGet('/api/web/office/v3/setting_info', token),
+        );
+      } on _QuotaAuthRejected {
+        rethrow;
+      } catch (e) {
+        // 两处都失败时优先报余额接口的错误：它才是积分的主口径
+        throw balanceError is FormatException ? balanceError : e;
+      }
+    }
+    if (available == null) {
+      throw balanceError is FormatException
+          ? balanceError
+          : const FormatException('额度接口没有返回 available_points');
+    }
+
+    // 套餐只影响展示，读不到就留空（不把未知当成 Free）
+    var plan = '';
+    DateTime? planExpiresAt;
+    try {
+      final parsed = _planOf(
+        await _quotaGet('/api/web/auth/v1/entitlement_info', token),
+      );
+      plan = parsed.plan;
+      planExpiresAt = parsed.expiresAt;
+    } catch (_) {}
+    return RaccoonAccountQuota(
+      availablePoints: available,
+      plan: plan,
+      planExpiresAt: planExpiresAt,
+      fetchedAt: DateTime.now(),
+    );
+  }
+
+  /// GET 小浣熊网页接口并拆掉 `{code, data}` 信封
+  ///
+  /// 401 / `code=200001|200003` 表示「登录态不被接受」，交给调用方决定刷新重试；
+  /// 其余非零 code 统一转成带厂商文案的 FormatException。
+  Future<dynamic> _quotaGet(String path, String token) async {
+    final Response<dynamic> response;
+    try {
+      response = await _dio.get<dynamic>(
+        '$mainOrigin$path',
+        options: Options(
+          headers: {'Authorization': 'Bearer ${_stripBearer(token)}'},
+        ),
+      );
+    } on DioException catch (e) {
+      final payload = e.response?.data;
+      final code = _vendorCode(payload);
+      if (e.response?.statusCode == 401 ||
+          code == '200001' ||
+          code == '200003') {
+        throw const _QuotaAuthRejected();
+      }
+      throw FormatException(
+        _vendorError(payload, '查询积分失败（HTTP ${e.response?.statusCode}）'),
+      );
+    }
+    final payload = response.data;
+    final code = _vendorCode(payload);
+    if (code == '200001' || code == '200003') {
+      throw const _QuotaAuthRejected();
+    }
+    if (code != null && code != '0') {
+      throw FormatException(
+        _vendorError(payload, '查询积分失败（code=$code）'),
+      );
+    }
+    if (payload is Map && payload['data'] != null) return payload['data'];
+    return payload;
+  }
+
+  static int? _pointsOf(dynamic payload) {
+    if (payload is! Map) return null;
+    final value = payload['available_points'];
+    if (value == null) return null;
+    final number = num.tryParse(value.toString().trim());
+    if (number == null || !number.isFinite) return null;
+    return number.floor();
+  }
+
+  static ({String plan, DateTime? expiresAt}) _planOf(dynamic payload) {
+    if (payload is! Map) return (plan: '', expiresAt: null);
+    final office = payload['office'] is Map
+        ? payload['office'] as Map
+        : const {};
+    final codeBlock = payload['code'] is Map
+        ? payload['code'] as Map
+        : const {};
+    final proEnable =
+        office['pro_enable'] == true || codeBlock['pro_enable'] == true;
+    final planType = office['active_plan'] is Map
+        ? (office['active_plan'] as Map)['type']
+        : office['plan_type'];
+    final type = planType?.toString().trim() ?? '';
+    final plan = proEnable
+        ? (type.isEmpty || type == 'none' ? 'Pro' : type)
+        : 'Free';
+    final rawExpire =
+        office['pro_expired_time'] ??
+        (office['active_plan'] is Map
+            ? (office['active_plan'] as Map)['subscription_expired_at']
+            : null);
+    return (
+      plan: plan,
+      // 与插件一致：只有付费套餐才展示到期时间，Free 不跟着一个历史时间跑
+      expiresAt: proEnable ? _parseVendorTime(rawExpire) : null,
+    );
+  }
+
+  /// 厂商时间字段可能是 ISO 字符串、毫秒或秒级时间戳
+  static DateTime? _parseVendorTime(dynamic raw) {
+    if (raw == null) return null;
+    final text = raw.toString().trim();
+    if (text.isEmpty) return null;
+    final parsed = DateTime.tryParse(text);
+    if (parsed != null) return parsed;
+    final number = int.tryParse(text);
+    if (number == null || number <= 0) return null;
+    return DateTime.fromMillisecondsSinceEpoch(
+      number > 100000000000 ? number : number * 1000,
+    );
+  }
+
+  Future<void> _markExpiredAccount(AiAccount account) async {
+    await _save(
+      account.copyWith(
+        status: AiAccount.statusExpired,
+        updatedAt: DateTime.now(),
+      ),
+    );
+  }
+
   // ── 内部 ─────────────────────────────────────────────────
 
   Future<void> _save(AiAccount account) async {
+    final saver = accountSaverForTest;
+    if (saver != null) {
+      await saver(account);
+      _cache[account.id] = account;
+      return;
+    }
     await _repository.upsert(account);
     _cache[account.id] = account;
   }
@@ -814,6 +1107,20 @@ class RaccoonAuthService {
       return trimmed.substring(7).trim();
     }
     return trimmed;
+  }
+
+  static String? _vendorCode(dynamic payload) {
+    if (payload is! Map) return null;
+    final value = payload['code'];
+    if (value == null) return null;
+    return value.toString();
+  }
+
+  /// 日志里只留一小段响应，避免整页 HTML 把 AI 日志撑爆
+  static String _preview(dynamic payload, {int max = 500}) {
+    final text = payload?.toString() ?? '';
+    if (text.length <= max) return text;
+    return '${text.substring(0, max)}…';
   }
 
   static String _vendorError(dynamic payload, String fallback) {
@@ -954,6 +1261,27 @@ class RaccoonAuthService {
     _refreshing.clear();
     accessTokenLoaderForTest = null;
     accountsLoaderForTest = null;
+    accountSaverForTest = null;
+    exchangeRetryWaitForTest = null;
+    accountRefresherForTest = null;
     RaccoonAccountRouter.instance.clearAll();
   }
+}
+
+/// 额度接口拒绝当前 token（401 / 200001 / 200003）：需要刷新登录态后重试
+class _QuotaAuthRejected implements Exception {
+  const _QuotaAuthRejected();
+}
+
+/// 一次换取授权的失败：区分「可能瞬时/尚未生效，可重试」与确定性拒绝
+class _ExchangeFailure implements Exception {
+  final Object error;
+  final bool retryable;
+  final String detail;
+
+  const _ExchangeFailure(
+    this.error, {
+    required this.retryable,
+    required this.detail,
+  });
 }

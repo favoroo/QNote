@@ -68,4 +68,62 @@ void main() {
     login.cancel();
     await expectation;
   });
+
+  test('onCode 成功后浏览器才看到成功页，授权码交给换取', () async {
+    String? exchanged;
+    final login = await startRaccoonLoopbackLogin(
+      timeout: const Duration(seconds: 5),
+      onCode: (code) async {
+        exchanged = code;
+      },
+    );
+    final authorize = Uri.parse(login.url);
+    final state = authorize.queryParameters['state']!;
+    final redirect = Uri.parse(authorize.queryParameters['redirect']!);
+
+    final client = HttpClient();
+    final request = await client.getUrl(
+      redirect.replace(queryParameters: {'code': 'auth-code-2', 'state': state}),
+    );
+    final response = await request.close();
+    expect(response.statusCode, 200);
+    await response.drain<void>();
+    client.close(force: true);
+
+    expect(exchanged, 'auth-code-2');
+    expect(await login.code, 'auth-code-2');
+  });
+
+  test('onCode 失败时回 502，登录句柄抛出同一个错误（浏览器不再显示成功）', () async {
+    final login = await startRaccoonLoopbackLogin(
+      timeout: const Duration(seconds: 5),
+      onCode: (code) async {
+        throw const FormatException('授权码已失效，请重新发起网页登录');
+      },
+    );
+    final authorize = Uri.parse(login.url);
+    final state = authorize.queryParameters['state']!;
+    final redirect = Uri.parse(authorize.queryParameters['redirect']!);
+    final expectation = expectLater(
+      login.code,
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          '授权码已失效，请重新发起网页登录',
+        ),
+      ),
+    );
+
+    final client = HttpClient();
+    final request = await client.getUrl(
+      redirect.replace(queryParameters: {'code': 'auth-code-3', 'state': state}),
+    );
+    final response = await request.close();
+    expect(response.statusCode, 502);
+    await response.drain<void>();
+    client.close(force: true);
+
+    await expectation;
+  });
 }

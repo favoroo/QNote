@@ -18,7 +18,8 @@ import 'package:qnote_flutter/models/ai_token_usage.dart';
 class AiTokenUsageRepository {
   static const String table = 'ai_token_usage_daily';
 
-  static final AiTokenUsageRepository instance = AiTokenUsageRepository._internal();
+  static final AiTokenUsageRepository instance =
+      AiTokenUsageRepository._internal();
 
   AiTokenUsageRepository._internal();
 
@@ -102,7 +103,8 @@ class AiTokenUsageRepository {
       final weekStart = dateKeyOf(
         DateTime.now().subtract(const Duration(days: 6)),
       );
-      final rows = await db.rawQuery('''
+      final rows = await db.rawQuery(
+        '''
         SELECT
           COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,
           COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
@@ -113,7 +115,9 @@ class AiTokenUsageRepository {
           COALESCE(SUM(CASE WHEN date >= ? THEN total_tokens ELSE 0 END), 0)
             AS week_tokens
         FROM $table
-      ''', [today, weekStart]);
+      ''',
+        [today, weekStart],
+      );
 
       if (rows.isEmpty) return AiTokenUsageSummary.empty;
       int read(String key) => (rows.first[key] as num?)?.toInt() ?? 0;
@@ -130,6 +134,136 @@ class AiTokenUsageRepository {
     }
   }
 
+  /// 读取指定时间范围的明细：总量、厂商排行与模型排行
+  ///
+  /// 排行先按 `(provider_id, model_name)` 分组，再在 Dart 侧折叠出厂商维度，
+  /// 避免为两个排行各扫一遍表；两条查询放在同一事务里，保证总量与排行口径一致。
+  ///
+  /// 读库失败一律退化为空明细：明细是观测数据，不能反过来影响配置页。
+  Future<AiTokenUsageDetail> getDetail(AiTokenUsagePeriod period) async {
+    try {
+      final db = await _db;
+      final range = _rangeOf(period);
+      final where = range.clause == null ? '' : 'WHERE ${range.clause}';
+      return await db.transaction((txn) async {
+        final totalRows = await txn.rawQuery('''
+          SELECT
+            COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,
+            COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
+            COALESCE(SUM(total_tokens), 0) AS total_tokens,
+            COALESCE(SUM(request_count), 0) AS request_count
+          FROM $table
+          $where
+        ''', range.args);
+        int readTotal(String key) =>
+            (totalRows.isEmpty ? 0 : totalRows.first[key] as num?)?.toInt() ??
+            0;
+
+        final rows = await txn.rawQuery('''
+          SELECT
+            provider_id,
+            model_name,
+            COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,
+            COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
+            COALESCE(SUM(total_tokens), 0) AS total_tokens,
+            COALESCE(SUM(request_count), 0) AS request_count
+          FROM $table
+          $where
+          GROUP BY provider_id, model_name
+        ''', range.args);
+
+        final models = <AiTokenUsageBreakdown>[];
+        final providers = <String, _UsageAccumulator>{};
+        for (final row in rows) {
+          int read(String key) => (row[key] as num?)?.toInt() ?? 0;
+          final providerId = (row['provider_id'] as String?) ?? '';
+          final modelName = (row['model_name'] as String?) ?? '';
+          final prompt = read('prompt_tokens');
+          final completion = read('completion_tokens');
+          final total = read('total_tokens');
+          final requests = read('request_count');
+          models.add(
+            AiTokenUsageBreakdown(
+              providerId: providerId,
+              modelName: modelName,
+              promptTokens: prompt,
+              completionTokens: completion,
+              totalTokens: total,
+              requestCount: requests,
+            ),
+          );
+          providers
+              .putIfAbsent(providerId, _UsageAccumulator.new)
+              .add(
+                promptTokens: prompt,
+                completionTokens: completion,
+                totalTokens: total,
+                requestCount: requests,
+              );
+        }
+
+        models.sort(_compareBreakdown);
+        final providerRows =
+            providers.entries
+                .map((entry) => entry.value.toBreakdown(providerId: entry.key))
+                .toList()
+              ..sort(_compareBreakdown);
+
+        return AiTokenUsageDetail(
+          period: period,
+          summary: AiTokenUsageSummary(
+            promptTokens: readTotal('prompt_tokens'),
+            completionTokens: readTotal('completion_tokens'),
+            totalTokens: readTotal('total_tokens'),
+            requestCount: readTotal('request_count'),
+          ),
+          providers: providerRows,
+          models: models,
+        );
+      });
+    } catch (_) {
+      // 表未建好（首次升级）、读锁、数据损坏：退化成空态，不阻塞弹层
+      return AiTokenUsageDetail.empty(period);
+    }
+  }
+
+  /// 时间范围对应的 SQL 条件；`all` 不设条件
+  static ({String? clause, List<Object?> args}) _rangeOf(
+    AiTokenUsagePeriod period,
+  ) {
+    final now = DateTime.now();
+    switch (period) {
+      case AiTokenUsagePeriod.today:
+        return (clause: 'date = ?', args: [dateKeyOf(now)]);
+      case AiTokenUsagePeriod.week:
+        return (
+          clause: 'date >= ?',
+          args: [dateKeyOf(now.subtract(const Duration(days: 6)))],
+        );
+      case AiTokenUsagePeriod.month:
+        return (
+          clause: 'date >= ?',
+          args: [dateKeyOf(now.subtract(const Duration(days: 29)))],
+        );
+      case AiTokenUsagePeriod.all:
+        return (clause: null, args: const []);
+    }
+  }
+
+  /// 排行排序：token 降序 → 请求数降序 → 维度名，保证同量时顺序稳定
+  static int _compareBreakdown(
+    AiTokenUsageBreakdown a,
+    AiTokenUsageBreakdown b,
+  ) {
+    final byTotal = b.totalTokens.compareTo(a.totalTokens);
+    if (byTotal != 0) return byTotal;
+    final byRequests = b.requestCount.compareTo(a.requestCount);
+    if (byRequests != 0) return byRequests;
+    final byProvider = a.providerId.compareTo(b.providerId);
+    if (byProvider != 0) return byProvider;
+    return a.modelName.compareTo(b.modelName);
+  }
+
   /// 清空本机统计（测试与将来的设置项使用）
   Future<void> clear() async {
     try {
@@ -138,5 +272,35 @@ class AiTokenUsageRepository {
     } catch (_) {
       // 清空失败不影响主流程
     }
+  }
+}
+
+/// 折叠厂商维度时用的可变累加器
+class _UsageAccumulator {
+  int promptTokens = 0;
+  int completionTokens = 0;
+  int totalTokens = 0;
+  int requestCount = 0;
+
+  void add({
+    required int promptTokens,
+    required int completionTokens,
+    required int totalTokens,
+    required int requestCount,
+  }) {
+    this.promptTokens += promptTokens;
+    this.completionTokens += completionTokens;
+    this.totalTokens += totalTokens;
+    this.requestCount += requestCount;
+  }
+
+  AiTokenUsageBreakdown toBreakdown({required String providerId}) {
+    return AiTokenUsageBreakdown(
+      providerId: providerId,
+      promptTokens: promptTokens,
+      completionTokens: completionTokens,
+      totalTokens: totalTokens,
+      requestCount: requestCount,
+    );
   }
 }

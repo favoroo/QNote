@@ -85,6 +85,49 @@ void main() {
       expect(build(keys: const []).isUsable, isFalse);
       expect(build(models: const []).isUsable, isFalse);
     });
+
+    test('厂商级停用：默认启用、落库往返、缺列按启用处理', () {
+      AiProvider build({bool enabled = true}) => AiProvider(
+            id: 'p',
+            name: 'p',
+            providerType: 'openai',
+            baseUrl: 'https://x/v1',
+            apiKeys: const ['sk'],
+            models: const [AiProviderModel(id: 'm', name: 'm')],
+            enabled: enabled,
+            createdAt: DateTime(2026),
+            updatedAt: DateTime(2026),
+          );
+
+      expect(build().enabled, isTrue);
+      expect(build().toMap()['enabled'], 1);
+      expect(build(enabled: false).toMap()['enabled'], 0);
+      expect(AiProvider.fromMap(build(enabled: false).toMap()).enabled, isFalse);
+      // 老库/旧备份没有这一列，升级后不能集体失效
+      final legacy = build().toMap()..remove('enabled');
+      expect(AiProvider.fromMap(legacy).enabled, isTrue);
+    });
+
+    test('停用的厂商一律不可用，即便密钥与模型都齐全', () {
+      final provider = AiProvider(
+        id: 'p',
+        name: 'p',
+        providerType: 'openai',
+        baseUrl: 'https://x/v1',
+        apiKeys: const ['sk'],
+        models: const [AiProviderModel(id: 'm', name: 'm')],
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
+      );
+
+      expect(provider.isUsable, isTrue);
+      final disabled = provider.copyWith(enabled: false);
+      expect(disabled.isUsable, isFalse);
+      // 停用不动密钥与已启用模型，重新启用即恢复
+      expect(disabled.apiKeys, ['sk']);
+      expect(disabled.models.single.id, 'm');
+      expect(disabled.copyWith(enabled: true).isUsable, isTrue);
+    });
   });
 
   group('旧模型级配置归并（ai_configs → 厂商条目）', () {

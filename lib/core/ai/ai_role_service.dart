@@ -26,6 +26,9 @@ class AiRoleResolution {
 /// 与 [AiRoleService.resolveForRole] 同一套判据，供界面（胶囊展示、选择器、
 /// 设置页角色行）复用：这些地方原本各自写了一遍 `provider.hasModel(...)`，
 /// 漏掉路由组会让「绑了组但显示未配置」。
+///
+/// 厂商被手动停用时也算「当前无效」：界面会显示成跟随默认模型，真正发信时也
+/// 确实不会用到它。绑定本身不被清理（见 [isBindingResolvable]）。
 bool isBindingUsable(
   AiModelRef? ref,
   List<AiProvider> providers,
@@ -38,17 +41,47 @@ bool isBindingUsable(
     return hasResolvableMember(group, providers);
   }
   final provider = providers.where((p) => p.id == ref.providerId).firstOrNull;
+  return provider != null &&
+      provider.enabled &&
+      provider.hasModel(ref.modelName);
+}
+
+/// 绑定是否仍指向存在的厂商/组与模型（**忽略**厂商的停用开关）
+///
+/// 供「清理陈旧绑定」使用：停用厂商是临时动作，绑定要留到再次启用时复用，
+/// 只有厂商/组被删、或模型被逐条停用才算真的失效。
+bool isBindingResolvable(
+  AiModelRef? ref,
+  List<AiProvider> providers,
+  List<AiRouteGroup> groups,
+) {
+  if (ref == null) return false;
+  if (ref.isRouteGroup) {
+    final group = groups.where((g) => g.id == ref.providerId).firstOrNull;
+    if (group == null) return false;
+    for (final member in group.enabledMembers) {
+      final provider =
+          providers.where((p) => p.id == member.providerId).firstOrNull;
+      if (provider != null && provider.hasModel(member.modelName)) return true;
+    }
+    return false;
+  }
+  final provider = providers.where((p) => p.id == ref.providerId).firstOrNull;
   return provider != null && provider.hasModel(ref.modelName);
 }
 
-/// 组内是否至少有一个「厂商存在 + 模型仍启用」的成员
+/// 组内是否至少有一个「厂商存在（且未停用） + 模型仍启用」的成员
 ///
 /// 只做结构性校验，不看冷却状态：冷却中的组仍是「配置有效」，只是暂时不用它。
 bool hasResolvableMember(AiRouteGroup group, List<AiProvider> providers) {
   for (final member in group.enabledMembers) {
     final provider =
         providers.where((p) => p.id == member.providerId).firstOrNull;
-    if (provider != null && provider.hasModel(member.modelName)) return true;
+    if (provider != null &&
+        provider.enabled &&
+        provider.hasModel(member.modelName)) {
+      return true;
+    }
   }
   return false;
 }
@@ -125,6 +158,9 @@ class AiRoleService {
   ///
   /// 保留绑定会让界面显示的名字与实际生效模型不一致：解析侧虽有回落，
   /// 但用户看到的「已选模型」是失效项，必须把绑定归位到未绑定状态。
+  ///
+  /// 判据用 [isBindingResolvable] 而非 [isBindingUsable]：「停用厂商」是可逆动作，
+  /// 绑定要留着，否则用户重新启用后还得再配一遍角色模型。
   Future<AiRoles> pruneStaleRoleBindings() async {
     final roles = await getRoles();
     final providers = await _providers.getAll();
@@ -132,16 +168,16 @@ class AiRoleService {
 
     var updated = roles;
     var changed = false;
-    if (!isBindingUsable(roles.assistant, providers, groups)) {
+    if (!isBindingResolvable(roles.assistant, providers, groups)) {
       updated = updated.copyWith(assistant: null);
       changed = true;
     }
-    if (!isBindingUsable(roles.timelineOptimization, providers, groups)) {
+    if (!isBindingResolvable(roles.timelineOptimization, providers, groups)) {
       updated = updated.copyWith(timelineOptimization: null);
       changed = true;
     }
     if (roles.imageGeneration != null &&
-        !isBindingUsable(roles.imageGeneration, providers, groups)) {
+        !isBindingResolvable(roles.imageGeneration, providers, groups)) {
       updated = updated.copyWith(imageGeneration: null);
       changed = true;
     }
@@ -331,6 +367,8 @@ class AiRoleService {
     final provider =
         providers.where((p) => p.id == ref.providerId).firstOrNull;
     if (provider == null) return null;
+    // 已停用的厂商等同于「当前没有这个模型」：绑定保留，但请求回落到默认厂商
+    if (!provider.enabled) return null;
     if (!provider.hasModel(ref.modelName)) return null;
     if (provider.baseUrl.trim().isEmpty) return null;
     if (!provider.hasCredentials) return null;

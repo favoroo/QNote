@@ -979,6 +979,9 @@ class VirtualWorkspaceService {
                 },
                 'isDefault': p.isDefault,
                 'keyCount': p.apiKeys.length,
+                // 厂商级启停：小Q 需要知道「这条服务被用户临时下架了」，
+                // 否则会照着 models 列表推荐一个当前用不到的模型
+                'enabled': p.enabled,
                 // 只读快照：密钥一律掩码，避免明文 Key 进入对话上下文
                 'apiKeys': p.apiKeys.map((k) => ApiKeyPool.maskKey(k)).toList(),
                 'models': p.models.map((m) => m.id).toList(),

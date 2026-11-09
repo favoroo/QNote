@@ -11,6 +11,7 @@ AiProvider _provider({
   required String name,
   required List<String> models,
   bool isDefault = false,
+  bool enabled = true,
 }) =>
     AiProvider(
       id: id,
@@ -21,6 +22,7 @@ AiProvider _provider({
       apiKeys: const ['sk-test'],
       models: models.map((m) => AiProviderModel.of(m)).toList(),
       isDefault: isDefault,
+      enabled: enabled,
       createdAt: DateTime(2026),
       updatedAt: DateTime(2026),
     );
@@ -90,6 +92,32 @@ void main() {
 
     expect(find.text('还没有可用的 AI 模型'), findsOneWidget);
     expect(find.text('去添加模型'), findsOneWidget);
+  });
+
+  testWidgets('停用厂商的模型不出现在选择器里，全部停用时走空态引导', (tester) async {
+    final providers = [
+      _provider(id: 'p1', name: '已停用厂商', models: ['model-a'], enabled: false),
+      _provider(id: 'p2', name: '在用厂商', models: ['model-b']),
+    ];
+
+    expect(enabledModelEntries(providers).map((e) => e.model.id), ['model-b']);
+
+    await _openAndTap(
+      tester,
+      providers: providers,
+      selected: null,
+      tapText: 'model-b',
+    );
+    expect(find.text('已停用厂商'), findsNothing);
+    expect(find.text('model-a'), findsNothing);
+
+    // 只剩停用厂商时等同于「一个可用模型都没有」
+    await _openAndTap(
+      tester,
+      providers: [_provider(id: 'p1', name: '已停用厂商', models: ['model-a'], enabled: false)],
+      selected: null,
+    );
+    expect(find.text('还没有可用的 AI 模型'), findsOneWidget);
   });
 
   testWidgets('不再展示「跟随默认模型」选项，直接选择具体模型', (tester) async {

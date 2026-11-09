@@ -168,6 +168,26 @@ void main() {
     expect(service.select(g, providers).config.modelName, 'b1');
   });
 
+  test('厂商被手动停用时该厂商的成员让位给其它厂商', () {
+    final g = group(
+      strategy: RouteStrategy.rotate,
+      members: [m('pA', 'a1'), m('pB', 'b1')],
+    );
+    // pA 停用：模型仍留在条目里，只是不参与选路
+    final withDisabled = [
+      providers.first.copyWith(enabled: false),
+      providers[1],
+    ];
+
+    expect(service.select(g, withDisabled).config.modelName, 'b1');
+
+    // 组内成员所属厂商全部停用时等同于「没有可用成员」
+    expect(
+      () => service.select(g, [withDisabled.first]),
+      throwsA(isA<NoModelConfiguredException>()),
+    );
+  });
+
   test('组内没有任何可用成员时抛「未配置」异常（交给角色回落与引导）', () {
     final g = group(
       strategy: RouteStrategy.rotate,

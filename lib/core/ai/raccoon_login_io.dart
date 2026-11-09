@@ -10,9 +10,11 @@ import 'raccoon_login_types.dart';
 /// 因此这里临时监听本机回环。与 magpie 的实现保持一致：
 /// - `state` 必须是 64 位 hex；
 /// - 只接受 host、路径、state 都匹配的 GET 回调；
-/// - 回调页只显示成功/失败文案，不把授权码回显到页面。
+/// - 回调页只显示成功/失败文案，不把授权码回显到页面；
+/// - [onCode] 不为空时先完成换取再回页面，换取失败回 502 并让 [code] 抛出。
 Future<RaccoonLoopbackLogin> startRaccoonLoopbackLogin({
   Duration timeout = const Duration(minutes: 10),
+  Future<void> Function(String code)? onCode,
 }) async {
   final state = _randomHex(32);
   final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -58,6 +60,15 @@ Future<RaccoonLoopbackLogin> startRaccoonLoopbackLogin({
       await response.close();
     }
 
+    // 换取阶段用户可能已经关掉页面或取消登录：这时回报失败是常态，不该冒泡成未捕获异常
+    Future<void> replyQuietly(int status, String text) async {
+      try {
+        await reply(status, text);
+      } catch (_) {
+        // 连接已断开，忽略
+      }
+    }
+
     if (request.method != 'GET') {
       await reply(405, 'Method not allowed');
       return;
@@ -90,7 +101,20 @@ Future<RaccoonLoopbackLogin> startRaccoonLoopbackLogin({
       await reply(400, '回调缺少有效授权码，请回到原授权页重试。');
       return;
     }
-    await reply(200, '商汤小浣熊登录成功，可以关闭此页并返回 QNote。');
+    // 先换取再回页面：换取失败时浏览器不能显示「登录成功」，
+    // 否则用户会以为已经登录，回到 App 却看到报错
+    try {
+      await onCode?.call(code);
+    } catch (e) {
+      if (!settled) {
+        await replyQuietly(502, '登录未完成，请返回 QNote 查看错误并重新登录。');
+      }
+      await finish(() => fail(e));
+      return;
+    }
+    if (!settled) {
+      await replyQuietly(200, '商汤小浣熊登录成功，可以关闭此页并返回 QNote。');
+    }
     await finish(() => succeed(code));
   });
 

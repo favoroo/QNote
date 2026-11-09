@@ -166,6 +166,13 @@ class AiProvider {
   /// 未绑定角色的回落顺序上，默认厂商优先
   final bool isDefault;
 
+  /// 条目是否参与选路：false 表示用户手动「停用」了整个厂商
+  ///
+  /// 与逐模型停用的区别在于**保留意图**：停用不会动密钥、已启用模型与角色绑定，
+  /// 只是把这个条目从选路与选择器里摘出去（例如额度用尽想先晾一阵），再次启用
+  /// 即恢复原样。因此判定绑定是否「失效可清理」时不看这个开关。
+  final bool enabled;
+
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -183,6 +190,7 @@ class AiProvider {
     this.modelCatalog = const [],
     this.catalogUpdatedAt,
     this.isDefault = false,
+    this.enabled = true,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -194,9 +202,12 @@ class AiProvider {
   bool get hasCredentials =>
       usesAccountAuth || apiKeys.any((key) => key.trim().isNotEmpty);
 
-  /// 厂商下是否还有可用的「地址 + 凭证」组合
+  /// 厂商下是否还有可用的「地址 + 凭证 + 模型」组合（已停用的厂商一律不可用）
   bool get isUsable =>
-      baseUrl.trim().isNotEmpty && hasCredentials && models.isNotEmpty;
+      enabled &&
+      baseUrl.trim().isNotEmpty &&
+      hasCredentials &&
+      models.isNotEmpty;
 
   /// 首个已启用模型，作为未绑定角色时的默认选择
   AiProviderModel? get firstModel => models.isEmpty ? null : models.first;
@@ -221,6 +232,7 @@ class AiProvider {
       'model_catalog': AiProviderModel.listToJson(modelCatalog),
       'catalog_updated_at': catalogUpdatedAt?.toIso8601String(),
       'is_default': isDefault ? 1 : 0,
+      'enabled': enabled ? 1 : 0,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
@@ -253,6 +265,8 @@ class AiProvider {
       ),
       catalogUpdatedAt: _parseTime(map['catalog_updated_at'] as String?),
       isDefault: (map['is_default'] as int? ?? 0) == 1,
+      // 缺列（老库/旧备份）时按「启用」处理，避免升级后所有厂商集体失效
+      enabled: (map['enabled'] as int? ?? 1) == 1,
       createdAt: _parseTime(map['created_at'] as String?) ?? DateTime.now(),
       updatedAt: _parseTime(map['updated_at'] as String?) ?? DateTime.now(),
     );
@@ -272,6 +286,7 @@ class AiProvider {
     List<AiProviderModel>? modelCatalog,
     Object? catalogUpdatedAt = _unset,
     bool? isDefault,
+    bool? enabled,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -293,6 +308,7 @@ class AiProvider {
           ? this.catalogUpdatedAt
           : catalogUpdatedAt as DateTime?,
       isDefault: isDefault ?? this.isDefault,
+      enabled: enabled ?? this.enabled,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

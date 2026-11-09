@@ -39,10 +39,12 @@ class AiTokenUsage {
       return int.tryParse(raw?.toString() ?? '');
     }
 
-    final prompt = read('prompt_tokens') ??
+    final prompt =
+        read('prompt_tokens') ??
         read('input_tokens') ??
         read('promptTokenCount');
-    final completion = read('completion_tokens') ??
+    final completion =
+        read('completion_tokens') ??
         read('output_tokens') ??
         read('candidatesTokenCount');
     final reportedTotal = read('total_tokens') ?? read('totalTokenCount');
@@ -110,4 +112,102 @@ class AiTokenUsageSummary {
   String toString() =>
       'AiTokenUsageSummary(total=$totalTokens, prompt=$promptTokens, '
       'completion=$completionTokens, requests=$requestCount)';
+}
+
+/// Token 消耗明细的时间范围
+///
+/// 与统计卡的「累计 / 今日 / 近 7 天」同一套自然日口径（本地时区），
+/// 只是多给一档近 30 天，方便看月度趋势。
+enum AiTokenUsagePeriod {
+  /// 今天
+  today('今日'),
+
+  /// 近 7 天（含今天）
+  week('近 7 天'),
+
+  /// 近 30 天（含今天）
+  month('近 30 天'),
+
+  /// 本机全部历史
+  all('全部');
+
+  /// 界面展示名
+  final String label;
+
+  const AiTokenUsagePeriod(this.label);
+}
+
+/// 一个厂商或模型的用量聚合行
+///
+/// [modelName] 为空串表示这是「厂商合计」行：数据库表里 `model_name` 本就是
+/// NOT NULL DEFAULT ''，折叠厂商维度时沿用同一约定，调用方不必再判 null。
+class AiTokenUsageBreakdown {
+  final String providerId;
+  final String modelName;
+  final int promptTokens;
+  final int completionTokens;
+  final int totalTokens;
+  final int requestCount;
+
+  const AiTokenUsageBreakdown({
+    required this.providerId,
+    this.modelName = '',
+    required this.promptTokens,
+    required this.completionTokens,
+    required this.totalTokens,
+    required this.requestCount,
+  });
+
+  /// 是否为厂商维度的合计行
+  bool get isProviderTotal => modelName.isEmpty;
+
+  /// 平均每次请求消耗的 token
+  int get averagePerRequest =>
+      requestCount <= 0 ? 0 : totalTokens ~/ requestCount;
+
+  @override
+  String toString() =>
+      'AiTokenUsageBreakdown(provider=$providerId, model=$modelName, '
+      'total=$totalTokens, requests=$requestCount)';
+}
+
+/// Token 消耗明细：一个时间范围内的总量与厂商 / 模型排行
+class AiTokenUsageDetail {
+  final AiTokenUsagePeriod period;
+
+  /// 该时间范围的总量
+  final AiTokenUsageSummary summary;
+
+  /// 厂商排行，按 token 降序
+  final List<AiTokenUsageBreakdown> providers;
+
+  /// 模型排行，按 token 降序
+  final List<AiTokenUsageBreakdown> models;
+
+  const AiTokenUsageDetail({
+    required this.period,
+    required this.summary,
+    this.providers = const [],
+    this.models = const [],
+  });
+
+  /// 空明细（读库失败或该范围没有记录时展示空态）
+  factory AiTokenUsageDetail.empty(AiTokenUsagePeriod period) {
+    return AiTokenUsageDetail(
+      period: period,
+      summary: AiTokenUsageSummary.empty,
+    );
+  }
+
+  bool get hasData => summary.hasData;
+
+  /// 平均每次请求消耗的 token
+  int get averagePerRequest => summary.requestCount <= 0
+      ? 0
+      : summary.totalTokens ~/ summary.requestCount;
+
+  @override
+  String toString() =>
+      'AiTokenUsageDetail(period=$period, total=${summary.totalTokens}, '
+      'providers=${providers.length}, models=${models.length})';
 }

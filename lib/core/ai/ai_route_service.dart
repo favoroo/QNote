@@ -297,13 +297,15 @@ class AiRouteService {
     );
   }
 
-  /// 组内可解析的成员（厂存在 + 模型仍启用 + 地址与密钥齐全）→ 请求配置
+  /// 组内可解析的成员（厂存在且未停用 + 模型仍启用 + 地址与密钥齐全）→ 请求配置
   List<AiConfig> _feasibleMembers(AiRouteGroup group, List<AiProvider> providers) {
     final result = <AiConfig>[];
     for (final member in group.enabledMembers) {
       final provider =
           providers.where((p) => p.id == member.providerId).firstOrNull;
       if (provider == null) continue;
+      // 厂商被停用时整条成员让位，组里其它厂商的成员继续承接流量
+      if (!provider.enabled) continue;
       if (!provider.hasModel(member.modelName)) continue;
       if (provider.baseUrl.trim().isEmpty) continue;
       if (!provider.hasCredentials) continue;

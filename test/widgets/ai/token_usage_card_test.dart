@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:qnote_flutter/models/ai_provider.dart';
 import 'package:qnote_flutter/models/ai_token_usage.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/widgets/ai/token_usage_card.dart';
@@ -17,10 +18,7 @@ Widget _wrap(AiTokenUsageSummary summary) {
     ],
     child: const MaterialApp(
       home: Scaffold(
-        body: Padding(
-          padding: EdgeInsets.all(16),
-          child: TokenUsageCard(),
-        ),
+        body: Padding(padding: EdgeInsets.all(16), child: TokenUsageCard()),
       ),
     ),
   );
@@ -60,4 +58,45 @@ void main() {
     expect(find.text('12K'), findsOneWidget);
     expect(find.text('3K'), findsOneWidget);
   });
+
+  testWidgets('点击卡片打开 Token 消耗明细弹层', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          aiTokenUsageSummaryProvider.overrideWith(
+            (ref) async => const AiTokenUsageSummary(
+              promptTokens: 600,
+              completionTokens: 400,
+              totalTokens: 1000,
+              requestCount: 2,
+            ),
+          ),
+          aiTokenUsageDetailProvider.overrideWith(
+            (ref, period) async => AiTokenUsageDetail.empty(period),
+          ),
+          aiProviderListProvider.overrideWith(
+            () => _FakeProviderListNotifier(),
+          ),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: Padding(padding: EdgeInsets.all(16), child: TokenUsageCard()),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Token 消耗'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Token 消耗明细'), findsOneWidget);
+    expect(find.text('全部'), findsOneWidget);
+  });
+}
+
+/// 弹层会读厂商列表解析展示名；测试里给空列表，避免拉起真实仓储
+class _FakeProviderListNotifier extends AiProviderListNotifier {
+  @override
+  Future<List<AiProvider>> build() async => const [];
 }

@@ -95,6 +95,15 @@ final aiTokenUsageSummaryProvider = FutureProvider<AiTokenUsageSummary>((
   return AiTokenUsageRepository.instance.getSummary();
 });
 
+/// Token 消耗明细（弹层按时间范围聚合厂商 / 模型排行）
+///
+/// autoDispose：弹层关闭即释放，下次打开重新查库，避免模型刚用过、统计卡已刷新
+/// 而弹层还停在旧排行的尴尬。
+final aiTokenUsageDetailProvider = FutureProvider.autoDispose
+    .family<AiTokenUsageDetail, AiTokenUsagePeriod>((ref, period) async {
+      return AiTokenUsageRepository.instance.getDetail(period);
+    });
+
 /// 厂商条目列表：界面上的模型来源、模型选择器、角色绑定都从这里读
 class AiProviderListNotifier extends AsyncNotifier<List<AiProvider>> {
   @override
@@ -142,6 +151,18 @@ class AiProviderListNotifier extends AsyncNotifier<List<AiProvider>> {
           .map((p) => p.id == saved.id ? saved : p)
           .toList(),
     );
+  }
+
+  /// 停用/启用整个厂商条目
+  ///
+  /// 只翻 [AiProvider.enabled]：密钥、已启用模型与角色绑定全部保留，因此可以
+  /// 当成「临时下架」（额度用尽、想先换一家）而不是不可逆的删除。
+  Future<void> setProviderEnabled(String id, bool enabled) async {
+    final index = (state.valueOrNull ?? []).indexWhere((p) => p.id == id);
+    if (index < 0) return;
+    final target = state.valueOrNull![index];
+    if (target.enabled == enabled) return;
+    await updateProvider(target.copyWith(enabled: enabled));
   }
 
   Future<void> deleteProvider(String id) async {
@@ -811,14 +832,16 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         final t = filteredTodos[i];
         buffer.writeln('#### 待办 ${i + 1}');
         buffer.writeln('- **内容**: ${t.title}');
-        if (t.description.isNotEmpty)
+        if (t.description.isNotEmpty) {
           buffer.writeln('- **描述**: ${t.description}');
+        }
         buffer.writeln('- **状态**: ${t.isCompleted ? '已完成' : '未完成'}');
         buffer.writeln(
           '- **优先级**: ${t.priority == 'high' ? '高' : (t.priority == 'important' ? '重要' : '普通')}',
         );
-        if (t.dueDate != null)
+        if (t.dueDate != null) {
           buffer.writeln('- **到期日**: ${_formatDateTime(t.dueDate!)}');
+        }
         if (t.tags.isNotEmpty) buffer.writeln('- **标签**: ${t.tags}');
         buffer.writeln();
       }
@@ -1079,8 +1102,9 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
               _scheduleRunFlush(run);
               // 朗读随会话走：用户切到别的会话后不再喂新正文（setSession 已中止本场
               // 朗读），与「流式气泡不串显到别的会话」保持同一语义
-              if (_bindsCurrentSession(run))
+              if (_bindsCurrentSession(run)) {
                 run.speech.onContentDelta(event.text!);
+              }
             }
             break;
           case AgentEventType.reasoningDelta:
@@ -1280,8 +1304,9 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
     if (isStreaming) return null;
     if (_isRollingBack) return null;
     final messages = state!.messages;
-    if (userMessageIndex < 0 || userMessageIndex >= messages.length)
+    if (userMessageIndex < 0 || userMessageIndex >= messages.length) {
       return null;
+    }
     if (messages[userMessageIndex].role != 'user') return null;
 
     _isRollingBack = true;
