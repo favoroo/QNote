@@ -188,8 +188,8 @@ class RaccoonAccountRouter {
     if (advance) {
       _remember(providerId, affinity, scope, chosen.id, now);
       LoggerService.instance.logAI(
-        '小浣熊账号选号：策略=${routing.label} 亲和=${affinity.label} '
-        '选中 ${chosen.label}（${chosen.id}）',
+        '${_vendorLabel(chosen)}账号选号：策略=${routing.label} '
+        '亲和=${affinity.label} 选中 ${chosen.label}（${chosen.id}）',
         details: '候选 ${selectable.length} 个 / 共 ${candidates.length} 个已启用',
       );
     }
@@ -212,7 +212,8 @@ class RaccoonAccountRouter {
       _sticks.removeWhere((_, stick) => stick.accountId == account.id);
     }
     LoggerService.instance.logAI(
-      '小浣熊账号 ${account.label} 失败进入冷却 ${cooldown.inSeconds}s',
+      '${_vendorLabel(account)}账号 ${account.label} '
+      '失败进入冷却 ${cooldown.inSeconds}s',
       level: LogLevel.warning,
       details: error.toString(),
     );
@@ -277,6 +278,17 @@ class RaccoonAccountRouter {
         text.contains('quota') ||
         text.contains('exhausted') ||
         text.contains('insufficient');
+  }
+
+  static String _vendorLabel(AiAccount account) {
+    switch (account.kind) {
+      case AiAccount.kindAutoClaw:
+        return 'AutoClaw';
+      case AiAccount.kindLoomy:
+        return 'Loomy';
+      default:
+        return '小浣熊';
+    }
   }
 
   static bool _isTransient(Object error) {

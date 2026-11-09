@@ -4,22 +4,24 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:qnote_flutter/config/models.dart';
+import 'package:qnote_flutter/core/ai/account_auth_registry.dart';
+import 'package:qnote_flutter/core/ai/account_auth_types.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/api_key_pool.dart';
 import 'package:qnote_flutter/core/ai/model_fetch_service.dart';
 import 'package:qnote_flutter/core/ai/model_reasoning_capability.dart';
-import 'package:qnote_flutter/core/ai/raccoon_auth_service.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
+import 'package:qnote_flutter/models/account_quota.dart';
 import 'package:qnote_flutter/models/ai_account.dart';
 import 'package:qnote_flutter/models/ai_account_routing.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_provider.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
-import 'package:qnote_flutter/models/raccoon_account_quota.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/widgets/ai/raccoon_login_sheet.dart';
 import 'package:qnote_flutter/widgets/ai/reasoning_effort_sheet.dart';
+import 'package:qnote_flutter/widgets/ai/sms_login_sheet.dart';
 import 'package:qnote_flutter/widgets/unsaved_changes_dialog.dart';
 
 /// 路由参数：编辑既有厂商条目，或按厂商模板新建
@@ -34,7 +36,7 @@ class AiProviderEditArgs {
 ///
 /// 这里取代了旧版「一个模型一个对话框」的编辑方式：
 /// - 一个厂商条目只管一个 URL，密钥属于厂商，多把自动轮询；
-/// - 订阅账号型（商汤小浣熊）改为登录账号，token 由账号服务现取，不配置 API Key；
+/// - 订阅账号型（小浣熊 / AutoClaw）改为登录账号，token 由账号服务现取，不配置 API Key；
 /// - 模型只是条目下的勾选项——扫描出全量模型后按需启用，同一条目可以同时
 ///   启用多个模型供小Q、时间线提取、生图分别绑定；
 /// - 全屏页面承载这些分组，移动端不再把十几个字段塞进一个 AlertDialog。
@@ -74,12 +76,24 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
   late String _accountAffinity;
 
   /// 账号额度：accountId → 本次打开编辑页期间的查询结果/进行中/错误
-  final Map<String, RaccoonAccountQuota> _quotas = {};
+  final Map<String, AccountQuota> _quotas = {};
   final Set<String> _quotaLoading = {};
   final Map<String, String> _quotaErrors = {};
 
   /// 正在签到的账号（避免重复点击把同一个账号签到请求打两遍）
   final Set<String> _checkingIn = {};
+
+  /// 订阅账号型厂商走统一接口，具体实现按厂商模板分发
+  AccountAuthService get _accountService =>
+      AccountAuthRegistry.forVendor(_vendorId);
+
+  bool get _usesAccount => _authMode != AiProvider.authModeApiKey;
+
+  String get _accountKindLabel => '${_accountService.vendorLabel} 账号';
+
+  String get _accountLoginLabel => '登录 ${_accountService.vendorLabel} 账号';
+
+  String get _accountLoginHint => '请先登录 ${_accountService.vendorLabel} 账号';
 
   bool _dirty = false;
   bool _saving = false;
@@ -125,7 +139,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
         existing?.accountRouting ?? AiProvider.defaultAccountRouting;
     _accountAffinity =
         existing?.accountAffinity ?? AiProvider.defaultAccountAffinity;
-    if (_authMode == AiProvider.authModeRaccoon) {
+    if (_usesAccount) {
       _loadAccounts();
     }
   }
@@ -133,7 +147,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
   Future<void> _loadAccounts() async {
     _accountLoading = true;
     try {
-      final accounts = await RaccoonAuthService.instance.accountsFor(
+      final accounts = await _accountService.accountsFor(
         _providerId,
         forceReload: true,
       );
@@ -175,7 +189,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       _quotaErrors.remove(account.id);
     });
     try {
-      final quota = await RaccoonAuthService.instance.fetchQuota(account);
+      final quota = await _accountService.fetchQuota(account);
       if (!mounted) return;
       final stillListed = _accounts.any((item) => item.id == account.id);
       setState(() {
@@ -189,7 +203,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
         _quotaLoading.remove(account.id);
         if (stillListed) _quotaErrors[account.id] = _quotaErrorMessage(e);
       });
-      if (e is RaccoonAuthRequiredException) {
+      if (e is AccountAuthRequiredException) {
         // 登录态被服务端拒绝：拉一次账号列表，让「已过期」状态立刻显示出来
         await _loadAccounts();
       }
@@ -209,7 +223,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     if (_checkingIn.contains(account.id)) return;
     setState(() => _checkingIn.add(account.id));
     try {
-      final result = await RaccoonAuthService.instance.checkIn(account);
+      final result = await _accountService.checkIn(account);
       if (!mounted) return;
       setState(() => _checkingIn.remove(account.id));
       if (result.claimed) {
@@ -222,7 +236,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       if (!mounted) return;
       setState(() => _checkingIn.remove(account.id));
       Toast.error(context, '签到失败：${_quotaErrorMessage(e)}');
-      if (e is RaccoonAuthRequiredException) {
+      if (e is AccountAuthRequiredException) {
         // 登录态被服务端拒绝：拉一次账号列表，让「已过期」状态立刻显示出来
         await _loadAccounts();
       }
@@ -282,7 +296,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       _authMode = nextAuthMode;
       // 只有用户没改过默认值时，才跟着厂商模板切换地址与名称；
       // 账号型厂商的地址是固定接口，必须强制换成模板地址，否则会带着旧厂商的
-      // Base URL 去调小浣熊的账号 token
+      // Base URL 去调账号型厂商的 token
       if (nextAuthMode != AiProvider.authModeApiKey ||
           _baseUrlCtl.text.trim().isEmpty ||
           _baseUrlCtl.text.trim() ==
@@ -293,7 +307,8 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
           _nameCtl.text.trim() == (previousSpec?.name ?? '').trim()) {
         _nameCtl.text = nextSpec?.name ?? '';
       }
-      if (_authMode != AiProvider.authModeRaccoon) {
+      if (!_usesAccount || previousSpec?.authMode != nextAuthMode) {
+        // 换账号型厂商时旧账号不属于新厂商，不能继续挂着
         _accounts = const [];
       }
       // 换厂商模板后旧模型 id 已不属于新地址，保留会让用户误存一批无效模型
@@ -302,7 +317,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       _catalogUpdatedAt = null;
       _dirty = true;
     });
-    if (_authMode == AiProvider.authModeRaccoon) {
+    if (_usesAccount) {
       await _loadAccounts();
     }
   }
@@ -311,12 +326,19 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
 
   /// 新增一个账号（[accountId] 为空）或重新登录指定账号
   Future<void> _openLoginSheet({String? accountId}) async {
+    final service = _accountService;
     final account = await showModalBottomSheet<AiAccount>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) =>
-          RaccoonLoginSheet(providerId: _providerId, accountId: accountId),
+      // 短信型厂商（AutoClaw / Loomy）共用同一个弹层，小浣熊走浏览器回环
+      builder: (_) => service.supportsSmsLogin
+          ? SmsLoginSheet(
+              providerId: _providerId,
+              service: service,
+              accountId: accountId,
+            )
+          : RaccoonLoginSheet(providerId: _providerId, accountId: accountId),
     );
     if (account == null || !mounted) return;
     // 重新登录可能换成了另一个厂商账号：旧积分属于上一个账号，不能继续展示
@@ -355,7 +377,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    await RaccoonAuthService.instance.logout(account.id);
+    await _accountService.logout(account.id);
     await _loadAccounts();
     if (!mounted) return;
     Toast.info(context, '已退出「${account.label}」');
@@ -392,13 +414,13 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     );
     controller.dispose();
     if (alias == null || !mounted) return;
-    await RaccoonAuthService.instance.updateAccount(account, alias: alias);
+    await _accountService.updateAccount(account, alias: alias);
     await _loadAccounts();
   }
 
   /// 账号参与/退出轮换（关掉保留登录态，但不被选中）
   Future<void> _toggleAccountEnabled(AiAccount account, bool enabled) async {
-    await RaccoonAuthService.instance.updateAccount(account, enabled: enabled);
+    await _accountService.updateAccount(account, enabled: enabled);
     await _loadAccounts();
   }
 
@@ -411,7 +433,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     ordered.insert(target, moved);
     // 先本地重排让界面立刻响应，再落库（失败时 _loadAccounts 会拉回真实顺序）
     setState(() => _accounts = ordered);
-    await RaccoonAuthService.instance.reorderAccounts(
+    await _accountService.reorderAccounts(
       _providerId,
       ordered.map((a) => a.id).toList(),
     );
@@ -538,8 +560,8 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
   // ── 模型扫描与启用 ───────────────────────────────────────
 
   Future<void> _scanModels() async {
-    if (_authMode == AiProvider.authModeRaccoon) {
-      await _scanRaccoonModels();
+    if (_usesAccount) {
+      await _scanAccountModels();
       return;
     }
     final keys = _keys.map((k) => k.trim()).where((k) => k.isNotEmpty).toList();
@@ -623,9 +645,9 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
   }
 
   /// 账号型厂商的模型扫描：目录接口要带 access token，401 会自动刷新一次
-  Future<void> _scanRaccoonModels() async {
+  Future<void> _scanAccountModels() async {
     if (_accounts.isEmpty) {
-      Toast.warning(context, '请先登录小浣熊账号');
+      Toast.warning(context, _accountLoginHint);
       return;
     }
     setState(() {
@@ -634,7 +656,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       _scanMessageIsError = false;
     });
     try {
-      final models = await RaccoonAuthService.instance.fetchModelsForProvider(
+      final models = await _accountService.fetchModelsForProvider(
         _providerId,
       );
       if (!mounted) return;
@@ -771,14 +793,14 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
   }
 
   Future<void> _testModel(AiProviderModel model) async {
-    final usesAccount = _authMode == AiProvider.authModeRaccoon;
+    final usesAccount = _usesAccount;
     final keys = _keys.map((k) => k.trim()).where((k) => k.isNotEmpty).toList();
     if (!usesAccount && keys.isEmpty) {
       Toast.warning(context, '请先添加密钥');
       return;
     }
     if (usesAccount && _accounts.isEmpty) {
-      Toast.warning(context, '请先登录小浣熊账号');
+      Toast.warning(context, _accountLoginHint);
       return;
     }
     if (_testingModels.contains(model.id)) return;
@@ -824,7 +846,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     final name = _nameCtl.text.trim();
     final baseUrl = _baseUrlCtl.text.trim();
     final keys = _keys.map((k) => k.trim()).where((k) => k.isNotEmpty).toList();
-    final usesAccount = _authMode == AiProvider.authModeRaccoon;
+    final usesAccount = _usesAccount;
 
     if (baseUrl.isEmpty) {
       Toast.warning(context, '请填写 Base URL');
@@ -843,7 +865,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       return false;
     }
     if (usesAccount && _accounts.isEmpty) {
-      Toast.warning(context, '请先登录小浣熊账号');
+      Toast.warning(context, _accountLoginHint);
       return false;
     }
     if (usesAccount && _accounts.every((a) => !a.enabled)) {
@@ -891,7 +913,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       // 从账号型切回 API Key 型：清掉这个条目残留的全部登录态，
       // 避免留下不用的长期凭据
       if (!usesAccount) {
-        await RaccoonAuthService.instance.logoutProvider(_providerId);
+        await AccountAuthRegistry.logoutProvider(_providerId);
       }
       // 密钥列表变了，轮换游标与冷却表跟着重来
       ApiKeyPool.instance.reset(provider.id);
@@ -915,7 +937,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
   Future<void> _delete() async {
     final existing = widget.provider;
     if (existing == null) return;
-    final usesAccount = existing.authMode == AiProvider.authModeRaccoon;
+    final usesAccount = existing.usesAccountAuth;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -971,7 +993,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       return '浏览器限制：Web 端无法调用外部 API（CORS），请用真机测试';
     }
     if (msg.contains('401') || msg.contains('403')) {
-      return _authMode == AiProvider.authModeRaccoon
+      return _usesAccount
           ? '登录已失效，请重新登录'
           : '认证失败，请检查 API Key';
     }
@@ -1019,8 +1041,8 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
           children: [
             _sectionTitle(theme, '基础信息', '模型服务地址与名称'),
             _buildBasicCard(theme),
-            if (_authMode == AiProvider.authModeRaccoon) ...[
-              _sectionTitle(theme, '账号登录', '用小浣熊账号额度调用'),
+            if (_usesAccount) ...[
+              _sectionTitle(theme, '账号登录', '用账号额度调用'),
               _buildAccountCard(theme),
             ] else ...[
               _sectionTitle(theme, 'API 密钥', '密钥自动轮询'),
@@ -1150,13 +1172,13 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
           const SizedBox(height: 4),
           TextField(
             controller: _baseUrlCtl,
-            readOnly: _authMode == AiProvider.authModeRaccoon,
+            readOnly: _usesAccount,
             onChanged: (_) => _markDirty(),
             keyboardType: TextInputType.url,
             decoration: InputDecoration(
               isDense: true,
               hintText: 'https://api.example.com/v1',
-              helperText: _authMode == AiProvider.authModeRaccoon
+              helperText: _usesAccount
                   ? '账号登录使用官方接口'
                   : null,
             ),
@@ -1254,7 +1276,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
             Row(
               children: [
                 Text(
-                  '小浣熊账号',
+                  _accountKindLabel,
                   style: theme.textTheme.labelMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
@@ -1283,7 +1305,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Text(
-                '还没有登录账号。登录后可扫描模型、用小浣熊额度对话。',
+                '还没有登录账号。登录后可扫描模型、使用账号额度对话。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: colorScheme.onSurfaceVariant,
                 ),
@@ -1299,7 +1321,9 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
             child: FilledButton.icon(
               onPressed: () => _openLoginSheet(),
               icon: const Icon(Icons.add_rounded, size: 18),
-              label: Text(_accounts.isEmpty ? '登录小浣熊账号' : '添加另一个账号'),
+              label: Text(
+                _accounts.isEmpty ? _accountLoginLabel : '添加另一个账号',
+              ),
             ),
           ),
           if (multi) ...[
@@ -1375,7 +1399,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
   Widget _accountRow(ThemeData theme, int index, AiAccount account) {
     final colorScheme = theme.colorScheme;
     final expired = account.isExpired;
-    final cooling = RaccoonAuthService.instance.isAccountCooling(account.id);
+    final cooling = _accountService.isAccountCooling(account.id);
     final statusText = expired
         ? '登录已过期，请重新登录'
         : cooling
@@ -1515,7 +1539,8 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
 
     final String text;
     if (quota != null) {
-      final parts = <String>['积分 ${_formatPoints(quota.availablePoints)}'];
+      final parts = <String>['积分 ${_formatPoints(quota.balance)}'];
+      if (quota.hasDetail) parts.add(quota.detail);
       if (quota.hasPlan) parts.add(quota.plan);
       final expires = quota.planExpiresAt;
       if (expires != null) parts.add('至 ${_formatQuotaDate(expires)}');
@@ -1835,7 +1860,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
           if (_catalog.isEmpty) ...[
             const SizedBox(height: 12),
             Text(
-              _authMode == AiProvider.authModeRaccoon
+              _usesAccount
                   ? '还没有模型列表，登录后点「扫描模型」获取，也可手动添加。'
                   : '还没有模型列表，填好地址与密钥后点「扫描模型」获取。',
               style: theme.textTheme.bodySmall?.copyWith(
@@ -2024,7 +2049,7 @@ class _VendorPickerSheet extends StatelessWidget {
                   _vendorSectionHeader(
                     theme,
                     title: '账号登录',
-                    subtitle: '登录账号即可使用，凭证自动续期',
+                    subtitle: '登录账号即可使用，Token 由账号额度提供',
                   ),
                   ...accountVendors.map(
                     (spec) => _vendorTile(context, theme, spec),

@@ -14,7 +14,7 @@ class AiProviderConfig {
   final bool requiresApiKeyForFetch; // 获取模型列表是否需要 API Key
   final String? defaultReasoningEffort; // 默认推理强度（low/medium/high/none）
 
-  /// 凭证类型：`api_key`（默认）或 `raccoon`（订阅账号登录）
+  /// 凭证类型：`api_key`（默认）、`raccoon` 或 `autoclaw`（订阅账号登录）
   final String authMode;
 
   const AiProviderConfig({
@@ -229,6 +229,47 @@ final aiProviders = <AiProviderConfig>[
     authType: 'bearer',
     requiresApiKeyForFetch: false,
     authMode: 'raccoon',
+  ),
+  const AiProviderConfig(
+    id: 'autoclaw-cn',
+    name: 'AutoClaw（智谱·国内）',
+    provider: 'openai',
+    // 对话基址固定走国内积分制通道；发信层再拼 chat/completions
+    defaultBaseUrl:
+        'https://autoglm-acceleration-api.zhipuai.cn/autoclaw-proxy/proxy/autoclaw',
+    models: [
+      'zai_auto',
+      'zai_auto-fast',
+      'zaicoding_glm-5.3',
+      'zai_glm-5.3-flash',
+    ],
+    modelsEndpoint: '',
+    authType: 'bearer',
+    requiresApiKeyForFetch: false,
+    authMode: 'autoclaw',
+  ),
+  const AiProviderConfig(
+    id: 'loomy',
+    name: 'Loomy（讯飞）',
+    provider: 'openai',
+    // 聊天与生图都在同一个网关；发信层再拼 chat/completions、images/generations
+    defaultBaseUrl: 'https://loomyad.xunfei.cn/api/v1',
+    models: [
+      'DeepSeek-V4.1-Flash',
+      'deepseek-v4-flash-0731',
+      'MiniMax-M3',
+      'Kimi-k2.6',
+      'qwen-3.8-max',
+      'GLM-5.3-Flash',
+      'qwen3.8-flash',
+      'spark-x',
+      'mimo-v2.5',
+      'auto',
+    ],
+    modelsEndpoint: '',
+    authType: 'bearer',
+    requiresApiKeyForFetch: false,
+    authMode: 'loomy',
   ),
   const AiProviderConfig(
     id: 'sensenova',

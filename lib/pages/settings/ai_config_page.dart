@@ -952,7 +952,7 @@ class _VendorPickerSheet extends StatelessWidget {
                   _vendorSectionHeader(
                     theme,
                     title: '账号登录',
-                    subtitle: '登录账号即可使用，凭证自动续期',
+                    subtitle: '登录账号即可使用，Token 由账号额度提供',
                   ),
                   ...accountVendors.map(
                     (spec) => _vendorTile(context, theme, spec),

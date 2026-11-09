@@ -7,9 +7,9 @@ import 'package:qnote_flutter/config/models.dart';
 import 'package:qnote_flutter/core/ai/api_key_pool.dart';
 import 'package:qnote_flutter/core/ai/ai_route_service.dart';
 import 'package:qnote_flutter/core/ai/model_reasoning_capability.dart';
+import 'package:qnote_flutter/core/ai/account_auth_registry.dart';
 import 'package:qnote_flutter/core/ai/raccoon_account_router.dart';
 import 'package:qnote_flutter/models/ai_account_routing.dart';
-import 'package:qnote_flutter/core/ai/raccoon_auth_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/ai_provider_repository.dart';
 import 'package:qnote_flutter/core/storage/ai_token_usage_repository.dart';
@@ -465,7 +465,8 @@ class AiService {
     // 订阅账号型：token 由账号服务选号后现取（临近过期会先刷新），不走密钥池。
     // 始终逐请求覆写 header，避免 updateConfig 留下的空/旧凭证被沿用。
     if (effective.usesAccountAuth) {
-      final session = await RaccoonAuthService.instance.sessionForRequest(
+      final accountService = AccountAuthRegistry.forVendor(effective.vendorId);
+      final session = await accountService.sessionForRequest(
         effective.providerId,
         routing: effective.accountRouting,
         affinity: effective.accountAffinity,
@@ -474,7 +475,7 @@ class AiService {
       );
       if (session == null) {
         // 没有登录任何账号 / 本次能用的账号都已试过：交给上层报「请重新登录」
-        throw RaccoonAuthRequiredException(effective.providerId);
+        throw accountService.notLoggedIn(effective.providerId);
       }
       return _SendTrace(
         scene: scene,
@@ -482,6 +483,7 @@ class AiService {
         poolKeys: const [],
         startedAt: DateTime.now(),
         providerId: effective.providerId,
+        vendorId: effective.vendorId ?? '',
         modelName: effective.modelName,
         authMode: effective.authMode,
         accountId: session.account.id,
@@ -568,6 +570,13 @@ class AiService {
     if (config.provider == 'gemini') {
       return {'x-goog-api-key': key, 'Authorization': null};
     }
+    // 账号型厂商的鉴权头由厂商自己给（AutoClaw 的 X-Authorization、Loomy 的
+    // token + Authorization 双头），接口形态差异不散落在发信层
+    if (AccountAuthRegistry.isAccountVendor(config.vendorId)) {
+      return AccountAuthRegistry.forVendor(
+        config.vendorId,
+      ).requestHeaders(key, model: config.modelName);
+    }
     return {'Authorization': 'Bearer $key', 'x-goog-api-key': null};
   }
 
@@ -575,7 +584,11 @@ class AiService {
   static Map<String, dynamic> _maskedHeaders(Map<String, dynamic> headers) {
     return headers.map((name, value) {
       final lower = name.toLowerCase();
-      if (lower == 'authorization' || lower == 'x-goog-api-key') {
+      if (lower == 'authorization' ||
+          lower == 'x-authorization' ||
+          // Loomy 把 session 放在 `token` 头里，日志同样要脱敏
+          lower == 'token' ||
+          lower == 'x-goog-api-key') {
         final raw = value?.toString() ?? '';
         final token = raw.startsWith('Bearer ') ? raw.substring(7) : raw;
         return MapEntry(name, 'Bearer ${ApiKeyPool.maskKey(token)}');
@@ -770,16 +783,11 @@ class AiService {
     if (!config.usesAccountAuth || alreadyRetried) return false;
     if (!_isUnauthorized(error)) return false;
     try {
+      final accountService = AccountAuthRegistry.forVendor(config.vendorId);
       if (accountId.isNotEmpty) {
-        await RaccoonAuthService.instance.refreshAccount(
-          accountId,
-          force: true,
-        );
+        await accountService.refreshAccount(accountId, force: true);
       } else {
-        await RaccoonAuthService.instance.refresh(
-          config.providerId,
-          force: true,
-        );
+        await accountService.refresh(config.providerId, force: true);
       }
       LoggerService.instance.logAI(
         '账号凭证被拒绝，已刷新后重试: ${config.providerId}',
@@ -799,7 +807,7 @@ class AiService {
 
   /// 账号型遇到限流/失败：把失败记到**本次实际使用的账号**上
   ///
-  /// 记冷却与清亲和都在 [RaccoonAuthService] 内部按 accountId 完成；这里只负责
+  /// 记冷却与清亲和都在 [AccountAuthService] 内部按 accountId 完成；这里只负责
   /// 把 trace 里的账号快照翻译成账号对象。返回 false 表示「这次失败不该换号」
   /// （非账号型、或错误不是可换号的瞬时/配额类故障）。
   Future<bool> _markAccountFailure(
@@ -807,14 +815,13 @@ class AiService {
     Object error, {
     String affinity = AiProvider.defaultAccountAffinity,
   }) async {
-    if (trace.authMode != AiProvider.authModeRaccoon) return false;
+    if (trace.authMode == AiProvider.authModeApiKey) return false;
     if (trace.accountId.isEmpty) return false;
     if (!ApiKeyPool.isRecoverableError(error)) return false;
-    final account = await RaccoonAuthService.instance.accountById(
-      trace.accountId,
-    );
+    final accountService = AccountAuthRegistry.forVendor(trace.vendorId);
+    final account = await accountService.accountById(trace.accountId);
     if (account == null) return false;
-    RaccoonAuthService.instance.markAccountFailed(
+    accountService.markAccountFailed(
       account,
       error,
       affinity: affinity,
@@ -824,26 +831,31 @@ class AiService {
 
   /// 记一次账号成功（智能策略的成功率统计 + 解除自身冷却）
   void _recordAccountSuccess(_SendTrace trace) {
-    if (trace.authMode != AiProvider.authModeRaccoon) return;
+    if (trace.authMode == AiProvider.authModeApiKey) return;
     if (trace.accountId.isEmpty) return;
-    final account = RaccoonAuthService.instance.accountFromCache(
-      trace.accountId,
-    );
+    final account = AccountAuthRegistry.forVendor(trace.vendorId)
+        .accountFromCache(trace.accountId);
     if (account != null) {
-      RaccoonAuthService.instance.markAccountSucceeded(account);
+      AccountAuthRegistry.forVendor(
+        trace.vendorId,
+      ).markAccountSucceeded(account);
     }
   }
 
   /// 账号型是否还有别的账号可换（决定「换号重发」还是「原地退避重试」）
   Future<bool> _hasAlternateAccount(
+    _SendTrace trace,
     AiConfig config,
     Set<String> triedAccountIds,
     AiRequestScope? scope,
   ) async {
     if (!config.usesAccountAuth) return false;
     try {
-      return await RaccoonAuthService.instance.hasAlternateAccount(
-        config.providerId,
+      final vendorId = trace.vendorId.isNotEmpty
+          ? trace.vendorId
+          : (config.vendorId ?? '');
+      return await AccountAuthRegistry.forVendor(vendorId).hasAlternateAccount(
+        trace.providerId.isNotEmpty ? trace.providerId : config.providerId,
         routing: config.accountRouting,
         affinity: config.accountAffinity,
         scope: scope,
@@ -872,7 +884,7 @@ class AiService {
     AiRequestScope? scope,
     String affinity = AiProvider.defaultAccountAffinity,
   }) async {
-    if (trace.authMode != AiProvider.authModeRaccoon) return false;
+    if (trace.authMode == AiProvider.authModeApiKey) return false;
     if (trace.accountId.isEmpty) return false;
     if (!ApiKeyPool.isRecoverableError(error)) return false;
     // 严格亲和：用户明确要求「失败也不换号」，这里直接让错误抛给用户，
@@ -885,7 +897,7 @@ class AiService {
     // 判断「还有没有别的账号」时要把本次这个也算成已试过，否则它会把自己
     // 算成候选
     final probe = {...triedAccountIds, trace.accountId};
-    final hasOther = await _hasAlternateAccount(config, probe, scope);
+    final hasOther = await _hasAlternateAccount(trace, config, probe, scope);
     if (!hasOther) return false;
 
     await _markAccountFailure(trace, error, affinity: affinity);
@@ -1613,8 +1625,8 @@ class AiService {
           ? 'v1beta/models/${config.modelName}:streamGenerateContent?alt=sse'
           : 'v1beta/models/${config.modelName}:generateContent';
     }
-    // 小浣熊的基址本身已含 /api/web/llm/v2，聊天路径直接拼 chat/completions
-    if (config.vendorId == 'raccoon') {
+    // 账号型厂商的基址本身已含完整聊天路径前缀，直接拼 chat/completions
+    if (AccountAuthRegistry.isAccountVendor(config.vendorId)) {
       return 'chat/completions';
     }
     final baseUrl = config.baseUrl;
@@ -1705,7 +1717,7 @@ class AiService {
     if (_config!.provider == 'gemini') {
       return 'v1beta/models/${_config!.modelName}:generateContent';
     }
-    if (_config!.vendorId == 'raccoon') {
+    if (AccountAuthRegistry.isAccountVendor(_config!.vendorId)) {
       return 'chat/completions';
     }
     final baseUrl = _config!.baseUrl;
@@ -1919,6 +1931,13 @@ class AiService {
       body['tool_choice'] = 'auto';
     }
     _applyReasoningEffort(body, config);
+    // 账号型厂商的请求体适配（AutoClaw 拒收 max_tokens 并要官方前缀，
+    // Loomy 只认三档思考强度且旧版 DeepSeek 要图片标记）
+    if (AccountAuthRegistry.isAccountVendor(config.vendorId)) {
+      AccountAuthRegistry.forVendor(
+        config.vendorId,
+      ).adaptChatBody(body, model: config.modelName);
+    }
     return body;
   }
 
@@ -3336,9 +3355,12 @@ class _SendTrace {
   /// token 统计必须用这份快照而不是回调时刻的 [_config]：流式请求持续数十秒，
   /// 期间并发的日记提取可能已把单例的配置换成另一个模型。
   final String providerId;
+
+  /// 厂商模板 id（`raccoon` / `autoclaw-cn`），用于分发到对应账号服务
+  final String vendorId;
   final String modelName;
 
-  /// 本次发信的凭证类型（`api_key` | `raccoon`），用于 401 时决定是否刷新账号
+  /// 本次发信的凭证类型（`api_key` / `raccoon` / `autoclaw`）
   final String authMode;
 
   /// 本次实际使用的订阅账号（账号型才有）
@@ -3359,6 +3381,7 @@ class _SendTrace {
     this.poolKeys = const [],
     required this.startedAt,
     this.providerId = '',
+    this.vendorId = '',
     this.modelName = '',
     this.authMode = 'api_key',
     this.accountId = '',

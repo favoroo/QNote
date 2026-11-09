@@ -13,6 +13,12 @@ class AiAccount {
   /// 账号类型：商汤小浣熊
   static const String kindRaccoon = 'raccoon';
 
+  /// 账号类型：AutoClaw（智谱，国内版）
+  static const String kindAutoClaw = 'autoclaw';
+
+  /// 账号类型：Loomy（讯飞）
+  static const String kindLoomy = 'loomy';
+
   static const String statusActive = 'active';
   static const String statusExpired = 'expired';
 
@@ -24,7 +30,7 @@ class AiAccount {
   /// 对应的厂商条目 id
   final String providerId;
 
-  /// 账号类型，目前只有 [kindRaccoon]；为后续接入其他订阅型服务预留
+  /// 账号类型，见 [kindRaccoon] / [kindAutoClaw] / [kindLoomy]；为后续接入其他订阅型服务预留
   final String kind;
 
   /// 用户自定义备注（如「工作号」「小号」），空时界面用 [label]
@@ -92,7 +98,14 @@ class AiAccount {
     if (phone.trim().isNotEmpty) return phone;
     if (displayName.trim().isNotEmpty) return displayName;
     if (uid.trim().isNotEmpty) return uid;
-    return '小浣熊账号';
+    switch (kind) {
+      case kindAutoClaw:
+        return 'AutoClaw 账号';
+      case kindLoomy:
+        return 'Loomy 账号';
+      default:
+        return '小浣熊账号';
+    }
   }
 
   /// 是否与另一份登录态指向同一个厂商账号（重登同一账号时用来去重）

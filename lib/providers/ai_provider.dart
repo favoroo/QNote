@@ -3,12 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:qnote_flutter/config/defaults.dart';
+import 'package:qnote_flutter/core/ai/account_auth_registry.dart';
 import 'package:qnote_flutter/core/ai/ai_error_explainer.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/ai_route_service.dart';
 import 'package:qnote_flutter/core/ai/raccoon_account_router.dart';
-import 'package:qnote_flutter/core/ai/raccoon_auth_service.dart';
 import 'package:qnote_flutter/core/ai/vision_capability_probe.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/refresh/refresh_failure_notice.dart';
@@ -166,10 +166,15 @@ class AiProviderListNotifier extends AsyncNotifier<List<AiProvider>> {
   }
 
   Future<void> deleteProvider(String id) async {
+    final target = state.valueOrNull
+        ?.where((provider) => provider.id == id)
+        .firstOrNull;
     await AiProviderRepository.instance.delete(id);
     // 订阅账号型厂商的本地登录态跟着条目一起删（可能是多个账号），
     // 避免留下无主的长期凭据
-    await RaccoonAuthService.instance.logoutProvider(id);
+    if (target != null && target.usesAccountAuth) {
+      await AccountAuthRegistry.logoutProvider(id);
+    }
     // 内存移除 + 收敛默认标记（默认项可能刚被删掉）
     state = AsyncData(
       (state.valueOrNull ?? []).where((p) => p.id != id).toList(),

@@ -115,6 +115,12 @@ class AiProvider {
   /// 订阅账号登录（商汤小浣熊）：密钥来自账号 token，不写 `api_keys`
   static const String authModeRaccoon = 'raccoon';
 
+  /// 订阅账号登录（AutoClaw 国内版）：手机验证码登录，密钥来自账号 token
+  static const String authModeAutoClaw = 'autoclaw';
+
+  /// 订阅账号登录（Loomy 讯飞）：短信登录，session 14 天且无续期接口
+  static const String authModeLoomy = 'loomy';
+
   /// 多账号选号策略默认值（与 [AccountRouting.rotate] 一致，避免模型层依赖枚举）
   static const String defaultAccountRouting = 'rotate';
 
@@ -134,9 +140,9 @@ class AiProvider {
 
   final String baseUrl;
 
-  /// 凭证类型：`api_key`（默认）或 `raccoon`
+  /// 凭证类型：`api_key`（默认）、`raccoon` 或 `autoclaw`
   ///
-  /// 订阅账号型厂商的 token 由 [RaccoonAuthService] 在每次发信前现取，
+  /// 订阅账号型厂商的 token 由对应的 `AccountAuthService` 在每次发信前现取，
   /// 不落在 `api_keys` 里，也不会随备份导出。
   final String authMode;
 

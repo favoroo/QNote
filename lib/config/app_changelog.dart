@@ -14,6 +14,16 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.85',
+    date: '2026-11-09',
+    notes: [
+      '新增 AutoClaw（智谱·国内）模型服务：支持手机验证码登录后直接使用，无需自备 API Key',
+      '新增 Loomy（讯飞）模型服务：短信登录后可用，支持每日签到领额度，积分与赠送额度分别展示',
+      '账号型厂商统一登录体验：AutoClaw 与 Loomy 共用同一套短信登录弹层与额度查询界面',
+      '生图功能现已支持账号型厂商，可直接用已登录账号生成图片',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.84',
     date: '2026-11-09',
     notes: [

@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:qnote_flutter/core/ai/raccoon_auth_service.dart';
+import 'package:qnote_flutter/core/ai/account_auth_registry.dart';
 import 'package:qnote_flutter/core/export/export_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/network/sync_scheduler.dart';
@@ -223,7 +223,7 @@ void _invalidateAllData(WidgetRef ref) {
   ref.invalidate(quickPromptListProvider);
   ref.invalidate(agentMemoryListProvider);
   // 清空/恢复后订阅登录态可能已被清掉，进程内缓存不能继续用
-  RaccoonAuthService.instance.clearCache();
+  AccountAuthRegistry.clearAllCaches();
 }
 
 /// 备份与恢复分区：本地 JSON 导出导入、云端恢复

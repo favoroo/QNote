@@ -74,7 +74,7 @@ void main() {
 
     final quota = await auth.fetchQuota(account());
 
-    expect(quota.availablePoints, 12345);
+    expect(quota.balance, 12345);
     expect(quota.plan, 'Pro');
     expect(
       quota.planExpiresAt?.toUtc(),
@@ -102,7 +102,7 @@ void main() {
 
     final quota = await auth.fetchQuota(account());
 
-    expect(quota.availablePoints, 6789);
+    expect(quota.balance, 6789);
     expect(quota.hasPlan, isFalse);
     expect(quota.planExpiresAt, isNull);
     expect(adapter.settingCalls, 1);
@@ -135,7 +135,7 @@ void main() {
 
     final quota = await auth.fetchQuota(account());
 
-    expect(quota.availablePoints, 100);
+    expect(quota.balance, 100);
     expect(quota.plan, 'Free');
     expect(adapter.balanceAuth, ['Bearer access-1', 'Bearer access-2']);
     expect(saved, isEmpty);

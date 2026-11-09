@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 
 import 'package:qnote_flutter/core/agent/models/agent_tool.dart';
+import 'package:qnote_flutter/core/ai/account_auth_registry.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/api_key_pool.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
@@ -294,6 +295,10 @@ class GenerateImageTool extends AgentTool {
     String prompt,
     String size,
   ) async {
+    // 账号型厂商（Loomy）用登录 token 而不是密钥池，单独一条路径
+    if (config.usesAccountAuth) {
+      return _requestAccountImagesGenerations(dio, config, prompt, size);
+    }
     final pool = ApiKeyPool.instance;
     final providerId = config.providerId;
     var keys = await _readProviderKeys(providerId);
@@ -385,6 +390,61 @@ class GenerateImageTool extends AgentTool {
       }
     }
     throw lastError ?? Exception('生图请求失败');
+  }
+
+  /// 账号型厂商的生图：token 由账号服务现取，鉴权头由厂商给
+  ///
+  /// Loomy 的 `/images/generations` 与聊天同一个网关、同一个 session，所以不必
+  /// 走密钥池；也没有「换 Key 重试」的概念——账号失效直接报「请重新登录」。
+  Future<ImageParseOutcome> _requestAccountImagesGenerations(
+    Dio dio,
+    AiConfig config,
+    String prompt,
+    String size,
+  ) async {
+    final service = AccountAuthRegistry.forVendor(config.vendorId);
+    final session = await service.sessionForRequest(
+      config.providerId,
+      routing: config.accountRouting,
+      affinity: config.accountAffinity,
+    );
+    if (session == null) throw service.notLoggedIn(config.providerId);
+    final response = await dio.post<Map<String, dynamic>>(
+      '${config.baseUrl}/images/generations',
+      data: buildGenerationRequestBody(config, prompt, size),
+      options: Options(
+        headers: {
+          'Accept': 'application/json',
+          ...service.requestHeaders(
+            session.accessToken,
+            model: config.modelName,
+          ),
+        },
+      ),
+    );
+    final body = response.data;
+    if (body == null) {
+      LoggerService.instance.logAI(
+        '生图响应体为空',
+        details: 'status=${response.statusCode}, body=null',
+        level: LogLevel.warning,
+      );
+      return const ImageParseOutcome.empty(
+        summary: 'body=null（HTTP 响应体无法解析为 JSON）',
+      );
+    }
+    // 生图网关多数只回 usage（prompt 计费），同样计入本机累计消耗
+    final usage = AiTokenUsage.fromResponse(body);
+    if (usage != null) {
+      unawaited(
+        AiTokenUsageRepository.instance.record(
+          providerId: config.providerId,
+          modelName: config.modelName,
+          usage: usage,
+        ),
+      );
+    }
+    return parseGenerationImagesDetailed(body);
   }
 
   /// 逐请求鉴权头：Gemini 原生端点走 `x-goog-api-key`，其余 OpenAI 兼容端点走 Bearer
