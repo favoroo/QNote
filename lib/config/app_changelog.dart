@@ -14,6 +14,16 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.87',
+    date: '2026-11-09',
+    notes: [
+      '模型列表新增「生图」标签：一眼分辨哪些模型能生图，选生图模型不再逐个试',
+      '生图模型选择器默认只列生图模型，并显示识别到的数量；没识别出来时可一键展开全部模型手动挑选',
+      '模型测速结果更易读：耗时按快慢分色（绿/橙/红），超过 1 秒自动转成「13.9s」这样的写法',
+      '厂商声明了输出能力的模型会优先按声明判定生图，老配置无需重新扫描也能认出 gpt-image、seedream 等模型',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.86',
     date: '2026-11-09',
     notes: [

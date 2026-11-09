@@ -245,6 +245,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       groups: groups,
       selected: effective,
       title: '选择${_roleLabel(roleKey)}',
+      imageGeneration: roleKey == 'imageGeneration',
     );
     if (result == null || result.ref == current || !mounted) return;
 

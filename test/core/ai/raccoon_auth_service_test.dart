@@ -117,6 +117,8 @@ void main() {
     expect(free.contextWindow, 256000);
     expect(free.rateNote, '限免至11月30日');
     expect(free.supportsVision, isTrue);
+    // 小浣熊目录目前只有对话模型，没有输出模态声明：生图标识保持未知
+    expect(free.supportsImageGeneration, isNull);
 
     final cheap = models.firstWhere((m) => m.id == 'sn-glm-5-3-flash');
     expect(cheap.rate, 0.2);

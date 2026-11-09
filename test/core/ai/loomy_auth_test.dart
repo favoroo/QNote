@@ -259,9 +259,22 @@ void main() {
               'id': 'Kimi-k2.6',
               'name': 'Kimi k2.6 (x6.5)',
               'context_length': 262144,
-              'capabilities': {'vision': true},
+              'type': 'chat',
+              'capabilities': {
+                'vision': true,
+                'output_modalities': ['text'],
+              },
             },
             {'id': 'auto', 'name': '自动 · 均衡'},
+            {
+              'id': 'qwen-image-3.0-pro',
+              'name': 'qwen image 3.0 pro',
+              'type': 'image',
+              'capabilities': {
+                'vision': true,
+                'output_modalities': ['image'],
+              },
+            },
             {'id': 'Kimi-k2.6', 'name': '重复项'},
           ],
         },
@@ -270,18 +283,25 @@ void main() {
 
     final models = await auth.fetchModelsForProvider('pLoomy');
 
-    expect(models.map((m) => m.id), ['Kimi-k2.6', 'auto']);
+    expect(models.map((m) => m.id), ['Kimi-k2.6', 'auto', 'qwen-image-3.0-pro']);
     expect(models.first.name, 'Kimi k2.6');
     // (x6.5) 拆成独立倍率，界面才能像小浣熊一样显示徽标
     expect(models.first.rate, 6.5);
     expect(models.first.isFree, isFalse);
     expect(models.first.contextWindow, 262144);
     expect(models.first.supportsVision, isTrue);
+    // 厂商声明输出只有 text：明确不是生图模型
+    expect(models.first.supportsImageGeneration, isFalse);
     // 展示名里没有倍率的模型不编一个默认值
-    expect(models.last.rate, isNull);
+    expect(models[1].rate, isNull);
     // 目录没声明能力时保持未知
-    expect(models.last.contextWindow, isNull);
-    expect(models.last.supportsVision, isNull);
+    expect(models[1].contextWindow, isNull);
+    expect(models[1].supportsVision, isNull);
+    expect(models[1].supportsImageGeneration, isNull);
+    // 生图模型由 output_modalities 声明，不依赖展示名
+    expect(models.last.supportsImageGeneration, isTrue);
+    expect(models.last.name, 'qwen image 3.0 pro');
+    expect(models.last.rate, isNull);
   });
 
   test('模型目录拉取失败时回落静态目录', () async {

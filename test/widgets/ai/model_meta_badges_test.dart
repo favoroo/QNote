@@ -27,6 +27,16 @@ void main() {
     expect(modelMetaBadges(model), ['0.2×', '1M']);
   });
 
+  test('生图模型：徽标排在上下文之后、识图之前', () {
+    final model = AiProviderModel.of(
+      'qwen-image-3.0-pro',
+      contextWindow: 128000,
+      supportsImageGeneration: true,
+    );
+
+    expect(modelMetaBadges(model), ['128K', '生图']);
+  });
+
   test('厂商没给元数据时一个徽标都不出（不默认成 1× 或免费）', () {
     final model = AiProviderModel.of('m', name: 'm');
 

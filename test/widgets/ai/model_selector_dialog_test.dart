@@ -27,6 +27,28 @@ AiProvider _provider({
       updatedAt: DateTime(2026),
     );
 
+/// 直接用带元数据的模型构造厂商条目（生图标识等）
+AiProvider _providerOfModels({
+  required String id,
+  required String name,
+  required List<AiProviderModel> models,
+  bool isDefault = false,
+  bool enabled = true,
+}) =>
+    AiProvider(
+      id: id,
+      vendorId: 'custom',
+      name: name,
+      providerType: 'openai',
+      baseUrl: 'https://example.com/v1',
+      apiKeys: const ['sk-test'],
+      models: models,
+      isDefault: isDefault,
+      enabled: enabled,
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+    );
+
 /// 打开共享模型选择器并点击指定文本，返回弹出结果
 Future<ModelPickerResult?> _openAndTap(
   WidgetTester tester, {
@@ -34,6 +56,7 @@ Future<ModelPickerResult?> _openAndTap(
   required AiModelRef? selected,
   List<AiRouteGroup> groups = const [],
   String? tapText,
+  bool imageGeneration = false,
 }) async {
   ModelPickerResult? popped;
   await tester.pumpWidget(
@@ -48,6 +71,7 @@ Future<ModelPickerResult?> _openAndTap(
                   providers: providers,
                   groups: groups,
                   selected: selected,
+                  imageGeneration: imageGeneration,
                 );
               },
               child: const Text('open'),
@@ -261,5 +285,129 @@ void main() {
       'model-x',
     );
     expect(aiModelDisplayName(null, providers), '未配置模型');
+  });
+
+  testWidgets('生图模式默认只列生图模型，对话模型不出现', (tester) async {
+    final providers = [
+      _providerOfModels(
+        id: 'pLoomy',
+        name: 'Loomy',
+        models: [
+          AiProviderModel.of(
+            'deepseek-v4.1-flash',
+            name: 'DeepSeek V4.1 Flash',
+            supportsImageGeneration: false,
+          ),
+          AiProviderModel.of(
+            'qwen-image-3.0-pro',
+            name: 'qwen image 3.0 pro',
+            supportsImageGeneration: true,
+          ),
+          AiProviderModel.of('auto', name: '自动 · 均衡'),
+        ],
+      ),
+    ];
+
+    ModelPickerResult? popped;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: TextButton(
+                onPressed: () async {
+                  popped = await showModelPickerSheet(
+                    context,
+                    providers: providers,
+                    selected: null,
+                    imageGeneration: true,
+                  );
+                },
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('deepseek-v4.1-flash'), findsNothing);
+    expect(find.text('自动 · 均衡'), findsNothing);
+    // 筛选条给出切换入口与识别数量
+    expect(find.text('仅看生图模型（1）'), findsOneWidget);
+
+    await tester.tap(find.text('qwen image 3.0 pro'));
+    await tester.pumpAndSettle();
+
+    expect(popped!.ref.modelName, 'qwen-image-3.0-pro');
+  });
+
+  testWidgets('生图模式没有识别到模型时可一键显示全部模型', (tester) async {
+    final providers = [
+      _provider(id: 'p1', name: '我的中转', models: ['my-custom-model']),
+    ];
+
+    await _openAndTap(
+      tester,
+      providers: providers,
+      selected: null,
+      imageGeneration: true,
+    );
+
+    expect(find.text('未识别到生图模型'), findsOneWidget);
+    expect(find.text('my-custom-model'), findsNothing);
+
+    await tester.tap(find.text('显示全部模型'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('未识别到生图模型'), findsNothing);
+    expect(find.text('my-custom-model'), findsOneWidget);
+  });
+
+  testWidgets('已绑定但未识别为生图的模型仍显示，避免用户看不到当前选择', (tester) async {
+    final providers = [
+      _providerOfModels(
+        id: 'p1',
+        name: '我的中转',
+        models: [
+          AiProviderModel.of('custom-drawer', name: '自定义生图'),
+          AiProviderModel.of('chat-model', name: '对话模型'),
+        ],
+      ),
+    ];
+
+    ModelPickerResult? popped;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: TextButton(
+                onPressed: () async {
+                  popped = await showModelPickerSheet(
+                    context,
+                    providers: providers,
+                    selected: const AiModelRef(
+                      providerId: 'p1',
+                      modelName: 'custom-drawer',
+                    ),
+                    imageGeneration: true,
+                  );
+                },
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('custom-drawer'), findsOneWidget);
+    expect(find.text('chat-model'), findsNothing);
+    expect(popped, isNull);
   });
 }

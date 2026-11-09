@@ -11,6 +11,7 @@ import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/api_key_pool.dart';
 import 'package:qnote_flutter/core/ai/model_fetch_service.dart';
 import 'package:qnote_flutter/core/ai/model_reasoning_capability.dart';
+import 'package:qnote_flutter/core/utils/image_model_detection.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/account_quota.dart';
 import 'package:qnote_flutter/models/ai_account.dart';
@@ -107,7 +108,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
   final Set<int> _revealedKeys = {};
   final Map<String, String> _keyTestResults = {};
   final Set<String> _testingKeys = {};
-  final Map<String, String> _modelLatency = {};
+  final Map<String, _ModelLatency> _modelLatency = {};
   final Set<String> _testingModels = {};
 
   bool get _isEditing => widget.provider != null;
@@ -539,7 +540,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
         sw.stop();
         if (mounted) {
           setState(
-            () => _keyTestResults[key] = '正常 · ${sw.elapsedMilliseconds}ms',
+            () => _keyTestResults[key] = '正常 · ${_formatLatency(sw.elapsed)}',
           );
         }
       } catch (e) {
@@ -625,9 +626,16 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     for (final id in fetched) {
       final trimmed = id.trim();
       if (trimmed.isEmpty || !seen.add(trimmed)) continue;
-      // 保留已启用模型的自定义展示名
+      // 保留已启用模型的自定义展示名；生图标识按目录 ID 重新推断，
+      // 这样用户不用停用再启用一遍才能看到「生图」徽标
       final existing = _models.where((m) => m.id == trimmed).firstOrNull;
-      merged.add(existing ?? AiProviderModel.of(trimmed));
+      final fresh = AiProviderModel.of(
+        trimmed,
+        supportsImageGeneration: looksLikeImageGenerationModel(trimmed)
+            ? true
+            : null,
+      );
+      merged.add(existing == null ? fresh : existing.withMetadataFrom(fresh));
     }
     // 目录里已有的、但这次扫描没返回的模型继续保留（部分厂商按权限返回子集）
     for (final model in _catalog) {
@@ -636,6 +644,12 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
 
     final fetchedCount = fetched.length;
     setState(() {
+      // 已启用模型同步刷新元数据：模型选择器读的是这份列表，
+      // 只更新目录的话选择器里看不到新标识
+      for (var i = 0; i < _models.length; i++) {
+        final fresh = merged.where((m) => m.id == _models[i].id).firstOrNull;
+        if (fresh != null) _models[i] = _models[i].withMetadataFrom(fresh);
+      }
       _scanning = false;
       _catalog = merged;
       _catalogUpdatedAt = DateTime.now();
@@ -724,10 +738,11 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     });
   }
 
-  /// 模型行的元数据徽标：免费 / 倍率 / 上下文 / 识图 / 限免说明
+  /// 模型行的元数据徽标：免费 / 倍率 / 上下文 / 生图 / 识图 / 限免说明
   ///
-  /// 数据来自厂商目录（小浣熊的 `billing_*`、Loomy 展示名尾部的 `xN.N`）。
-  /// 倍率直接决定一次对话花多少积分，选模型时要一眼看到。
+  /// 数据来自厂商目录（小浣熊的 `billing_*`、Loomy 的 `output_modalities` 与
+  /// 展示名尾部的 `xN.N`）。倍率直接决定一次对话花多少积分，选模型时要一眼看到；
+  /// 「生图」与对话模型混在同一个列表里时，靠它区分该勾哪一个给生图角色。
   Widget? _modelMetaRow(ThemeData theme, AiProviderModel model) {
     final colorScheme = theme.colorScheme;
     final children = <Widget>[];
@@ -735,6 +750,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     for (final label in modelMetaBadges(model)) {
       final isFree = label == '免费';
       final isOriginalRate = label.startsWith('原 ');
+      final isImageGen = label == '生图';
       children.add(
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
@@ -748,7 +764,9 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
               fontSize: 11,
               color: isFree
                   ? Colors.green.shade700
-                  : (isOriginalRate ? colorScheme.onSurfaceVariant : null),
+                  : isImageGen
+                      ? Colors.purple.shade400
+                      : (isOriginalRate ? colorScheme.onSurfaceVariant : null),
               decoration: isOriginalRate ? TextDecoration.lineThrough : null,
             ),
           ),
@@ -857,6 +875,31 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     });
   }
 
+  /// 测速耗时的可读文本：1 秒内保留毫秒，超过 1 秒转成秒并保留一位小数。
+  ///
+  /// 原始毫秒（如 13942ms）位数太多，扫列表时难以快速比较。
+  String _formatLatency(Duration duration) {
+    final ms = duration.inMilliseconds;
+    if (ms < 1000) return '${ms}ms';
+    return '${(ms / 1000).toStringAsFixed(1)}s';
+  }
+
+  /// 按耗时快慢分级着色：绿=快、橙=一般、红=慢。
+  ///
+  /// 深浅色主题各取一档，避免浅色下的深绿/深橙在暗色卡片上对比度不足。
+  Color _latencyColor(ThemeData theme, _ModelLatency result) {
+    if (result.failed) return theme.colorScheme.error;
+    final isDark = theme.brightness == Brightness.dark;
+    final ms = result.duration!.inMilliseconds;
+    if (ms <= 1000) {
+      return isDark ? Colors.green.shade400 : Colors.green.shade700;
+    }
+    if (ms <= 3000) {
+      return isDark ? Colors.orange.shade300 : Colors.orange.shade800;
+    }
+    return theme.colorScheme.error;
+  }
+
   Future<void> _testModel(AiProviderModel model) async {
     final usesAccount = _usesAccount;
     final keys = _keys.map((k) => k.trim()).where((k) => k.isNotEmpty).toList();
@@ -892,11 +935,13 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       ]);
       sw.stop();
       if (mounted) {
-        setState(() => _modelLatency[model.id] = '${sw.elapsedMilliseconds}ms');
+        setState(
+          () => _modelLatency[model.id] = _ModelLatency.success(sw.elapsed),
+        );
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _modelLatency[model.id] = '失败');
+        setState(() => _modelLatency[model.id] = const _ModelLatency.failure());
         Toast.error(context, '${model.id} 测试失败：${_formatTestError(e)}');
       }
     } finally {
@@ -1997,6 +2042,14 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                 final effortLabel = capability == null
                     ? null
                     : (effort == null ? '自动' : capability.labelFor(effort));
+                final latencyLabel = latency == null
+                    ? null
+                    : (latency.failed
+                          ? '失败'
+                          : _formatLatency(latency.duration!));
+                final latencyColor = latency == null
+                    ? null
+                    : _latencyColor(theme, latency);
                 return SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: enabled,
@@ -2005,14 +2058,27 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        model.name == model.id
-                            ? (latency ?? '')
-                            : '${model.id}${latency == null ? '' : ' · $latency'}',
+                      Text.rich(
+                        TextSpan(
+                          children: [
+                            if (model.name != model.id)
+                              TextSpan(
+                                text: latencyLabel == null
+                                    ? model.id
+                                    : '${model.id} · ',
+                              ),
+                            if (latencyLabel != null)
+                              TextSpan(
+                                text: latencyLabel,
+                                style: TextStyle(
+                                  color: latencyColor,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                          ],
+                        ),
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: latency != null && latency == '失败'
-                              ? colorScheme.error
-                              : colorScheme.onSurfaceVariant,
+                          color: colorScheme.onSurfaceVariant,
                         ),
                       ),
                       ?metaRow,
@@ -2065,6 +2131,17 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       ),
     );
   }
+}
+
+/// 单个模型的测速结果。
+///
+/// 失败与耗时分开建模，避免用字符串「失败」当哨兵值再做字符串判断。
+class _ModelLatency {
+  const _ModelLatency.success(this.duration) : failed = false;
+  const _ModelLatency.failure() : duration = null, failed = true;
+
+  final Duration? duration;
+  final bool failed;
 }
 
 /// 厂商模板选择器（底部弹层）

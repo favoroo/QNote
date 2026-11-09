@@ -32,6 +32,12 @@ class AiProviderModel {
   /// 厂商 tags 声明的视觉能力；null 表示厂商没声明
   final bool? supportsVision;
 
+  /// 是否生图模型：厂商目录声明（Loomy 的 `output_modalities`）优先，
+  /// 没声明时按模型 ID 推断（与 magpie 的 DrawsID 同口径）；null 表示未知
+  ///
+  /// 只用于展示「生图」徽标和生图角色的候选过滤，不阻止用户手动绑定。
+  final bool? supportsImageGeneration;
+
   const AiProviderModel({
     required this.id,
     required this.name,
@@ -41,6 +47,7 @@ class AiProviderModel {
     this.contextWindow,
     this.rateNote,
     this.supportsVision,
+    this.supportsImageGeneration,
   });
 
   /// 当前是否免费（厂商明说倍率为 0；没给倍率时不算，避免误标「免费」）
@@ -59,6 +66,7 @@ class AiProviderModel {
     int? contextWindow,
     String? rateNote,
     bool? supportsVision,
+    bool? supportsImageGeneration,
   }) {
     final trimmed = (name ?? '').trim();
     return AiProviderModel(
@@ -70,6 +78,7 @@ class AiProviderModel {
       contextWindow: contextWindow,
       rateNote: rateNote,
       supportsVision: supportsVision,
+      supportsImageGeneration: supportsImageGeneration,
     );
   }
 
@@ -82,6 +91,7 @@ class AiProviderModel {
     if (contextWindow != null) 'context_window': contextWindow,
     if (rateNote != null && rateNote!.isNotEmpty) 'rate_note': rateNote,
     if (supportsVision != null) 'vision': supportsVision,
+    if (supportsImageGeneration != null) 'image_gen': supportsImageGeneration,
   };
 
   factory AiProviderModel.fromMap(Map<String, dynamic> map) {
@@ -98,6 +108,9 @@ class AiProviderModel {
       contextWindow: _intOf(map['context_window']),
       rateNote: note == null || note.isEmpty ? null : note,
       supportsVision: map['vision'] is bool ? map['vision'] as bool : null,
+      supportsImageGeneration: map['image_gen'] is bool
+          ? map['image_gen'] as bool
+          : null,
     );
   }
 
@@ -124,6 +137,7 @@ class AiProviderModel {
       contextWindow: contextWindow,
       rateNote: rateNote,
       supportsVision: supportsVision,
+      supportsImageGeneration: supportsImageGeneration,
     );
   }
 
@@ -140,6 +154,7 @@ class AiProviderModel {
     contextWindow: fresh.contextWindow,
     rateNote: fresh.rateNote,
     supportsVision: fresh.supportsVision,
+    supportsImageGeneration: fresh.supportsImageGeneration,
   );
 
   static const Object _unsetReasoningEffort = Object();

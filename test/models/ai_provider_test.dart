@@ -225,7 +225,7 @@ void main() {
   });
 
   group('AiProviderModel 计费元数据', () {
-    test('toMap / fromMap 往返保留倍率、上下文、限免说明与识图', () {
+    test('toMap / fromMap 往返保留倍率、上下文、限免说明与能力', () {
       final model = AiProviderModel.of(
         'sn-sensenova-6-8-flash',
         name: 'SenseNova-6.8-Flash',
@@ -234,6 +234,7 @@ void main() {
         contextWindow: 256000,
         rateNote: '限免至11月30日',
         supportsVision: true,
+        supportsImageGeneration: false,
       );
 
       final restored = AiProviderModel.fromMap(model.toMap());
@@ -243,6 +244,8 @@ void main() {
       expect(restored.contextWindow, 256000);
       expect(restored.rateNote, '限免至11月30日');
       expect(restored.supportsVision, isTrue);
+      // 厂商明确声明了输出模态（text）时，false 也要落库，不能丢成未知
+      expect(restored.supportsImageGeneration, isFalse);
       expect(restored.isFree, isTrue);
       expect(restored.hasDiscount, isTrue);
     });
@@ -259,11 +262,13 @@ void main() {
       expect(restored.contextWindow, isNull);
       expect(restored.rateNote, isNull);
       expect(restored.supportsVision, isNull);
+      expect(restored.supportsImageGeneration, isNull);
       // 没给倍率就不算免费，否则会凭空多出一个「免费」标
       expect(restored.isFree, isFalse);
       expect(restored.hasDiscount, isFalse);
       expect(restored.toMap().containsKey('rate'), isFalse);
       expect(restored.toMap().containsKey('vision'), isFalse);
+      expect(restored.toMap().containsKey('image_gen'), isFalse);
     });
 
     test('withMetadataFrom 只覆盖元数据，名称与思考档位保持本地设置', () {
@@ -282,6 +287,7 @@ void main() {
         contextWindow: 1000000,
         rateNote: '限时 7.5 折',
         supportsVision: true,
+        supportsImageGeneration: true,
       );
 
       final merged = local.withMetadataFrom(fresh);
@@ -292,6 +298,7 @@ void main() {
       expect(merged.rateWas, 1);
       expect(merged.rateNote, '限时 7.5 折');
       expect(merged.supportsVision, isTrue);
+      expect(merged.supportsImageGeneration, isTrue);
     });
 
     test('copyWith 保留元数据，只改思考档位', () {

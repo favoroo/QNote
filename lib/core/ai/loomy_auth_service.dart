@@ -11,6 +11,7 @@ import 'package:qnote_flutter/core/ai/account_auth_types.dart';
 import 'package:qnote_flutter/core/ai/raccoon_account_router.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/ai_account_repository.dart';
+import 'package:qnote_flutter/core/utils/image_model_detection.dart';
 import 'package:qnote_flutter/models/account_checkin_result.dart';
 import 'package:qnote_flutter/models/account_quota.dart';
 import 'package:qnote_flutter/models/ai_account.dart';
@@ -625,6 +626,7 @@ class LoomyAuthService extends AccountAuthService {
             rate: _rateOf(split.rate),
             contextWindow: _contextOf(entry),
             supportsVision: _visionOf(entry),
+            supportsImageGeneration: imageGenerationFromCatalogEntry(entry),
           ),
         );
       }
