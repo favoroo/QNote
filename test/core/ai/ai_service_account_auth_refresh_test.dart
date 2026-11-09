@@ -68,6 +68,7 @@ void main() {
     adapter.newAccess = newAccess;
     await AiAccountRepository.instance.upsert(
       AiAccount(
+        id: 'a1',
         providerId: 'pRaccoon',
         accessToken: 'old-access',
         refreshToken: 'refresh-1',
@@ -77,6 +78,9 @@ void main() {
         updatedAt: DateTime.now(),
       ),
     );
+  });
+
+  tearDown(() {
   });
 
   test('聊天 401 → 刷新 token → 用新凭证重发并成功', () async {

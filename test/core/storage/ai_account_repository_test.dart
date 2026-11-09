@@ -26,13 +26,17 @@ void main() {
   });
 
   AiAccount account({
+    String id = 'a1',
     String providerId = 'p1',
     String access = 'access-1',
     String refresh = 'refresh-1',
     String status = AiAccount.statusActive,
+    bool enabled = true,
+    int sortOrder = 0,
   }) {
     final now = DateTime(2026, 1, 1);
     return AiAccount(
+      id: id,
       providerId: providerId,
       accessToken: access,
       refreshToken: refresh,
@@ -41,17 +45,20 @@ void main() {
       displayName: '张三',
       phone: '138****8000',
       status: status,
+      enabled: enabled,
+      sortOrder: sortOrder,
       createdAt: now,
       updatedAt: now,
     );
   }
 
-  test('upsert 后可按 providerId 取回完整登录态', () async {
+  test('upsert 后可按 id 取回完整登录态', () async {
     await repo.upsert(account());
 
-    final saved = await repo.getByProvider('p1');
+    final saved = await repo.getById('a1');
     expect(saved, isNotNull);
-    expect(saved!.accessToken, 'access-1');
+    expect(saved!.providerId, 'p1');
+    expect(saved.accessToken, 'access-1');
     expect(saved.refreshToken, 'refresh-1');
     expect(saved.uid, 'u1');
     expect(saved.displayName, '张三');
@@ -60,9 +67,11 @@ void main() {
     expect(saved.isExpired, isFalse);
   });
 
-  test('同一 provider 再次 upsert 覆盖而不新增行', () async {
+  test('同一 id 再次 upsert 覆盖而不新增行', () async {
     await repo.upsert(account());
-    await repo.upsert(account(access: 'access-2', status: AiAccount.statusExpired));
+    await repo.upsert(
+      account(access: 'access-2', status: AiAccount.statusExpired),
+    );
 
     final all = await repo.getAll();
     expect(all.length, 1);
@@ -70,10 +79,25 @@ void main() {
     expect(all.single.isExpired, isTrue);
   });
 
-  test('delete 清掉指定账号', () async {
-    await repo.upsert(account());
-    await repo.delete('p1');
-    expect(await repo.getByProvider('p1'), isNull);
+  test('同一厂商下可存多个账号，按 sort_order 排序', () async {
+    await repo.upsert(account(id: 'a2', access: 'access-2', sortOrder: 1));
+    await repo.upsert(account(id: 'a1', access: 'access-1', sortOrder: 0));
+    await repo.upsert(account(id: 'b1', providerId: 'p2', sortOrder: 0));
+
+    final forP1 = await repo.getByProvider('p1');
+    expect(forP1.map((a) => a.id).toList(), ['a1', 'a2']);
+    expect((await repo.getAll()).length, 3);
+  });
+
+  test('delete 清掉指定账号，deleteByProvider 清掉整组', () async {
+    await repo.upsert(account(id: 'a1'));
+    await repo.upsert(account(id: 'a2'));
+    await repo.delete('a1');
+    expect(await repo.getById('a1'), isNull);
+    expect(await repo.getById('a2'), isNotNull);
+
+    await repo.deleteByProvider('p1');
+    expect(await repo.getByProvider('p1'), isEmpty);
   });
 
   test('ai_providers 表有 auth_mode 列，ai_accounts 不写 sync_log', () async {

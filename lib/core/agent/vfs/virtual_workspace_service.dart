@@ -971,6 +971,12 @@ class VirtualWorkspaceService {
                 'baseUrl': p.baseUrl,
                 'providerType': p.providerType,
                 'authMode': p.authMode,
+                // 账号型厂商的选号策略与亲和：小Q 需要知道「额度是怎么在
+                // 多个账号间分配的」，否则无法解释「为什么这两次回答走的账号不同」
+                if (p.usesAccountAuth) ...{
+                  'accountRouting': p.accountRouting,
+                  'accountAffinity': p.accountAffinity,
+                },
                 'isDefault': p.isDefault,
                 'keyCount': p.apiKeys.length,
                 // 只读快照：密钥一律掩码，避免明文 Key 进入对话上下文

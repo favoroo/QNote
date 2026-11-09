@@ -42,7 +42,14 @@ class ModelReasoningCapability {
     this.levels,
     this._style, {
     bool binary = false,
+    this.isGeneric = false,
   }) : _binary = binary;
+
+  /// 是否为「能力表未收录」的通用兜底
+  ///
+  /// 未收录模型也给出入口（对齐 ZCode：用户总能自己调），但按协议族最常见的
+  /// 字段发送；网关不认时由 AiService 的 400 降级重发兜住，不会把对话打死。
+  final bool isGeneric;
 
   /// 该档位是否受支持（切换模型后旧选择可能失效，调用方据此回落到「自动」）
   bool supports(ReasoningEffort effort) => levels.contains(effort);
@@ -146,6 +153,51 @@ class ModelReasoningCapability {
       );
     }
     return null;
+  }
+
+  /// 未收录模型的通用兜底：按协议族最常见的字段给出三档
+  ///
+  /// 只开放低/中/高：「关闭」在多数网关里并没有可靠的表达（OpenAI 的
+  /// `minimal` 是「尽量少想」而不是「不想」），不如交给「自动」不做干预。
+  /// 界面会显式标注这是通用参数，用户选错时由发信层的 400 降级兜住。
+  static ModelReasoningCapability genericFor({
+    String providerType = 'openai',
+    String? vendorId,
+  }) {
+    if (providerType == 'gemini') {
+      return const ModelReasoningCapability._(
+        [ReasoningEffort.low, ReasoningEffort.medium, ReasoningEffort.high],
+        _ReasoningParamStyle.geminiThinkingBudget,
+        isGeneric: true,
+      );
+    }
+    if (vendorId == 'openrouter') {
+      // OpenRouter 只认统一的 reasoning.effort，写 reasoning_effort 会被忽略
+      return const ModelReasoningCapability._(
+        [ReasoningEffort.low, ReasoningEffort.medium, ReasoningEffort.high],
+        _ReasoningParamStyle.openRouterReasoning,
+        isGeneric: true,
+      );
+    }
+    return const ModelReasoningCapability._(
+      [ReasoningEffort.low, ReasoningEffort.medium, ReasoningEffort.high],
+      _ReasoningParamStyle.openAiEffort,
+      isGeneric: true,
+    );
+  }
+
+  /// 界面侧解析：能力表未收录时返回通用兜底，保证入口永远可见
+  static ModelReasoningCapability forUi({
+    required String modelName,
+    String providerType = 'openai',
+    String? vendorId,
+  }) {
+    return resolve(
+          modelName: modelName,
+          providerType: providerType,
+          vendorId: vendorId,
+        ) ??
+        genericFor(providerType: providerType, vendorId: vendorId);
   }
 
   /// 把强度写进 OpenAI 兼容请求体

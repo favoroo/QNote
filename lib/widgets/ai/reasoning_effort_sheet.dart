@@ -27,21 +27,18 @@ class ReasoningEffortSelection {
 
 /// 当前模型可选的思考强度（首项固定为「自动」）
 ///
-/// 能力表未命中时返回空列表，调用方据此隐藏入口，避免给不支持的模型
-/// 展示一个选了也没用的选项。
+/// 能力表未收录的模型返回通用兜底档位，而不是空列表：参考 ZCode 的做法，
+/// 用户总能自己调；弹层里会标注「通用参数」，选错了由发信层的 400 降级兜住。
 List<ReasoningEffortOption> reasoningEffortOptions({
   required String modelName,
   required String providerType,
   String? vendorId,
 }) {
-  final capability = ModelReasoningCapability.resolve(
+  final capability = ModelReasoningCapability.forUi(
     modelName: modelName,
     providerType: providerType,
     vendorId: vendorId,
   );
-  if (capability == null) {
-    return const [];
-  }
 
   return [
     const ReasoningEffortOption(
@@ -110,6 +107,11 @@ class ReasoningEffortSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final capability = ModelReasoningCapability.forUi(
+      modelName: modelName,
+      providerType: providerType,
+      vendorId: vendorId,
+    );
     final options = reasoningEffortOptions(
       modelName: modelName,
       providerType: providerType,
@@ -141,49 +143,49 @@ class ReasoningEffortSheet extends StatelessWidget {
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
+                // 未收录模型也给出入口，但必须说明参数是猜的，
+                // 避免用户以为「选了没反应」是 App 的问题
+                if (capability.isGeneric) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    '未收录该模型的思考参数，按 OpenAI 兼容通用字段发送；'
+                    '接口不支持时会自动忽略',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.outline,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
-          if (options.isEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-              child: Text(
-                '当前模型不支持调节思考强度',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            )
-          else
-            Flexible(
-              child: ListView.separated(
-                shrinkWrap: true,
-                padding: const EdgeInsets.only(bottom: 12),
-                itemCount: options.length,
-                separatorBuilder: (_, _) =>
-                    const Divider(height: 1, indent: 56),
-                itemBuilder: (context, index) {
-                  final option = options[index];
-                  final isSelected = option.effort == selected;
-                  return ListTile(
-                    leading: Icon(
-                      isSelected
-                          ? Icons.radio_button_checked
-                          : Icons.radio_button_unchecked,
-                      color: isSelected
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.outline,
-                    ),
-                    title: Text(option.label),
-                    subtitle: Text(option.description),
-                    onTap: () => Navigator.pop(
-                      context,
-                      ReasoningEffortSelection(option.effort),
-                    ),
-                  );
-                },
-              ),
+          Flexible(
+            child: ListView.separated(
+              shrinkWrap: true,
+              padding: const EdgeInsets.only(bottom: 12),
+              itemCount: options.length,
+              separatorBuilder: (_, _) => const Divider(height: 1, indent: 56),
+              itemBuilder: (context, index) {
+                final option = options[index];
+                final isSelected = option.effort == selected;
+                return ListTile(
+                  leading: Icon(
+                    isSelected
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_unchecked,
+                    color: isSelected
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.outline,
+                  ),
+                  title: Text(option.label),
+                  subtitle: Text(option.description),
+                  onTap: () => Navigator.pop(
+                    context,
+                    ReasoningEffortSelection(option.effort),
+                  ),
+                );
+              },
             ),
+          ),
         ],
       ),
     );

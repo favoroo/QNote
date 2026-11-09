@@ -82,11 +82,11 @@ void main() {
     expect(body['thinking_budget'], 16384);
   });
 
-  test('未收录模型不携带任何思考字段', () async {
+  test('未收录模型按通用 reasoning_effort 发送（选了就生效）', () async {
     await send(config('my-custom-model', effort: ReasoningEffort.high));
 
     final body = lastBody();
-    expect(body.containsKey('reasoning_effort'), isFalse);
+    expect(body['reasoning_effort'], 'high');
     expect(body.containsKey('thinking'), isFalse);
     expect(body.containsKey('enable_thinking'), isFalse);
   });

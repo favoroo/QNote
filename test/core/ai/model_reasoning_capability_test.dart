@@ -178,4 +178,52 @@ void main() {
   test('空模型名返回 null', () {
     expect(ModelReasoningCapability.resolve(modelName: '   '), isNull);
   });
+
+  group('未收录模型的通用兜底（界面入口永远可见）', () {
+    test('OpenAI 兼容给低/中/高，写 reasoning_effort', () {
+      final capability = ModelReasoningCapability.forUi(
+        modelName: 'my-custom-model',
+      );
+      expect(capability.isGeneric, isTrue);
+      expect(capability.levels, [
+        ReasoningEffort.low,
+        ReasoningEffort.medium,
+        ReasoningEffort.high,
+      ]);
+
+      final body = <String, dynamic>{};
+      capability.applyToOpenAiBody(body, ReasoningEffort.medium);
+      expect(body['reasoning_effort'], 'medium');
+    });
+
+    test('OpenRouter 兜底写 reasoning.effort 而不是顶层字段', () {
+      final capability = ModelReasoningCapability.forUi(
+        modelName: 'meta-llama/llama-4',
+        vendorId: 'openrouter',
+      );
+      expect(capability.isGeneric, isTrue);
+
+      final body = <String, dynamic>{};
+      capability.applyToOpenAiBody(body, ReasoningEffort.low);
+      expect(body, {
+        'reasoning': {'effort': 'low'},
+      });
+    });
+
+    test('Gemini 兜底写 thinkingBudget', () {
+      final capability = ModelReasoningCapability.forUi(
+        modelName: 'gemini-unknown-preview',
+        providerType: 'gemini',
+      );
+      expect(capability.geminiThinkingConfig(ReasoningEffort.high), {
+        'thinkingBudget': 16384,
+      });
+    });
+
+    test('已收录模型仍走精确能力，不被兜底覆盖', () {
+      final capability = ModelReasoningCapability.forUi(modelName: 'glm-4.6');
+      expect(capability.isGeneric, isFalse);
+      expect(capability.levels, [ReasoningEffort.none, ReasoningEffort.high]);
+    });
+  });
 }

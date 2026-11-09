@@ -43,6 +43,7 @@ void main() {
   Future<void> seedExpired() async {
     await repo.upsert(
       AiAccount(
+        id: 'a1',
         providerId: 'p1',
         accessToken: 'old-access',
         refreshToken: 'old-refresh',
@@ -64,7 +65,7 @@ void main() {
       'data': {'phone': '13800138000'},
     };
 
-    final account = await service.refresh('p1', force: true);
+    final account = await service.refreshAccount('a1', force: true);
 
     expect(account.accessToken, nextAccess);
     expect(account.refreshToken, 'new-refresh');
@@ -72,7 +73,7 @@ void main() {
     expect(account.phone, '138****8000');
     expect(account.isExpired, isFalse);
 
-    final stored = await repo.getByProvider('p1');
+    final stored = await repo.getById('a1');
     expect(stored?.accessToken, nextAccess);
     expect(stored?.refreshToken, 'new-refresh');
     expect(stored?.phone, '138****8000');
@@ -86,11 +87,11 @@ void main() {
     };
 
     await expectLater(
-      service.refresh('p1', force: true),
+      service.refreshAccount('a1', force: true),
       throwsA(isA<RaccoonAuthRequiredException>()),
     );
 
-    final stored = await repo.getByProvider('p1');
+    final stored = await repo.getById('a1');
     expect(stored?.isExpired, isTrue);
     expect(await service.accessTokenFor('p1'), isNull);
   });

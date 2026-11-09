@@ -58,6 +58,27 @@ void main() {
     );
   });
 
+  test('多账号选号策略与亲和写入/读出，缺失时回落默认值', () {
+    final saved = provider(
+      authMode: AiProvider.authModeRaccoon,
+      keys: const [],
+    ).copyWith(accountRouting: 'failover', accountAffinity: 'strict');
+    final map = saved.toMap();
+    expect(map['account_routing'], 'failover');
+    expect(map['account_affinity'], 'strict');
+
+    final restored = AiProvider.fromMap(map);
+    expect(restored.accountRouting, 'failover');
+    expect(restored.accountAffinity, 'strict');
+
+    final legacy = provider().toMap()
+      ..remove('account_routing')
+      ..remove('account_affinity');
+    final fallback = AiProvider.fromMap(legacy);
+    expect(fallback.accountRouting, AiProvider.defaultAccountRouting);
+    expect(fallback.accountAffinity, AiProvider.defaultAccountAffinity);
+  });
+
   test('AiConfig.fromProvider 带上 authMode', () {
     final config = AiConfig.fromProvider(
       provider(authMode: AiProvider.authModeRaccoon, keys: const []),

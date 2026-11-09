@@ -93,8 +93,9 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
     // 这里只关心面板开关，避免整条悬浮层（含面板输入框）被高频重建，
     // 否则 Web 端中文输入法组合态会被反复打断（删字复活、光标错乱）
     final panelOpen = ref.watch(floatingQProvider.select((s) => s.panelOpen));
-    final anchorAlignment =
-        ref.watch(floatingQProvider.select((s) => s.anchorAlignment));
+    final anchorAlignment = ref.watch(
+      floatingQProvider.select((s) => s.anchorAlignment),
+    );
     final size = MediaQuery.sizeOf(context);
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
 
@@ -384,10 +385,12 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
           ? stripRedundantImageMarkdown(message.content, generatedImageKeys)
           : message.content;
       // Agent 每轮发起工具调用前会生成「正文为空、仅承载 tool_calls」的 assistant
-      // 中转消息（与 AI 主页面 _isVisibleMessage 过滤的是同一类消息），快捷面板
-      // 不渲染思考胶囊，这类消息只会渲染成空白胶囊卡片，直接跳过
+      // 中转消息（与 AI 主页面 isChatTimelineVisibleMessage 过滤的是同一类消息），
+      // 快捷面板不渲染思考胶囊，这类消息只会渲染成空白胶囊卡片，直接跳过
       if (displayContent.trim().isEmpty) continue;
-      children.add(_buildEntrance(_buildBubble(theme, message, displayContent)));
+      children.add(
+        _buildEntrance(_buildBubble(theme, message, displayContent)),
+      );
       // 步数上限提示：待处理时在气泡下方渲染「继续/暂停」按钮
       if (message.role == 'assistant' &&
           message.uiDetails?['type'] == 'turn_limit' &&
@@ -437,7 +440,7 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
       final emptyPrompt = externalShareMode
           ? '让小Q处理外部导入的内容，例如"将这段文字整理并保存为笔记"或"提炼核心信息"。'
           : (effectiveContext?.emptyPromptHint ??
-              QPageContext.fallback.emptyPromptHint);
+                QPageContext.fallback.emptyPromptHint);
 
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
@@ -1048,7 +1051,7 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
     final inputHint = externalShareMode
         ? '告诉小Q如何处理这段内容…'
         : (effectiveContext?.inputHintText ??
-            QPageContext.fallback.inputHintText);
+              QPageContext.fallback.inputHintText);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),

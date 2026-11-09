@@ -18,10 +18,7 @@ class ToolCall {
     return {
       'id': id,
       'type': type,
-      'function': {
-        'name': name,
-        'arguments': jsonEncode(arguments),
-      },
+      'function': {'name': name, 'arguments': jsonEncode(arguments)},
     };
   }
 
@@ -52,12 +49,14 @@ class ChatMessage {
   final DateTime? timestamp;
   final List<String>? images;
   final String? thought; // 模型思考推理过程
+  final int? thoughtSeconds; // 该段思考耗时（秒），供时间线展示「思考 · 3 秒」
   final List<ToolCall>? toolCalls; // 模型生成的工具调用
   final String? toolCallId; // 当 role == 'tool' 时对应的 toolCallId
   final String? toolName; // 当 role == 'tool' 时的工具名称
   final bool? isError; // 当 role == 'tool' 时表示执行是否出错
   final Map<String, dynamic>? uiDetails; // 供客户端 UI 渲染的结构化卡片数据
-  final String? undoLog; // 仅用户消息：本轮对话 VFS 变更快照（WorkspaceUndoEntry 列表 JSON），支撑撤回/再次编辑
+  final String?
+  undoLog; // 仅用户消息：本轮对话 VFS 变更快照（WorkspaceUndoEntry 列表 JSON），支撑撤回/再次编辑
 
   ChatMessage({
     required this.role,
@@ -65,6 +64,7 @@ class ChatMessage {
     this.timestamp,
     this.images,
     this.thought,
+    this.thoughtSeconds,
     this.toolCalls,
     this.toolCallId,
     this.toolName,
@@ -80,6 +80,7 @@ class ChatMessage {
       'timestamp': timestamp?.toIso8601String(),
       if (images != null && images!.isNotEmpty) 'images': images,
       if (thought != null && thought!.isNotEmpty) 'thought': thought,
+      if (thoughtSeconds != null) 'thought_seconds': thoughtSeconds,
       if (toolCalls != null && toolCalls!.isNotEmpty)
         'tool_calls': toolCalls!.map((t) => t.toMap()).toList(),
       if (toolCallId != null) 'tool_call_id': toolCallId,
@@ -107,7 +108,8 @@ class ChatMessage {
     }
 
     Map<String, dynamic>? uiDetails;
-    if (map['ui_details'] != null && map['ui_details'] is Map<String, dynamic>) {
+    if (map['ui_details'] != null &&
+        map['ui_details'] is Map<String, dynamic>) {
       uiDetails = map['ui_details'] as Map<String, dynamic>;
     }
 
@@ -119,6 +121,7 @@ class ChatMessage {
           : null,
       images: images,
       thought: map['thought'] as String?,
+      thoughtSeconds: (map['thought_seconds'] as num?)?.toInt(),
       toolCalls: toolCalls,
       toolCallId: map['tool_call_id'] as String?,
       toolName: map['tool_name'] as String?,
@@ -134,6 +137,7 @@ class ChatMessage {
     DateTime? timestamp,
     List<String>? images,
     String? thought,
+    int? thoughtSeconds,
     List<ToolCall>? toolCalls,
     String? toolCallId,
     String? toolName,
@@ -147,6 +151,7 @@ class ChatMessage {
       timestamp: timestamp ?? this.timestamp,
       images: images ?? this.images,
       thought: thought ?? this.thought,
+      thoughtSeconds: thoughtSeconds ?? this.thoughtSeconds,
       toolCalls: toolCalls ?? this.toolCalls,
       toolCallId: toolCallId ?? this.toolCallId,
       toolName: toolName ?? this.toolName,

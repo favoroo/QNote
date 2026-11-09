@@ -8,9 +8,9 @@ import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/model_vision_capability.dart';
 import 'package:qnote_flutter/core/ai/no_model_exception.dart';
-import 'package:qnote_flutter/core/ai/raccoon_auth_service.dart';
 import 'package:qnote_flutter/core/ai/vision_capability_probe.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
+import 'package:qnote_flutter/models/ai_account_routing.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_provider.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
@@ -186,9 +186,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     if (confirmed != true || !mounted) return;
 
     try {
-      if (provider.usesAccountAuth) {
-        await RaccoonAuthService.instance.logout(provider.id);
-      }
+      // deleteProvider 内部会一并清掉该厂商下的全部账号登录态（可能是多个账号）
       await ref.read(aiProviderListProvider.notifier).deleteProvider(provider.id);
       await AiRoleService.instance.pruneStaleRoleBindings();
       ref.invalidate(aiRolesProvider);
@@ -432,7 +430,8 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                       const SizedBox(height: 4),
                       Text(
                         provider.usesAccountAuth
-                            ? '账号登录 · ${provider.models.length} 个模型已启用'
+                            ? '账号登录 · ${AccountRouting.fromId(provider.accountRouting).label} · '
+                                  '${provider.models.length} 个模型已启用'
                             : '${provider.apiKeys.length} 把密钥 · ${provider.models.length} 个模型已启用',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: colorScheme.onSurfaceVariant,
@@ -846,12 +845,17 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
 }
 
 /// 厂商模板选择器（添加服务商第一步）
+///
+/// 按凭证类型分区：账号登录型（小浣熊这类订阅账号）在上，API Key 型在下。
+/// 两类厂商的「添加流程」完全不同（一个要登录、一个要粘密钥），混在一张平铺
+/// 列表里会让人以为登录型也要填 Key。
 class _VendorPickerSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     // 延迟到运行时读取，避免在 const 语境里依赖 config 列表
-    final vendors = _vendors();
+    final accountVendors = aiAccountProviders();
+    final apiKeyVendors = aiApiKeyProviders();
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.8,
@@ -879,33 +883,82 @@ class _VendorPickerSheet extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: ListView.builder(
+            child: ListView(
               controller: controller,
-              itemCount: vendors.length,
-              itemBuilder: (context, index) {
-                final spec = vendors[index];
-                return ListTile(
-                  title: Text(spec.name),
-                  subtitle: Text(
-                    spec.defaultBaseUrl.isEmpty
-                        ? '需要自己填写地址'
-                        : spec.defaultBaseUrl,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+              padding: const EdgeInsets.only(bottom: 16),
+              children: [
+                if (accountVendors.isNotEmpty) ...[
+                  _vendorSectionHeader(
+                    theme,
+                    title: '账号登录',
+                    subtitle: '登录厂商账号即可使用，凭证自动续期',
                   ),
-                  onTap: () => Navigator.of(context).pop(spec.id),
-                );
-              },
+                  ...accountVendors.map(
+                    (spec) => _vendorTile(context, theme, spec),
+                  ),
+                ],
+                if (apiKeyVendors.isNotEmpty) ...[
+                  _vendorSectionHeader(
+                    theme,
+                    title: 'API Key',
+                    subtitle: '填写服务地址与密钥，多把密钥自动轮询',
+                  ),
+                  ...apiKeyVendors.map(
+                    (spec) => _vendorTile(context, theme, spec),
+                  ),
+                ],
+              ],
             ),
           ),
         ],
       ),
     );
   }
-}
 
-/// 避免在 widget 文件顶部固化配置引用（测试可替换）
-List<AiProviderConfig> _vendors() => aiProviders;
+  Widget _vendorSectionHeader(
+    ThemeData theme, {
+    required String title,
+    required String subtitle,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _vendorTile(
+    BuildContext context,
+    ThemeData theme,
+    AiProviderConfig spec,
+  ) {
+    return ListTile(
+      title: Text(spec.name),
+      subtitle: Text(
+        spec.defaultBaseUrl.isEmpty ? '需要自己填写地址' : spec.defaultBaseUrl,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+      onTap: () => Navigator.of(context).pop(spec.id),
+    );
+  }
+}

@@ -8,6 +8,7 @@ import 'package:qnote_flutter/core/agent/engine/tool_dispatcher.dart';
 import 'package:qnote_flutter/core/agent/models/agent_tool.dart';
 import 'package:qnote_flutter/core/ai/ai_route_service.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
+import 'package:qnote_flutter/core/ai/raccoon_account_router.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 
@@ -30,8 +31,10 @@ class AgentLoop {
   final int maxHistoryMessages;
   final Future<void> Function(ToolCall call)? beforeToolCall;
   final Future<void> Function(ToolCall call, ChatMessage result)? afterToolCall;
-  final FutureOr<bool> Function(ChatMessage lastAssistantMessage, int turn)? shouldStopAfterTurn;
-  final List<ChatMessage> Function(List<ChatMessage> messages)? transformContext;
+  final FutureOr<bool> Function(ChatMessage lastAssistantMessage, int turn)?
+  shouldStopAfterTurn;
+  final List<ChatMessage> Function(List<ChatMessage> messages)?
+  transformContext;
 
   /// 整池限流、排队等额度回填时的回调（入参为预计等待时长）
   ///
@@ -52,6 +55,13 @@ class AgentLoop {
   /// 只在**正文未输出**前生效：已经吐给用户的内容不能从另一个模型重来一遍。
   final AiModelRoute? route;
 
+  /// 本次对话的账号选号作用域（订阅账号型多账号轮换与亲和用）
+  ///
+  /// 一条用户消息内的多步工具循环共用同一个 [AiRequestScope.turnKey]，
+  /// 因此「每轮轮换」策略不会在同一轮里换账号，厂商侧的 prompt cache 也不会
+  /// 被工具往返打散。
+  final AiRequestScope? requestScope;
+
   AgentLoop({
     required this.aiService,
     required this.dispatcher,
@@ -64,6 +74,7 @@ class AgentLoop {
     this.onQuotaHold,
     this.supportsImageInput = true,
     this.route,
+    this.requestScope,
   });
 
   /// 运行 ReAct 循环
@@ -86,6 +97,7 @@ class AgentLoop {
         httpCancelToken.cancel(cancellationToken?.reason);
       }
     }
+
     cancellationToken?.addListener(bridgeCancel);
 
     try {
@@ -97,8 +109,11 @@ class AgentLoop {
       }
 
       // 长会话压缩：裁剪早期消息并生成摘要（对齐 pi compaction）
-      final compactedHistory =
-          await _compactHistory(conversationHistory, cancellationToken, httpCancelToken);
+      final compactedHistory = await _compactHistory(
+        conversationHistory,
+        cancellationToken,
+        httpCancelToken,
+      );
 
       // 取消检查点：压缩完成后立即响应，不再进入推理循环
       if (cancellationToken?.isCancelled == true) {
@@ -109,8 +124,8 @@ class AgentLoop {
 
       final String fullSystemPrompt =
           (dynamicContext == null || dynamicContext.trim().isEmpty)
-              ? systemPrompt
-              : '$systemPrompt\n\n# 当前环境上下文\n$dynamicContext';
+          ? systemPrompt
+          : '$systemPrompt\n\n# 当前环境上下文\n$dynamicContext';
 
       final List<ChatMessage> activeMessages = [
         ChatMessage(role: 'system', content: fullSystemPrompt),
@@ -151,6 +166,10 @@ class AgentLoop {
         final accumulatedContent = StringBuffer();
         // 模型原生思考增量（reasoning_content 等）累积，轮末回填 ChatMessage.thought
         final accumulatedReasoning = StringBuffer();
+        // 本轮思考计时：优先取首个思考增量的时刻，无增量（<thought> 标签协议路径）
+        // 时回落到本轮起始，供 UI 展示「思考 · 3 秒」
+        final DateTime turnStartedAt = DateTime.now();
+        DateTime? reasoningStartedAt;
         final List<ToolCall> streamedToolCalls = [];
         var thoughtFilter = _ThoughtTagFilter();
         // 工具参数生成进度的去重锚点（每轮重建，避免跨轮抑制同参数工具的状态更新）
@@ -171,12 +190,15 @@ class AgentLoop {
             onStreamRetry: () => streamResetPending = true,
             cancelToken: httpCancelToken,
             route: route,
+            scope: requestScope,
           );
 
           await for (final chunk in stream) {
             if (cancellationToken?.isCancelled == true) {
               LoggerService.instance.logAI('流式生成中收到中止信号');
-              yield AgentEvent.finished(_cancelledMessage(accumulatedContent.toString()));
+              yield AgentEvent.finished(
+                _cancelledMessage(accumulatedContent.toString()),
+              );
               yield AgentEvent.agentEnd();
               return;
             }
@@ -202,10 +224,14 @@ class AgentLoop {
                 progress.partialArguments,
               );
               final detailKey = detail.isEmpty ? '' : detail.toString();
-              if (progress.toolName != lastCallingTool || detailKey != lastCallingDetail) {
+              if (progress.toolName != lastCallingTool ||
+                  detailKey != lastCallingDetail) {
                 lastCallingTool = progress.toolName;
                 lastCallingDetail = detailKey;
-                yield AgentEvent.toolCalling(progress.toolName, partialArguments: detail);
+                yield AgentEvent.toolCalling(
+                  progress.toolName,
+                  partialArguments: detail,
+                );
               }
               continue;
             }
@@ -214,6 +240,7 @@ class AgentLoop {
             // 高频碎片不在本层节流，由 provider 层统一批量刷新（与 contentDelta 同策略）
             final reasoning = chunk.reasoningText;
             if (reasoning != null) {
+              reasoningStartedAt ??= DateTime.now();
               accumulatedReasoning.write(reasoning);
               yield AgentEvent.reasoningDelta(reasoning);
               continue;
@@ -236,18 +263,25 @@ class AgentLoop {
           // 用户主动中止（含 Dio 请求被断连抛出的取消异常）按正常中止收尾，不作为错误上报
           if (cancellationToken?.isCancelled == true) {
             LoggerService.instance.logAI('AgentLoop 流式因用户中止而中断');
-            yield AgentEvent.finished(_cancelledMessage(accumulatedContent.toString()));
+            yield AgentEvent.finished(
+              _cancelledMessage(accumulatedContent.toString()),
+            );
             yield AgentEvent.agentEnd();
             return;
           }
-          LoggerService.instance.logAI('AgentLoop 流式发生错误: $e', level: LogLevel.error);
+          LoggerService.instance.logAI(
+            'AgentLoop 流式发生错误: $e',
+            level: LogLevel.error,
+          );
 
           // 降级兜底：本轮上下文注入过图片时，可能是网关直接拒收图片（返回错误），
           // 剥离全部图片后原地重试一次，避免整轮对话直接中断。
           // 注意：像 glm-5.2 那样「收图不报错、直接编造」的模型走不到这里，
           // 由构造参数 supportsImageInput 在发请求前就完成剥离。
           if (!imageFallbackTried &&
-              activeMessages.any((m) => m.images != null && m.images!.isNotEmpty)) {
+              activeMessages.any(
+                (m) => m.images != null && m.images!.isNotEmpty,
+              )) {
             imageFallbackTried = true;
             LoggerService.instance.logAI('上下文含图片消息，疑似模型不支持图片输入，剥离图片后重试本次请求');
             _stripAllImages(activeMessages);
@@ -269,24 +303,37 @@ class AgentLoop {
               .replaceAll(RegExp(r'<thought>[\s\S]*?</thought>'), '')
               .replaceAll(RegExp(r'</?thought>'), '')
               .trim();
-        } else if (content.contains('<thought>') && content.contains('</thought>')) {
+        } else if (content.contains('<thought>') &&
+            content.contains('</thought>')) {
           // 兜底：非流式路径或过滤器未覆盖的格式
           final startIdx = content.indexOf('<thought>') + 9;
           final endIdx = content.indexOf('</thought>');
           if (endIdx > startIdx) {
             thought = content.substring(startIdx, endIdx).trim();
-            content = (content.substring(0, startIdx - 9) + content.substring(endIdx + 10)).trim();
+            content =
+                (content.substring(0, startIdx - 9) +
+                        content.substring(endIdx + 10))
+                    .trim();
           }
         }
 
         // 无 <thought> 标签协议时，回退采用模型原生思考增量作为本轮思考内容
-        if ((thought == null || thought.isEmpty) && accumulatedReasoning.isNotEmpty) {
+        if ((thought == null || thought.isEmpty) &&
+            accumulatedReasoning.isNotEmpty) {
           thought = accumulatedReasoning.toString().trim();
         }
 
         if (thought != null && thought.isNotEmpty) {
           yield AgentEvent.thoughtUpdate(thought);
         }
+
+        // 思考耗时：从首个思考增量（无增量则本轮起始）算到流结束，
+        // 供 UI 展示「思考 · 3 秒」这类步骤摘要
+        final int? thoughtSeconds = thought == null || thought.isEmpty
+            ? null
+            : DateTime.now()
+                  .difference(reasoningStartedAt ?? turnStartedAt)
+                  .inSeconds;
 
         List<ToolCall> toolCalls = List.from(streamedToolCalls);
 
@@ -299,6 +346,7 @@ class AgentLoop {
           role: 'assistant',
           content: content,
           thought: thought,
+          thoughtSeconds: thoughtSeconds,
           toolCalls: toolCalls.isNotEmpty ? toolCalls : null,
           timestamp: DateTime.now(),
         );
@@ -325,7 +373,8 @@ class AgentLoop {
         }
 
         // 检查是否所有工具都支持并行执行 (Parallel Tool Execution)
-        final bool canRunParallel = toolCalls.length > 1 &&
+        final bool canRunParallel =
+            toolCalls.length > 1 &&
             toolCalls.every((call) {
               final tool = dispatcher.getTool(call.name);
               return tool?.executionMode == ToolExecutionMode.parallel;
@@ -338,11 +387,16 @@ class AgentLoop {
             await beforeToolCall?.call(call);
           }
 
-          final results = await Future.wait(toolCalls.map((call) => dispatcher.dispatch(call)));
+          final results = await Future.wait(
+            toolCalls.map((call) => dispatcher.dispatch(call)),
+          );
 
           for (int i = 0; i < toolCalls.length; i++) {
             final call = toolCalls[i];
-            final contextMsg = _resolveToolResultMessage(results[i], activeMessages);
+            final contextMsg = _resolveToolResultMessage(
+              results[i],
+              activeMessages,
+            );
             await afterToolCall?.call(call, contextMsg);
             yield AgentEvent.toolCompleted(call, contextMsg);
           }
@@ -363,7 +417,10 @@ class AgentLoop {
               },
             );
 
-            final contextMsg = _resolveToolResultMessage(toolResultMsg, activeMessages);
+            final contextMsg = _resolveToolResultMessage(
+              toolResultMsg,
+              activeMessages,
+            );
             await afterToolCall?.call(call, contextMsg);
             yield AgentEvent.toolCompleted(call, contextMsg);
           }
@@ -373,7 +430,10 @@ class AgentLoop {
 
         // 检查后置停止钩子
         if (shouldStopAfterTurn != null) {
-          final shouldStop = await shouldStopAfterTurn!(assistantResponse, currentTurn);
+          final shouldStop = await shouldStopAfterTurn!(
+            assistantResponse,
+            currentTurn,
+          );
           if (shouldStop) {
             LoggerService.instance.logAI('shouldStopAfterTurn 触发停止判定');
             yield AgentEvent.finished(assistantResponse);
@@ -434,9 +494,14 @@ class AgentLoop {
   /// 再以合成 user 消息把图片注入上下文。图片只存在于循环内部的
   /// [activeMessages]，不随 toolCompleted 事件持久化，下一轮对话自然消失，
   /// 因此模型本轮可见图片而数据库与后续请求不受 base64 体积影响。
-  ChatMessage _resolveToolResultMessage(ChatMessage resultMsg, List<ChatMessage> activeMessages) {
+  ChatMessage _resolveToolResultMessage(
+    ChatMessage resultMsg,
+    List<ChatMessage> activeMessages,
+  ) {
     final images = resultMsg.images;
-    final contextMsg = (images == null || images.isEmpty) ? resultMsg : _stripImages(resultMsg);
+    final contextMsg = (images == null || images.isEmpty)
+        ? resultMsg
+        : _stripImages(resultMsg);
     activeMessages.add(contextMsg);
 
     if (images != null && images.isNotEmpty) {
@@ -444,22 +509,28 @@ class AgentLoop {
       if (!supportsImageInput) {
         // 工具已经把画面读成文字（如 describe_image 的返回），图片本体不必也不该进上下文：
         // 当前模型收到只会编造。这里只留路径，让模型自己决定是否再调识图工具
-        activeMessages.add(ChatMessage(
-          role: 'user',
-          content: '[系统注入] 工具 ${resultMsg.toolName ?? "tool"} 的结果涉及图片（来源: $source）。'
-              '当前模型不支持图片输入，图片**未**附加到本轮上下文中，你看不到它的画面；'
-              '需要图片内容请调用 describe_image(path: "$source", question: "你的具体问题")。',
-          timestamp: DateTime.now(),
-        ));
+        activeMessages.add(
+          ChatMessage(
+            role: 'user',
+            content:
+                '[系统注入] 工具 ${resultMsg.toolName ?? "tool"} 的结果涉及图片（来源: $source）。'
+                '当前模型不支持图片输入，图片**未**附加到本轮上下文中，你看不到它的画面；'
+                '需要图片内容请调用 describe_image(path: "$source", question: "你的具体问题")。',
+            timestamp: DateTime.now(),
+          ),
+        );
         return contextMsg;
       }
-      activeMessages.add(ChatMessage(
-        role: 'user',
-        content: '[系统注入] 工具 ${resultMsg.toolName ?? "tool"} 的结果附带 ${images.length} 张图片'
-            '（来源: $source）。图片已附加在本条消息中，请直接基于图片画面内容继续分析，无需再次调用工具读取。',
-        images: images,
-        timestamp: DateTime.now(),
-      ));
+      activeMessages.add(
+        ChatMessage(
+          role: 'user',
+          content:
+              '[系统注入] 工具 ${resultMsg.toolName ?? "tool"} 的结果附带 ${images.length} 张图片'
+              '（来源: $source）。图片已附加在本条消息中，请直接基于图片画面内容继续分析，无需再次调用工具读取。',
+          images: images,
+          timestamp: DateTime.now(),
+        ),
+      );
     }
     return contextMsg;
   }
@@ -488,11 +559,13 @@ class AgentLoop {
       String content = m.content;
       if (m.role == 'user' && content.startsWith('[系统注入]')) {
         // 循环内自己注入的合成消息：整条换成「看不见 + 怎么补救」
-        content = '[系统注入] 图片已剥离：当前模型不支持图片输入，你看不到任何画面。'
+        content =
+            '[系统注入] 图片已剥离：当前模型不支持图片输入，你看不到任何画面。'
             '需要图片内容请调用 describe_image(path: "<图片路径>", question: "你的具体问题")，'
             '未调用工具前严禁描述图片内容。';
       } else if (m.role == 'tool' && m.toolName == 'view_image') {
-        content = '图片未能加载：当前模型不支持图片输入，无法通过 view_image 看图。'
+        content =
+            '图片未能加载：当前模型不支持图片输入，无法通过 view_image 看图。'
             '请改用 describe_image 工具（传入同一路径与你的具体问题）获取文字版识图结果。';
       } else {
         // 用户真实消息带附件：原文一个字都不能改，只在尾部追加说明，
@@ -509,8 +582,10 @@ class AgentLoop {
   /// 也没法指望模型原样回传成 describe_image 的 path 参数 —— 这种场景直接说明不可用。
   static String _imageUnavailableNote(List<String> images) {
     final buf = StringBuffer()
-      ..writeln('[系统提示] 本条消息附带 ${images.length} 张图片，'
-          '但当前对话模型不支持图片输入，你看不到任何画面内容。')
+      ..writeln(
+        '[系统提示] 本条消息附带 ${images.length} 张图片，'
+        '但当前对话模型不支持图片输入，你看不到任何画面内容。',
+      )
       ..writeln('需要识图时请调用 describe_image 工具，并传入你的具体问题；工具会返回文字版识别结果。');
     final usable = images.where((p) => !p.startsWith('data:')).toList();
     if (usable.isNotEmpty) {
@@ -520,8 +595,10 @@ class AgentLoop {
       }
     }
     if (usable.length < images.length) {
-      buf.writeln('（有 ${images.length - usable.length} 张内联图片无法以路径形式回传，'
-          '这类图片请如实告知用户当前无法识别。）');
+      buf.writeln(
+        '（有 ${images.length - usable.length} 张内联图片无法以路径形式回传，'
+        '这类图片请如实告知用户当前无法识别。）',
+      );
     }
     buf.write('严禁在未调用工具前描述、猜测或复述图片里的内容。');
     return buf.toString();
@@ -549,7 +626,11 @@ class AgentLoop {
     final removed = history.sublist(0, cut);
     final kept = history.sublist(cut);
 
-    final summary = await _summarizeMessages(removed, cancellationToken, httpCancelToken);
+    final summary = await _summarizeMessages(
+      removed,
+      cancellationToken,
+      httpCancelToken,
+    );
     LoggerService.instance.logAI(
       '触发上下文压缩: 裁剪 ${removed.length} 条早期消息, 保留 ${kept.length} 条',
     );
@@ -576,8 +657,8 @@ class AgentLoop {
       final label = m.role == 'user'
           ? '用户'
           : m.role == 'assistant'
-              ? '小Q'
-              : '工具结果';
+          ? '小Q'
+          : '工具结果';
       var text = m.content.trim();
       if (text.length > 400) text = '${text.substring(0, 400)}…';
       if (text.isEmpty) continue;
@@ -587,15 +668,20 @@ class AgentLoop {
     if (transcript.isEmpty) return '（无有效内容）';
 
     try {
-      final llmSummary = await aiService.chat([
-        ChatMessage(
-          role: 'system',
-          content: '你是会话压缩器。将以下对话历史压缩为简洁的要点列表摘要，必须保留：'
-              '1) 用户的目标与偏好；2) 已完成的操作（涉及的数据类型与路径）；'
-              '3) 关键决定；4) 未完成事项。控制在 300 字以内。',
-        ),
-        ChatMessage(role: 'user', content: transcript),
-      ], cancelToken: httpCancelToken, route: route);
+      final llmSummary = await aiService.chat(
+        [
+          ChatMessage(
+            role: 'system',
+            content:
+                '你是会话压缩器。将以下对话历史压缩为简洁的要点列表摘要，必须保留：'
+                '1) 用户的目标与偏好；2) 已完成的操作（涉及的数据类型与路径）；'
+                '3) 关键决定；4) 未完成事项。控制在 300 字以内。',
+          ),
+          ChatMessage(role: 'user', content: transcript),
+        ],
+        cancelToken: httpCancelToken,
+        route: route,
+      );
       if (llmSummary.trim().isNotEmpty) return llmSummary.trim();
     } catch (e) {
       // 用户主动中止：向上抛出由主循环按中止收尾，禁止降级为机械摘要后继续跑完任务
@@ -606,7 +692,9 @@ class AgentLoop {
       );
     }
     // 机械降级：截断保护，避免摘要本身反而撑爆上下文
-    return transcript.length > 2000 ? '${transcript.substring(0, 2000)}…' : transcript;
+    return transcript.length > 2000
+        ? '${transcript.substring(0, 2000)}…'
+        : transcript;
   }
 
   /// 默认上下文修剪与 Token 防爆治理策略（对齐 Pi Agent 的 transformContext）
@@ -631,7 +719,8 @@ class AgentLoop {
           final head = content.substring(0, 1200);
           final tail = content.substring(content.length - 600);
           final omittedCount = content.length - 1800;
-          final safeContent = '$head\n\n... [为保护上下文已省略中间 $omittedCount 字符] ...\n\n$tail';
+          final safeContent =
+              '$head\n\n... [为保护上下文已省略中间 $omittedCount 字符] ...\n\n$tail';
           transformed.add(msg.copyWith(content: safeContent));
           continue;
         }
@@ -655,22 +744,31 @@ class AgentLoop {
     final id = 'call_${DateTime.now().millisecondsSinceEpoch}';
 
     // 格式 1: ```action \n {"name":"...", "arguments":{...}} \n ```
-    final codeBlockRegex = RegExp(r'```(?:action|json:action)\s*([\s\S]*?)\s*```');
+    final codeBlockRegex = RegExp(
+      r'```(?:action|json:action)\s*([\s\S]*?)\s*```',
+    );
     final match = codeBlockRegex.firstMatch(text);
     if (match != null) {
       try {
         final json = jsonDecode(match.group(1)!) as Map<String, dynamic>;
-        calls.add(ToolCall(
-          id: id,
-          name: json['name'] as String? ?? json['tool'] as String? ?? '',
-          arguments: json['arguments'] as Map<String, dynamic>? ?? json['args'] as Map<String, dynamic>? ?? {},
-        ));
+        calls.add(
+          ToolCall(
+            id: id,
+            name: json['name'] as String? ?? json['tool'] as String? ?? '',
+            arguments:
+                json['arguments'] as Map<String, dynamic>? ??
+                json['args'] as Map<String, dynamic>? ??
+                {},
+          ),
+        );
         return calls;
       } catch (_) {}
     }
 
     // 格式 2: Action: xxx \n Action Input: {...}
-    final actionRegex = RegExp(r'Action:\s*([a-zA-Z0-9_-]+)\s*\nAction Input:\s*(\{[\s\S]*?\})');
+    final actionRegex = RegExp(
+      r'Action:\s*([a-zA-Z0-9_-]+)\s*\nAction Input:\s*(\{[\s\S]*?\})',
+    );
     final actionMatch = actionRegex.firstMatch(text);
     if (actionMatch != null) {
       final name = actionMatch.group(1)!.trim();

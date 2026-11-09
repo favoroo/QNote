@@ -212,7 +212,7 @@ final aiProviders = <AiProviderConfig>[
   ),
   const AiProviderConfig(
     id: 'raccoon',
-    name: '商汤小浣熊（账号登录）',
+    name: '商汤小浣熊',
     provider: 'openai',
     defaultBaseUrl: 'https://xiaohuanxiong.com/api/web/llm/v2',
     models: [
@@ -278,3 +278,14 @@ AiProviderConfig? getProviderById(String id) {
     return null;
   }
 }
+
+/// 需要账号登录的厂商模板（凭证来自登录态，不填 API Key）
+///
+/// 「添加模型服务」的厂商选择器据此把两类厂商分区展示：账号型要点登录，
+/// 密钥型要粘 Key，混在一张列表里容易让人以为登录型也要填密钥。
+List<AiProviderConfig> aiAccountProviders() =>
+    aiProviders.where((p) => p.authMode != 'api_key').toList();
+
+/// 走 API Key 的厂商模板（含「自定义」）
+List<AiProviderConfig> aiApiKeyProviders() =>
+    aiProviders.where((p) => p.authMode == 'api_key').toList();

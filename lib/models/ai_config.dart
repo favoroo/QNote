@@ -32,6 +32,12 @@ class AiConfig {
   /// [apiKey] 不参与鉴权。
   final String authMode;
 
+  /// 多账号选号策略（账号型专用，见 `AccountRouting`）
+  final String accountRouting;
+
+  /// 会话亲和时长（账号型专用，见 `AccountAffinity`）
+  final String accountAffinity;
+
   /// 厂商模板 id（推理强度等厂商级默认值的来源）
   final String? vendorId;
 
@@ -46,6 +52,8 @@ class AiConfig {
     required this.apiKey,
     required this.baseUrl,
     this.authMode = AiProvider.authModeApiKey,
+    this.accountRouting = AiProvider.defaultAccountRouting,
+    this.accountAffinity = AiProvider.defaultAccountAffinity,
     this.vendorId,
     this.reasoningEffort,
   });
@@ -71,6 +79,8 @@ class AiConfig {
       apiKey: keys.isEmpty ? '' : keys.first,
       baseUrl: provider.baseUrl,
       authMode: provider.authMode,
+      accountRouting: provider.accountRouting,
+      accountAffinity: provider.accountAffinity,
       vendorId: provider.vendorId,
       reasoningEffort: model?.reasoningEffort,
     );
@@ -84,6 +94,8 @@ class AiConfig {
     String? apiKey,
     String? baseUrl,
     String? authMode,
+    String? accountRouting,
+    String? accountAffinity,
     String? vendorId,
     ReasoningEffort? reasoningEffort,
   }) {
@@ -95,6 +107,8 @@ class AiConfig {
       apiKey: apiKey ?? this.apiKey,
       baseUrl: baseUrl ?? this.baseUrl,
       authMode: authMode ?? this.authMode,
+      accountRouting: accountRouting ?? this.accountRouting,
+      accountAffinity: accountAffinity ?? this.accountAffinity,
       vendorId: vendorId ?? this.vendorId,
       reasoningEffort: reasoningEffort ?? this.reasoningEffort,
     );

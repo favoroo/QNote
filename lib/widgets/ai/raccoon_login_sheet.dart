@@ -13,7 +13,15 @@ import 'package:qnote_flutter/core/ai/raccoon_auth_service.dart';
 class RaccoonLoginSheet extends StatefulWidget {
   final String providerId;
 
-  const RaccoonLoginSheet({super.key, required this.providerId});
+  /// 不为空表示「重新登录这个已有账号」（保留它的备注与轮换顺序）；
+  /// 为空表示新增一个账号
+  final String? accountId;
+
+  const RaccoonLoginSheet({
+    super.key,
+    required this.providerId,
+    this.accountId,
+  });
 
   @override
   State<RaccoonLoginSheet> createState() => _RaccoonLoginSheetState();
@@ -45,8 +53,10 @@ class _RaccoonLoginSheetState extends State<RaccoonLoginSheet> {
       _waiting = true;
     });
     try {
-      final handle =
-          await RaccoonAuthService.instance.startBrowserLogin(widget.providerId);
+      final handle = await RaccoonAuthService.instance.startBrowserLogin(
+        widget.providerId,
+        accountId: widget.accountId,
+      );
       if (!mounted) {
         handle.cancel();
         return;
@@ -91,6 +101,7 @@ class _RaccoonLoginSheetState extends State<RaccoonLoginSheet> {
       final account = await RaccoonAuthService.instance.loginWithPastedInput(
         widget.providerId,
         _pasteCtl.text,
+        accountId: widget.accountId,
       );
       if (!mounted) return;
       Navigator.of(context).pop(account);
@@ -150,7 +161,8 @@ class _RaccoonLoginSheetState extends State<RaccoonLoginSheet> {
             ),
             const SizedBox(height: 6),
             Text(
-              '登录后小Q会使用这个账号的额度调用小浣熊模型；登录态只保存在本机，不随备份同步。',
+              '登录后小Q会使用这个账号的额度调用小浣熊模型；登录态只保存在本机，不随备份同步。'
+              '登录多个账号后可在上一页按策略轮换。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),

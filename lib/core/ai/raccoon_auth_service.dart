@@ -3,14 +3,17 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:uuid/uuid.dart';
 
+import 'package:qnote_flutter/core/ai/raccoon_account_router.dart';
 import 'package:qnote_flutter/core/ai/raccoon_login.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/ai_account_repository.dart';
 import 'package:qnote_flutter/models/ai_account.dart';
+import 'package:qnote_flutter/models/ai_account_routing.dart';
 import 'package:qnote_flutter/models/ai_provider.dart';
 
-/// 订阅账号未登录/登录失效：发信前抛出，交给界面提示重新登录
+/// 订阅账号没有可用登录态：发信前抛出，交给界面提示重新登录
 class RaccoonAuthRequiredException implements Exception {
   final String providerId;
   final String message;
@@ -37,6 +40,17 @@ class RaccoonLoginHandle {
   });
 }
 
+/// 一次发信要用的账号与凭证
+class RaccoonAccountSession {
+  final AiAccount account;
+  final String accessToken;
+
+  const RaccoonAccountSession({
+    required this.account,
+    required this.accessToken,
+  });
+}
+
 /// 商汤小浣熊（xiaohuanxiong.com）订阅账号的登录、刷新与模型目录
 ///
 /// 接口来自 magpie 社区插件 `@magpie-community/opencode-raccoon-auth`：
@@ -46,7 +60,8 @@ class RaccoonLoginHandle {
 /// - 聊天：`POST /api/web/llm/v2/chat/completions`，标准 OpenAI 格式；
 /// - 模型：`GET /api/web/llm/v2/model_catalog`。
 ///
-/// token 存在 `ai_accounts` 表，不参与 WebDAV 同步与备份导出。
+/// 一个厂商条目可以登录多个账号：账号存在 `ai_accounts`（一账号一行），
+/// 选号与亲和由 [RaccoonAccountRouter] 负责。token 不参与 WebDAV 同步与备份导出。
 class RaccoonAuthService {
   RaccoonAuthService._();
 
@@ -61,6 +76,8 @@ class RaccoonAuthService {
 
   final AiAccountRepository _repository = AiAccountRepository.instance;
 
+  final RaccoonAccountRouter _router = RaccoonAccountRouter.instance;
+
   final Dio _dio = Dio(
     BaseOptions(
       connectTimeout: const Duration(seconds: 20),
@@ -69,10 +86,10 @@ class RaccoonAuthService {
     ),
   );
 
-  /// providerId → 登录态（进程内缓存；登录/刷新/退出都会更新）
+  /// accountId → 登录态（进程内缓存；登录/刷新/退出都会更新）
   final Map<String, AiAccount> _cache = {};
 
-  /// 同一账号的并发刷新合并成一次，避免 refresh token 被重复消费
+  /// accountId → 正在进行的刷新（合并并发刷新，避免 refresh token 被重复消费）
   final Map<String, Future<AiAccount>> _refreshing = {};
 
   /// 测试注入：替换底层 HTTP adapter（不联网校验换取/刷新/目录）
@@ -81,45 +98,231 @@ class RaccoonAuthService {
     _dio.httpClientAdapter = adapter;
   }
 
-  /// 读取登录态（默认走缓存；[forceReload] 用于设置页刷新）
+  // ── 账号读取 ─────────────────────────────────────────────
+
+  /// 某厂商条目下的全部账号（默认走缓存；[forceReload] 用于设置页刷新）
+  Future<List<AiAccount>> accountsFor(
+    String providerId, {
+    bool forceReload = false,
+  }) async {
+    final loader = accountsLoaderForTest;
+    if (loader != null) {
+      final accounts = await loader(providerId);
+      for (final account in accounts) {
+        _cache[account.id] = account;
+      }
+      return accounts;
+    }
+    if (!forceReload) {
+      final cached = _cachedFor(providerId);
+      if (cached.isNotEmpty) return cached;
+    }
+    final stored = await _repository.getByProvider(providerId);
+    for (final account in stored) {
+      _cache[account.id] = account;
+    }
+    return stored;
+  }
+
+  /// 测试注入：绕开数据库直接给账号列表（发信层多账号单测不搭 sqflite）
+  @visibleForTesting
+  static Future<List<AiAccount>> Function(String providerId)?
+  accountsLoaderForTest;
+
+  /// 某厂商下排在最前的账号（兼容旧调用：单账号场景等价于「那个账号」）
   Future<AiAccount?> sessionFor(
     String providerId, {
     bool forceReload = false,
   }) async {
-    if (!forceReload) {
-      final cached = _cache[providerId];
-      if (cached != null) return cached;
+    final accounts = await accountsFor(providerId, forceReload: forceReload);
+    return accounts.isEmpty ? null : accounts.first;
+  }
+
+  List<AiAccount> _cachedFor(String providerId) {
+    final result = _cache.values
+        .where((a) => a.providerId == providerId)
+        .toList()
+      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    return result;
+  }
+
+  // ── 发信前选号 ───────────────────────────────────────────
+
+  /// 为本次请求选一个账号并取到可用 token
+  ///
+  /// 返回 null 表示「这个厂商还没有登录任何账号」；有账号但全部在冷却/本次都已
+  /// 试过时抛 [RaccoonAuthRequiredException]（文案区分「限流冷却」与「未登录」），
+  /// 避免把「所有账号都在限流」误报成「请重新登录」。
+  ///
+  /// [triedAccountIds] 由发信层在失败后累加，保证一次请求内不会反复回到同一个
+  /// 失败账号（[AccountAffinity.strict] 除外，见 [RaccoonAccountRouter.select]）。
+  Future<RaccoonAccountSession?> sessionForRequest(
+    String providerId, {
+    String routing = AiProvider.defaultAccountRouting,
+    String affinity = AiProvider.defaultAccountAffinity,
+    AiRequestScope? scope,
+    Set<String> triedAccountIds = const {},
+    bool advance = true,
+  }) async {
+    // 测试注入：绕开数据库直接给 token（发信层单测不搭 sqflite）
+    final loader = accessTokenLoaderForTest;
+    if (loader != null) {
+      final token = await loader(providerId);
+      if (token == null || token.trim().isEmpty) return null;
+      final now = DateTime.now();
+      return RaccoonAccountSession(
+        account: AiAccount(
+          id: 'test-account',
+          providerId: providerId,
+          accessToken: token,
+          createdAt: now,
+          updatedAt: now,
+        ),
+        accessToken: token,
+      );
     }
-    final stored = await _repository.getByProvider(providerId);
-    if (stored == null) {
-      _cache.remove(providerId);
+
+    final accounts = await accountsFor(providerId);
+    if (accounts.isEmpty) return null;
+
+    final selection = _router.select(
+      providerId: providerId,
+      accounts: accounts,
+      routing: AccountRouting.fromId(routing),
+      affinity: AccountAffinity.fromId(affinity),
+      scope: scope,
+      triedAccountIds: triedAccountIds,
+      advance: advance,
+    );
+    if (selection == null) {
+      final enabled = accounts.where((a) => a.enabled).toList();
+      if (enabled.isEmpty) {
+        throw RaccoonAuthRequiredException(
+          providerId,
+          message: '小浣熊账号都被停用了，请到「设置 → AI 模型配置」启用至少一个账号',
+        );
+      }
+      // 还有没试过的账号 → 说明它们都在冷却，是「限流」而不是「没登录」
+      final untried =
+          enabled.where((a) => !triedAccountIds.contains(a.id)).toList();
+      if (untried.isNotEmpty) {
+        throw RaccoonAuthRequiredException(
+          providerId,
+          message: '所有小浣熊账号都在限流冷却中，请稍后再试',
+        );
+      }
+      // 本次请求已经把能用的账号都试过了：交回调用方 rethrow 原始错误
       return null;
     }
-    _cache[providerId] = stored;
+
+    final token = await accessTokenForAccount(selection.account);
+    if (token == null || token.trim().isEmpty) {
+      // 这个账号的凭证已经废了：标记冷却，让本次请求换下一个账号
+      _router.markFailed(
+        selection.account,
+        const RaccoonAuthRequiredException(''),
+        affinity: AccountAffinity.fromId(affinity),
+      );
+      return null;
+    }
+    return RaccoonAccountSession(
+      account: selection.account,
+      accessToken: token,
+    );
+  }
+
+  /// 记一次账号成功（智能策略的成功率统计 + 解除自身冷却）
+  void markAccountSucceeded(AiAccount account) =>
+      _router.markSucceeded(account);
+
+  /// 记一次账号失败（进入冷却 + 清掉亲和位置）
+  void markAccountFailed(
+    AiAccount account,
+    Object error, {
+    String affinity = AiProvider.defaultAccountAffinity,
+  }) {
+    _router.markFailed(
+      account,
+      error,
+      affinity: AccountAffinity.fromId(affinity),
+    );
+  }
+
+  /// 本次请求是否还有「别的账号」可以换
+  ///
+  /// 只做预检、不推进游标、也不取 token：发信层据此判断撞限流时应该「换号重发」
+  /// 还是「单账号退避重试」。单账号厂商返回 false，行为与多账号改造前完全一致。
+  Future<bool> hasAlternateAccount(
+    String providerId, {
+    String routing = AiProvider.defaultAccountRouting,
+    String affinity = AiProvider.defaultAccountAffinity,
+    AiRequestScope? scope,
+    Set<String> triedAccountIds = const {},
+  }) async {
+    final accounts = await accountsFor(providerId);
+    if (accounts.where((a) => a.enabled).length < 2) return false;
+    return _router.select(
+          providerId: providerId,
+          accounts: accounts,
+          routing: AccountRouting.fromId(routing),
+          affinity: AccountAffinity.fromId(affinity),
+          scope: scope,
+          triedAccountIds: triedAccountIds,
+          advance: false,
+        ) !=
+        null;
+  }
+
+  /// 按 accountId 取账号对象（发信层失败归因用）
+  Future<AiAccount?> accountById(String accountId) async {
+    final cached = _cache[accountId];
+    if (cached != null) return cached;
+    final stored = await _repository.getById(accountId);
+    if (stored != null) _cache[stored.id] = stored;
     return stored;
   }
 
-  /// 发信前取 access token：临近过期会先刷新；刷新失败按「需要重新登录」处理
-  Future<String?> accessTokenFor(String providerId) async {
+  /// 进程内已缓存的账号（同步读取，发信成功路径上用，避免多一次读库）
+  AiAccount? accountFromCache(String accountId) => _cache[accountId];
+
+  /// 账号是否在冷却中（界面展示「限流中」用）
+  bool isAccountCooling(String accountId) => _router.isCooling(accountId);
+
+  // ── token 读取与刷新 ─────────────────────────────────────
+
+  /// 取某个账号的 access token：临近过期会先刷新
+  ///
+  /// 返回 null 表示这个账号当前不可用（无 refresh token 且已过期、或刷新被拒）。
+  Future<String?> accessTokenForAccount(AiAccount account) async {
     final loader = accessTokenLoaderForTest;
-    if (loader != null) return loader(providerId);
-    final account = await sessionFor(providerId);
-    if (account == null) return null;
-    if (account.accessToken.trim().isEmpty) return null;
+    if (loader != null) return loader(account.providerId);
+
+    // 账号列表来自测试注入时不要去读库：那个账号对象就是唯一事实
+    final current = accountsLoaderForTest != null
+        ? account
+        : await _refreshCacheFromStore(account);
+    if (current.accessToken.trim().isEmpty) return null;
     final needsRefresh =
-        account.isExpired || account.isStale(margin: refreshMargin);
-    if (!needsRefresh) return account.accessToken;
+        current.isExpired || current.isStale(margin: refreshMargin);
+    if (!needsRefresh) return current.accessToken;
     try {
-      final refreshed = await refresh(providerId, force: true);
+      final refreshed = await refreshAccount(current.id, force: true);
       return refreshed.accessToken;
     } on RaccoonAuthRequiredException {
       // 只有厂商明确拒绝（4xx / 没有 refresh token）才标记失效；
       // 网络抖动不能把用户踢下线
-      await _markExpired(providerId);
+      await _markExpired(current.id);
       return null;
     } catch (_) {
       return null;
     }
+  }
+
+  /// 兼容旧调用：按 providerId 取「排在最前的账号」的 token
+  Future<String?> accessTokenFor(String providerId) async {
+    final account = await sessionFor(providerId);
+    if (account == null) return null;
+    return accessTokenForAccount(account);
   }
 
   /// 测试注入：绕开数据库直接返回 token（仅发信层单测用）
@@ -135,31 +338,42 @@ class RaccoonAuthService {
     return token;
   }
 
-  /// 刷新 access token（[force] 为 false 时，仍新鲜则直接返回缓存）
-  Future<AiAccount> refresh(String providerId, {bool force = false}) {
-    final running = _refreshing[providerId];
+  /// 刷新某个账号的 access token（[force] 为 false 时仍新鲜则直接返回缓存）
+  Future<AiAccount> refreshAccount(String accountId, {bool force = false}) {
+    final running = _refreshing[accountId];
     if (running != null) return running;
-
-    final future = _refresh(providerId, force: force).whenComplete(() {
-      _refreshing.remove(providerId);
+    final future = _refresh(accountId, force: force).whenComplete(() {
+      _refreshing.remove(accountId);
     });
-    _refreshing[providerId] = future;
+    _refreshing[accountId] = future;
     return future;
   }
 
-  Future<AiAccount> _refresh(String providerId, {required bool force}) async {
+  /// 兼容旧调用：刷新某厂商下排在最前的账号
+  Future<AiAccount> refresh(String providerId, {bool force = false}) async {
     final account = await sessionFor(providerId, forceReload: true);
-    if (account == null) {
-      throw RaccoonAuthRequiredException(providerId);
-    }
-    if (!force && !account.isStale(margin: refreshMargin) && !account.isExpired) {
-      return account;
-    }
-    final refreshToken = account.refreshToken.trim();
-    if (refreshToken.isEmpty) {
-      await _markExpired(providerId);
+    if (account == null) throw RaccoonAuthRequiredException(providerId);
+    return refreshAccount(account.id, force: force);
+  }
+
+  Future<AiAccount> _refresh(String accountId, {required bool force}) async {
+    final stored = await _repository.getById(accountId);
+    if (stored == null) {
+      _cache.remove(accountId);
       throw RaccoonAuthRequiredException(
-        providerId,
+        '',
+        message: '账号已被删除，请重新登录',
+      );
+    }
+    _cache[accountId] = stored;
+    if (!force && !stored.isStale(margin: refreshMargin) && !stored.isExpired) {
+      return stored;
+    }
+    final refreshToken = stored.refreshToken.trim();
+    if (refreshToken.isEmpty) {
+      await _markExpired(accountId);
+      throw RaccoonAuthRequiredException(
+        stored.providerId,
         message: '小浣熊登录已过期且没有刷新凭证，请重新登录',
       );
     }
@@ -176,10 +390,11 @@ class RaccoonAuthService {
         throw const FormatException('刷新接口没有返回 access_token');
       }
       final next = await _accountFromTokens(
-        providerId,
+        stored.providerId,
+        accountId: stored.id,
         access: access,
         refresh: nextRefresh,
-        previous: account,
+        previous: stored,
         fetchProfile: true,
       );
       await _save(next);
@@ -196,9 +411,9 @@ class RaccoonAuthService {
         details: '${e.response?.data ?? e.message}',
       );
       if (status != null && status >= 400 && status < 500) {
-        await _markExpired(providerId);
+        await _markExpired(accountId);
         throw RaccoonAuthRequiredException(
-          providerId,
+          stored.providerId,
           message: '小浣熊登录已失效，请重新登录',
         );
       }
@@ -206,12 +421,20 @@ class RaccoonAuthService {
     }
   }
 
+  // ── 登录 ─────────────────────────────────────────────────
+
   /// 浏览器回环登录：返回句柄，由弹层打开 [RaccoonLoginHandle.url]
-  Future<RaccoonLoginHandle> startBrowserLogin(String providerId) async {
+  ///
+  /// [accountId] 为空表示「新增一个账号」；不为空表示「重新登录这个账号」
+  /// （保留原来的备注与轮换顺序）。
+  Future<RaccoonLoginHandle> startBrowserLogin(
+    String providerId, {
+    String? accountId,
+  }) async {
     final loopback = await startRaccoonLoopbackLogin();
     final result = () async {
       final code = await loopback.code;
-      return exchangeCode(providerId, code);
+      return exchangeCode(providerId, code, accountId: accountId);
     }();
     return RaccoonLoginHandle(
       url: loopback.url,
@@ -221,7 +444,11 @@ class RaccoonAuthService {
   }
 
   /// 授权码换 token
-  Future<AiAccount> exchangeCode(String providerId, String code) async {
+  Future<AiAccount> exchangeCode(
+    String providerId,
+    String code, {
+    String? accountId,
+  }) async {
     final trimmed = code.trim();
     if (trimmed.isEmpty) {
       throw const FormatException('授权码为空');
@@ -236,29 +463,29 @@ class RaccoonAuthService {
       if (access == null || access.isEmpty || refresh == null) {
         throw FormatException(_vendorError(response.data, '换取登录凭证失败'));
       }
-      final account = await _accountFromTokens(
+      return _persistLogin(
         providerId,
         access: access,
         refresh: refresh,
-        fetchProfile: true,
+        accountId: accountId,
       );
-      await _save(account);
-      LoggerService.instance.logAI('小浣熊登录成功: ${account.label}');
-      return account;
     } on DioException catch (e) {
       final payload = e.response?.data;
       if (payload is Map && '${payload['code']}' == '200035') {
         throw const FormatException('授权码已失效，请重新发起网页登录');
       }
-      throw FormatException(_vendorError(payload, '换取登录凭证失败（HTTP ${e.response?.statusCode}）'));
+      throw FormatException(
+        _vendorError(payload, '换取登录凭证失败（HTTP ${e.response?.statusCode}）'),
+      );
     }
   }
 
   /// 手动兜底：粘贴完整回调链接、JWT，或 `{"access_token":...,"refresh_token":...}`
   Future<AiAccount> loginWithPastedInput(
     String providerId,
-    String raw,
-  ) async {
+    String raw, {
+    String? accountId,
+  }) async {
     final text = raw.trim();
     if (text.isEmpty) {
       throw const FormatException('请输入回调链接或 Token');
@@ -273,31 +500,28 @@ class RaccoonAuthService {
       final access = (decoded['access_token'] ?? decoded['accessToken'])
           ?.toString()
           .trim();
-      final refresh =
-          (decoded['refresh_token'] ?? decoded['refreshToken'])?.toString().trim();
+      final refresh = (decoded['refresh_token'] ?? decoded['refreshToken'])
+          ?.toString()
+          .trim();
       if (access == null || access.isEmpty) {
         throw const FormatException('JSON 中缺少 access_token');
       }
-      final account = await _accountFromTokens(
+      return _persistLogin(
         providerId,
         access: _stripBearer(access),
         refresh: refresh ?? '',
-        fetchProfile: true,
+        accountId: accountId,
       );
-      await _save(account);
-      return account;
     }
 
     // 裸 JWT（没有 refresh token，到期后需要重新登录）
     if (text.split('.').length == 3 && !text.contains('://')) {
-      final account = await _accountFromTokens(
+      return _persistLogin(
         providerId,
         access: _stripBearer(text),
         refresh: '',
-        fetchProfile: true,
+        accountId: accountId,
       );
-      await _save(account);
-      return account;
     }
 
     // 回调链接：office-raccoon://auth/callback?code=... 或 http://127.0.0.1/...
@@ -309,8 +533,130 @@ class RaccoonAuthService {
     if (code.isEmpty) {
       throw const FormatException('回调链接中缺少授权码 code');
     }
-    return exchangeCode(providerId, code);
+    return exchangeCode(providerId, code, accountId: accountId);
   }
+
+  /// 落库一个登录态：同一厂商账号重复登录时覆盖旧行，新账号追加到末尾
+  Future<AiAccount> _persistLogin(
+    String providerId, {
+    required String access,
+    required String refresh,
+    String? accountId,
+  }) async {
+    final existing = await accountsFor(providerId, forceReload: true);
+    final target = accountId == null
+        ? null
+        : existing.where((a) => a.id == accountId).firstOrNull;
+
+    // 先按 uid/手机号判断是不是「已经登录过的同一个账号」：是则更新那一行，
+    // 否则同一账号会在列表里堆出多行，轮换时反复打到同一个账号上
+    AiAccount? previous = target;
+    if (previous == null) {
+      // 探测只解析 JWT 里的 uid/手机号归属，不必为去重多打一次 user_info
+      final probe = await _accountFromTokens(
+        providerId,
+        accountId: '',
+        access: access,
+        refresh: refresh,
+      );
+      for (final account in existing) {
+        if (account.isSameVendorAccount(probe)) {
+          previous = account;
+          break;
+        }
+      }
+    }
+
+    final account = await _accountFromTokens(
+      providerId,
+      accountId: previous?.id ?? const Uuid().v4(),
+      access: access,
+      refresh: refresh,
+      previous: previous,
+      fetchProfile: true,
+    );
+    final next = previous == null
+        ? account.copyWith(sortOrder: _nextSortOrder(existing))
+        : account;
+    await _save(next);
+    LoggerService.instance.logAI(
+      previous == null ? '小浣熊新增账号: ${next.label}' : '小浣熊账号已更新: ${next.label}',
+    );
+    return next;
+  }
+
+  int _nextSortOrder(List<AiAccount> existing) {
+    if (existing.isEmpty) return 0;
+    return existing
+            .map((a) => a.sortOrder)
+            .reduce((a, b) => a > b ? a : b) +
+        1;
+  }
+
+  // ── 账号管理 ─────────────────────────────────────────────
+
+  /// 退出单个账号（删掉这一行登录态）
+  Future<void> logout(String accountId) async {
+    _cache.remove(accountId);
+    _router.forget(accountId);
+    await _repository.delete(accountId);
+  }
+
+  /// 退出某厂商下的全部账号（删除厂商 / 切回 API Key 模式）
+  Future<void> logoutProvider(String providerId) async {
+    final accounts = await accountsFor(providerId, forceReload: true);
+    for (final account in accounts) {
+      _cache.remove(account.id);
+    }
+    _router.resetProvider(providerId, accounts: accounts);
+    await _repository.deleteByProvider(providerId);
+  }
+
+  /// 修改账号备注 / 启用开关 / 顺序
+  Future<AiAccount> updateAccount(
+    AiAccount account, {
+    String? alias,
+    bool? enabled,
+  }) async {
+    final next = account.copyWith(alias: alias, enabled: enabled);
+    await _save(next);
+    return next;
+  }
+
+  /// 重排账号顺序（「顺序」策略的优先级即此顺序）
+  Future<List<AiAccount>> reorderAccounts(
+    String providerId,
+    List<String> orderedIds,
+  ) async {
+    final accounts = await accountsFor(providerId, forceReload: true);
+    final byId = {for (final a in accounts) a.id: a};
+    final next = <AiAccount>[];
+    var index = 0;
+    for (final id in orderedIds) {
+      final account = byId.remove(id);
+      if (account == null) continue;
+      next.add(account.copyWith(sortOrder: index++));
+    }
+    // 没出现在 orderedIds 里的账号（理论上不该有）排到末尾，避免丢失
+    for (final account in byId.values) {
+      next.add(account.copyWith(sortOrder: index++));
+    }
+    await _repository.upsertAll(next);
+    for (final account in next) {
+      _cache[account.id] = account;
+    }
+    return next;
+  }
+
+  /// 数据管理页清空全部数据后清掉进程内缓存
+  ///
+  /// 选号游标、亲和记忆与冷却表也要一起清：它们指向的账号已经不存在了。
+  void clearCache() {
+    _cache.clear();
+    RaccoonAccountRouter.instance.clearAll();
+  }
+
+  // ── 模型目录 ─────────────────────────────────────────────
 
   /// 拉取模型目录（[token] 为空时用匿名请求，部分账号的目录是公开的）
   Future<List<AiProviderModel>> fetchModels({String? token}) async {
@@ -331,7 +677,10 @@ class RaccoonAuthService {
       return models;
     } on DioException catch (e) {
       throw FormatException(
-        _vendorError(e.response?.data, '获取小浣熊模型目录失败（HTTP ${e.response?.statusCode}）'),
+        _vendorError(
+          e.response?.data,
+          '获取小浣熊模型目录失败（HTTP ${e.response?.statusCode}）',
+        ),
       );
     }
   }
@@ -340,35 +689,51 @@ class RaccoonAuthService {
   Future<List<AiProviderModel>> fetchModelsForProvider(
     String providerId,
   ) async {
-    final token = await requireAccessToken(providerId);
-    try {
-      return await fetchModels(token: token);
-    } on FormatException {
-      // 目录接口的 401 会以 FormatException 抛出：刷新一次再试
-      final refreshed = await refresh(providerId, force: true);
-      return fetchModels(token: refreshed.accessToken);
+    // 挑第一个「启用且未过期」的账号：排在最前的那个可能已经被停用或登录失效，
+    // 拿它去扫目录只会得到一次必然失败的 401
+    final accounts = await accountsFor(providerId, forceReload: true);
+    final candidates = [
+      ...accounts.where((a) => a.enabled && !a.isExpired),
+      ...accounts.where((a) => !a.enabled || a.isExpired),
+    ];
+    if (candidates.isEmpty) throw RaccoonAuthRequiredException(providerId);
+    for (final account in candidates) {
+      final token = await accessTokenForAccount(account);
+      if (token == null) continue;
+      try {
+        return await fetchModels(token: token);
+      } on FormatException {
+        // 目录接口的 401 会以 FormatException 抛出：刷新一次再试
+        try {
+          final refreshed = await refreshAccount(account.id, force: true);
+          return fetchModels(token: refreshed.accessToken);
+        } catch (_) {
+          continue;
+        }
+      }
     }
+    throw RaccoonAuthRequiredException(providerId);
   }
 
-  Future<void> logout(String providerId) async {
-    _cache.remove(providerId);
-    await _repository.delete(providerId);
-  }
-
-  /// 数据管理页清空全部数据后清掉进程内缓存
-  void clearCache() {
-    _cache.clear();
-  }
+  // ── 内部 ─────────────────────────────────────────────────
 
   Future<void> _save(AiAccount account) async {
     await _repository.upsert(account);
-    _cache[account.providerId] = account;
+    _cache[account.id] = account;
   }
 
-  Future<void> _markExpired(String providerId) async {
-    final account = await sessionFor(providerId);
-    if (account == null) return;
-    final next = account.copyWith(
+  /// 缓存里的那份可能已被其他入口刷新过，优先读库里的最新值
+  Future<AiAccount> _refreshCacheFromStore(AiAccount account) async {
+    final stored = await _repository.getById(account.id);
+    if (stored == null) return account;
+    _cache[stored.id] = stored;
+    return stored;
+  }
+
+  Future<void> _markExpired(String accountId) async {
+    final stored = await _repository.getById(accountId);
+    if (stored == null) return;
+    final next = stored.copyWith(
       status: AiAccount.statusExpired,
       updatedAt: DateTime.now(),
     );
@@ -377,6 +742,7 @@ class RaccoonAuthService {
 
   Future<AiAccount> _accountFromTokens(
     String providerId, {
+    required String accountId,
     required String access,
     required String refresh,
     AiAccount? previous,
@@ -391,8 +757,10 @@ class RaccoonAuthService {
       if (fetched.isNotEmpty) phone = fetched;
     }
     return AiAccount(
+      id: accountId,
       providerId: providerId,
       kind: AiAccount.kindRaccoon,
+      alias: previous?.alias ?? '',
       accessToken: cleanAccess,
       refreshToken: refresh.trim(),
       expiresAt: _jwtExpiry(claims),
@@ -400,6 +768,8 @@ class RaccoonAuthService {
       displayName: _extractName(claims),
       phone: phone,
       status: AiAccount.statusActive,
+      enabled: previous?.enabled ?? true,
+      sortOrder: previous?.sortOrder ?? 0,
       createdAt: previous?.createdAt ?? now,
       updatedAt: now,
     );
@@ -481,9 +851,8 @@ class RaccoonAuthService {
           final rawName = (entry['display_name'] ?? entry['description'])
               ?.toString()
               .trim();
-          final name = (rawName != null &&
-                  rawName.isNotEmpty &&
-                  rawName.length <= 64)
+          final name =
+              (rawName != null && rawName.isNotEmpty && rawName.length <= 64)
               ? rawName
               : id;
           result.add(AiProviderModel.of(id, name: name));
@@ -536,7 +905,9 @@ class RaccoonAuthService {
       claims?['name']?.toString().trim() ?? '';
 
   static String _hexToDecimal(String value) {
-    final raw = value.trim().replaceFirst(RegExp(r'^0x', caseSensitive: false), '');
+    final raw = value
+        .trim()
+        .replaceFirst(RegExp(r'^0x', caseSensitive: false), '');
     if (raw.isEmpty || !RegExp(r'^[0-9a-fA-F]+$').hasMatch(raw)) return '';
     try {
       return BigInt.parse(raw, radix: 16).toString();
@@ -582,5 +953,7 @@ class RaccoonAuthService {
     _cache.clear();
     _refreshing.clear();
     accessTokenLoaderForTest = null;
+    accountsLoaderForTest = null;
+    RaccoonAccountRouter.instance.clearAll();
   }
 }

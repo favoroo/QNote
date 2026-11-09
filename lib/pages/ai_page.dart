@@ -23,6 +23,7 @@ import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/model_reasoning_capability.dart';
 import 'package:qnote_flutter/core/agent/agent_tool_labels.dart';
 import 'package:qnote_flutter/core/utils/chat_reedit.dart';
+import 'package:qnote_flutter/core/utils/chat_timeline.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
@@ -60,14 +61,6 @@ class AiPage extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<AiPage> createState() => _AiPageState();
-}
-
-/// 会话流的可视展示包装项，携带该项在原始 session.messages 中的实际下标（供撤回/重试使用）
-class _ChatDisplayEntry {
-  final ChatMessage message;
-  final int? stateIndex;
-
-  const _ChatDisplayEntry(this.message, [this.stateIndex]);
 }
 
 class _AiPageState extends ConsumerState<AiPage> {
@@ -1169,8 +1162,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     setState(() => _activeModelId = selected.ref);
   }
 
-  /// 当前绑定对应的具体模型（路由组返回 null：组内成员档位可能不同，
-  /// 统一在厂商编辑页按模型调整，输入区不提供会误导人的全局档位）
+  /// 当前绑定对应的具体模型（路由组返回 null：组内成员档位可能不同）
   ({AiProvider provider, AiProviderModel model})? _resolveActiveModelEntry(
     List<AiProvider> providers,
   ) {
@@ -1186,28 +1178,78 @@ class _AiPageState extends ConsumerState<AiPage> {
     return (provider: provider, model: model);
   }
 
-  /// 输入区调整当前模型的思考强度：直接写回厂商条目，下一轮请求即生效
+  /// 思考强度的作用对象：具体模型就是它自己；路由组展开为全部启用成员
+  ///
+  /// 路由组内成员档位可以不一致，输入区改档时统一写到每个成员上；
+  /// 不支持的成员在发信层会静默跳过，不会把请求打挂。
+  List<({AiProvider provider, AiProviderModel model})> _reasoningTargets(
+    List<AiProvider> providers,
+    List<AiRouteGroup> groups,
+  ) {
+    final single = _resolveActiveModelEntry(providers);
+    if (single != null) return [single];
+
+    final binding = _activeModelId;
+    if (binding == null || !binding.isRouteGroup) return const [];
+    final group = groups.where((g) => g.id == binding.providerId).firstOrNull;
+    if (group == null) return const [];
+    final targets = <({AiProvider provider, AiProviderModel model})>[];
+    for (final member in group.enabledMembers) {
+      final provider = providers
+          .where((p) => p.id == member.providerId)
+          .firstOrNull;
+      final model = provider?.models
+          .where((m) => m.id == member.modelName)
+          .firstOrNull;
+      if (provider != null && model != null) {
+        targets.add((provider: provider, model: model));
+      }
+    }
+    return targets;
+  }
+
+  /// 输入区调整思考强度：直接写回厂商条目，下一轮请求即生效
   Future<void> _openReasoningEffort(
-    ({AiProvider provider, AiProviderModel model}) entry,
+    List<({AiProvider provider, AiProviderModel model})> targets,
   ) async {
+    if (targets.isEmpty) return;
+    final first = targets.first;
+    // 组内档位不一致时按「自动」预选，避免把某个成员的档位冒充成全局选择
+    final sameEffort = targets.every(
+      (t) => t.model.reasoningEffort == first.model.reasoningEffort,
+    );
     final result = await showReasoningEffortSheet(
       context,
-      modelName: entry.model.id,
-      providerType: entry.provider.providerType,
-      vendorId: entry.provider.vendorId,
-      selected: entry.model.reasoningEffort,
+      modelName: targets.length == 1
+          ? first.model.name
+          : '${first.model.name} 等 ${targets.length} 个模型',
+      providerType: first.provider.providerType,
+      vendorId: first.provider.vendorId,
+      selected: sameEffort ? first.model.reasoningEffort : null,
     );
     if (result == null || !mounted) return;
-    final updatedModels = entry.provider.models
-        .map(
-          (m) => m.id == entry.model.id
-              ? m.copyWith(reasoningEffort: result.effort)
-              : m,
-        )
-        .toList();
-    await ref
-        .read(aiProviderListProvider.notifier)
-        .updateProvider(entry.provider.copyWith(models: updatedModels));
+
+    // 按厂商聚合写回：一个路由组可能横跨多个厂商条目
+    final byProvider = <String, List<String>>{};
+    for (final target in targets) {
+      byProvider.putIfAbsent(target.provider.id, () => []).add(target.model.id);
+    }
+    final notifier = ref.read(aiProviderListProvider.notifier);
+    for (final target in targets) {
+      final ids = byProvider[target.provider.id];
+      if (ids == null) continue;
+      final updatedModels = target.provider.models
+          .map(
+            (m) => ids.contains(m.id)
+                ? m.copyWith(reasoningEffort: result.effort)
+                : m,
+          )
+          .toList();
+      await notifier.updateProvider(
+        target.provider.copyWith(models: updatedModels),
+      );
+      byProvider.remove(target.provider.id);
+    }
   }
 
   @override
@@ -1359,37 +1401,6 @@ class _AiPageState extends ConsumerState<AiPage> {
     );
   }
 
-  /// 判断一条消息是否需要在会话流中渲染。
-  ///
-  /// Agent 在每轮发起工具调用前，都会生成一条「正文为空、仅承载 tool_calls」的 assistant
-  /// 消息以维持上下文协议完整。这类消息属于内部中转，不应出现在聊天记录里，
-  /// 否则会被渲染成一个永远不会消失的加载气泡。
-  bool _isVisibleMessage(ChatMessage message) {
-    if (message.role == 'user') return true;
-    if (message.content.trim().isNotEmpty) return true;
-    if (message.role == 'tool') return true;
-    if (message.uiDetails != null) return true;
-    // 如果 assistant 正文为空且带有 toolCalls（说明是发起工具调用的中间状态帧），不作为独立顶级气泡展示
-    if (message.role == 'assistant' &&
-        message.toolCalls != null &&
-        message.toolCalls!.isNotEmpty) {
-      return false;
-    }
-    if (message.thought != null && message.thought!.trim().isNotEmpty) {
-      return true;
-    }
-    return false;
-  }
-
-  /// 工具结果是否可并入「执行步骤」折叠链。
-  ///
-  /// `ask_user` 需保持独立交互卡片；`generate_image` 需保持独立大图卡片——
-  /// 若被折叠隐藏，正文里的同图又已按「卡片已展示」去重，用户将一张图都看不到。
-  bool _isGroupableTool(ChatMessage message) {
-    return message.toolName != 'ask_user' &&
-        message.toolName != 'generate_image';
-  }
-
   Widget _buildChatArea(ChatSession? currentChat, ThemeData theme) {
     final stateMessages = currentChat?.messages ?? const <ChatMessage>[];
 
@@ -1397,60 +1408,13 @@ class _AiPageState extends ConsumerState<AiPage> {
     // 据此跳过渲染，避免一张生成图在会话流里出现两次
     final generatedImageKeys = collectGeneratedImageKeys(stateMessages);
 
-    // 将消息归一为可视展示项，连续的工具执行结果（≥2项）自动聚合成折叠链
-    final displayEntries = <_ChatDisplayEntry>[];
-    int i = 0;
-    while (i < stateMessages.length) {
-      final msg = stateMessages[i];
-      if (!_isVisibleMessage(msg)) {
-        i++;
-        continue;
-      }
-
-      // 判断是否可作为工具链聚合（ask_user 需保持独立交互卡片，
-      // generate_image 需保持独立大图卡片：折叠进步骤链后再对正文去重，会导致图片完全不可见）
-      if (msg.role == 'tool' && _isGroupableTool(msg)) {
-        final toolGroup = <ChatMessage>[msg];
-        var j = i + 1;
-        while (j < stateMessages.length) {
-          final nextMsg = stateMessages[j];
-          if (!_isVisibleMessage(nextMsg)) {
-            j++;
-            continue;
-          }
-          if (nextMsg.role == 'tool' && _isGroupableTool(nextMsg)) {
-            toolGroup.add(nextMsg);
-            j++;
-          } else {
-            break;
-          }
-        }
-
-        if (toolGroup.length >= 2) {
-          final groupMsg = ChatMessage(
-            role: 'tool_group',
-            content: '',
-            timestamp: toolGroup.first.timestamp,
-            uiDetails: {'messages': toolGroup},
-          );
-          displayEntries.add(_ChatDisplayEntry(groupMsg));
-          i = j;
-          continue;
-        } else {
-          displayEntries.add(_ChatDisplayEntry(msg, i));
-          i++;
-          continue;
-        }
-      }
-
-      displayEntries.add(_ChatDisplayEntry(msg, i));
-      i++;
-    }
-
-    // If messages are empty, virtualize the assistant's greeting bubble so it's shown.
-    final displayItems = displayEntries.isEmpty
+    // 消息归一抽在纯函数里（思考步骤独立成行 + 连续工具聚合成折叠链），
+    // 便于在没有数据库和 UI 的环境下锁定顺序、可见性与撤回下标
+    final timeline = buildChatTimelineEntries(stateMessages);
+    final displayItems = timeline.isEmpty
         ? [
-            _ChatDisplayEntry(
+            // 空会话：虚拟一条小Q问候语，避免首屏空白
+            ChatTimelineEntry(
               ChatMessage(
                 role: 'assistant',
                 content:
@@ -1460,7 +1424,7 @@ class _AiPageState extends ConsumerState<AiPage> {
               ),
             ),
           ]
-        : displayEntries;
+        : timeline;
 
     final hasStreaming =
         ref.watch(
@@ -1673,17 +1637,26 @@ class _AiPageState extends ConsumerState<AiPage> {
     );
     final busy = _isTyping || isSessionBusy;
 
-    // 思考强度胶囊只对具体模型展示；能力表未命中时整颗隐藏
-    final activeModelEntry = _resolveActiveModelEntry(
+    // 思考强度胶囊：具体模型或路由组都展示（路由组作用于全部启用成员），
+    // 能力表未收录时用通用兜底，保证入口始终可见
+    final reasoningTargets = _reasoningTargets(
       providersAsync.valueOrNull ?? const <AiProvider>[],
+      routeGroupsAsync.valueOrNull ?? const <AiRouteGroup>[],
     );
-    final activeReasoningCapability = activeModelEntry == null
+    final activeReasoningCapability = reasoningTargets.isEmpty
         ? null
-        : ModelReasoningCapability.resolve(
-            modelName: activeModelEntry.model.id,
-            providerType: activeModelEntry.provider.providerType,
-            vendorId: activeModelEntry.provider.vendorId,
+        : ModelReasoningCapability.forUi(
+            modelName: reasoningTargets.first.model.id,
+            providerType: reasoningTargets.first.provider.providerType,
+            vendorId: reasoningTargets.first.provider.vendorId,
           );
+    // 组内档位不一致时展示「混合」，不把某个成员的档位冒充成全局选择
+    final firstEffort = reasoningTargets.isEmpty
+        ? null
+        : reasoningTargets.first.model.reasoningEffort;
+    final sameEffort =
+        reasoningTargets.isNotEmpty &&
+        reasoningTargets.every((t) => t.model.reasoningEffort == firstEffort);
 
     return Material(
       color: theme.colorScheme.surface,
@@ -1719,13 +1692,15 @@ class _AiPageState extends ConsumerState<AiPage> {
                 const SizedBox(height: 6),
               ],
 
-              // 1.5 输入栏上方功能行：左侧常用提示词，右侧模型选择按钮
+              // 1.5 输入栏上方功能行：左侧常用提示词，右侧思考强度与模型
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
                   children: [
-                    // 常用提示词按钮（点击弹出列表，选中即覆盖输入框）
-                    GestureDetector(
+                    // 常用提示词（点击弹出列表，选中即覆盖输入框）
+                    _InputPill(
+                      icon: Icons.bolt_rounded,
+                      label: '常用提示词',
                       onTap: () => showQuickPromptDialog(context, ref, (text) {
                         _inputController.text = text;
                         _inputController.selection = TextSelection.fromPosition(
@@ -1733,38 +1708,11 @@ class _AiPageState extends ConsumerState<AiPage> {
                         );
                         _inputFocusNode.requestFocus();
                       }),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceContainerHighest
-                              .withValues(alpha: 0.5),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.bolt_rounded,
-                              size: 15,
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '常用提示词',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
                     ),
                     const SizedBox(width: 8),
-                    // 模型选择按钮（与长按发送按钮共用同一弹窗入口）：
-                    // 右侧依次是思考强度胶囊与模型名，长模型名自动截断
+                    // 右侧控制区：思考强度 + 模型。
+                    // 模型只显示模型名（厂商名对「当前用哪个模型」没有增量信息，
+                    // 且会把胶囊撑得很长）；思考强度入口始终可见。
                     Expanded(
                       child: Align(
                         alignment: Alignment.centerRight,
@@ -1772,87 +1720,28 @@ class _AiPageState extends ConsumerState<AiPage> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             if (activeReasoningCapability != null &&
-                                activeModelEntry != null) ...[
-                              GestureDetector(
+                                reasoningTargets.isNotEmpty) ...[
+                              _InputPill(
+                                icon: Icons.psychology_outlined,
+                                label:
+                                    '思考 · ${sameEffort ? activeReasoningCapability.labelFor(firstEffort) : '混合'}',
                                 onTap: () =>
-                                    _openReasoningEffort(activeModelEntry),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 5,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: theme
-                                        .colorScheme
-                                        .surfaceContainerHighest
-                                        .withValues(alpha: 0.5),
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.psychology_outlined,
-                                        size: 14,
-                                        color:
-                                            theme.colorScheme.onSurfaceVariant,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        '思考：${activeReasoningCapability.labelFor(activeModelEntry.model.reasoningEffort)}',
-                                        style: theme.textTheme.bodySmall
-                                            ?.copyWith(
-                                              color: theme
-                                                  .colorScheme
-                                                  .onSurfaceVariant,
-                                            ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                                    _openReasoningEffort(reasoningTargets),
                               ),
                               const SizedBox(width: 6),
                             ],
                             Flexible(
-                              child: GestureDetector(
-                                onTap: _openModelSelector,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 5,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: theme
-                                        .colorScheme
-                                        .surfaceContainerHighest
-                                        .withValues(alpha: 0.5),
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Flexible(
-                                        child: Text(
-                                          aiBindingDisplayName(
-                                            _activeModelId,
-                                            providersAsync.valueOrNull ??
-                                                const <AiProvider>[],
-                                            routeGroupsAsync.valueOrNull ??
-                                                const <AiRouteGroup>[],
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: theme.textTheme.bodySmall
-                                              ?.copyWith(
-                                                color: theme
-                                                    .colorScheme
-                                                    .onSurfaceVariant,
-                                              ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                              child: _InputPill(
+                                icon: Icons.memory_rounded,
+                                label: aiBindingShortName(
+                                  _activeModelId,
+                                  providersAsync.valueOrNull ??
+                                      const <AiProvider>[],
+                                  routeGroupsAsync.valueOrNull ??
+                                      const <AiRouteGroup>[],
                                 ),
+                                trailing: Icons.expand_more_rounded,
+                                onTap: _openModelSelector,
                               ),
                             ),
                           ],
@@ -2498,19 +2387,60 @@ class _StreamingBubbleState extends ConsumerState<_StreamingBubble> {
     }
 
     // 独立重绘边界：流式气泡逐帧刷新时不连带整条列表重绘
+    final liveThought = ref.watch(aiStreamingThoughtProvider)?.trim() ?? '';
+    // 正文开始流式后，把本轮思考以独立步骤行留在正文上方（对齐 ZCode 的时间线：
+    // 思考 → 回答），状态卡阶段则由气泡内部的实时思考区承担
+    final showThoughtRow = hasContent && liveThought.isNotEmpty;
+    final bubble = ChatBubble(
+      message: ChatMessage(
+        role: 'assistant',
+        content: content,
+        timestamp: DateTime.now(),
+      ),
+      statusText: statusText,
+      statusStartedAt: statusStartedAt,
+      isFirstInGroup: widget.isFirstInGroup && !showThoughtRow,
+      isLastInGroup: widget.isLastInGroup,
+      generatedImageKeys: widget.generatedImageKeys,
+      onSendToQ: widget.onSendToQ,
+    );
+    if (!showThoughtRow) {
+      return RepaintBoundary(child: bubble);
+    }
     return RepaintBoundary(
-      child: ChatBubble(
-        message: ChatMessage(
-          role: 'assistant',
-          content: content,
-          timestamp: DateTime.now(),
-        ),
-        statusText: statusText,
-        statusStartedAt: statusStartedAt,
-        isFirstInGroup: widget.isFirstInGroup,
-        isLastInGroup: widget.isLastInGroup,
-        generatedImageKeys: widget.generatedImageKeys,
-        onSendToQ: widget.onSendToQ,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (widget.isFirstInGroup)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2, left: 4, right: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const QAvatar(size: 24, withBackground: true),
+                  const SizedBox(width: 6),
+                  Text(
+                    '小Q',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.only(left: 4, right: 4, bottom: 2),
+            child: ThinkingProcessView(
+              thought: liveThought,
+              isStreaming: true,
+              startedAt: ref.watch(aiStreamingTurnStartedAtProvider),
+            ),
+          ),
+          bubble,
+        ],
       ),
     );
   }
@@ -2621,6 +2551,62 @@ class ChatBubble extends ConsumerWidget {
     // 只有流式占位气泡（statusText 阶段）才允许退化成「正在输入」动画。
     if (!isUser && statusText == null && !hasRenderableBody) {
       return const SizedBox.shrink();
+    }
+
+    // 思考段：扁平时间线行，不套气泡壳（对齐 ZCode 的「思考 · 3 秒」步骤行）
+    if (message.role == 'thought') {
+      return TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.0, end: 1.0),
+        duration: AppDurations.medium,
+        curve: Curves.easeOut,
+        builder: (context, value, child) {
+          return Opacity(
+            opacity: value,
+            child: Transform.translate(
+              offset: Offset(0, (1 - value) * 12),
+              child: child,
+            ),
+          );
+        },
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 思考行也承担「小Q」抬头：它是本轮回复的第一行，
+            // 若不给抬头，紧随其后的正文气泡会因「同组」判定不再显示头像
+            if (isFirstInGroup)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2, left: 4, right: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const QAvatar(size: 24, withBackground: true),
+                    const SizedBox(width: 6),
+                    Text(
+                      '小Q',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            Padding(
+              padding: EdgeInsets.only(
+                left: 4,
+                right: 4,
+                bottom: isLastInGroup ? 12 : 2,
+              ),
+              child: ThinkingProcessView(
+                thought: message.content,
+                durationSeconds: message.thoughtSeconds,
+              ),
+            ),
+          ],
+        ),
+      );
     }
 
     return TweenAnimationBuilder<double>(
@@ -2830,15 +2816,6 @@ class ChatBubble extends ConsumerWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           // 思考过程展示（若有，折叠在单行流水中滚动展示，点击可展开完整内容）
-                          if (message.thought != null &&
-                              message.thought!.trim().isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: _ThoughtProcessView(
-                                thought: message.thought!.trim(),
-                              ),
-                            ),
-
                           // 连续工具聚合卡片或单工具执行反馈卡片
                           if (message.role == 'tool_group')
                             ToolChainGroupWidget(
@@ -4446,15 +4423,54 @@ class _TypingBubble extends StatelessWidget {
   }
 }
 
-/// 已结束消息的思考过程：折叠态单行展示最新思考，点击展开全文
-class _ThoughtProcessView extends StatelessWidget {
-  final String thought;
+/// 输入区功能胶囊：图标 + 文案 + 可选尾部箭头，点击触发对应设置
+class _InputPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final IconData? trailing;
+  final VoidCallback onTap;
 
-  const _ThoughtProcessView({required this.thought});
+  const _InputPill({
+    required this.icon,
+    required this.label,
+    this.trailing,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return ThinkingProcessView(thought: thought);
+    final theme = Theme.of(context);
+    final color = theme.colorScheme.onSurfaceVariant;
+    return Material(
+      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(color: color),
+                ),
+              ),
+              if (trailing != null) ...[
+                const SizedBox(width: 2),
+                Icon(trailing, size: 14, color: color),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -4469,8 +4485,12 @@ class _LiveThoughtView extends ConsumerWidget {
       return const SizedBox.shrink();
     }
     return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: ThinkingProcessView(thought: thought.trim(), isStreaming: true),
+      padding: const EdgeInsets.only(top: 4),
+      child: ThinkingProcessView(
+        thought: thought.trim(),
+        isStreaming: true,
+        startedAt: ref.watch(aiStreamingTurnStartedAtProvider),
+      ),
     );
   }
 }

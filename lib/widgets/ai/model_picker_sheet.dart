@@ -14,7 +14,8 @@ class ModelPickerResult {
 
 /// 取默认生效的模型引用（默认厂商首个已启用模型 → 首个可用厂商首个已启用模型）
 AiModelRef? defaultModelRef(List<AiProvider> providers) {
-  final provider = providers.where((p) => p.isDefault && p.isUsable).firstOrNull ??
+  final provider =
+      providers.where((p) => p.isDefault && p.isUsable).firstOrNull ??
       providers.where((p) => p.isUsable).firstOrNull;
   final model = provider?.firstModel;
   return model == null
@@ -54,8 +55,9 @@ String aiModelDisplayName(
 int routeGroupLiveMemberCount(AiRouteGroup group, List<AiProvider> providers) {
   var live = 0;
   for (final member in group.enabledMembers) {
-    final provider =
-        providers.where((p) => p.id == member.providerId).firstOrNull;
+    final provider = providers
+        .where((p) => p.id == member.providerId)
+        .firstOrNull;
     if (provider != null && provider.hasModel(member.modelName)) live++;
   }
   return live;
@@ -77,6 +79,28 @@ String aiBindingDisplayName(
     return group == null ? fallback : group.name;
   }
   return aiModelDisplayName(ref, providers, fallback: fallback);
+}
+
+/// 绑定引用 → 短展示名：具体模型只给模型名（不带厂商前缀），路由组给组名
+///
+/// 对话页输入区空间有限，厂商名对「当前用哪个模型」没有增量信息；
+/// 需要完整归属时去模型选择器（那里按厂商分组）看。
+String aiBindingShortName(
+  AiModelRef? ref,
+  List<AiProvider> providers,
+  List<AiRouteGroup> groups, {
+  String fallback = '未配置模型',
+}) {
+  if (ref == null) return fallback;
+  if (ref.isRouteGroup) {
+    final group = groups.where((g) => g.id == ref.providerId).firstOrNull;
+    return group == null ? fallback : group.name;
+  }
+  final provider = providers.where((p) => p.id == ref.providerId).firstOrNull;
+  final model = provider?.models
+      .where((m) => m.id == ref.modelName)
+      .firstOrNull;
+  return model?.name ?? ref.modelName;
 }
 
 /// 共享模型选择器：底部弹层，按厂商分组列出已启用模型，带搜索与空态引导
@@ -245,10 +269,7 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      NoModelGuideCard(
-                        scene: '',
-                        padding: EdgeInsets.zero,
-                      ),
+                      NoModelGuideCard(scene: '', padding: EdgeInsets.zero),
                       SizedBox(height: 8),
                     ],
                   ),
@@ -303,8 +324,8 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
                                 color: colorScheme.primary,
                               )
                             : null,
-                        onTap: () => Navigator.of(context)
-                            .pop(ModelPickerResult(ref)),
+                        onTap: () =>
+                            Navigator.of(context).pop(ModelPickerResult(ref)),
                       );
                     }),
                     const SizedBox(height: 2),
@@ -370,8 +391,8 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
                                     color: colorScheme.onSurfaceVariant,
                                   ),
                                 ),
-                          onTap: () => Navigator.of(context)
-                              .pop(ModelPickerResult(ref)),
+                          onTap: () =>
+                              Navigator.of(context).pop(ModelPickerResult(ref)),
                         );
                       }),
                     ];

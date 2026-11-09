@@ -30,45 +30,83 @@ void main() {
     });
   });
 
+  group('thinkingDurationLabel', () {
+    test('无有效秒数不展示', () {
+      expect(thinkingDurationLabel(null), '');
+      expect(thinkingDurationLabel(0), '');
+    });
+
+    test('一分钟内按秒展示', () {
+      expect(thinkingDurationLabel(3), '3 秒');
+      expect(thinkingDurationLabel(59), '59 秒');
+    });
+
+    test('超过一分钟按分秒展示', () {
+      expect(thinkingDurationLabel(60), '1 分');
+      expect(thinkingDurationLabel(83), '1 分 23 秒');
+    });
+  });
+
   testWidgets('折叠态只展示最新一行，点击后展开全文', (tester) async {
     await tester.pumpWidget(
       wrap(const ThinkingProcessView(thought: '先想第一步\n再想第二步')),
     );
 
-    expect(find.text('思考过程'), findsOneWidget);
+    expect(find.text('思考'), findsOneWidget);
     expect(find.text('再想第二步'), findsOneWidget);
     expect(find.byType(ThoughtTailScrollView), findsNothing);
 
-    await tester.tap(find.text('思考过程'));
+    await tester.tap(find.text('思考'));
     await tester.pumpAndSettle();
 
     expect(find.byType(ThoughtTailScrollView), findsOneWidget);
     expect(find.text('先想第一步\n再想第二步'), findsOneWidget);
     expect(find.text('再想第二步'), findsNothing, reason: '标题行不再重复最新一行');
 
-    await tester.tap(find.text('思考过程'));
+    await tester.tap(find.text('思考'));
     await tester.pumpAndSettle();
 
     expect(find.byType(ThoughtTailScrollView), findsNothing);
   });
 
-  testWidgets('流式期间文案为「思考中」', (tester) async {
+  testWidgets('已结束的思考段展示耗时', (tester) async {
     await tester.pumpWidget(
-      wrap(const ThinkingProcessView(thought: '正在思考', isStreaming: true)),
+      wrap(const ThinkingProcessView(thought: '思考完成', durationSeconds: 7)),
     );
 
-    expect(find.text('思考中'), findsOneWidget);
-    expect(find.text('思考过程'), findsNothing);
+    expect(find.text(' · 7 秒'), findsOneWidget);
   });
 
-  testWidgets('未手动展开时，流式结束自动收起', (tester) async {
+  testWidgets('流式期间展示递增计时', (tester) async {
     await tester.pumpWidget(
-      wrap(const ThinkingProcessView(thought: '思考', isStreaming: true)),
+      wrap(
+        ThinkingProcessView(
+          thought: '正在思考',
+          isStreaming: true,
+          startedAt: DateTime.now().subtract(const Duration(seconds: 5)),
+        ),
+      ),
+    );
+    // 呼吸动画持续运行，不能用 pumpAndSettle
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.textContaining(' · 5 秒'), findsOneWidget);
+  });
+
+  testWidgets('流式结束后自动收起（未手动展开过）', (tester) async {
+    await tester.pumpWidget(
+      wrap(
+        ThinkingProcessView(
+          thought: '思考',
+          isStreaming: true,
+          startedAt: DateTime.now(),
+        ),
+      ),
     );
     expect(find.byType(ThoughtTailScrollView), findsNothing);
 
     await tester.pumpWidget(
-      wrap(const ThinkingProcessView(thought: '思考', isStreaming: false)),
+      wrap(const ThinkingProcessView(thought: '思考', durationSeconds: 3)),
     );
     await tester.pumpAndSettle();
 
@@ -77,15 +115,21 @@ void main() {
 
   testWidgets('用户手动展开后，流式结束保持展开', (tester) async {
     await tester.pumpWidget(
-      wrap(const ThinkingProcessView(thought: '思考', isStreaming: true)),
+      wrap(
+        ThinkingProcessView(
+          thought: '思考',
+          isStreaming: true,
+          startedAt: DateTime.now(),
+        ),
+      ),
     );
 
     await tester.tap(find.byType(InkWell));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.byType(ThoughtTailScrollView), findsOneWidget);
 
     await tester.pumpWidget(
-      wrap(const ThinkingProcessView(thought: '思考完成', isStreaming: false)),
+      wrap(const ThinkingProcessView(thought: '思考完成', durationSeconds: 5)),
     );
     await tester.pumpAndSettle();
 

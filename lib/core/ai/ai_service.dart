@@ -7,6 +7,8 @@ import 'package:qnote_flutter/config/models.dart';
 import 'package:qnote_flutter/core/ai/api_key_pool.dart';
 import 'package:qnote_flutter/core/ai/ai_route_service.dart';
 import 'package:qnote_flutter/core/ai/model_reasoning_capability.dart';
+import 'package:qnote_flutter/core/ai/raccoon_account_router.dart';
+import 'package:qnote_flutter/models/ai_account_routing.dart';
 import 'package:qnote_flutter/core/ai/raccoon_auth_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/ai_provider_repository.dart';
@@ -327,9 +329,12 @@ class AiService {
 
     // Key 作用域故障且池里还有别的 Key：冷却本次这把 + 换下一把重发。
     // 这是「一个厂商多把 Key」的核心收益：撞墙的 Key 不会拖死整条对话。
+    // 账号型不走这里：它的凭证是账号 token，冷却由 RaccoonAccountRouter 按
+    // accountId 记账，把 token 打进 Key 池只会污染池状态。
     if (keyScoped &&
         sentKey != null &&
         hasProviderId &&
+        trace.authMode == AiProvider.authModeApiKey &&
         trace.poolKeys.length >= 2) {
       final pool = ApiKeyPool.instance;
       pool.markLimited(
@@ -423,9 +428,9 @@ class AiService {
   /// 整池冷却排队时的轮询切片
   static const Duration _poolPollInterval = Duration(milliseconds: 200);
 
-  /// 每次真正发信前的准备：按厂商条目现取一把 Key 并起表
+  /// 每次真正发信前的准备：按厂商条目现取凭证并起表
   ///
-  /// 返回的 [_SendTrace] 同时携带本次实际使用的 Key 与厂商密钥池快照，而**不是**
+  /// 返回的 [_SendTrace] 同时携带本次实际使用的凭证与厂商密钥池快照，而**不是**
   /// 各站点各自读取实例字段：`AiService` 是单例，主聊天、悬浮小Q、日记提取、
   /// 每日评分并发用它，任何「上次取到的 Key」这类实例字段都会串台。
   ///
@@ -437,7 +442,16 @@ class AiService {
   /// 这就是「即使成功了也要换下一把」的落点：取 Key 发生在请求发出前的一瞬，
   /// 与成功失败无关，所以整条 AgentLoop 的每一轮、以及并发的日记提取/每日评分
   /// 都各自拿一把，不再共享同一把、也不再互相覆写 Dio 的全局 header。
-  Future<_SendTrace> _beginSend(String scene, {AiConfig? config}) async {
+  ///
+  /// 订阅账号型走 [RaccoonAccountRouter] 选号：同一厂商登录多个账号时按
+  /// [AiProvider.accountRouting] 轮换，并按 [AiProvider.accountAffinity] 保持
+  /// 会话亲和。[triedAccountIds] 由调用方在换号重发时累加。
+  Future<_SendTrace> _beginSend(
+    String scene, {
+    AiConfig? config,
+    AiRequestScope? scope,
+    Set<String> triedAccountIds = const {},
+  }) async {
     final effective = config ?? _config;
     if (effective == null) {
       return _SendTrace(
@@ -448,20 +462,30 @@ class AiService {
       );
     }
 
-    // 订阅账号型：token 由账号服务现取（临近过期会先刷新），不走密钥池。
+    // 订阅账号型：token 由账号服务选号后现取（临近过期会先刷新），不走密钥池。
     // 始终逐请求覆写 header，避免 updateConfig 留下的空/旧凭证被沿用。
     if (effective.usesAccountAuth) {
-      final token = await RaccoonAuthService.instance.requireAccessToken(
+      final session = await RaccoonAuthService.instance.sessionForRequest(
         effective.providerId,
+        routing: effective.accountRouting,
+        affinity: effective.accountAffinity,
+        scope: scope,
+        triedAccountIds: triedAccountIds,
       );
+      if (session == null) {
+        // 没有登录任何账号 / 本次能用的账号都已试过：交给上层报「请重新登录」
+        throw RaccoonAuthRequiredException(effective.providerId);
+      }
       return _SendTrace(
         scene: scene,
-        sentKey: token,
+        sentKey: session.accessToken,
         poolKeys: const [],
         startedAt: DateTime.now(),
         providerId: effective.providerId,
         modelName: effective.modelName,
         authMode: effective.authMode,
+        accountId: session.account.id,
+        accountLabel: session.account.label,
       );
     }
 
@@ -599,7 +623,12 @@ class AiService {
       } catch (e) {
         final config = _config;
         if (config != null &&
-            await _refreshAccountAuthIfNeeded(config, e, authRetried)) {
+            await _refreshAccountAuthIfNeeded(
+              config,
+              e,
+              authRetried,
+              accountId: trace.accountId,
+            )) {
           authRetried = true;
           retryCount = 0;
           continue;
@@ -725,19 +754,33 @@ class AiService {
     return route.next(failed, error);
   }
 
-  /// 订阅账号型遇到 401：强制刷新一次账号 token，然后让循环重发
+  /// 订阅账号型遇到 401：强制刷新**本次所用账号**的 token，然后让循环重发
   ///
   /// 每个请求只做一次（[alreadyRetried]），刷新失败就交回原有重试/报错链路，
   /// 避免 refresh token 也失效时反复刷新。
+  ///
+  /// 必须按 [trace] 里的 accountId 刷新：多账号时 `refresh(providerId)` 只会刷新
+  /// 排在最前的那个，真正被拒的是另一个账号时刷新毫无意义，还会白打一次接口。
   Future<bool> _refreshAccountAuthIfNeeded(
     AiConfig config,
     Object error,
-    bool alreadyRetried,
-  ) async {
+    bool alreadyRetried, {
+    String accountId = '',
+  }) async {
     if (!config.usesAccountAuth || alreadyRetried) return false;
     if (!_isUnauthorized(error)) return false;
     try {
-      await RaccoonAuthService.instance.refresh(config.providerId, force: true);
+      if (accountId.isNotEmpty) {
+        await RaccoonAuthService.instance.refreshAccount(
+          accountId,
+          force: true,
+        );
+      } else {
+        await RaccoonAuthService.instance.refresh(
+          config.providerId,
+          force: true,
+        );
+      }
       LoggerService.instance.logAI(
         '账号凭证被拒绝，已刷新后重试: ${config.providerId}',
         level: LogLevel.warning,
@@ -754,6 +797,109 @@ class AiService {
     return error.response?.statusCode == 401;
   }
 
+  /// 账号型遇到限流/失败：把失败记到**本次实际使用的账号**上
+  ///
+  /// 记冷却与清亲和都在 [RaccoonAuthService] 内部按 accountId 完成；这里只负责
+  /// 把 trace 里的账号快照翻译成账号对象。返回 false 表示「这次失败不该换号」
+  /// （非账号型、或错误不是可换号的瞬时/配额类故障）。
+  Future<bool> _markAccountFailure(
+    _SendTrace trace,
+    Object error, {
+    String affinity = AiProvider.defaultAccountAffinity,
+  }) async {
+    if (trace.authMode != AiProvider.authModeRaccoon) return false;
+    if (trace.accountId.isEmpty) return false;
+    if (!ApiKeyPool.isRecoverableError(error)) return false;
+    final account = await RaccoonAuthService.instance.accountById(
+      trace.accountId,
+    );
+    if (account == null) return false;
+    RaccoonAuthService.instance.markAccountFailed(
+      account,
+      error,
+      affinity: affinity,
+    );
+    return true;
+  }
+
+  /// 记一次账号成功（智能策略的成功率统计 + 解除自身冷却）
+  void _recordAccountSuccess(_SendTrace trace) {
+    if (trace.authMode != AiProvider.authModeRaccoon) return;
+    if (trace.accountId.isEmpty) return;
+    final account = RaccoonAuthService.instance.accountFromCache(
+      trace.accountId,
+    );
+    if (account != null) {
+      RaccoonAuthService.instance.markAccountSucceeded(account);
+    }
+  }
+
+  /// 账号型是否还有别的账号可换（决定「换号重发」还是「原地退避重试」）
+  Future<bool> _hasAlternateAccount(
+    AiConfig config,
+    Set<String> triedAccountIds,
+    AiRequestScope? scope,
+  ) async {
+    if (!config.usesAccountAuth) return false;
+    try {
+      return await RaccoonAuthService.instance.hasAlternateAccount(
+        config.providerId,
+        routing: config.accountRouting,
+        affinity: config.accountAffinity,
+        scope: scope,
+        triedAccountIds: triedAccountIds,
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 账号型撞限流/瞬时故障：把失败记到本次账号上并返回「是否应该换号重发」
+  ///
+  /// 关键顺序：**先判断还有没有别的账号可换，再记冷却**。反过来写的话，单账号
+  /// 厂商会把唯一账号打进冷却，下一次重试直接报「所有账号都在限流冷却中」，
+  /// 把原始的 429 错误吞成一句误导性的登录提示。单账号因此完全沿用改造前的
+  /// 退避重试链路。
+  ///
+  /// [partiallyStreamed] 为 true 时先通知消费方作废本轮碎片（与 Key 轮换同一语义），
+  /// 否则新旧两段会在「思考中」卡里首尾相接。
+  Future<bool> _switchAccountIfPossible(
+    _SendTrace trace,
+    Object error,
+    Set<String> triedAccountIds, {
+    required bool partiallyStreamed,
+    void Function()? onStreamRetry,
+    AiRequestScope? scope,
+    String affinity = AiProvider.defaultAccountAffinity,
+  }) async {
+    if (trace.authMode != AiProvider.authModeRaccoon) return false;
+    if (trace.accountId.isEmpty) return false;
+    if (!ApiKeyPool.isRecoverableError(error)) return false;
+    // 严格亲和：用户明确要求「失败也不换号」，这里直接让错误抛给用户，
+    // 否则会在「换号 → 又被亲和拉回同一个账号」之间打转
+    if (affinity == AccountAffinity.strict.id) return false;
+
+    final config = _config;
+    if (config == null) return false;
+
+    // 判断「还有没有别的账号」时要把本次这个也算成已试过，否则它会把自己
+    // 算成候选
+    final probe = {...triedAccountIds, trace.accountId};
+    final hasOther = await _hasAlternateAccount(config, probe, scope);
+    if (!hasOther) return false;
+
+    await _markAccountFailure(trace, error, affinity: affinity);
+    triedAccountIds.add(trace.accountId);
+
+    if (partiallyStreamed) onStreamRetry?.call();
+    LoggerService.instance.logAI(
+      '${trace.scene} 账号 ${trace.accountLabel.isEmpty ? trace.accountId : trace.accountLabel} '
+      '失败（${_briefError(error)}），换下一个账号重发',
+      level: LogLevel.warning,
+    );
+    return true;
+  }
+
   Future<String> chat(
     List<ChatMessage> messages, {
     CancelToken? cancelToken,
@@ -768,11 +914,15 @@ class AiService {
   }
 
   /// 支持 Tool Calling 的同步调用，返回完整 ChatMessage（含 content、toolCalls、thought 等）
+  ///
+  /// [scope] 是账号型选号的会话标识：同一对话/同一轮消息固定账号（亲和），
+  /// 没有会话概念的调用传 null，退化为按场景名选号。
   Future<ChatMessage> chatResponse(
     List<ChatMessage> messages, {
     List<Map<String, dynamic>>? tools,
     CancelToken? cancelToken,
     AiModelRoute? route,
+    AiRequestScope? scope,
   }) async {
     if (_config == null) throw Exception('AI config not set');
 
@@ -786,6 +936,9 @@ class AiService {
     int retryCount = 0;
     // 订阅账号型：401 只刷新一次 token，避免刷新失败时反复打圈
     var authRetried = false;
+    // 本次请求已经试过并失败的账号：换号重发时排除它们，避免在同一请求里
+    // 反复回到刚失败的账号上
+    final triedAccounts = <String>{};
     // 路由组场景下本条请求实际使用的成员；重试/换成员时随 [activeConfig] 更新。
     // 优先沿用 [route] 里已切换到的成员：一条用户消息内的多步工具循环要保持同一个模型，
     // 不能每一步都从「已经失败过的第一个成员」重新开头
@@ -793,8 +946,13 @@ class AiService {
     AiConfig activeConfig = route?.active ?? _config!;
 
     while (true) {
-      // 每次真正发信前现取一把 Key（成功也换）；非内置池端点返回 null，沿用全局 header
-      final trace = await _beginSend('对话请求', config: activeConfig);
+      // 每次真正发信前现取凭证（成功也换）；非内置池端点返回 null，沿用全局 header
+      final trace = await _beginSend(
+        '对话请求',
+        config: activeConfig,
+        scope: scope,
+        triedAccountIds: triedAccounts,
+      );
       final sentKey = trace.sentKey;
       try {
         final endpoint = _absoluteEndpoint(activeConfig, stream: false);
@@ -849,6 +1007,7 @@ class AiService {
           activeConfig,
           elapsed: Duration(milliseconds: duration),
         );
+        _recordAccountSuccess(trace);
         LoggerService.instance.logAI(
           '对话完成',
           details:
@@ -866,9 +1025,27 @@ class AiService {
         if (cancelToken?.isCancelled == true) rethrow;
         // 端点不认思考强度参数：关掉后原地重发，不让调档把对话打挂
         if (_disableReasoningOnReject(e)) continue;
-        if (await _refreshAccountAuthIfNeeded(activeConfig, e, authRetried)) {
+        if (await _refreshAccountAuthIfNeeded(
+          activeConfig,
+          e,
+          authRetried,
+          accountId: trace.accountId,
+        )) {
           authRetried = true;
           retryCount = 0;
+          continue;
+        }
+        // 账号型撞限流/失败且还有别的账号：直接换号重发，不烧退避次数
+        if (await _switchAccountIfPossible(
+          trace,
+          e,
+          triedAccounts,
+          partiallyStreamed: false,
+          scope: scope,
+          affinity: activeConfig.accountAffinity,
+        )) {
+          retryCount = 0;
+          authRetried = false;
           continue;
         }
         if (await _shouldRetryAndWait(
@@ -938,6 +1115,7 @@ class AiService {
     void Function()? onStreamRetry,
     CancelToken? cancelToken,
     AiModelRoute? route,
+    AiRequestScope? scope,
   }) async* {
     if (_config == null) throw Exception('AI config not set');
 
@@ -951,6 +1129,8 @@ class AiService {
     int retryCount = 0;
     // 订阅账号型：401 只刷新一次 token
     var authRetried = false;
+    // 本次请求已经试过并失败的账号（换号重发时排除）
+    final triedAccounts = <String>{};
     // 本条用户消息（含其工具循环）实际使用的成员：路由组每条消息轮换一次，
     // 消息内部只有在成员失败时才切换（见 catch 里的 _switchRouteMember）；
     // 切换结果记在 [route.active] 上，下一步推理沿用同一个成员
@@ -962,8 +1142,13 @@ class AiService {
       // 要不要通知消费方复位（网关掐流最常发生在只吐思考的阶段）
       bool hasDeliveredText = false;
       bool partiallyStreamed = false;
-      // 每轮（含重试）都重新取一把 Key：这就是「成功也换」在 AgentLoop 每轮推理上的效果
-      final trace = await _beginSend('带工具流式对话', config: activeConfig);
+      // 每轮（含重试）都重新取一次凭证：这就是「成功也换」在 AgentLoop 每轮推理上的效果
+      final trace = await _beginSend(
+        '带工具流式对话',
+        config: activeConfig,
+        scope: scope,
+        triedAccountIds: triedAccounts,
+      );
       final sentKey = trace.sentKey;
       try {
         final dynamic bodyMap = await _prepareChatRequestBody(
@@ -1021,6 +1206,7 @@ class AiService {
                 activeConfig,
                 elapsed: Duration(milliseconds: duration),
               );
+              _recordAccountSuccess(trace);
               _deliverToolCalls(toolCallBuilders, onToolCallsReady);
               return;
             }
@@ -1135,6 +1321,7 @@ class AiService {
         // 流自然结束但没有 [DONE]（部分网关会这样收流）：同样算一次成功发信
         _recordParsedUsage(streamUsage, trace: trace);
         route?.recordSuccess(activeConfig);
+        _recordAccountSuccess(trace);
         _deliverToolCalls(toolCallBuilders, onToolCallsReady);
         return;
       } catch (e, stackTrace) {
@@ -1144,9 +1331,29 @@ class AiService {
         if (_disableReasoningOnReject(e)) continue;
         // 端点不认 stream_options：关掉统计参数后原地重发，不让统计影响对话
         if (_disableStreamUsageOnReject(e)) continue;
-        if (await _refreshAccountAuthIfNeeded(activeConfig, e, authRetried)) {
+        if (await _refreshAccountAuthIfNeeded(
+          activeConfig,
+          e,
+          authRetried,
+          accountId: trace.accountId,
+        )) {
           authRetried = true;
           retryCount = 0;
+          continue;
+        }
+        // 账号型撞限流/失败且还有别的账号：换号重发（正文未输出才有意义）
+        if (!hasDeliveredText &&
+            await _switchAccountIfPossible(
+              trace,
+              e,
+              triedAccounts,
+              partiallyStreamed: partiallyStreamed,
+              onStreamRetry: onStreamRetry,
+              scope: scope,
+              affinity: activeConfig.accountAffinity,
+            )) {
+          retryCount = 0;
+          authRetried = false;
           continue;
         }
         if (await _shouldRetryAndWait(
@@ -1211,6 +1418,7 @@ class AiService {
   Stream<String> chatStream(
     List<ChatMessage> messages, {
     AiModelRoute? route,
+    AiRequestScope? scope,
   }) async* {
     if (_config == null) throw Exception('AI config not set');
 
@@ -1223,12 +1431,19 @@ class AiService {
     int retryCount = 0;
     // 订阅账号型：401 只刷新一次 token
     var authRetried = false;
+    // 本次请求已经试过并失败的账号（换号重发时排除）
+    final triedAccounts = <String>{};
     route?.beginRequest();
     AiConfig activeConfig = route?.active ?? _config!;
 
     while (true) {
       bool hasDeliveredText = false;
-      final trace = await _beginSend('普通流式对话', config: activeConfig);
+      final trace = await _beginSend(
+        '普通流式对话',
+        config: activeConfig,
+        scope: scope,
+        triedAccountIds: triedAccounts,
+      );
       final sentKey = trace.sentKey;
       try {
         final dynamic bodyMap = await _prepareChatRequestBody(
@@ -1326,13 +1541,33 @@ class AiService {
         );
         _recordParsedUsage(streamUsage, trace: trace);
         route?.recordSuccess(activeConfig);
+        _recordAccountSuccess(trace);
         return;
       } catch (e, stackTrace) {
         if (_disableReasoningOnReject(e)) continue;
         if (_disableStreamUsageOnReject(e)) continue;
-        if (await _refreshAccountAuthIfNeeded(activeConfig, e, authRetried)) {
+        if (await _refreshAccountAuthIfNeeded(
+          activeConfig,
+          e,
+          authRetried,
+          accountId: trace.accountId,
+        )) {
           authRetried = true;
           retryCount = 0;
+          continue;
+        }
+        // 账号型撞限流/失败且还有别的账号：换号重发（正文未输出才有意义）
+        if (!hasDeliveredText &&
+            await _switchAccountIfPossible(
+              trace,
+              e,
+              triedAccounts,
+              partiallyStreamed: false,
+              scope: scope,
+              affinity: activeConfig.accountAffinity,
+            )) {
+          retryCount = 0;
+          authRetried = false;
           continue;
         }
         if (await _shouldRetryAndWait(
@@ -1428,7 +1663,9 @@ class AiService {
   }
 
   ModelReasoningCapability? _reasoningCapabilityFor(AiConfig config) {
-    return ModelReasoningCapability.resolve(
+    // 走 forUi：能力表未收录时用通用兜底，保证用户显式选过的档位真的发出去
+    // （发错字段由 400 降级重发兜住，不会把对话打死）
+    return ModelReasoningCapability.forUi(
       modelName: config.modelName,
       providerType: config.provider,
       vendorId: config.vendorId,
@@ -1856,6 +2093,7 @@ class AiService {
     required String schema,
     String? contextStr,
     CancelToken? cancelToken,
+    AiRequestScope? scope,
   }) async {
     if (_config == null) throw Exception('AI config not set');
 
@@ -1958,11 +2196,17 @@ class AiService {
 
     int retryCount = 0;
     var authRetried = false;
+    // 本次调用已经试过并失败的账号（换号重发时排除）
+    final triedAccounts = <String>{};
 
     while (true) {
-      // 每次发信前现取一把 Key：日记提取与主聊天共用同一个 AiService 单例，
+      // 每次发信前现取凭证：日记提取与主聊天共用同一个 AiService 单例，
       // 只有逐请求覆写 header 才不会互相串台
-      final trace = await _beginSend('日记统一提取');
+      final trace = await _beginSend(
+        '日记统一提取',
+        scope: scope,
+        triedAccountIds: triedAccounts,
+      );
       final sentKey = trace.sentKey;
       try {
         final response = await _dio.post(
@@ -2035,11 +2279,30 @@ class AiService {
           return [];
         }
 
+        _recordAccountSuccess(trace);
         return results.map(_convertSimplifiedExtractResult).toList();
       } catch (e, stackTrace) {
-        if (await _refreshAccountAuthIfNeeded(_config!, e, authRetried)) {
+        if (await _refreshAccountAuthIfNeeded(
+          _config!,
+          e,
+          authRetried,
+          accountId: trace.accountId,
+        )) {
           authRetried = true;
           retryCount = 0;
+          continue;
+        }
+        // 账号型撞限流/失败且还有别的账号：换号重发
+        if (await _switchAccountIfPossible(
+          trace,
+          e,
+          triedAccounts,
+          partiallyStreamed: false,
+          scope: scope,
+          affinity: _config!.accountAffinity,
+        )) {
+          retryCount = 0;
+          authRetried = false;
           continue;
         }
         if (await _shouldRetryAndWait(
@@ -2072,6 +2335,7 @@ class AiService {
     String? userText,
     String? systemPrompt,
     CancelToken? cancelToken,
+    AiRequestScope? scope,
   }) async {
     if (_config == null) throw Exception('AI config not set');
 
@@ -2096,9 +2360,15 @@ class AiService {
 
     int retryCount = 0;
     var authRetried = false;
+    // 本次调用已经试过并失败的账号（换号重发时排除）
+    final triedAccounts = <String>{};
 
     while (true) {
-      final trace = await _beginSend('图片识别');
+      final trace = await _beginSend(
+        '图片识别',
+        scope: scope,
+        triedAccountIds: triedAccounts,
+      );
       final sentKey = trace.sentKey;
       try {
         final response = await _dio.post(
@@ -2117,11 +2387,30 @@ class AiService {
           details:
               '耗时=${DateTime.now().difference(startTime).inMilliseconds}ms, 响应长度=${result.length}字符',
         );
+        _recordAccountSuccess(trace);
         return result;
       } catch (e, stackTrace) {
-        if (await _refreshAccountAuthIfNeeded(_config!, e, authRetried)) {
+        if (await _refreshAccountAuthIfNeeded(
+          _config!,
+          e,
+          authRetried,
+          accountId: trace.accountId,
+        )) {
           authRetried = true;
           retryCount = 0;
+          continue;
+        }
+        // 账号型撞限流/失败且还有别的账号：换号重发
+        if (await _switchAccountIfPossible(
+          trace,
+          e,
+          triedAccounts,
+          partiallyStreamed: false,
+          scope: scope,
+          affinity: _config!.accountAffinity,
+        )) {
+          retryCount = 0;
+          authRetried = false;
           continue;
         }
         if (await _shouldRetryAndWait(
@@ -3052,6 +3341,15 @@ class _SendTrace {
   /// 本次发信的凭证类型（`api_key` | `raccoon`），用于 401 时决定是否刷新账号
   final String authMode;
 
+  /// 本次实际使用的订阅账号（账号型才有）
+  ///
+  /// 换号重发时靠它把失败归到「具体那个账号」上：账号池的冷却与亲和都是按
+  /// accountId 记账的，只记 providerId 会把整组账号一起打进冷却。
+  final String accountId;
+
+  /// 账号展示名（日志与诊断用）
+  final String accountLabel;
+
   /// 起表时刻（不含取 Key 与整池排队等待）
   final DateTime startedAt;
 
@@ -3063,5 +3361,7 @@ class _SendTrace {
     this.providerId = '',
     this.modelName = '',
     this.authMode = 'api_key',
+    this.accountId = '',
+    this.accountLabel = '',
   });
 }

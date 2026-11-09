@@ -5,6 +5,7 @@ import 'package:qnote_flutter/core/agent/engine/agent_loop.dart';
 import 'package:qnote_flutter/core/agent/engine/tool_dispatcher.dart';
 import 'package:qnote_flutter/core/ai/ai_route_service.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
+import 'package:qnote_flutter/core/ai/raccoon_account_router.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 
 /// 记录每轮实际发给模型的 messages，用来验证图片有没有在发请求前被剥掉
@@ -20,6 +21,7 @@ class _RecordingAiService extends AiService {
     void Function()? onStreamRetry,
     CancelToken? cancelToken,
     AiModelRoute? route,
+    AiRequestScope? scope,
   }) async* {
     captured.add(List.of(messages));
     yield const AiToolStreamChunk.text('好的');

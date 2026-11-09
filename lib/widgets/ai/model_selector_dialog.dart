@@ -7,7 +7,12 @@ import 'package:qnote_flutter/providers/ai_provider.dart';import 'package:qnote_
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 
 export 'package:qnote_flutter/widgets/ai/model_picker_sheet.dart'
-    show aiBindingDisplayName, aiModelDisplayName, defaultModelRef, enabledModelEntries;
+    show
+        aiBindingDisplayName,
+        aiBindingShortName,
+        aiModelDisplayName,
+        defaultModelRef,
+        enabledModelEntries;
 
 /// 弹出小Q 对话模型选择弹层（AI 主页面与悬浮小Q 面板共用入口）
 ///

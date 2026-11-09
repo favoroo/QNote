@@ -22,6 +22,7 @@ import 'package:qnote_flutter/core/agent/vfs/virtual_workspace_service.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
 import 'package:qnote_flutter/core/ai/ai_error_explainer.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/ai/raccoon_account_router.dart';
 import 'package:qnote_flutter/core/ai/vision_capability_probe.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/tts/streaming_speech_session.dart';
@@ -657,6 +658,12 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
         // 当前模型看不了图时，本轮图片在发请求前就换成 describe_image 引导（与主聊天一致）
         supportsImageInput: supportsVisionInput,
         route: assistantResolution.route,
+        // 账号型选号作用域：悬浮窗是一段独立对话，按会话固定账号；
+        // turnKey 用消息数近似「本轮」，同一条消息内的工具循环不换号
+        requestScope: AiRequestScope(
+          sessionKey: 'floating',
+          turnKey: 'floating:${_sessionMessages.length}',
+        ),
         // 整池限流时不报错、不静默：与主聊天一致，把排队秒数写到悬浮窗状态行
         onQuotaHold: (hold) => _setStatus('服务商限流 · 排队 ${hold.inSeconds}s 后重试'),
         afterToolCall: (call, result) async {

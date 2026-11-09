@@ -115,6 +115,12 @@ class AiProvider {
   /// 订阅账号登录（商汤小浣熊）：密钥来自账号 token，不写 `api_keys`
   static const String authModeRaccoon = 'raccoon';
 
+  /// 多账号选号策略默认值（与 [AccountRouting.rotate] 一致，避免模型层依赖枚举）
+  static const String defaultAccountRouting = 'rotate';
+
+  /// 会话亲和默认值（与 [AccountAffinity.session] 一致）
+  static const String defaultAccountAffinity = 'session';
+
   final String id;
 
   /// 指向 `lib/config/models.dart` 的厂商模板（自定义地址为 `custom`）
@@ -133,6 +139,18 @@ class AiProvider {
   /// 订阅账号型厂商的 token 由 [RaccoonAuthService] 在每次发信前现取，
   /// 不落在 `api_keys` 里，也不会随备份导出。
   final String authMode;
+
+  /// 多账号选号策略：`rotate` | `failover` | `smart`
+  ///
+  /// 只在 [usesAccountAuth] 且登录了 2 个以上账号时才有意义；单账号时
+  /// 选号器会直接返回那一个账号。
+  final String accountRouting;
+
+  /// 一段对话在同一账号上待多久：`session` | `turn` | `off` | `strict`
+  ///
+  /// 语义对齐 magpie 的 `Provider.Affinity`：同一对话固定账号能命中厂商侧的
+  /// prompt cache，比每个请求都换账号省上下文费用。
+  final String accountAffinity;
 
   /// API Key 池（普通厂商至少一把；订阅账号型为空）
   final List<String> apiKeys;
@@ -158,6 +176,8 @@ class AiProvider {
     required this.providerType,
     required this.baseUrl,
     this.authMode = authModeApiKey,
+    this.accountRouting = defaultAccountRouting,
+    this.accountAffinity = defaultAccountAffinity,
     required this.apiKeys,
     this.models = const [],
     this.modelCatalog = const [],
@@ -194,6 +214,8 @@ class AiProvider {
       'provider_type': providerType,
       'base_url': baseUrl,
       'auth_mode': authMode,
+      'account_routing': accountRouting,
+      'account_affinity': accountAffinity,
       'api_keys': jsonEncode(apiKeys),
       'models': AiProviderModel.listToJson(models),
       'model_catalog': AiProviderModel.listToJson(modelCatalog),
@@ -216,6 +238,14 @@ class AiProvider {
       authMode: (map['auth_mode'] as String?)?.trim().isNotEmpty == true
           ? (map['auth_mode'] as String).trim()
           : authModeApiKey,
+      accountRouting:
+          (map['account_routing'] as String?)?.trim().isNotEmpty == true
+          ? (map['account_routing'] as String).trim()
+          : defaultAccountRouting,
+      accountAffinity:
+          (map['account_affinity'] as String?)?.trim().isNotEmpty == true
+          ? (map['account_affinity'] as String).trim()
+          : defaultAccountAffinity,
       apiKeys: _decodeKeys(map['api_keys']),
       models: AiProviderModel.listFromJson(map['models'] as String?),
       modelCatalog: AiProviderModel.listFromJson(
@@ -235,6 +265,8 @@ class AiProvider {
     String? providerType,
     String? baseUrl,
     String? authMode,
+    String? accountRouting,
+    String? accountAffinity,
     List<String>? apiKeys,
     List<AiProviderModel>? models,
     List<AiProviderModel>? modelCatalog,
@@ -252,6 +284,8 @@ class AiProvider {
       providerType: providerType ?? this.providerType,
       baseUrl: baseUrl ?? this.baseUrl,
       authMode: authMode ?? this.authMode,
+      accountRouting: accountRouting ?? this.accountRouting,
+      accountAffinity: accountAffinity ?? this.accountAffinity,
       apiKeys: apiKeys ?? this.apiKeys,
       models: models ?? this.models,
       modelCatalog: modelCatalog ?? this.modelCatalog,

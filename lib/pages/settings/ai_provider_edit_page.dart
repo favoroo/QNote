@@ -12,6 +12,7 @@ import 'package:qnote_flutter/core/ai/model_reasoning_capability.dart';
 import 'package:qnote_flutter/core/ai/raccoon_auth_service.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/ai_account.dart';
+import 'package:qnote_flutter/models/ai_account_routing.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_provider.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
@@ -63,9 +64,13 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
   late List<AiProviderModel> _catalog;
   DateTime? _catalogUpdatedAt;
 
-  /// 订阅账号型厂商的登录态（非账号型为 null）
-  AiAccount? _account;
+  /// 订阅账号型厂商的登录态（多账号，按轮换顺序；非账号型为空）
+  List<AiAccount> _accounts = const [];
   bool _accountLoading = false;
+
+  /// 账号选号策略与亲和时长（账号型专用，随条目保存）
+  late String _accountRouting;
+  late String _accountAffinity;
 
   bool _dirty = false;
   bool _saving = false;
@@ -107,21 +112,25 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     _models = List<AiProviderModel>.from(existing?.models ?? const []);
     _catalog = List<AiProviderModel>.from(existing?.modelCatalog ?? const []);
     _catalogUpdatedAt = existing?.catalogUpdatedAt;
+    _accountRouting =
+        existing?.accountRouting ?? AiProvider.defaultAccountRouting;
+    _accountAffinity =
+        existing?.accountAffinity ?? AiProvider.defaultAccountAffinity;
     if (_authMode == AiProvider.authModeRaccoon) {
-      _loadAccount();
+      _loadAccounts();
     }
   }
 
-  Future<void> _loadAccount() async {
+  Future<void> _loadAccounts() async {
     _accountLoading = true;
     try {
-      final account = await RaccoonAuthService.instance.sessionFor(
+      final accounts = await RaccoonAuthService.instance.accountsFor(
         _providerId,
         forceReload: true,
       );
       if (!mounted) return;
       setState(() {
-        _account = account;
+        _accounts = accounts;
         _accountLoading = false;
       });
     } catch (_) {
@@ -187,7 +196,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
         _nameCtl.text = nextSpec?.name ?? '';
       }
       if (_authMode != AiProvider.authModeRaccoon) {
-        _account = null;
+        _accounts = const [];
       }
       // 换厂商模板后旧模型 id 已不属于新地址，保留会让用户误存一批无效模型
       _models = [];
@@ -196,35 +205,40 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       _dirty = true;
     });
     if (_authMode == AiProvider.authModeRaccoon) {
-      await _loadAccount();
+      await _loadAccounts();
     }
   }
 
   // ── 订阅账号登录 ─────────────────────────────────────────
 
-  Future<void> _openLoginSheet() async {
+  /// 新增一个账号（[accountId] 为空）或重新登录指定账号
+  Future<void> _openLoginSheet({String? accountId}) async {
     final account = await showModalBottomSheet<AiAccount>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) => RaccoonLoginSheet(providerId: _providerId),
+      builder: (_) =>
+          RaccoonLoginSheet(providerId: _providerId, accountId: accountId),
     );
     if (account == null || !mounted) return;
-    setState(() {
-      _account = account;
-      _dirty = true;
-    });
+    await _loadAccounts();
+    if (!mounted) return;
+    setState(() => _dirty = true);
     Toast.success(context, '已登录：${account.label}');
-    // 登录后直接拉一次模型目录，省掉用户再点一次「扫描」
-    await _scanModels();
+    // 首次登录后直接拉一次模型目录，省掉用户再点一次「扫描」
+    if (_models.isEmpty) await _scanModels();
   }
 
-  Future<void> _logoutAccount() async {
+  Future<void> _logoutAccount(AiAccount account) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('退出小浣熊账号'),
-        content: const Text('退出后该模型服务将无法调用，直到重新登录。已启用的模型与角色绑定会保留。'),
+        title: Text('退出「${account.label}」'),
+        content: Text(
+          _accounts.length <= 1
+              ? '这是当前唯一的账号，退出后该模型服务将无法调用，直到重新登录。已启用的模型与角色绑定会保留。'
+              : '退出后这个账号不再参与轮换，其余账号不受影响。已启用的模型与角色绑定会保留。',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -238,10 +252,67 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    await RaccoonAuthService.instance.logout(_providerId);
+    await RaccoonAuthService.instance.logout(account.id);
+    await _loadAccounts();
     if (!mounted) return;
-    setState(() => _account = null);
-    Toast.info(context, '已退出登录');
+    Toast.info(context, '已退出「${account.label}」');
+  }
+
+  /// 修改账号备注（「工作号」「小号」这类，便于在轮换里分辨）
+  Future<void> _renameAccount(AiAccount account) async {
+    final controller = TextEditingController(text: account.alias);
+    final alias = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('账号备注'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(
+            hintText: '例如：工作号 / 小号',
+            helperText:
+                '留空则显示手机号（${account.phone.isEmpty ? account.label : account.phone}）',
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (alias == null || !mounted) return;
+    await RaccoonAuthService.instance.updateAccount(account, alias: alias);
+    await _loadAccounts();
+  }
+
+  /// 账号参与/退出轮换（关掉保留登录态，但不被选中）
+  Future<void> _toggleAccountEnabled(AiAccount account, bool enabled) async {
+    await RaccoonAuthService.instance.updateAccount(account, enabled: enabled);
+    await _loadAccounts();
+  }
+
+  /// 调整账号顺序（「顺序」策略的优先级 = 这个顺序）
+  Future<void> _moveAccount(int index, int delta) async {
+    final target = index + delta;
+    if (target < 0 || target >= _accounts.length) return;
+    final ordered = List<AiAccount>.from(_accounts);
+    final moved = ordered.removeAt(index);
+    ordered.insert(target, moved);
+    // 先本地重排让界面立刻响应，再落库（失败时 _loadAccounts 会拉回真实顺序）
+    setState(() => _accounts = ordered);
+    await RaccoonAuthService.instance.reorderAccounts(
+      _providerId,
+      ordered.map((a) => a.id).toList(),
+    );
+    await _loadAccounts();
   }
 
   // ── 密钥池 ───────────────────────────────────────────────
@@ -346,8 +417,9 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
           );
         }
       } catch (e) {
-        if (mounted)
+        if (mounted) {
           setState(() => _keyTestResults[key] = '失败：${_formatTestError(e)}');
+        }
       } finally {
         if (mounted) setState(() => _testingKeys.remove(key));
       }
@@ -449,7 +521,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
 
   /// 账号型厂商的模型扫描：目录接口要带 access token，401 会自动刷新一次
   Future<void> _scanRaccoonModels() async {
-    if (_account == null) {
+    if (_accounts.isEmpty) {
       Toast.warning(context, '请先登录小浣熊账号，再扫描模型');
       return;
     }
@@ -601,7 +673,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       Toast.warning(context, '请先添加 API 密钥');
       return;
     }
-    if (usesAccount && _account == null) {
+    if (usesAccount && _accounts.isEmpty) {
       Toast.warning(context, '请先登录小浣熊账号');
       return;
     }
@@ -617,6 +689,8 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
         apiKey: usesAccount ? '' : keys.first,
         baseUrl: _baseUrlCtl.text.trim(),
         authMode: _authMode,
+        accountRouting: _accountRouting,
+        accountAffinity: _accountAffinity,
         vendorId: _vendorId,
         reasoningEffort: model.reasoningEffort,
       );
@@ -664,8 +738,12 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       Toast.warning(context, '正在读取登录态，请稍候');
       return false;
     }
-    if (usesAccount && _account == null) {
+    if (usesAccount && _accounts.isEmpty) {
       Toast.warning(context, '请先登录小浣熊账号');
+      return false;
+    }
+    if (usesAccount && _accounts.every((a) => !a.enabled)) {
+      Toast.warning(context, '请至少启用一个账号，否则无法调用');
       return false;
     }
     if (_models.isEmpty) {
@@ -684,6 +762,8 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
         providerType: _providerType,
         baseUrl: baseUrl,
         authMode: _authMode,
+        accountRouting: _accountRouting,
+        accountAffinity: _accountAffinity,
         apiKeys: usesAccount ? const <String>[] : keys,
         models: _models,
         modelCatalog: _catalog,
@@ -706,9 +786,10 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       // 模型被停用/厂商被改址后，旧绑定可能失效：统一收敛
       await AiRoleService.instance.pruneStaleRoleBindings();
       ref.invalidate(aiRolesProvider);
-      // 从账号型切回 API Key 型：清掉这个条目残留的登录态，避免留下不用的长期凭据
+      // 从账号型切回 API Key 型：清掉这个条目残留的全部登录态，
+      // 避免留下不用的长期凭据
       if (!usesAccount) {
-        await RaccoonAuthService.instance.logout(_providerId);
+        await RaccoonAuthService.instance.logoutProvider(_providerId);
       }
       // 密钥列表变了，轮换游标与冷却表跟着重来
       ApiKeyPool.instance.reset(provider.id);
@@ -764,9 +845,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     if (confirmed != true || !mounted) return;
 
     try {
-      if (usesAccount) {
-        await RaccoonAuthService.instance.logout(existing.id);
-      }
+      // deleteProvider 内部会一并清掉该厂商下的全部账号登录态
       await ref
           .read(aiProviderListProvider.notifier)
           .deleteProvider(existing.id);
@@ -1047,6 +1126,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     );
   }
 
+  /// 账号列表卡片：多账号增删、备注、启停、排序 + 选号策略与亲和
   Widget _buildAccountCard(ThemeData theme) {
     final colorScheme = theme.colorScheme;
     if (_accountLoading) {
@@ -1065,91 +1145,230 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       );
     }
 
-    final account = _account;
+    final multi = _accounts.length >= 2;
     return _card(
       theme,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color:
-                      (account == null
-                              ? colorScheme.outline
-                              : colorScheme.primary)
-                          .withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  account == null
-                      ? Icons.person_off_outlined
-                      : Icons.verified_user_outlined,
-                  size: 20,
-                  color: account == null
-                      ? colorScheme.onSurfaceVariant
-                      : colorScheme.primary,
+          if (_accounts.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Text(
+                '还没有登录账号。登录后即可扫描模型、用小浣熊额度对话；登录多个账号后可按下方策略轮换。',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      account == null ? '未登录' : account.label,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      account == null
-                          ? '登录后即可扫描模型、用小浣熊额度对话'
-                          : (account.isExpired ? '登录已过期，请重新登录' : '登录有效 · 自动续期'),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: account?.isExpired == true
-                            ? colorScheme.error
-                            : colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            )
+          else
+            ..._accounts.asMap().entries.map(
+              (entry) => _accountRow(theme, entry.key, entry.value),
+            ),
+          const SizedBox(height: 6),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () => _openLoginSheet(),
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: Text(_accounts.isEmpty ? '登录小浣熊账号' : '添加另一个账号'),
+            ),
           ),
-          if (account != null && account.expiresAt != null) ...[
-            const SizedBox(height: 10),
+          if (multi) ...[
+            const Divider(height: 26),
             Text(
-              '凭证有效期至 ${_formatAccountTime(account.expiresAt!)}',
+              '多账号轮换',
+              style: theme.textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '登录了 ${_accounts.length} 个账号，按下面的策略分配请求',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text('选号策略', style: theme.textTheme.labelSmall),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: AccountRouting.values
+                  .map(
+                    (routing) => ChoiceChip(
+                      label: Text(routing.label),
+                      selected: _accountRouting == routing.id,
+                      onSelected: (_) =>
+                          setState(() => _accountRouting = routing.id),
+                    ),
+                  )
+                  .toList(),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              AccountRouting.fromId(_accountRouting).description,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text('会话亲和', style: theme.textTheme.labelSmall),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: AccountAffinity.values
+                  .map(
+                    (affinity) => ChoiceChip(
+                      label: Text(affinity.label),
+                      selected: _accountAffinity == affinity.id,
+                      onSelected: (_) =>
+                          setState(() => _accountAffinity = affinity.id),
+                    ),
+                  )
+                  .toList(),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              AccountAffinity.fromId(_accountAffinity).description,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
             ),
           ],
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: _openLoginSheet,
-                  icon: const Icon(Icons.login_rounded, size: 18),
-                  label: Text(account == null ? '登录小浣熊账号' : '重新登录'),
+        ],
+      ),
+    );
+  }
+
+  /// 单个账号行：头像 + 名称 + 状态 + 备注/启停/上移下移/退出
+  Widget _accountRow(ThemeData theme, int index, AiAccount account) {
+    final colorScheme = theme.colorScheme;
+    final expired = account.isExpired;
+    final cooling = RaccoonAuthService.instance.isAccountCooling(account.id);
+    final statusText = expired
+        ? '登录已过期，请重新登录'
+        : cooling
+        ? '限流冷却中，暂时跳过'
+        : (account.enabled ? '登录有效 · 自动续期' : '已停用，不参与轮换');
+    final statusColor = expired
+        ? colorScheme.error
+        : cooling
+        ? colorScheme.tertiary
+        : colorScheme.onSurfaceVariant;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  account.enabled
+                      ? Icons.verified_user_outlined
+                      : Icons.person_off_outlined,
+                  size: 20,
+                  color: account.enabled
+                      ? colorScheme.primary
+                      : colorScheme.onSurfaceVariant,
                 ),
-              ),
-              if (account != null) ...[
                 const SizedBox(width: 10),
-                OutlinedButton(
-                  onPressed: _logoutAccount,
-                  child: const Text('退出'),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              account.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          if (_accounts.length >= 2) ...[
+                            const SizedBox(width: 6),
+                            Text(
+                              '#${index + 1}',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        statusText,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: statusColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: account.enabled,
+                  onChanged: (value) => _toggleAccountEnabled(account, value),
+                ),
+                PopupMenuButton<String>(
+                  tooltip: '更多',
+                  icon: const Icon(Icons.more_vert_rounded, size: 20),
+                  onSelected: (value) {
+                    switch (value) {
+                      case 'rename':
+                        _renameAccount(account);
+                        break;
+                      case 'relogin':
+                        _openLoginSheet(accountId: account.id);
+                        break;
+                      case 'up':
+                        _moveAccount(index, -1);
+                        break;
+                      case 'down':
+                        _moveAccount(index, 1);
+                        break;
+                      case 'logout':
+                        _logoutAccount(account);
+                        break;
+                    }
+                  },
+                  itemBuilder: (ctx) => [
+                    const PopupMenuItem(value: 'rename', child: Text('修改备注')),
+                    const PopupMenuItem(value: 'relogin', child: Text('重新登录')),
+                    if (index > 0)
+                      const PopupMenuItem(value: 'up', child: Text('上移')),
+                    if (index < _accounts.length - 1)
+                      const PopupMenuItem(value: 'down', child: Text('下移')),
+                    const PopupMenuItem(value: 'logout', child: Text('退出登录')),
+                  ],
                 ),
               ],
-            ],
-          ),
-        ],
+            ),
+            if (account.expiresAt != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 30, top: 2),
+                child: Text(
+                  '凭证有效期至 ${_formatAccountTime(account.expiresAt!)}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -1435,9 +1654,10 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                     .firstOrNull;
                 final latency = _modelLatency[model.id];
                 final testing = _testingModels.contains(model.id);
-                // 只有已启用且能力表命中的模型才展示思考强度入口
+                // 已启用的模型都展示思考强度入口：能力表未收录时用通用兜底，
+                // 与 ZCode 一致——用户总能自己调，选错由发信层降级兜住
                 final capability = enabled
-                    ? ModelReasoningCapability.resolve(
+                    ? ModelReasoningCapability.forUi(
                         modelName: model.id,
                         providerType: _providerType,
                         vendorId: _vendorId,
@@ -1517,6 +1737,9 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
 }
 
 /// 厂商模板选择器（底部弹层）
+///
+/// 与「添加模型服务」的选择器保持同一分区口径：账号登录型在上、API Key 型在下。
+/// 这里额外显示单选态（当前模板）。
 class _VendorPickerSheet extends StatelessWidget {
   final String selectedId;
 
@@ -1525,6 +1748,8 @@ class _VendorPickerSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final accountVendors = aiAccountProviders();
+    final apiKeyVendors = aiApiKeyProviders();
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.8,
@@ -1552,44 +1777,96 @@ class _VendorPickerSheet extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: ListView.builder(
+            child: ListView(
               controller: controller,
-              itemCount: aiProviders.length,
-              itemBuilder: (context, index) {
-                final spec = aiProviders[index];
-                final selected = spec.id == selectedId;
-                return ListTile(
-                  leading: Icon(
-                    selected
-                        ? Icons.radio_button_checked
-                        : Icons.radio_button_unchecked,
-                    color: selected
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurfaceVariant,
-                    size: 20,
+              padding: const EdgeInsets.only(bottom: 16),
+              children: [
+                if (accountVendors.isNotEmpty) ...[
+                  _vendorSectionHeader(
+                    theme,
+                    title: '账号登录',
+                    subtitle: '登录厂商账号即可使用，凭证自动续期',
                   ),
-                  title: Text(
-                    spec.name,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: selected ? theme.colorScheme.primary : null,
-                    ),
+                  ...accountVendors.map(
+                    (spec) => _vendorTile(context, theme, spec),
                   ),
-                  subtitle: Text(
-                    spec.defaultBaseUrl,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                ],
+                if (apiKeyVendors.isNotEmpty) ...[
+                  _vendorSectionHeader(
+                    theme,
+                    title: 'API Key',
+                    subtitle: '填写服务地址与密钥，多把密钥自动轮询',
                   ),
-                  onTap: () => Navigator.of(context).pop(spec.id),
-                );
-              },
+                  ...apiKeyVendors.map(
+                    (spec) => _vendorTile(context, theme, spec),
+                  ),
+                ],
+              ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _vendorSectionHeader(
+    ThemeData theme, {
+    required String title,
+    required String subtitle,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _vendorTile(
+    BuildContext context,
+    ThemeData theme,
+    AiProviderConfig spec,
+  ) {
+    final selected = spec.id == selectedId;
+    return ListTile(
+      leading: Icon(
+        selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+        color: selected
+            ? theme.colorScheme.primary
+            : theme.colorScheme.onSurfaceVariant,
+        size: 20,
+      ),
+      title: Text(
+        spec.name,
+        style: TextStyle(
+          fontWeight: FontWeight.w600,
+          color: selected ? theme.colorScheme.primary : null,
+        ),
+      ),
+      subtitle: Text(
+        spec.defaultBaseUrl.isEmpty ? '需要自己填写地址' : spec.defaultBaseUrl,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+      onTap: () => Navigator.of(context).pop(spec.id),
     );
   }
 }

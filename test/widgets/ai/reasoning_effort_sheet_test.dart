@@ -31,13 +31,12 @@ void main() {
     ]);
   });
 
-  test('未收录模型返回空列表（调用方据此隐藏入口）', () {
-    expect(
-      reasoningEffortOptions(
-        modelName: 'my-custom-model',
-        providerType: 'openai',
-      ),
-      isEmpty,
+  test('未收录模型给通用兜底档位，入口不隐藏', () {
+    final options = reasoningEffortOptions(
+      modelName: 'my-custom-model',
+      providerType: 'openai',
     );
+
+    expect(options.map((o) => o.label), ['自动', '低', '中', '高']);
   });
 }

@@ -59,6 +59,8 @@ class DatabaseHelper {
       provider_type TEXT NOT NULL,
       base_url TEXT NOT NULL,
       auth_mode TEXT NOT NULL DEFAULT 'api_key',
+      account_routing TEXT NOT NULL DEFAULT 'rotate',
+      account_affinity TEXT NOT NULL DEFAULT 'session',
       api_keys TEXT NOT NULL,
       models TEXT NOT NULL,
       model_catalog TEXT,
@@ -69,15 +71,19 @@ class DatabaseHelper {
     )
   ''';
 
-  /// 订阅账号登录态表 DDL
+  /// 订阅账号登录态表 DDL（一个厂商条目可多行 = 多账号）
   ///
   /// 与 `ai_providers` 分开：refresh token 是长期凭据，不写 `sync_log`、
   /// 不进备份导出清单，避免随 WebDAV 同步到别的设备或落在备份文件里。
-  /// 一个厂商条目一份登录态，`provider_id` 直接做主键。
+  ///
+  /// v31 起 `id` 是主键、`provider_id` 只是普通索引列：多账号轮换要求同一厂商
+  /// 能同时挂多份登录态。老库（v30，`provider_id` 主键）由 `_onUpgrade` 重建。
   static const String _aiAccountsDdl = '''
     CREATE TABLE IF NOT EXISTS ai_accounts (
-      provider_id TEXT PRIMARY KEY,
+      id TEXT PRIMARY KEY,
+      provider_id TEXT NOT NULL,
       kind TEXT NOT NULL DEFAULT 'raccoon',
+      alias TEXT NOT NULL DEFAULT '',
       access_token TEXT NOT NULL,
       refresh_token TEXT NOT NULL DEFAULT '',
       expires_at TEXT,
@@ -85,6 +91,8 @@ class DatabaseHelper {
       display_name TEXT,
       phone TEXT,
       status TEXT NOT NULL DEFAULT 'active',
+      enabled INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
@@ -144,7 +152,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 30,
+      version: 31,
       onConfigure: (db) async {
         // 遇到写锁时等待重试（默认立即抛 database is locked），提升并发访问健壮性
         try {
@@ -362,6 +370,8 @@ class DatabaseHelper {
     try {
       await db.execute(_aiAccountsDdl);
     } catch (_) {}
+    // 兜底：v31 的多账号改造（老库 provider_id 主键 → id 主键 + 账号备注/启停/顺序），
+    // 以及 ai_providers 的 auth_mode / account_routing / account_affinity 列
     try {
       final providerColumns = await db.rawQuery('PRAGMA table_info(ai_providers)');
       final providerColNames =
@@ -373,6 +383,7 @@ class DatabaseHelper {
         );
       }
     } catch (_) {}
+    await ensureMultiAccountSchema(db);
 
     // 兜底：补 chat_sessions 缺失的 is_pinned 列。这条是**主流程级**而非「置顶不生效」
     // 级别的问题——updateChatSession 是整行 toMap() 写库，列不存在会直接抛
@@ -1073,5 +1084,80 @@ class DatabaseHelper {
         }
       } catch (_) {}
     }
+
+    if (oldVersion < 31) {
+      // 多账号：ai_accounts 改主键结构 + 账号备注/启停/顺序，ai_providers 增加
+      // 选号策略与亲和时长。老库只有一行一厂商，逐行搬过去即可；不写 sync_log
+      // （该表本来就不参与同步）。
+      await ensureMultiAccountSchema(db);
+    }
+  }
+
+  /// v31 的多账号 schema 迁移（`_onUpgrade` 与 `onOpen` 共用）
+  ///
+  /// 两步都要幂等：Web 与开发期热重载只走 `onOpen`，而正常升级只走
+  /// `_onUpgrade`，任一路径漏掉都会让「多账号」落到一张没有 id 列的旧表上，
+  /// 表现为写入直接抛 `no such column: id`。
+  ///
+  /// 老表（`provider_id` 主键，一厂商一行）搬迁时用 `provider_id` 当新主键：
+  /// 值唯一、可读，而且不需要在 SQL 里生成 uuid。
+  static Future<void> ensureMultiAccountSchema(Database db) async {
+    try {
+      final columns = await db.rawQuery('PRAGMA table_info(ai_accounts)');
+      final names = columns.map((c) => c['name'] as String).toSet();
+      if (names.isNotEmpty && !names.contains('id')) {
+        await db.execute('ALTER TABLE ai_accounts RENAME TO ai_accounts_v30');
+        await db.execute(_aiAccountsDdl);
+        await db.execute('''
+          INSERT OR REPLACE INTO ai_accounts (
+            id, provider_id, kind, alias, access_token, refresh_token,
+            expires_at, uid, display_name, phone, status, enabled,
+            sort_order, created_at, updated_at
+          )
+          SELECT provider_id, provider_id, kind, '', access_token, refresh_token,
+                 expires_at, uid, display_name, phone, status, 1,
+                 0, created_at, updated_at
+          FROM ai_accounts_v30
+        ''');
+        await db.execute('DROP TABLE ai_accounts_v30');
+      } else if (names.isNotEmpty) {
+        // 表已是最新结构，只补可能缺的列（半升级/手改库场景）
+        if (!names.contains('alias')) {
+          await db.execute(
+            "ALTER TABLE ai_accounts ADD COLUMN alias TEXT NOT NULL DEFAULT ''",
+          );
+        }
+        if (!names.contains('enabled')) {
+          await db.execute(
+            'ALTER TABLE ai_accounts ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1',
+          );
+        }
+        if (!names.contains('sort_order')) {
+          await db.execute(
+            'ALTER TABLE ai_accounts ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0',
+          );
+        }
+      }
+    } catch (_) {}
+    try {
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_ai_accounts_provider '
+        'ON ai_accounts(provider_id)',
+      );
+    } catch (_) {}
+    try {
+      final columns = await db.rawQuery('PRAGMA table_info(ai_providers)');
+      final names = columns.map((c) => c['name'] as String).toSet();
+      if (names.isNotEmpty && !names.contains('account_routing')) {
+        await db.execute(
+          "ALTER TABLE ai_providers ADD COLUMN account_routing TEXT NOT NULL DEFAULT 'rotate'",
+        );
+      }
+      if (names.isNotEmpty && !names.contains('account_affinity')) {
+        await db.execute(
+          "ALTER TABLE ai_providers ADD COLUMN account_affinity TEXT NOT NULL DEFAULT 'session'",
+        );
+      }
+    } catch (_) {}
   }
 }
