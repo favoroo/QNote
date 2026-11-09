@@ -208,7 +208,7 @@ void main() {
 
     await _openAndTap(tester, providers: providers, groups: groups, selected: null);
 
-    expect(find.text('轮流 · 成员模型均已停用'), findsOneWidget);
+    expect(find.text('轮流 · 模型均已停用'), findsOneWidget);
   });
 
   test('aiBindingDisplayName 区分路由组与具体模型', () {

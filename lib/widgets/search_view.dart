@@ -99,7 +99,7 @@ class _SearchViewState extends State<SearchView> {
           onChanged: _onSearchChanged,
           style: theme.textTheme.bodyLarge,
           decoration: InputDecoration(
-            hintText: '搜索日记或笔记...',
+            hintText: '搜索日记或笔记',
             border: InputBorder.none,
             hintStyle: theme.textTheme.bodyLarge?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
@@ -131,7 +131,7 @@ class _SearchViewState extends State<SearchView> {
             alignment: Alignment.topCenter,
             children: <Widget>[
               ...previousChildren,
-              if (currentChild != null) currentChild,
+              ?currentChild,
             ],
           );
         },
@@ -150,7 +150,7 @@ class _SearchViewState extends State<SearchView> {
                     child: ListView(
                       children: [
                         if (_diaryResults.isNotEmpty) ...[
-                          _buildSectionHeader(theme, '日记记录', Icons.book),
+                          _buildSectionHeader(theme, '日记', Icons.book),
                           ..._diaryResults.map(
                             (d) => _DiaryResultTile(
                               diary: d,

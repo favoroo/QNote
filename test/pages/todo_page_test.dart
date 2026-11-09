@@ -160,7 +160,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 验证小米风格大弹窗已弹出，文案对齐
-    expect(find.text('回车即可连续添加待办'), findsOneWidget);
+    expect(find.text('回车连续添加'), findsOneWidget);
     expect(find.text('重复'), findsOneWidget);
     expect(find.text('提醒'), findsOneWidget);
     expect(find.byIcon(Icons.arrow_upward_rounded), findsOneWidget);
@@ -171,7 +171,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 验证弹窗依然存在（光标保留可连续输入），输入框已清空，列表中已录入第一条
-    expect(find.text('回车即可连续添加待办'), findsOneWidget);
+    expect(find.text('回车连续添加'), findsOneWidget);
     expect(find.text('第一项任务'), findsOneWidget);
 
     // 2. 输入第二条，按回车提交
@@ -212,7 +212,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 验证底部小窗已弹出
-    expect(find.text('回车即可连续添加待办'), findsOneWidget);
+    expect(find.text('回车连续添加'), findsOneWidget);
 
     // 点空白处返回
     await tester.tapAt(const Offset(20, 20));
@@ -266,8 +266,8 @@ void main() {
     await tester.pumpAndSettle();
 
     // 验证弹出确认删除对话框
-    expect(find.text('确认删除'), findsOneWidget);
-    expect(find.text('确定要删除「需要左滑删除的待办」吗？'), findsOneWidget);
+    expect(find.text('删除待办'), findsOneWidget);
+    expect(find.text('删除「需要左滑删除的待办」？'), findsOneWidget);
 
     // 点击确认删除
     await tester.tap(find.text('删除'));
@@ -275,7 +275,7 @@ void main() {
 
     // 验证待办已被删除，页面展示空状态
     expect(find.text('需要左滑删除的待办'), findsNothing);
-    expect(find.text('暂无待办，享受此刻吧'), findsOneWidget);
+    expect(find.text('暂无待办'), findsOneWidget);
   });
 
   testWidgets('支持批量选择、全选/取消全选、二次确认与批量删除', (tester) async {
@@ -367,10 +367,10 @@ void main() {
     // 7. 点击底栏红色「删除」按钮，触发 3 秒防误触二次确认
     await tester.tap(find.text('删除'));
     await tester.pumpAndSettle();
-    expect(find.text('再次点击确认'), findsOneWidget);
+    expect(find.text('再点确认'), findsOneWidget);
 
-    // 8. 再次点击「再次点击确认」，执行批量删除
-    await tester.tap(find.text('再次点击确认'));
+    // 8. 再次点击「再点确认」，执行批量删除
+    await tester.tap(find.text('再点确认'));
     await tester.pumpAndSettle();
 
     // 验证已删除选中的 2 项，第 3 项仍然存在，且已退出多选模式

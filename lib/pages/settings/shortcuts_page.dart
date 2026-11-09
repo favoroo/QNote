@@ -45,7 +45,7 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
             child: shortcuts.isEmpty
                 ? Center(
                     child: Text(
-                      '暂无快捷按钮，点击右上角 + 添加',
+                      '暂无快捷按钮，点右上角 + 添加',
                       style: theme.textTheme.bodyMedium?.copyWith(color: theme.disabledColor),
                     ),
                   )
@@ -104,7 +104,7 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('恢复默认设置'),
-        content: const Text('确定要恢复默认快捷按钮设置吗？此操作将覆盖您当前所有的自定义快捷按钮配置，且不可撤销。'),
+        content: const Text('恢复默认将覆盖当前所有快捷按钮配置，不可撤销。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -124,7 +124,7 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
     if (confirmed == true) {
       await ref.read(shortcutListNotifierProvider.notifier).restoreDefaults();
       if (context.mounted) {
-        Toast.success(context, '已成功恢复默认快捷按钮设置');
+        Toast.success(context, '已恢复默认设置');
       }
     }
   }
@@ -368,7 +368,7 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                             context: context,
                             builder: (ctx2) => AlertDialog(
                               title: const Text('确认删除'),
-                              content: Text('确定要删除 "${existingConfig.name}" 吗？'),
+                              content: Text('删除 "${existingConfig.name}"？'),
                               actions: [
                                 TextButton(
                                   onPressed: () => Navigator.pop(ctx2, false),

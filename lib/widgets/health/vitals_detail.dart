@@ -38,7 +38,7 @@ class VitalsDetail extends StatelessWidget {
       children: [
         HealthDetailSection(
           title: '血氧饱和度',
-          subtitle: spo2Values.isEmpty ? '这一天没有血氧测量，多为设备未开启连续监测' : '共 ${spo2Values.length} 次测量',
+          subtitle: spo2Values.isEmpty ? '无血氧测量，多为未开启连续监测' : '共 ${spo2Values.length} 次测量',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -55,7 +55,7 @@ class VitalsDetail extends StatelessWidget {
                     value: metrics.minSpo2?.toString() ?? '--',
                     unit: '%',
                     valueColor: (metrics.minSpo2 != null && metrics.minSpo2! < 90) ? Colors.redAccent : null,
-                    hint: (metrics.minSpo2 != null && metrics.minSpo2! < 90) ? '低于 90% 值得关注' : null,
+                    hint: (metrics.minSpo2 != null && metrics.minSpo2! < 90) ? '低于 90%，需关注' : null,
                   ),
                 ],
               ),
@@ -74,7 +74,7 @@ class VitalsDetail extends StatelessWidget {
         const SizedBox(height: 12),
         HealthDetailSection(
           title: '全天压力',
-          subtitle: stressValues.isEmpty ? '这一天没有压力采样' : '共 ${stressValues.length} 个采样点',
+          subtitle: stressValues.isEmpty ? '无压力采样' : '共 ${stressValues.length} 个采样点',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

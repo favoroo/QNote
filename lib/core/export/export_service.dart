@@ -238,7 +238,7 @@ class ExportService {
   Future<void> importFromJson(String filePath, {bool overwrite = true}) async {
     final file = File(filePath);
     if (!await file.exists()) {
-      throw Exception('文件不存在: $filePath');
+      throw Exception('文件不存在：$filePath');
     }
     final jsonString = await file.readAsString();
     await importFromJsonString(jsonString, overwrite: overwrite);
@@ -286,7 +286,7 @@ class ExportService {
     if (overwrite) {
       snapshotPath = await _writePreImportSnapshot();
       if (snapshotPath == null) {
-        throw Exception('导入前的本地快照保存失败，为避免数据丢失已取消导入');
+        throw Exception('导入前快照保存失败，已取消导入');
       }
     }
 
@@ -420,8 +420,8 @@ class ExportService {
         details: '$summary；失败: $preview$more；快照=$snapshotPath',
       );
       throw Exception(
-        '有 $failedCount 条记录导入失败: $preview$more'
-        '${snapshotPath != null ? '\n导入前的本地快照已保存在: $snapshotPath' : ''}',
+        '有 $failedCount 条记录导入失败：$preview$more'
+        '${snapshotPath != null ? '\n导入前快照：$snapshotPath' : ''}',
       );
     }
 
@@ -476,7 +476,7 @@ class ExportService {
           LoggerService.instance.logImport('跳过未知的旧架构字段: $key');
           continue;
         }
-        throw Exception('无效的备份数据: 未知字段 "$key"');
+        throw Exception('备份数据无效：未知字段 "$key"');
       }
     }
 
@@ -495,7 +495,7 @@ class ExportService {
       };
       final presentTables = data.keys.where(coreTables.contains).toSet();
       if (presentTables.isEmpty) {
-        throw Exception('备份文件不含任何可导入的数据表，已取消导入（当前数据未改动）');
+        throw Exception('备份不含可导入的数据表，已取消导入（本地数据未改动）');
       }
     }
 
@@ -524,13 +524,13 @@ class ExportService {
     for (final key in listKeys) {
       final value = data[key];
       if (value != null && value is! List) {
-        throw Exception('无效的备份数据: "$key" 应为数组，实际为 ${value.runtimeType}');
+        throw Exception('备份数据无效："$key" 应为数组，实际为 ${value.runtimeType}');
       }
     }
     for (final key in mapKeys) {
       final value = data[key];
       if (value != null && value is! Map) {
-        throw Exception('无效的备份数据: "$key" 应为对象，实际为 ${value.runtimeType}');
+        throw Exception('备份数据无效："$key" 应为对象，实际为 ${value.runtimeType}');
       }
     }
   }

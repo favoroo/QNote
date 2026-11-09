@@ -79,7 +79,7 @@ void main() {
       expect(find.text('全天心率曲线'), findsOneWidget);
       expect(find.text('关键数值'), findsOneWidget);
       expect(find.text('采样点区间分布'), findsOneWidget);
-      expect(find.text('当日静息心率 56 bpm'), findsOneWidget);
+      expect(find.text('静息心率 56 bpm'), findsOneWidget);
       expect(find.textContaining('共 5 个采样点'), findsOneWidget);
       expect(find.text('106'), findsWidgets);
     });
@@ -105,7 +105,7 @@ void main() {
       );
       expect(tester.takeException(), isNull);
       expect(find.text('暂无心率采样'), findsOneWidget);
-      expect(find.textContaining('这一天没有心率采样'), findsOneWidget);
+      expect(find.text('无心率采样，可能设备未佩戴或未同步'), findsOneWidget);
     });
 
     testWidgets('血氧与压力详情渲染两条曲线，低血氧给提示', (tester) async {
@@ -128,7 +128,7 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text('血氧饱和度'), findsOneWidget);
       expect(find.text('全天压力'), findsOneWidget);
-      expect(find.text('低于 90% 值得关注'), findsOneWidget);
+      expect(find.text('低于 90%，需关注'), findsOneWidget);
       expect(find.text('放松时段'), findsOneWidget);
       expect(find.textContaining('共 3 次测量'), findsOneWidget);
       expect(find.textContaining('共 3 个采样点'), findsOneWidget);
@@ -143,7 +143,7 @@ void main() {
           metrics: _metrics(avgSpo2: 98, minSpo2: 95, spo2: [(10, 98)]),
         ),
       );
-      expect(find.text('低于 90% 值得关注'), findsNothing);
+      expect(find.text('低于 90%，需关注'), findsNothing);
     });
 
     testWidgets('运动详情外显心率五区间时长与训练负荷', (tester) async {
@@ -259,7 +259,7 @@ void main() {
         ),
       );
       expect(tester.takeException(), isNull);
-      expect(find.text('这一天没有分期数据，多为设备未整夜佩戴'), findsOneWidget);
+      expect(find.text('无分期数据，多为设备未整夜佩戴'), findsOneWidget);
       expect(find.text('暂无分期数据'), findsOneWidget);
     });
   });

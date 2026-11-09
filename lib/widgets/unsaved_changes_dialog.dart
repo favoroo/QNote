@@ -16,8 +16,8 @@ import 'package:qnote_flutter/core/utils/toast_utils.dart';
 Future<bool> promptUnsavedChanges(
   BuildContext context, {
   String title = '未保存的更改',
-  String content = '有未保存的更改，离开后将丢失。',
-  String failureMessage = '未能保存，仍停在当前页',
+  String content = '离开后更改将丢失。',
+  String failureMessage = '保存失败，仍停留当前页',
   Future<bool> Function()? onSave,
 }) async {
   final colorScheme = Theme.of(context).colorScheme;

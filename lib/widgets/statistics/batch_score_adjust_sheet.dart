@@ -143,7 +143,7 @@ class _BatchScoreAdjustSheetState extends State<BatchScoreAdjustSheet> {
         _applying = false;
         _error = '$e';
       });
-      Toast.error(context, '调整失败，请重试');
+      Toast.error(context, '调整失败');
     }
   }
 
@@ -228,14 +228,14 @@ class _BatchScoreAdjustSheetState extends State<BatchScoreAdjustSheet> {
             ),
           ),
           Text(
-            '批量调整历史评分',
+            '批量调整评分',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 4),
           Text(
-            '对已有评分按同一规则改分；区间内没有评分的日期会被跳过，不会新建记录。',
+            '按同一规则改已有评分，无评分的日期跳过、不新建。',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: colorScheme.onSurfaceVariant,
             ),
@@ -311,7 +311,7 @@ class _BatchScoreAdjustSheetState extends State<BatchScoreAdjustSheet> {
                             ),
                             decoration: const InputDecoration(
                               labelText: '加减分值',
-                              helperText: '负数表示降分',
+                              helperText: '负数即降分',
                               isDense: true,
                               border: OutlineInputBorder(),
                             ),
@@ -399,9 +399,9 @@ class _BatchScoreAdjustSheetState extends State<BatchScoreAdjustSheet> {
   }
 
   String _noTargetLabel() {
-    if (_fields.isEmpty) return '请至少选择一个字段';
-    if (_buildSpec() == null) return '请填写调整数值';
-    return '该区间没有需要改动的评分';
+    if (_fields.isEmpty) return '至少选择一个字段';
+    if (_buildSpec() == null) return '填写调整数值';
+    return '该区间没有可改的评分';
   }
 
   Widget _buildPreviewCard(BuildContext context, {required int applied}) {
@@ -425,7 +425,7 @@ class _BatchScoreAdjustSheetState extends State<BatchScoreAdjustSheet> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
                 const SizedBox(width: 10),
-                Text('正在计算影响范围…', style: Theme.of(context).textTheme.bodySmall),
+                Text('正在计算…', style: Theme.of(context).textTheme.bodySmall),
               ],
             )
           : Column(
@@ -433,7 +433,7 @@ class _BatchScoreAdjustSheetState extends State<BatchScoreAdjustSheet> {
               children: [
                 Text(
                   result == null
-                      ? '填写调整规则后这里会列出将被改动的日期与前后分值'
+                      ? '设置规则后列出改动日期与前后分值'
                       : result.preview,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w600,
@@ -467,7 +467,7 @@ class _BatchScoreAdjustSheetState extends State<BatchScoreAdjustSheet> {
                           ),
                           if (outcome.clamped)
                             Tooltip(
-                              message: '已到上下限，实际幅度不足所请求的加减分',
+                              message: '已到上下限，实际幅度小于请求值',
                               child: Icon(
                                 Icons.warning_amber_rounded,
                                 size: 16,
@@ -479,7 +479,7 @@ class _BatchScoreAdjustSheetState extends State<BatchScoreAdjustSheet> {
                     ),
                   if (result.outcomes.length > 6)
                     Text(
-                      '…另有 ${result.outcomes.length - 6} 天同类改动',
+                      '另有 ${result.outcomes.length - 6} 天同类改动',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: colorScheme.onSurfaceVariant,
                       ),
@@ -487,7 +487,7 @@ class _BatchScoreAdjustSheetState extends State<BatchScoreAdjustSheet> {
                 ],
                 const SizedBox(height: 8),
                 Text(
-                  '总分不随维度重算，评语与建议文字保持不变；超出近 3 个月的日期不会出现在热力图上。',
+                  '总分不随维度重算，评语不变；超近 3 个月的日期不在热力图显示。',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                   ),

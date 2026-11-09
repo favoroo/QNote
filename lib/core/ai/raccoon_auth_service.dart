@@ -23,7 +23,7 @@ class RaccoonAuthRequiredException implements Exception {
 
   const RaccoonAuthRequiredException(
     this.providerId, {
-    this.message = '商汤小浣熊账号未登录或登录已过期，请到「设置 → AI 模型配置」重新登录',
+    this.message = '小浣熊账号未登录或已过期，请到「设置 → AI 模型配置」重新登录',
   });
 
   @override
@@ -201,7 +201,7 @@ class RaccoonAuthService {
       if (enabled.isEmpty) {
         throw RaccoonAuthRequiredException(
           providerId,
-          message: '小浣熊账号都被停用了，请到「设置 → AI 模型配置」启用至少一个账号',
+          message: '小浣熊账号已全部停用，请到「设置 → AI 模型配置」启用一个账号',
         );
       }
       // 还有没试过的账号 → 说明它们都在冷却，是「限流」而不是「没登录」
@@ -211,7 +211,7 @@ class RaccoonAuthService {
       if (untried.isNotEmpty) {
         throw RaccoonAuthRequiredException(
           providerId,
-          message: '所有小浣熊账号都在限流冷却中，请稍后再试',
+          message: '小浣熊账号都在限流冷却中，稍后重试',
         );
       }
       // 本次请求已经把能用的账号都试过了：交回调用方 rethrow 原始错误
@@ -375,7 +375,7 @@ class RaccoonAuthService {
     final stored = await _repository.getById(accountId);
     if (stored == null) {
       _cache.remove(accountId);
-      throw const RaccoonAuthRequiredException('', message: '账号已被删除，请重新登录');
+      throw const RaccoonAuthRequiredException('', message: '账号已删除，请重新登录');
     }
     _cache[accountId] = stored;
     if (!force && !stored.isStale(margin: refreshMargin) && !stored.isExpired) {
@@ -386,7 +386,7 @@ class RaccoonAuthService {
       await _markExpired(accountId);
       throw RaccoonAuthRequiredException(
         stored.providerId,
-        message: '小浣熊登录已过期且没有刷新凭证，请重新登录',
+        message: '小浣熊登录已过期，请重新登录',
       );
     }
 
@@ -399,7 +399,7 @@ class RaccoonAuthService {
       final nextRefresh =
           _tokenFromResponse(response.data, 'refresh_token') ?? refreshToken;
       if (access == null || access.isEmpty) {
-        throw const FormatException('刷新接口没有返回 access_token');
+        throw const FormatException('刷新未返回 access_token');
       }
       final next = await _accountFromTokens(
         stored.providerId,
@@ -454,7 +454,7 @@ class RaccoonAuthService {
     final result = loopback.code.then((_) {
       final signedIn = account;
       if (signedIn == null) {
-        throw const FormatException('换取登录凭证失败');
+        throw const FormatException('登录失败：未获取登录凭证');
       }
       return signedIn;
     });
@@ -518,7 +518,7 @@ class RaccoonAuthService {
         if (!failure.retryable) throw failure.error;
       }
     }
-    throw lastError ?? const FormatException('换取登录凭证失败');
+    throw lastError ?? const FormatException('登录失败：未获取登录凭证');
   }
 
   Future<({String access, String refresh})> _exchangeTokensOnce(
@@ -543,7 +543,7 @@ class RaccoonAuthService {
       }
       throw _ExchangeFailure(
         FormatException(
-          _vendorError(payload, '换取登录凭证失败（HTTP ${status ?? '网络异常'}）'),
+          _vendorError(payload, '登录失败：HTTP ${status ?? '网络异常'}'),
         ),
         // 5xx / 429 / 超时 / 连接中断都可能是瞬时抖动；其余 4xx 是确定性拒绝
         retryable:
@@ -569,7 +569,7 @@ class RaccoonAuthService {
     if (access == null || access.isEmpty || refresh == null) {
       throw _ExchangeFailure(
         FormatException(
-          _vendorError(payload, '换取登录凭证失败（HTTP ${response.statusCode}）'),
+          _vendorError(payload, '登录失败：HTTP ${response.statusCode}'),
         ),
         retryable: true,
         detail:
@@ -588,14 +588,14 @@ class RaccoonAuthService {
   }) async {
     final text = raw.trim();
     if (text.isEmpty) {
-      throw const FormatException('请输入回调链接或 Token');
+      throw const FormatException('请粘贴回调链接或 Token');
     }
 
     // JSON token pair
     if (text.startsWith('{')) {
       final decoded = jsonDecode(text);
       if (decoded is! Map) {
-        throw const FormatException('JSON 格式不正确');
+        throw const FormatException('JSON 格式错误');
       }
       final access = (decoded['access_token'] ?? decoded['accessToken'])
           ?.toString()
@@ -604,7 +604,7 @@ class RaccoonAuthService {
           ?.toString()
           .trim();
       if (access == null || access.isEmpty) {
-        throw const FormatException('JSON 中缺少 access_token');
+        throw const FormatException('JSON 缺少 access_token');
       }
       return _persistLogin(
         providerId,
@@ -627,11 +627,11 @@ class RaccoonAuthService {
     // 回调链接：office-raccoon://auth/callback?code=... 或 http://127.0.0.1/...
     final uri = Uri.tryParse(text);
     if (uri == null) {
-      throw const FormatException('无效的回调链接或 Token 格式');
+      throw const FormatException('回调链接或 Token 无效');
     }
     final code = uri.queryParameters['code']?.trim() ?? '';
     if (code.isEmpty) {
-      throw const FormatException('回调链接中缺少授权码 code');
+      throw const FormatException('回调链接缺少授权码 code');
     }
     return exchangeCode(providerId, code, accountId: accountId);
   }
@@ -776,7 +776,7 @@ class RaccoonAuthService {
       throw FormatException(
         _vendorError(
           e.response?.data,
-          '获取小浣熊模型目录失败（HTTP ${e.response?.statusCode}）',
+          '获取模型目录失败（HTTP ${e.response?.statusCode}）',
         ),
       );
     }
@@ -886,7 +886,7 @@ class RaccoonAuthService {
     if (available == null) {
       throw balanceError is FormatException
           ? balanceError
-          : const FormatException('额度接口没有返回 available_points');
+          : const FormatException('未返回积分');
     }
 
     // 套餐只影响展示，读不到就留空（不把未知当成 Free）

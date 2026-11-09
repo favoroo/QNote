@@ -275,7 +275,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     if (heightText.isNotEmpty) {
       final parsedHeight = double.tryParse(heightText);
       if (parsedHeight == null || parsedHeight < 50 || parsedHeight > 250) {
-        Toast.warning(context, '请填写 50~250 之间的身高（cm）');
+        Toast.warning(context, '身高需在 50~250 cm 之间');
         return;
       }
       height = parsedHeight;
@@ -331,7 +331,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     if (weight == null || weight < minWeight || weight > maxWeight) {
       Toast.warning(
         context,
-        '请填写合理体重（${minWeight.toInt()}~${maxWeight.toInt()} $_weightUnit）',
+        '体重范围 ${minWeight.toInt()}~${maxWeight.toInt()} $_weightUnit',
       );
       return;
     }
@@ -363,7 +363,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除体重记录'),
-        content: const Text('确定删除这条体重记录吗？'),
+        content: const Text('删除这条体重记录？'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -626,7 +626,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                                   letterSpacing: 0.2,
                                 ),
                                 decoration: InputDecoration(
-                                  hintText: '点击输入姓名 / 昵称',
+                                  hintText: '输入姓名 / 昵称',
                                   hintStyle: theme.textTheme.titleMedium?.copyWith(
                                     color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
                                     fontWeight: FontWeight.normal,
@@ -641,7 +641,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '完善个人档案，便于小Q提供定制化建议',
+                                '完善档案，小Q建议更贴合你',
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                                   fontSize: 11,
@@ -1098,7 +1098,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                       onSubmitted: (_) => _addWeightRecord(),
                       style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                       decoration: InputDecoration(
-                        hintText: '输入体重数值...',
+                        hintText: '输入体重',
                         hintStyle: TextStyle(
                           fontSize: 12,
                           color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
@@ -1192,7 +1192,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
               padding: const EdgeInsets.all(16),
               child: Center(
                 child: Text(
-                  '暂无历史体重记录',
+                  '暂无体重记录',
                   style: TextStyle(
                     fontSize: 12,
                     color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
@@ -1366,7 +1366,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
             child: Text(
-              '还没有补充信息，点右上角「添加字段」记录职业、生活习惯、身体状况等备忘',
+              '还没有补充信息，点右上角「添加字段」记录职业、习惯等',
               style: TextStyle(
                 fontSize: 12,
                 height: 1.4,
@@ -1565,7 +1565,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
       builder: (context) {
         return AlertDialog(
           title: const Text('确认删除'),
-          content: Text('确定要删除“$name”这个字段吗？删除后该字段的内容将不会保存。'),
+          content: Text('删除“$name”？该字段内容不会保存。'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),

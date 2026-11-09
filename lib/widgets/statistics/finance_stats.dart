@@ -55,7 +55,7 @@ class FinanceStatsWidget extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: StatsCard(
-                title: '记录笔数',
+                title: '记录数',
                 value: '${stats.totalRecords}笔',
                 icon: Icons.bar_chart,
                 iconColor: Colors.blue,
@@ -78,7 +78,7 @@ class FinanceStatsWidget extends StatelessWidget {
         if (expenseData.isNotEmpty)
           _FinanceCard(
             isDark: isDark,
-            title: '支出分类排行',
+            title: '支出排行',
             child: SizedBox(
               height: expenseData.length * 40.0 + 20,
               child: _ExpenseTypeChart(expenseData: expenseData, isDark: isDark),

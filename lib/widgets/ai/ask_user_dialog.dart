@@ -126,7 +126,7 @@ class _AskUserDialogState extends State<AskUserDialog> {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              isDestructive ? '操作确认' : '小Q向您确认',
+              isDestructive ? '操作确认' : '小Q 确认',
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.bold,
               ),
@@ -165,7 +165,7 @@ class _AskUserDialogState extends State<AskUserDialog> {
               // 可选的快捷选项列表
               if (options.isNotEmpty) ...[
                 Text(
-                  '请选择处理方式：',
+                  '选择处理方式',
                   style: theme.textTheme.labelMedium?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                     fontWeight: FontWeight.w500,
@@ -224,7 +224,7 @@ class _AskUserDialogState extends State<AskUserDialog> {
                         color: colorScheme.primary,
                       ),
                       Text(
-                        _showCustomInput ? '收起自定义输入' : '补充其他说明/自定义回复',
+                        _showCustomInput ? '收起输入' : '自定义回复',
                         style: TextStyle(
                           fontSize: 12,
                           color: colorScheme.primary,
@@ -244,7 +244,7 @@ class _AskUserDialogState extends State<AskUserDialog> {
                   maxLines: 2,
                   minLines: 1,
                   decoration: InputDecoration(
-                    hintText: '输入您的指令或回复...',
+                    hintText: '输入回复内容',
                     hintStyle: TextStyle(fontSize: 13, color: colorScheme.outline),
                     filled: true,
                     fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),

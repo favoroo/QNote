@@ -142,17 +142,17 @@ class AiService {
 
     if ((!config.usesAccountAuth && config.apiKey.isEmpty) ||
         cleanedBaseUrl.isEmpty) {
-      throw ArgumentError('AI配置不完整: apiKey或baseUrl为空');
+      throw ArgumentError('AI配置不完整：缺少 apiKey 或 baseUrl');
     }
 
     if (!cleanedBaseUrl.startsWith('http://') &&
         !cleanedBaseUrl.startsWith('https://')) {
-      throw ArgumentError('Base URL格式错误: 必须以http://或https://开头');
+      throw ArgumentError('Base URL 格式错误：需以 http:// 或 https:// 开头');
     }
 
     final Uri? uri = Uri.tryParse(cleanedBaseUrl);
     if (uri == null || uri.host.isEmpty) {
-      throw ArgumentError('Base URL格式无效: $cleanedBaseUrl');
+      throw ArgumentError('Base URL 格式无效：$cleanedBaseUrl');
     }
 
     _config = config;
@@ -3095,7 +3095,7 @@ class AiService {
     if (_config == null) throw Exception('AI config not set');
 
     if (records.length < 3) {
-      throw ArgumentError('当日记录过少，暂无法评分');
+      throw ArgumentError('记录不足 3 条，无法评分');
     }
 
     final recordsStr = StringBuffer();
@@ -3206,7 +3206,7 @@ class AiService {
 
     final canScore = jsonResult['canScore'] ?? true;
     if (!canScore) {
-      throw Exception('AI判定当日信息过少，暂无法评分');
+      throw Exception('AI 判定当日信息过少，无法评分');
     }
 
     // 钳位：模型偶尔会返回超界分值，未钳位的分会把统计页的分数环画爆

@@ -62,7 +62,7 @@ class _QSkillEditPageState extends ConsumerState<QSkillEditPage> {
             readOnly: isEditingExisting,
             enabled: !isEditingExisting,
             decoration: const InputDecoration(
-              labelText: '技能名称（对应 /skills/<名称>.md）',
+              labelText: '技能名称（/skills/<名称>.md）',
               hintText: '例如：投资复盘',
             ),
           ),
@@ -71,7 +71,7 @@ class _QSkillEditPageState extends ConsumerState<QSkillEditPage> {
             controller: _descriptionController,
             decoration: const InputDecoration(
               labelText: '一句话描述',
-              hintText: '说明这份手册适用于什么场景，将展示在技能索引中',
+              hintText: '手册适用场景，会显示在技能索引中',
             ),
           ),
           const SizedBox(height: 16),
@@ -92,9 +92,7 @@ class _QSkillEditPageState extends ConsumerState<QSkillEditPage> {
             keyboardType: TextInputType.multiline,
             decoration: const InputDecoration(
               alignLabelWithHint: true,
-              hintText:
-                  '按章节组织的手册内容，建议使用「## 1. 标题」二级标题分章，'
-                  '小Q可按章节按需加载（section 参数）',
+              hintText: '用「## 1. 标题」分章，小Q按需加载（section 参数）',
               border: OutlineInputBorder(),
             ),
           ),
@@ -126,11 +124,11 @@ class _QSkillEditPageState extends ConsumerState<QSkillEditPage> {
     final content = _contentController.text.trim();
 
     if (!AgentSkill.isValidName(name)) {
-      Toast.warning(context, '技能名称不能为空、含空白或路径分隔符，且不超过 40 字');
+      Toast.warning(context, '名称不能为空、含空白或路径分隔符，≤40 字');
       return;
     }
     if (description.isEmpty) {
-      Toast.warning(context, '请填写一句话描述，便于在技能索引中识别');
+      Toast.warning(context, '填写一句话描述，用于技能索引');
       return;
     }
     if (content.isEmpty) {
@@ -165,7 +163,7 @@ class _QSkillEditPageState extends ConsumerState<QSkillEditPage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('删除技能'),
-        content: Text('确定删除技能「${skill.name}」吗？删除后小Q将无法再查阅这份手册。'),
+        content: Text('删除技能「${skill.name}」？小Q将无法再查阅。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),

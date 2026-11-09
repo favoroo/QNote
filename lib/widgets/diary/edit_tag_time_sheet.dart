@@ -82,7 +82,7 @@ class _EditTagTimeSheetState extends State<EditTagTimeSheet> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '编辑 ${widget.entry.name} 时间',
+                  '编辑「${widget.entry.name}」时间',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                     letterSpacing: 0.5,

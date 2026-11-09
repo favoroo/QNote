@@ -44,7 +44,7 @@ List<ReasoningEffortOption> reasoningEffortOptions({
     const ReasoningEffortOption(
       effort: null,
       label: '自动',
-      description: '不额外干预，由模型服务决定',
+      description: '由模型服务决定',
     ),
     for (final effort in capability.levels)
       ReasoningEffortOption(
@@ -58,13 +58,13 @@ List<ReasoningEffortOption> reasoningEffortOptions({
 String _descriptionFor(ReasoningEffort effort) {
   switch (effort) {
     case ReasoningEffort.none:
-      return '不额外投入思考，响应最快';
+      return '不思考，响应最快';
     case ReasoningEffort.low:
-      return '少量思考，响应与质量折中';
+      return '少量思考，更快';
     case ReasoningEffort.medium:
-      return '较充分的思考，适合大多数任务';
+      return '较充分思考，适合多数任务';
     case ReasoningEffort.high:
-      return '最充分的思考，复杂任务更稳但更慢';
+      return '思考最充分，复杂任务更稳但更慢';
   }
 }
 
@@ -148,8 +148,7 @@ class ReasoningEffortSheet extends StatelessWidget {
                 if (capability.isGeneric) ...[
                   const SizedBox(height: 6),
                   Text(
-                    '未收录该模型的思考参数，按 OpenAI 兼容通用字段发送；'
-                    '接口不支持时会自动忽略',
+                    '未收录该模型的思考参数，按通用字段发送，不支持时自动忽略',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.outline,
                     ),

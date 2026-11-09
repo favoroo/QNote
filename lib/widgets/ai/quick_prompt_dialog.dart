@@ -75,7 +75,7 @@ class _QuickPromptDialogState extends ConsumerState<_QuickPromptDialog> {
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 24),
                     child: Text(
-                      '暂无常用提示词，点击右上角添加',
+                      '暂无提示词，点右上角添加',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
@@ -190,7 +190,7 @@ class _QuickPromptDialogState extends ConsumerState<_QuickPromptDialog> {
           maxLines: 4,
           minLines: 1,
           keyboardType: TextInputType.multiline,
-          decoration: const InputDecoration(hintText: '输入常用提示词内容'),
+          decoration: const InputDecoration(hintText: '输入提示词内容'),
         ),
         actions: [
           TextButton(
@@ -210,7 +210,7 @@ class _QuickPromptDialogState extends ConsumerState<_QuickPromptDialog> {
 
     if (text.isEmpty) {
       if (!mounted) return;
-      Toast.warning(context, '提示词内容不能为空');
+      Toast.warning(context, '提示词不能为空');
       return;
     }
 
@@ -222,7 +222,7 @@ class _QuickPromptDialogState extends ConsumerState<_QuickPromptDialog> {
         await notifier.updatePrompt(target.index, text);
       }
       if (!mounted) return;
-      Toast.success(context, target == null ? '已添加提示词' : '已更新提示词');
+      Toast.success(context, target == null ? '已添加' : '已更新');
     } catch (e) {
       if (!mounted) return;
       Toast.error(context, '保存失败：$e');
@@ -240,7 +240,7 @@ class _QuickPromptDialogState extends ConsumerState<_QuickPromptDialog> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('删除提示词'),
-        content: Text('确定删除「$text」吗？'),
+        content: Text('删除「$text」？'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -262,7 +262,7 @@ class _QuickPromptDialogState extends ConsumerState<_QuickPromptDialog> {
     try {
       await ref.read(quickPromptListProvider.notifier).deletePrompt(index);
       if (!mounted) return;
-      Toast.success(context, '已删除提示词');
+      Toast.success(context, '已删除');
     } catch (e) {
       if (!mounted) return;
       Toast.error(context, '删除失败：$e');

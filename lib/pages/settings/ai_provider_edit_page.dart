@@ -256,7 +256,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     }
     final canLeave = await promptUnsavedChanges(
       context,
-      content: '模型服务还有未保存的改动，离开后将丢失。',
+      content: '还有未保存的改动，离开将丢失。',
       onSave: _save,
     );
     if (canLeave && mounted) Navigator.of(context).pop();
@@ -339,8 +339,8 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
         title: Text('退出「${account.label}」'),
         content: Text(
           _accounts.length <= 1
-              ? '这是当前唯一的账号，退出后该模型服务将无法调用，直到重新登录。已启用的模型与角色绑定会保留。'
-              : '退出后这个账号不再参与轮换，其余账号不受影响。已启用的模型与角色绑定会保留。',
+              ? '唯一账号，退出后无法调用，需重新登录。模型与绑定会保留。'
+              : '退出后不再参与轮换，其他账号不受影响。模型与绑定会保留。',
         ),
         actions: [
           TextButton(
@@ -372,9 +372,9 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
           controller: controller,
           autofocus: true,
           decoration: InputDecoration(
-            hintText: '例如：工作号 / 小号',
+            hintText: '如：工作号 / 小号',
             helperText:
-                '留空则显示手机号（${account.phone.isEmpty ? account.label : account.phone}）',
+                '留空显示手机号（${account.phone.isEmpty ? account.label : account.phone}）',
             border: const OutlineInputBorder(),
           ),
         ),
@@ -432,7 +432,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
           maxLines: 6,
           minLines: 3,
           decoration: const InputDecoration(
-            hintText: '每行一个密钥，可一次粘贴多行\nsk-xxxx\nsk-yyyy',
+            hintText: '每行一个，可粘贴多行\nsk-xxxx\nsk-yyyy',
             border: OutlineInputBorder(),
           ),
         ),
@@ -459,7 +459,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     if (added == null || !mounted) return;
     final fresh = added.where((k) => !_keys.contains(k)).toList();
     if (fresh.isEmpty) {
-      Toast.warning(context, '这些密钥都已经在列表里了');
+      Toast.warning(context, '密钥已在列表中');
       return;
     }
     setState(() {
@@ -480,12 +480,12 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
   Future<void> _testKeys() async {
     final keys = _keys.map((k) => k.trim()).where((k) => k.isNotEmpty).toList();
     if (keys.isEmpty) {
-      Toast.warning(context, '请先添加 API 密钥');
+      Toast.warning(context, '请先添加密钥');
       return;
     }
     final modelName = _testModelName();
     if (modelName == null) {
-      Toast.warning(context, '请先扫描并启用一个模型，再测试密钥');
+      Toast.warning(context, '请先扫描并启用模型');
       return;
     }
 
@@ -546,11 +546,11 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     final spec = _vendorSpec;
     final authType = spec?.authType ?? 'bearer';
     if (keys.isEmpty && authType != 'none') {
-      Toast.warning(context, '请先添加 API 密钥再扫描模型');
+      Toast.warning(context, '请先添加密钥再扫描');
       return;
     }
     if (_baseUrlCtl.text.trim().isEmpty) {
-      Toast.warning(context, '请先填写 Base URL');
+      Toast.warning(context, '请填写 Base URL');
       return;
     }
 
@@ -616,7 +616,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       _scanning = false;
       _catalog = merged;
       _catalogUpdatedAt = DateTime.now();
-      _scanMessage = '扫描到 $fetchedCount 个模型，已启用 ${_models.length} 个';
+      _scanMessage = '扫描到 $fetchedCount 个模型';
       _scanMessageIsError = false;
       _dirty = true;
     });
@@ -625,7 +625,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
   /// 账号型厂商的模型扫描：目录接口要带 access token，401 会自动刷新一次
   Future<void> _scanRaccoonModels() async {
     if (_accounts.isEmpty) {
-      Toast.warning(context, '请先登录小浣熊账号，再扫描模型');
+      Toast.warning(context, '请先登录小浣熊账号');
       return;
     }
     setState(() {
@@ -658,7 +658,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
         _scanning = false;
         _catalog = merged;
         _catalogUpdatedAt = DateTime.now();
-        _scanMessage = '扫描到 ${models.length} 个模型，已启用 ${_models.length} 个';
+        _scanMessage = '扫描到 ${models.length} 个模型';
         _scanMessageIsError = false;
         _dirty = true;
       });
@@ -740,7 +740,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
           controller: controller,
           autofocus: true,
           decoration: const InputDecoration(
-            hintText: '填写模型 ID，例如 gpt-4o-mini',
+            hintText: '模型 ID，如 gpt-4o-mini',
             border: OutlineInputBorder(),
           ),
         ),
@@ -774,7 +774,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     final usesAccount = _authMode == AiProvider.authModeRaccoon;
     final keys = _keys.map((k) => k.trim()).where((k) => k.isNotEmpty).toList();
     if (!usesAccount && keys.isEmpty) {
-      Toast.warning(context, '请先添加 API 密钥');
+      Toast.warning(context, '请先添加密钥');
       return;
     }
     if (usesAccount && _accounts.isEmpty) {
@@ -835,11 +835,11 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       return false;
     }
     if (!usesAccount && keys.isEmpty) {
-      Toast.warning(context, '请至少添加一把 API 密钥');
+      Toast.warning(context, '请至少添加一把密钥');
       return false;
     }
     if (usesAccount && _accountLoading) {
-      Toast.warning(context, '正在读取登录态，请稍候');
+      Toast.warning(context, '正在读取登录态');
       return false;
     }
     if (usesAccount && _accounts.isEmpty) {
@@ -847,7 +847,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       return false;
     }
     if (usesAccount && _accounts.every((a) => !a.enabled)) {
-      Toast.warning(context, '请至少启用一个账号，否则无法调用');
+      Toast.warning(context, '请至少启用一个账号');
       return false;
     }
     // 刻意允许「一个模型都不启用」：停用全部模型 = 让这个厂商暂时退出选路，
@@ -922,12 +922,9 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
         title: const Text('删除模型服务'),
         content: Text(
           usesAccount
-              ? '将删除「${existing.name}」及其本地登录态、'
-                    '${existing.models.length} 个已启用模型。'
-                    '引用它的角色绑定会被清空，未绑定角色的功能将回落到默认厂商。'
-              : '将删除「${existing.name}」及其 ${existing.apiKeys.length} 把密钥、'
-                    '${existing.models.length} 个已启用模型。'
-                    '引用它的角色绑定会被清空，未绑定角色的功能将回落到默认厂商。',
+              ? '将删除「${existing.name}」及登录态和 ${existing.models.length} 个模型，角色绑定会清空。'
+              : '将删除「${existing.name}」及 ${existing.apiKeys.length} 把密钥和 '
+                    '${existing.models.length} 个模型，角色绑定会清空。',
         ),
         actions: [
           TextButton(
@@ -971,11 +968,11 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
             msg.contains('connection error') ||
             msg.contains('CORS') ||
             msg.contains('onError'))) {
-      return '浏览器限制：Web 端无法直接调用外部 API（CORS），请用真机测试';
+      return '浏览器限制：Web 端无法调用外部 API（CORS），请用真机测试';
     }
     if (msg.contains('401') || msg.contains('403')) {
       return _authMode == AiProvider.authModeRaccoon
-          ? '登录已失效，请重新登录小浣熊账号'
+          ? '登录已失效，请重新登录'
           : '认证失败，请检查 API Key';
     }
     if (msg.contains('timeout') || msg.contains('超时')) return '请求超时';
@@ -1023,13 +1020,13 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
             _sectionTitle(theme, '基础信息', '模型服务地址与名称'),
             _buildBasicCard(theme),
             if (_authMode == AiProvider.authModeRaccoon) ...[
-              _sectionTitle(theme, '账号登录', '用商汤小浣熊账号的额度调用'),
+              _sectionTitle(theme, '账号登录', '用小浣熊账号额度调用'),
               _buildAccountCard(theme),
             ] else ...[
-              _sectionTitle(theme, 'API 密钥', '同一地址的密钥自动轮询使用'),
+              _sectionTitle(theme, 'API 密钥', '密钥自动轮询'),
               _buildKeysCard(theme),
             ],
-            _sectionTitle(theme, '模型', '扫描后按需启用，可同时启用多个'),
+            _sectionTitle(theme, '模型', '扫描后按需启用'),
             _buildModelsCard(theme),
           ],
         ),
@@ -1114,7 +1111,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                           ),
                         ),
                         Text(
-                          '点击更换厂商模板',
+                          '更换厂商模板',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: colorScheme.onSurfaceVariant,
                           ),
@@ -1135,7 +1132,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
             onChanged: (_) => _markDirty(),
             decoration: const InputDecoration(
               isDense: true,
-              hintText: '例如：公司中转 / 我的 OpenAI',
+              hintText: '如：公司中转 / 我的 OpenAI',
             ),
           ),
           const SizedBox(height: 14),
@@ -1160,7 +1157,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
               isDense: true,
               hintText: 'https://api.example.com/v1',
               helperText: _authMode == AiProvider.authModeRaccoon
-                  ? '账号登录固定使用小浣熊官方接口'
+                  ? '账号登录使用官方接口'
                   : null,
             ),
           ),
@@ -1286,7 +1283,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Text(
-                '还没有登录账号。登录后即可扫描模型、用小浣熊额度对话；登录多个账号后可按下方策略轮换。',
+                '还没有登录账号。登录后可扫描模型、用小浣熊额度对话。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: colorScheme.onSurfaceVariant,
                 ),
@@ -1315,7 +1312,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
             ),
             const SizedBox(height: 2),
             Text(
-              '登录了 ${_accounts.length} 个账号，按下面的策略分配请求',
+              '共 ${_accounts.length} 个账号，按下方策略分配请求',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
@@ -1382,8 +1379,8 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     final statusText = expired
         ? '登录已过期，请重新登录'
         : cooling
-        ? '限流冷却中，暂时跳过'
-        : (account.enabled ? '登录有效 · 自动续期' : '已停用，不参与轮换');
+        ? '限流冷却中'
+        : (account.enabled ? '登录有效' : '已停用');
     final statusColor = expired
         ? colorScheme.error
         : cooling
@@ -1492,7 +1489,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
               Padding(
                 padding: const EdgeInsets.only(left: 30, top: 2),
                 child: Text(
-                  '凭证有效期至 ${_formatAccountTime(account.expiresAt!)}',
+                  '有效期至 ${_formatAccountTime(account.expiresAt!)}',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                   ),
@@ -1525,11 +1522,11 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       parts.add('${_formatQuotaClock(quota.fetchedAt)} 更新');
       text = parts.join(' · ');
     } else if (loading) {
-      text = '正在查询积分…';
+      text = '查询中…';
     } else if (error != null) {
       text = '额度查询失败：$error';
     } else {
-      text = '积分未查询';
+      text = '未查询';
     }
 
     return Row(
@@ -1587,7 +1584,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
               : IconButton(
                   padding: EdgeInsets.zero,
                   iconSize: 16,
-                  tooltip: '查询这个账号的积分',
+                  tooltip: '查询积分',
                   onPressed: () => _fetchQuota(account),
                   icon: const Icon(Icons.refresh_rounded),
                 ),
@@ -1636,7 +1633,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(
-                '还没有密钥。添加后即可扫描模型并开始使用。',
+                '还没有密钥，添加后即可扫描模型。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: colorScheme.onSurfaceVariant,
                 ),
@@ -1765,8 +1762,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
           ),
           const SizedBox(height: 4),
           Text(
-            '多把密钥会在每次请求时自动轮换；某把密钥被限流（429）或额度用尽时进入冷却，'
-            '自动切到下一把，冷却结束自动回池。',
+            '多把密钥自动轮换；限流或额度用尽时冷却，结束后自动回池。',
             style: theme.textTheme.bodySmall?.copyWith(
               color: colorScheme.onSurfaceVariant,
               height: 1.5,
@@ -1840,10 +1836,8 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
             const SizedBox(height: 12),
             Text(
               _authMode == AiProvider.authModeRaccoon
-                  ? '还没有模型列表。登录小浣熊账号后点「扫描模型」拉取该账号可用的全部模型，'
-                        '也可以手动添加模型 ID。'
-                  : '还没有模型列表。填好 Base URL 与密钥后点「扫描模型」拉取该服务的全部模型，'
-                        '也可以手动添加模型 ID。',
+                  ? '还没有模型列表，登录后点「扫描模型」获取，也可手动添加。'
+                  : '还没有模型列表，填好地址与密钥后点「扫描模型」获取。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
                 height: 1.5,
@@ -2030,7 +2024,7 @@ class _VendorPickerSheet extends StatelessWidget {
                   _vendorSectionHeader(
                     theme,
                     title: '账号登录',
-                    subtitle: '登录厂商账号即可使用，凭证自动续期',
+                    subtitle: '登录账号即可使用，凭证自动续期',
                   ),
                   ...accountVendors.map(
                     (spec) => _vendorTile(context, theme, spec),
@@ -2040,7 +2034,7 @@ class _VendorPickerSheet extends StatelessWidget {
                   _vendorSectionHeader(
                     theme,
                     title: 'API Key',
-                    subtitle: '填写服务地址与密钥，多把密钥自动轮询',
+                    subtitle: '填写地址与密钥，多把自动轮询',
                   ),
                   ...apiKeyVendors.map(
                     (spec) => _vendorTile(context, theme, spec),

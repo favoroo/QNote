@@ -207,7 +207,7 @@ void main() {
       // 关键：失败不许假装保存成功而退出
       expect(find.byType(DiaryEditorView), findsOneWidget);
       expect(find.text('open'), findsNothing);
-      expect(find.textContaining('未能保存'), findsOneWidget);
+      expect(find.textContaining('仍停留当前页'), findsOneWidget);
       expect(find.text('未保存'), findsOneWidget);
 
       await drainTimers(tester);

@@ -191,7 +191,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          '按标签筛选',
+                          '标签筛选',
                           style: theme.textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
@@ -204,7 +204,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                               });
                             },
                             child: Text(
-                              '清空已选',
+                              '清空',
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: colorScheme.primary,
                                 fontWeight: FontWeight.w600,
@@ -219,7 +219,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                         padding: const EdgeInsets.symmetric(vertical: 24),
                         child: Center(
                           child: Text(
-                            '暂无可选标签',
+                            '暂无标签',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: colorScheme.onSurfaceVariant,
                             ),
@@ -1190,7 +1190,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(
-          '共找到 ${_filteredRecords.length} 条记录',
+          '${_filteredRecords.length} 条记录',
           style: theme.textTheme.labelSmall?.copyWith(
             color: colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.bold,
@@ -1237,7 +1237,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
         padding: const EdgeInsets.symmetric(vertical: 40),
         child: Center(
           child: Text(
-            '无符合条件的记录',
+            '无匹配记录',
             style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant),
           ),
         ),
@@ -1341,7 +1341,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                             Padding(
                               padding: const EdgeInsets.only(left: 6),
                               child: Text(
-                                record.content.isNotEmpty ? record.content : '无备注内容',
+                                record.content.isNotEmpty ? record.content : '无内容',
                                 maxLines: 8,
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.bodySmall?.copyWith(
@@ -1445,7 +1445,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                     const Icon(Icons.delete_outline, size: 16),
                     const SizedBox(width: 6),
                     Text(
-                      _isConfirming ? '再次点击确认' : '删除',
+                      _isConfirming ? '再点确认' : '删除',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ],
@@ -1685,7 +1685,7 @@ class _RecordDetailSheetState extends State<_RecordDetailSheet> {
                           const SizedBox(width: 4),
                           FilterChip(
                             selected: isSelected,
-                            label: Text(isSelected ? '已选择' : '选择此项'),
+                            label: Text(isSelected ? '已选择' : '选择'),
                             onSelected: (_) => _toggleLocalSelect(currentRecord.id),
                             selectedColor: colorScheme.primary.withValues(alpha: 0.15),
                             checkmarkColor: colorScheme.primary,
@@ -1794,7 +1794,7 @@ class _RecordDetailSheetState extends State<_RecordDetailSheet> {
           // Body State fields (if any)
           if (fields.isNotEmpty) ...[
             Text(
-              _isHealthDailySummary(record) ? '健康看板数据' : '记录数据',
+              _isHealthDailySummary(record) ? '健康数据' : '记录数据',
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: colorScheme.onSurfaceVariant,
@@ -1884,7 +1884,7 @@ class _RecordDetailSheetState extends State<_RecordDetailSheet> {
               ),
             ),
             child: Text(
-              record.content.isNotEmpty ? record.content : '（无备注内容）',
+              record.content.isNotEmpty ? record.content : '（无内容）',
               style: theme.textTheme.bodyMedium?.copyWith(
                 height: 1.6,
                 color: colorScheme.onSurface,

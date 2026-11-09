@@ -139,7 +139,7 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '点击右上角 + 添加每日固定事件',
+                    '点右上角 + 添加',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.disabledColor,
                     ),
@@ -552,7 +552,7 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 4),
                             child: Text(
-                              '暂无可用标签，请先在"快捷按钮管理"中创建后再添加固定事件',
+                              '暂无标签，请先在「快捷按钮管理」创建',
                               style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(
                                     color: Theme.of(
@@ -720,9 +720,7 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                                 context: context,
                                 builder: (ctx2) => AlertDialog(
                                   title: const Text('确认删除'),
-                                  content: Text(
-                                    '确定要删除 "${existingTemplate.name}" 吗？',
-                                  ),
+                                  content: Text('删除 "${existingTemplate.name}"？'),
                                   actions: [
                                     TextButton(
                                       onPressed: () =>
@@ -781,7 +779,7 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                                   if (shortcuts.isEmpty) {
                                     Toast.warning(
                                       context,
-                                      '请先在"快捷按钮管理"中创建标签后再添加固定事件',
+                                      '请先在「快捷按钮管理」创建标签',
                                     );
                                   } else {
                                     Toast.warning(context, '请至少选择一个关联标签');

@@ -139,7 +139,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
     _progressNotifier.value = (
       current: 0,
       total: daysBack + 1,
-      message: '准备同步...',
+      message: '准备同步…',
     );
 
     // 批量同步（≥14天）时显示进度弹窗
@@ -176,7 +176,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
       if (!mounted) return;
       if (res.success) {
         final label = daysBack >= 30 ? '最近$daysBack天' : '最新健康数据';
-        Toast.success(context, '已同步$label（${res.syncedDays}天数据）');
+        Toast.success(context, '已同步$label（${res.syncedDays}天）');
         await _loadState();
       } else {
         Toast.error(context, res.errorMessage ?? '同步失败');
@@ -188,7 +188,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
       if (showProgress && rootNav != null) {
         rootNav.pop();
       }
-      if (mounted) Toast.error(context, '同步异常: $e');
+      if (mounted) Toast.error(context, '同步异常：$e');
     } finally {
       if (mounted) setState(() => _isSyncing = false);
     }
@@ -228,7 +228,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                     const Icon(Icons.sync_rounded, size: 20),
                     const SizedBox(width: 8),
                     Text(
-                      '选择同步时间范围',
+                      '同步时间范围',
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
@@ -247,7 +247,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                   child: const Icon(Icons.today_rounded, color: Colors.blue, size: 20),
                 ),
                 title: const Text('同步最近 7 天'),
-                subtitle: const Text('日常快速拉取，用时极短'),
+                subtitle: const Text('日常快速同步'),
                 onTap: () => Navigator.of(ctx).pop(7),
               ),
               ListTile(
@@ -260,7 +260,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                   child: const Icon(Icons.calendar_month_rounded, color: Colors.teal, size: 20),
                 ),
                 title: const Text('同步最近 30 天'),
-                subtitle: const Text('拉取近一个月完整数据与运动记录'),
+                subtitle: const Text('近一个月数据与运动记录'),
                 onTap: () => Navigator.of(ctx).pop(30),
               ),
               ListTile(
@@ -273,7 +273,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                   child: const Icon(Icons.history_rounded, color: Colors.purple, size: 20),
                 ),
                 title: const Text('同步最近 90 天'),
-                subtitle: const Text('拉取近一季度历史数据，首次同步推荐'),
+                subtitle: const Text('近一季度历史数据，首次同步推荐'),
                 onTap: () => Navigator.of(ctx).pop(90),
               ),
             ],
@@ -297,7 +297,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
 
       if (!mounted) return;
       if (res.success) {
-        Toast.success(context, '已同步 ${_formatDateLabel(_selectedDate)} 数据');
+        Toast.success(context, '已同步 ${_formatDateLabel(_selectedDate)}');
         await _loadDateData(_selectedDate);
         final lastSync = await syncService.getLastSyncTime();
         if (mounted) {
@@ -312,7 +312,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
         if (mounted) setState(() => _lastFailure = lastFailure);
       }
     } catch (e) {
-      if (mounted) Toast.error(context, '同步异常: $e');
+      if (mounted) Toast.error(context, '同步异常：$e');
     } finally {
       if (mounted) setState(() => _isSyncing = false);
     }
@@ -323,7 +323,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('解除小米健康绑定'),
-        content: const Text('确定解除与当前小米账号的连接绑定吗？'),
+        content: const Text('解绑后需重新扫码登录。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -398,7 +398,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                   )
                 : IconButton(
                     icon: const Icon(Icons.sync_rounded),
-                    tooltip: '同步当前日期数据',
+                    tooltip: '同步当天数据',
                     onPressed: _handleSyncSelectedDate,
                   ),
         ],
@@ -543,7 +543,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    isAuthed ? '小米账号: ${_credentials!.userId}' : '未连接小米账号',
+                    isAuthed ? '小米账号：${_credentials!.userId}' : '未连接小米账号',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.titleSmall?.copyWith(
@@ -686,7 +686,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
   void _openHealthDetail(HealthMetricKind kind, String title, {HealthSportRecord? sport}) {
     final m = _selectedMetrics;
     if (sport == null && m == null) {
-      Toast.info(context, '这一天还没有健康数据');
+      Toast.info(context, '这一天没有健康数据');
       return;
     }
     context.push(
@@ -1127,7 +1127,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
-                  '当天暂无睡眠监测数据，佩戴手环/手表入睡后将自动同步睡眠分期与分析',
+                  '暂无睡眠数据，佩戴手环或手表入睡后自动同步',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
                     fontSize: 12,
@@ -1660,7 +1660,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
         Padding(
           padding: const EdgeInsets.only(left: 4, bottom: 8),
           child: Text(
-            '当天运动 (${_selectedSports.length})',
+            '当天运动（${_selectedSports.length}）',
             style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.bold,
             ),
@@ -1768,7 +1768,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
       await syncService.setDailyStepTarget(result);
       setState(() => _stepTarget = result);
       if (mounted) {
-        Toast.success(context, '每日目标步数已设为 ${NumberFormat('#,###').format(result)} 步');
+        Toast.success(context, '目标步数已设为 ${NumberFormat('#,###').format(result)} 步');
       }
     }
   }
@@ -1803,7 +1803,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                 } catch (e) {
                   if (!mounted) return;
                   setState(() => _autoSync = !val);
-                  Toast.error(this.context, '保存失败，请重试');
+                  Toast.error(this.context, '保存失败');
                   LoggerService.instance.logDatabase(
                     '切换健康数据自动同步失败',
                     level: LogLevel.error,
@@ -1885,7 +1885,7 @@ class _MiQrLoginDialog extends ConsumerStatefulWidget {
 class _MiQrLoginDialogState extends ConsumerState<_MiQrLoginDialog> {
   MiQrLoginSession? _session;
   bool _isLoading = true;
-  String _statusText = '正在生成授权二维码...';
+  String _statusText = '正在生成二维码…';
   Timer? _pollTimer;
   bool _isDisposed = false;
 
@@ -1911,7 +1911,7 @@ class _MiQrLoginDialogState extends ConsumerState<_MiQrLoginDialog> {
       setState(() {
         _session = session;
         _isLoading = false;
-        _statusText = '请使用 小米运动健康 App 或 小米手机扫一扫 授权';
+        _statusText = '用小米运动健康 App 或小米手机扫码授权';
       });
 
       _startPolling(session.lp);
@@ -1919,7 +1919,7 @@ class _MiQrLoginDialogState extends ConsumerState<_MiQrLoginDialog> {
       if (_isDisposed) return;
       setState(() {
         _isLoading = false;
-        _statusText = '生成二维码失败: $e';
+        _statusText = '生成二维码失败：$e';
       });
     }
   }
@@ -1938,7 +1938,7 @@ class _MiQrLoginDialogState extends ConsumerState<_MiQrLoginDialog> {
 
       if (res.status == MiQrPollStatus.success) {
         timer.cancel();
-        setState(() => _statusText = '授权成功！正在同步...');
+        setState(() => _statusText = '授权成功，正在同步…');
         if (mounted) Toast.success(context, '授权绑定成功');
         final syncService = ref.read(healthSyncServiceProvider);
         syncService.syncDays(daysBack: 7);

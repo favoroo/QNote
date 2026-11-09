@@ -234,7 +234,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
 
     return statsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (err, stack) => Center(child: Text('统计计算失败: $err')),
+      error: (err, stack) => Center(child: Text('统计失败：$err')),
       data: (stats) {
         // 数据为空时返回 EmptyState（依赖 stats 内部 totalRecords 判断）
         final bool isEmpty;

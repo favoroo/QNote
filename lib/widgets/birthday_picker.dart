@@ -50,9 +50,9 @@ class _BirthdayPickerDialogState extends State<BirthdayPickerDialog> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    String title = '选择出生年份';
-    if (_step == 1) title = '选择出生月份';
-    if (_step == 2) title = '选择出生日期';
+    String title = '选择年份';
+    if (_step == 1) title = '选择月份';
+    if (_step == 2) title = '选择日期';
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
@@ -127,7 +127,7 @@ class _BirthdayPickerDialogState extends State<BirthdayPickerDialog> {
         const SizedBox(width: 8),
         _buildSelectionChip(
           theme,
-          _selectedMonth != null ? '$_selectedMonth月' : "月",
+          _selectedMonth != null ? '$_selectedMonth月' : '月',
           _step == 1,
           enabled: _selectedYear != null,
           onTap: () => setState(() => _step = 1),
@@ -135,7 +135,7 @@ class _BirthdayPickerDialogState extends State<BirthdayPickerDialog> {
         const SizedBox(width: 8),
         _buildSelectionChip(
           theme,
-          _selectedDay != null ? '$_selectedDay日' : "日",
+          _selectedDay != null ? '$_selectedDay日' : '日',
           _step == 2,
           enabled: _selectedMonth != null,
           onTap: () => setState(() => _step = 2),

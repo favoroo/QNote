@@ -30,7 +30,7 @@ void main() {
       );
 
       // 验证单行胶囊展示了技能名
-      expect(find.text('已调用技能手册 · frontend-design'), findsOneWidget);
+      expect(find.text('已加载技能 · frontend-design'), findsOneWidget);
       // 验证气泡本身没有直接以文本方式铺开手册正文
       expect(find.textContaining('这里是非常长的大段技能手册内容'), findsNothing);
       // 验证存在「查看」按钮
@@ -73,12 +73,12 @@ void main() {
       );
 
       // 折叠态：显示总数
-      expect(find.text('已查看目录 /notes (共 3 项)'), findsOneWidget);
+      expect(find.text('已查看目录 /notes（3 项）'), findsOneWidget);
       // 此时列表项未展开
       expect(find.text('notes/a.md'), findsNothing);
 
       // 点击折叠条展开
-      await tester.tap(find.text('已查看目录 /notes (共 3 项)'));
+      await tester.tap(find.text('已查看目录 /notes（3 项）'));
       await tester.pumpAndSettle();
 
       // 展开态：显示各项文件
@@ -253,8 +253,8 @@ void main() {
         ),
       );
 
-      // 折叠总览：连续完成 3 步操作
-      expect(find.textContaining('已连续完成 3 步操作'), findsOneWidget);
+      // 折叠总览：连续完成 3 步
+      expect(find.textContaining('已连续完成 3 步'), findsOneWidget);
       expect(find.textContaining('读取文件 2 项'), findsOneWidget);
       expect(find.textContaining('查看目录 1 项'), findsOneWidget);
 
@@ -262,11 +262,11 @@ void main() {
       expect(find.text('已读取文件 /notes/1.md'), findsNothing);
 
       // 点击展开
-      await tester.tap(find.textContaining('已连续完成 3 步操作'));
+      await tester.tap(find.textContaining('已连续完成 3 步'));
       await tester.pumpAndSettle();
 
       // 展开后所有步骤均可见
-      expect(find.text('已查看目录 /notes (共 2 项)'), findsOneWidget);
+      expect(find.text('已查看目录 /notes（2 项）'), findsOneWidget);
       expect(find.text('已读取文件 /notes/1.md'), findsOneWidget);
       expect(find.text('已读取文件 /notes/2.md'), findsOneWidget);
     });

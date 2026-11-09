@@ -665,7 +665,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
           turnKey: 'floating:${_sessionMessages.length}',
         ),
         // 整池限流时不报错、不静默：与主聊天一致，把排队秒数写到悬浮窗状态行
-        onQuotaHold: (hold) => _setStatus('服务商限流 · 排队 ${hold.inSeconds}s 后重试'),
+        onQuotaHold: (hold) => _setStatus('服务商限流 · ${hold.inSeconds}s 后重试'),
         afterToolCall: (call, result) async {
           // 按 VFS 路径前缀联动刷新对应业务数据
           refreshWorkspaceSideEffects(
@@ -787,7 +787,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
           _appendSessionMessage(
             ChatMessage(
               role: 'assistant',
-              content: '(已中止，未完成的指令可以重新发送)',
+              content: '(已中止，可重新发送)',
               timestamp: DateTime.now(),
             ),
             signature,
@@ -805,7 +805,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       _appendSessionMessage(
         ChatMessage(
           role: 'assistant',
-          content: '抱歉，执行出错了。\n\n${AiErrorExplainer.describe(e)}',
+          content: '执行失败\n\n${AiErrorExplainer.describe(e)}',
           timestamp: DateTime.now(),
           isError: true,
         ),

@@ -56,7 +56,7 @@ class QSkillsPageState extends ConsumerState<QSkillsPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('加载失败: $e', style: theme.textTheme.bodyMedium),
+            Text('加载失败：$e', style: theme.textTheme.bodyMedium),
             const SizedBox(height: 12),
             FilledButton.tonal(
               onPressed: () => ref.invalidate(agentSkillListProvider),
@@ -84,7 +84,7 @@ class QSkillsPageState extends ConsumerState<QSkillsPage> {
               icon: Icons.auto_fix_high_outlined,
               title: '用户技能',
               count: activeSkills.length,
-              emptyText: '暂无自定义技能，可点击右上角「+」新建',
+              emptyText: '暂无自定义技能，点右上角「+」新建',
               children: [
                 for (final skill in activeSkills) _buildSkillRow(context, skill),
               ],
@@ -385,7 +385,7 @@ class QSkillsPageState extends ConsumerState<QSkillsPage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('删除技能'),
-        content: Text('确定删除技能「$name」吗？删除后小Q将无法再查阅这份手册。'),
+        content: Text('删除技能「$name」？小Q将无法再查阅。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),

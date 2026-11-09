@@ -109,7 +109,7 @@ class SportDetail extends StatelessWidget {
           const SizedBox(height: 12),
           HealthDetailSection(
             title: '心率区间时长',
-            subtitle: '按各区间累计秒数换算，合计 ${_duration(_zoneSeconds(detail).toInt())}',
+            subtitle: '合计 ${_duration(_zoneSeconds(detail).toInt())}',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -134,7 +134,7 @@ class SportDetail extends StatelessWidget {
           const SizedBox(height: 12),
           HealthDetailSection(
             title: '训练负荷与效果',
-            subtitle: '云端算法给出的评估值，无量纲',
+            subtitle: '云端评估值，无量纲',
             child: HealthStatRow(
               children: [
                 HealthStatTile(
@@ -162,7 +162,7 @@ class SportDetail extends StatelessWidget {
           const SizedBox(height: 12),
           Center(
             child: Text(
-              '这条记录没有更多明细（同步于明细字段上线之前，重新同步可补齐）',
+              '无更多明细，重新同步可补齐',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),

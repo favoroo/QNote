@@ -116,7 +116,7 @@ class _ThinkingProcessViewState extends State<ThinkingProcessView> {
               borderRadius: BorderRadius.circular(8),
               child: Semantics(
                 button: true,
-                label: _expanded ? '收起思考过程' : '展开思考过程',
+                label: _expanded ? '收起思考' : '展开思考',
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 4,

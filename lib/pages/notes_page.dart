@@ -161,7 +161,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
               ),
         title: Text(
           _isSelectionMode
-              ? '已选择 ${_selectedNoteIds.length + _selectedFolderIds.length} 项'
+              ? '已选 ${_selectedNoteIds.length + _selectedFolderIds.length} 项'
               : '笔记',
         ),
         actions: [
@@ -328,7 +328,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                               const Icon(Icons.delete_outline, size: 16),
                               const SizedBox(width: 6),
                               Text(
-                                _isConfirming ? '再次点击确认' : '删除',
+                                _isConfirming ? '再点确认' : '删除',
                                 style:
                                     const TextStyle(fontWeight: FontWeight.bold),
                               ),
@@ -355,7 +355,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           controller: controller,
           autofocus: true,
           decoration: const InputDecoration(
-            hintText: '文件夹名称',
+            hintText: '名称',
             border: OutlineInputBorder(),
           ),
           onSubmitted: (value) {
@@ -828,7 +828,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        isHovering ? '松手移至根目录' : '拖动至此处移至根目录',
+                        isHovering ? '松手移至根目录' : '移至根目录',
                         style: TextStyle(
                           color: isHovering
                               ? theme.colorScheme.primary
@@ -1007,7 +1007,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
         ),
         ActionMenuItem(
           icon: Icons.drive_file_move_outlined,
-          label: '移动到文件夹',
+          label: '移至文件夹',
           onTap: () => _showMoveToFolderDialog(context, note: note),
         ),
         ActionMenuItem(icon: Icons.share_outlined, label: '分享笔记', onTap: () {}),
@@ -1102,7 +1102,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(hintText: '文件夹名称'),
+          decoration: const InputDecoration(hintText: '名称'),
         ),
         actions: [
           TextButton(

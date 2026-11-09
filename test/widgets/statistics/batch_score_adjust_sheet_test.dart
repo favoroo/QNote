@@ -100,7 +100,7 @@ void main() {
     expect(preview.to.difference(preview.from).inDays + 1, 7);
     expect(preview.spec.delta, -5);
     expect(preview.spec.fields, kAllScoreFields);
-    expect(find.text('批量调整历史评分'), findsOne);
+    expect(find.text('批量调整评分'), findsOne);
     expect(find.text('命中 3 天 · 该区间无评分 4 天（不会被改动）'), findsOne);
     expect(find.textContaining('总分不随维度重算'), findsOne);
   });
@@ -119,7 +119,7 @@ void main() {
     await _openSheet(tester, stub);
 
     expect(find.textContaining('单次最多调整 92 天'), findsOne);
-    expect(find.text('批量调整历史评分'), findsOne, reason: '失败不应关闭抽屉');
+    expect(find.text('批量调整评分'), findsOne, reason: '失败不应关闭抽屉');
     expect(stub.applies, isEmpty);
     expect(
       tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
@@ -137,7 +137,7 @@ void main() {
 
     expect(stub.applies, hasLength(1));
     expect(stub.applies.single.dryRun, isFalse);
-    expect(find.text('批量调整历史评分'), findsNothing);
+    expect(find.text('批量调整评分'), findsNothing);
     // 放掉成功 Toast 的 2 秒自动消失定时器，否则测试结束时报 pending Timer
     await tester.pump(const Duration(seconds: 3));
   });
@@ -179,7 +179,7 @@ void main() {
     final stub = _Stub(scoredDays: 0);
     await _openSheet(tester, stub);
 
-    expect(find.text('该区间没有需要改动的评分'), findsOne);
+    expect(find.text('该区间没有可改的评分'), findsOne);
     expect(stub.applies, isEmpty);
     await tester.tap(find.byType(FilledButton));
     await tester.pumpAndSettle();
@@ -195,7 +195,7 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    expect(find.text('请至少选择一个字段'), findsOne);
+    expect(find.text('至少选择一个字段'), findsOne);
     expect(stub.applies, isEmpty);
   });
 }

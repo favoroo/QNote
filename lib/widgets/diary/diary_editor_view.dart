@@ -1072,7 +1072,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               children: [
                 CircularProgressIndicator(),
                 SizedBox(height: 16),
-                Text('正在处理图片，请稍候...'),
+                Text('正在处理图片...'),
               ],
             ),
           ),
@@ -1254,7 +1254,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('确认删除'),
-        content: const Text('删除后可在回收站恢复，确定要删除这条记录吗？'),
+        content: const Text('删除后可在回收站恢复'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -2619,7 +2619,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
           maxLines: null,
           minLines: 5,
           decoration: InputDecoration(
-            hintText: '在此输入详细记录内容...',
+            hintText: '输入详细记录内容...',
             border: InputBorder.none,
             filled: false,
           ),

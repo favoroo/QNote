@@ -317,7 +317,7 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
                         ),
                         subtitle: Text(
                           live == 0
-                              ? '${group.strategy.label} · 成员模型均已停用'
+                              ? '${group.strategy.label} · 模型均已停用'
                               : '$live 个模型 · ${group.strategy.label}',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: live == 0

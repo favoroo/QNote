@@ -438,7 +438,7 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
         floatingQProvider.select((s) => s.effectiveContext),
       );
       final emptyPrompt = externalShareMode
-          ? '让小Q处理外部导入的内容，例如"将这段文字整理并保存为笔记"或"提炼核心信息"。'
+          ? '让小Q整理或提炼这段内容。'
           : (effectiveContext?.emptyPromptHint ??
                 QPageContext.fallback.emptyPromptHint);
 
@@ -730,7 +730,7 @@ class _PanelUndoBanner extends ConsumerWidget {
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        '可撤回小Q本次的 $undoCount 处修改',
+                        '可撤回 $undoCount 处修改',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onTertiaryContainer,
                         ),
@@ -842,7 +842,7 @@ class _PanelQuoteCard extends ConsumerWidget {
                 Text(
                   quote.quotedText.isEmpty
                       ? (quote.locationDesc?.contains('光标') == true
-                            ? '（当前位于光标处，可让小Q在此续写或编辑）'
+                            ? '（光标处，可让小Q续写或编辑）'
                             : '（引用完整内容）')
                       : quote.quotedText,
                   style: theme.textTheme.bodySmall,
@@ -1158,7 +1158,7 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
               // 工作态外圈环绕极简细线 LoadingRing 缺口圆环旋转动画，中央为精致圆角停止方块
               isWorking
                   ? Tooltip(
-                      message: '点击中止小Q当前操作',
+                      message: '中止当前操作',
                       child: InkWell(
                         onTap: () {
                           HapticFeedback.lightImpact();

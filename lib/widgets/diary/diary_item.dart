@@ -1451,7 +1451,7 @@ class _DiaryItemState extends State<DiaryItem> {
       final diffMs = screenMs - screenYesterdayMs;
       final diffMins = (diffMs.abs()) ~/ 60000;
       if (diffMins == 0) {
-        screenDiffDesc = '与昨日持平';
+        screenDiffDesc = '较昨日持平';
       } else {
         final dH = diffMins ~/ 60;
         final dM = diffMins % 60;
@@ -1612,7 +1612,7 @@ class _DiaryItemState extends State<DiaryItem> {
                       const Icon(Icons.nightlight_round, size: 16, color: sleepPurple),
                       const SizedBox(width: 6),
                       Text(
-                        '作息睡眠',
+                        '睡眠',
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
@@ -1885,7 +1885,7 @@ class _DiaryItemState extends State<DiaryItem> {
                 const Icon(Icons.directions_run_rounded, size: 16, color: brandGreen),
                 const SizedBox(width: 4),
                 Text(
-                  '今日运动 (${sportsRaw.length}项)',
+                  '今日运动 ${sportsRaw.length} 项',
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),

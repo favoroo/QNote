@@ -420,7 +420,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     final activeId = ref.read(currentChatProvider)?.id;
     if (activeId != null &&
         ref.read(agentRunningSessionsProvider).contains(activeId)) {
-      Toast.warning(context, '小Q正在处理当前对话，请等待完成或先中止');
+      Toast.warning(context, '小Q正在处理对话，稍候或先中止');
       return;
     }
 
@@ -521,11 +521,11 @@ class _AiPageState extends ConsumerState<AiPage> {
     if (_isTyping ||
         ref.read(aiStreamingMessageProvider) != null ||
         ref.read(aiStreamingStatusProvider) != null) {
-      Toast.warning(context, '小Q正在生成中，请等待完成后再操作');
+      Toast.warning(context, '小Q正在生成，请稍候');
       return;
     }
     if (_draftBlocksReedit()) {
-      Toast.warning(context, '输入框已改过，先清空或发送后再改');
+      Toast.warning(context, '输入框有草稿，清空或发送后再改');
       return;
     }
 
@@ -603,7 +603,7 @@ class _AiPageState extends ConsumerState<AiPage> {
         ) ||
         reeditableUserIndex(messages) != index) {
       _exitReeditMode();
-      Toast.warning(context, '原提问已不在末轮，未撤回；这条将作为新提问发送');
+      Toast.warning(context, '原提问已不在末轮，将作为新提问发送');
       return true;
     }
 
@@ -613,8 +613,8 @@ class _AiPageState extends ConsumerState<AiPage> {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (dialogCtx) => AlertDialog(
-          title: const Text('撤回这条提问？'),
-          content: Text('本轮已产生 $changeCount 处数据修改，发送前会先撤销这些修改。'),
+          title: const Text('撤回提问？'),
+          content: Text('本轮有 $changeCount 处数据修改，发送前会先撤销。'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogCtx, false),
@@ -640,16 +640,16 @@ class _AiPageState extends ConsumerState<AiPage> {
           .rollbackToMessage(index);
       if (!mounted) return false;
       if (result == null) {
-        Toast.error(context, '当前状态无法重新编辑');
+        Toast.error(context, '无法重新编辑');
         return false;
       }
       // 回退后该下标已越界，必须当场消费掉编辑态，否则后续路径会按错下标再撤一次
       _exitReeditMode();
       final (restored, failed) = result;
       if (failed > 0) {
-        Toast.warning(context, '已回退对话，但 $failed 处数据恢复失败，详情请查看日志');
+        Toast.warning(context, '已回退对话，$failed 处数据恢复失败，详见日志');
       } else if (restored > 0) {
-        Toast.success(context, '已回退对话并恢复 $restored 处数据修改');
+        Toast.success(context, '已回退对话，恢复 $restored 处数据');
       }
       return true;
     } finally {
@@ -699,7 +699,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     if (_isTyping ||
         ref.read(aiStreamingMessageProvider) != null ||
         ref.read(aiStreamingStatusProvider) != null) {
-      Toast.warning(context, '小Q正在生成中，请等待完成后再操作');
+      Toast.warning(context, '小Q正在生成，请稍候');
       return;
     }
 
@@ -737,7 +737,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                     leading: const Icon(Icons.refresh_rounded, size: 22),
                     title: const Text('重试本轮对话', style: TextStyle(fontSize: 14)),
                     subtitle: const Text(
-                      '回退本轮并撤销期间产生的数据修改，然后重新发送上一条提问',
+                      '回退本轮并撤销数据修改，再重新发送上一条',
                       style: TextStyle(fontSize: 12),
                     ),
                     onTap: () {
@@ -790,7 +790,7 @@ class _AiPageState extends ConsumerState<AiPage> {
         context: context,
         builder: (dialogCtx) => AlertDialog(
           title: const Text('重试本轮对话？'),
-          content: Text('本轮已产生 $changeCount 处数据修改，重试前会先撤销这些修改。'),
+          content: Text('本轮有 $changeCount 处数据修改，重试前会先撤销。'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogCtx, false),
@@ -818,7 +818,7 @@ class _AiPageState extends ConsumerState<AiPage> {
           .rollbackToMessage(userIndex);
       if (!mounted) return;
       if (result == null) {
-        Toast.error(context, '当前状态无法重试');
+        Toast.error(context, '无法重试');
         return;
       }
       await ref
@@ -939,7 +939,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     if (journals.isEmpty) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('暂无已写日记，可在时间线左下角撰写日记')));
+      ).showSnackBar(const SnackBar(content: Text('暂无日记，可在时间线左下角撰写')));
       return;
     }
     final result = await showDialog<List<String>>(
@@ -1367,7 +1367,7 @@ class _AiPageState extends ConsumerState<AiPage> {
               // 本来就停在空白新对话上时，界面点了不会有任何变化，用 Toast 明确回应
               if (context.mounted &&
                   (previous == null || isBlankNewChatSession(previous))) {
-                Toast.info(context, '已是新对话，直接说就行');
+                Toast.info(context, '已是新对话');
               }
             },
           ),
@@ -1792,7 +1792,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                         final isDark = theme.brightness == Brightness.dark;
                         final primary = theme.colorScheme.primary;
                         return Tooltip(
-                          message: '点击中止小Q当前操作',
+                          message: '中止小Q当前操作',
                           child: Material(
                             color: Colors.transparent,
                             child: InkWell(
@@ -1903,7 +1903,7 @@ class _AiPageState extends ConsumerState<AiPage> {
           const SizedBox(width: 6),
           Expanded(
             child: Text(
-              '引用对话：$_quotedChatText',
+              '引用：$_quotedChatText',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -2933,7 +2933,7 @@ class ChatBubble extends ConsumerWidget {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  '小Q确认交互',
+                  '小Q询问',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
@@ -2960,7 +2960,7 @@ class ChatBubble extends ConsumerWidget {
                         const Icon(Icons.check, size: 12, color: Colors.green),
                         const SizedBox(width: 4),
                         Text(
-                          choice != null ? '已选择: $choice' : '已确认',
+                          choice != null ? '已选：$choice' : '已确认',
                           style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
@@ -3203,7 +3203,7 @@ class ChatBubble extends ConsumerWidget {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  '已查看可用技能列表 (共 ${skillsList.length} 个)',
+                  '已查看技能列表 · ${skillsList.length} 个',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -3217,7 +3217,7 @@ class ChatBubble extends ConsumerWidget {
                 GestureDetector(
                   onTap: () => _showSkillHandbookDialog(
                     context,
-                    '可用技能列表',
+                    '技能列表',
                     message.content,
                   ),
                   child: Text(
@@ -3261,7 +3261,7 @@ class ChatBubble extends ConsumerWidget {
             const SizedBox(width: 6),
             Expanded(
               child: Text(
-                '已调用技能手册 · $skillTitle$sectionHint',
+                '已加载技能 · $skillTitle$sectionHint',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -3322,7 +3322,7 @@ class ChatBubble extends ConsumerWidget {
                 child: Text(
                   message.content.trim().isNotEmpty
                       ? message.content.trim()
-                      : (path.isNotEmpty ? '读取文件失败: $path' : '读取文件失败'),
+                      : (path.isNotEmpty ? '读取文件失败：$path' : '读取文件失败'),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -3932,8 +3932,8 @@ class _DirectoryFeedbackWidgetState extends State<_DirectoryFeedbackWidget> {
                   Expanded(
                     child: Text(
                       totalCount == 0
-                          ? '已查看目录 $pathHint (空目录)'
-                          : '已查看目录 $pathHint (共 $totalCount 项)',
+                          ? '已查看目录 $pathHint（空）'
+                          : '已查看目录 $pathHint（$totalCount 项）',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -4100,8 +4100,8 @@ class _GrepFeedbackWidgetState extends State<_GrepFeedbackWidget> {
                   Expanded(
                     child: Text(
                       total == 0
-                          ? '搜索笔记 $queryHint (未找到匹配)'
-                          : '搜索笔记 $queryHint (共 $total 条匹配)',
+                          ? '搜索笔记 $queryHint（未找到）'
+                          : '搜索笔记 $queryHint（$total 条）',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -4218,7 +4218,7 @@ class _ToolChainGroupWidgetState extends State<ToolChainGroupWidget> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '已连续完成 $totalCount 步操作 · $summaryText',
+                      '已连续完成 $totalCount 步 · $summaryText',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -4619,7 +4619,7 @@ class _MultiNoteSelectorDialogState extends State<_MultiNoteSelectorDialog> {
         ),
         FilledButton(
           onPressed: () => Navigator.pop(context, _selected),
-          child: Text('确定 (${_selected.length})'),
+          child: Text('确定（${_selected.length}）'),
         ),
       ],
     );
@@ -4855,7 +4855,7 @@ class _MultiJournalSelectorDialogState
         ),
         FilledButton(
           onPressed: () => Navigator.pop(context, _selected),
-          child: Text('确定 (${_selected.length})'),
+          child: Text('确定（${_selected.length}）'),
         ),
       ],
     );

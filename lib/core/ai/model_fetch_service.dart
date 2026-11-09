@@ -17,7 +17,7 @@ class ModelFetchService {
   }) async {
     // 1. 检查 API Key 鉴权要求
     if (authType != 'none' && (apiKey == null || apiKey.trim().isEmpty)) {
-      throw ArgumentError('请先填写 API Key');
+      throw ArgumentError('先填写 API Key');
     }
 
     // 2. 规范化 baseUrl 和 endpoint 路径
@@ -120,7 +120,7 @@ class ModelFetchService {
 
         return fetchedModels;
       } else {
-        throw Exception('HTTP 错误: ${response.statusCode}');
+        throw Exception('HTTP ${response.statusCode}');
       }
     } catch (e, stackTrace) {
       String details = stackTrace.toString();
@@ -190,7 +190,7 @@ class ModelFetchService {
         return parsedModels.map((m) => m['slug'] as String).toList();
       }
     }
-    throw Exception('OpenRouter 响应数据结构无效');
+    throw Exception('OpenRouter 返回格式无效');
   }
 
   /// 解析 OpenAI 兼容格式的响应
@@ -205,7 +205,7 @@ class ModelFetchService {
       fetchedModels.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
       return fetchedModels;
     }
-    throw Exception('返回数据格式无效 (非 OpenAI 兼容格式)');
+    throw Exception('返回格式无效（非 OpenAI 兼容）');
   }
 
   /// 解析 Gemini 格式的响应
@@ -224,7 +224,7 @@ class ModelFetchService {
       fetchedModels.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
       return fetchedModels;
     }
-    throw Exception('返回数据格式无效 (非 Gemini 格式)');
+    throw Exception('返回格式无效（非 Gemini）');
   }
 
   /// 解析 GLM (智谱) 格式的响应

@@ -125,7 +125,7 @@ class _ChatImageViewState extends State<ChatImageView> {
 
   void _copyPath(String path) {
     Clipboard.setData(ClipboardData(text: path));
-    Toast.info(context, '已复制图片路径');
+    Toast.info(context, '已复制路径');
   }
 
   void _showLongPressMenu() {

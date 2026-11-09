@@ -130,7 +130,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
   Future<bool> confirmUnsavedChanges() {
     return promptUnsavedChanges(
       context,
-      content: '您有未保存的同步设置更改，是否保存？',
+      content: '同步设置未保存，离开将丢失。',
       onSave: () async {
         try {
           await saveConfig();
@@ -227,7 +227,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
     final pwd = _passwordController.text;
 
     if (url.isEmpty || user.isEmpty || pwd.isEmpty) {
-      _showNotification('请完整填写服务器地址、账号和密码', isError: true);
+      _showNotification('请填写服务器地址、账号和密码', isError: true);
       return;
     }
 
@@ -248,15 +248,15 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
       final success = await WebdavService.instance.testConnection();
       if (mounted) {
         if (success) {
-          _showNotification('连接成功！配置已自动保存', isSuccess: true);
+          _showNotification('连接成功，已保存配置', isSuccess: true);
           await saveConfig(silent: true);
         } else {
-          _showNotification('连接失败，请检查服务器地址与账号密码', isError: true);
+          _showNotification('连接失败，请检查地址与账号密码', isError: true);
         }
       }
     } catch (e) {
       if (mounted) {
-        _showNotification('连接测试出错: $e', isError: true);
+        _showNotification('连接测试失败：$e', isError: true);
       }
     } finally {
       if (mounted) setState(() => _testing = false);
@@ -267,7 +267,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
     final config = await ref.read(webdavConfigProvider.future).catchError((_) => null);
     if (!mounted) return;
     if (config == null || config.serverUrl.isEmpty) {
-      _showNotification('请先配置并保存 WebDAV 服务器信息', isError: true);
+      _showNotification('请先配置并保存 WebDAV 服务器', isError: true);
       return;
     }
 
@@ -280,9 +280,9 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
       final sizeInfo = scheduler.lastSyncSizeBytes != null
           ? ' (${(scheduler.lastSyncSizeBytes! / 1024).toStringAsFixed(1)}KB)'
           : '';
-      _showNotification('同步成功！$sizeInfo', isSuccess: true);
+      _showNotification('同步成功$sizeInfo', isSuccess: true);
     } else if (scheduler.status == SyncStatus.error) {
-      _showNotification('同步失败: ${scheduler.lastError ?? "请查看运行日志"}', isError: true);
+      _showNotification('同步失败：${scheduler.lastError ?? "请查看日志"}', isError: true);
     }
   }
 
@@ -290,8 +290,8 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
     final progress = SyncScheduler.instance.currentProgressStatus;
     if (progress != null) return progress;
     return switch (status) {
-      SyncStatus.idle => '空闲就绪',
-      SyncStatus.syncing => '正在同步...',
+      SyncStatus.idle => '就绪',
+      SyncStatus.syncing => '同步中…',
       SyncStatus.success => '同步成功',
       SyncStatus.error => '同步失败',
     };
@@ -464,7 +464,8 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                     color: theme.hintColor,
                   ),
                   Text(
-                    '备份存储目录: ${_remotePathController.text.trim().isEmpty ? 'QNote' : _remotePathController.text.trim()}',
+                    '备份目录：'
+                    '${_remotePathController.text.trim().isEmpty ? 'QNote' : _remotePathController.text.trim()}',
                     style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
                   ),
                   const Spacer(),
@@ -484,7 +485,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
             const SizedBox(height: 8),
             _buildInputField(
               label: '远程根目录名称',
-              hint: '默认为 QNote',
+              hint: '默认 QNote',
               controller: _remotePathController,
             ),
           ],
@@ -641,7 +642,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                     Text(
                       lastSyncTime != null
                           ? '上次同步：${_formatCompactLastSyncTime(lastSyncTime)}'
-                          : '尚未同步过数据',
+                          : '尚未同步',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.hintColor,
                         fontSize: 11,
@@ -697,7 +698,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                     )
                   : const Icon(Icons.sync_rounded, size: 20),
               label: Text(
-                isSyncing ? '同步处理中...' : '立即同步',
+                isSyncing ? '同步中…' : '立即同步',
                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
               ),
             ),

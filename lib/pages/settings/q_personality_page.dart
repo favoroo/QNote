@@ -85,7 +85,7 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
       final snapshot = await _refreshFromStore();
       if (!mounted) return;
       if (snapshot.degradedToFallback) {
-        Toast.warning(context, '已选择自定义，但人格描述为空：当前仍按「经典管家」说话');
+        Toast.warning(context, '人格描述为空，仍按「经典管家」说话');
       }
     } catch (e) {
       if (!mounted) return;
@@ -106,10 +106,10 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
       if (text.isEmpty) {
         Toast.warning(
           context,
-          '自定义人格已清空，实际说话风格回退为「${snapshot.effective.name}」',
+          '自定义人格已清空，回退为「${snapshot.effective.name}」',
         );
       } else if (alsoActivate) {
-        Toast.success(context, '已保存并启用，下轮对话开始这样说话');
+        Toast.success(context, '已保存并启用，下轮生效');
       } else {
         Toast.success(context, '自定义人格已保存');
       }
@@ -216,8 +216,7 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '自定义人格描述还是空的，所以小Q实际仍按「${effective.name}」说话。'
-                      '在下方填写描述后点「保存并启用」即可切换。',
+                      '描述为空，仍按「${effective.name}」说话；填写后点「保存并启用」。',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onTertiaryContainer,
                       ),
@@ -239,8 +238,7 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
           ),
           const SizedBox(height: 10),
           Text(
-            '这段话每轮对话都会注入小Q的系统提示词：开头作为「人格与身份」小节，'
-            '结尾的环境上下文里再复述一次语气要点。修改后下一条消息生效。',
+            '每轮对话注入系统提示词，开头与结尾各出现一次，改完下条消息生效。',
             style: theme.textTheme.labelSmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
               height: 1.4,
@@ -425,9 +423,7 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
             // 实时回显尾部语气摘要预览，让用户看到这句话将如何被钉在提示词结尾
             onChanged: (_) => setState(() {}),
             decoration: const InputDecoration(
-              hintText:
-                  '例如：你是一位说话带点幽默感的极简主义助手，'
-                  '喜欢用短句，偶尔打个比方，讨厌啰嗦……',
+              hintText: '例如：说话带点幽默感的极简主义助手，爱用短句，偶尔打比方',
               border: OutlineInputBorder(),
             ),
           ),

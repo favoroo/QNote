@@ -61,7 +61,7 @@ class AgentMemoryNotifier extends AsyncNotifier<List<AgentMemoryDocument>> {
     final newLine = newText.trim().isEmpty ? '' : '- ${newText.trim()}';
     final content = doc.content;
     if (!content.contains(oldLine)) {
-      throw Exception('未找到要修改的记忆条目');
+      throw Exception('未找到该记忆条目');
     }
     final updated = doc.copyWith(
       content: content.replaceFirst(oldLine, newLine).trim(),
@@ -89,7 +89,7 @@ class AgentMemoryNotifier extends AsyncNotifier<List<AgentMemoryDocument>> {
   Future<void> _save(AgentMemoryDocument doc) async {
     final maxChars = AgentMemoryCategory.maxChars(doc.category);
     if (doc.content.length > maxChars) {
-      throw Exception('记忆容量已超限（${doc.content.length}/$maxChars 字符），请先删减或整合条目');
+      throw Exception('记忆超限（${doc.content.length}/$maxChars 字符），请先删减');
     }
     await ConfigRepository.instance.saveAgentMemory(doc);
     ref.invalidateSelf();

@@ -120,7 +120,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
               Icon(Icons.phone_android_rounded, size: 64, color: colorScheme.outline),
               const SizedBox(height: 16),
               Text(
-                '屏幕使用时间统计仅支持 Android 设备',
+                '屏幕时长仅支持 Android 设备',
                 style: theme.textTheme.titleMedium?.copyWith(color: colorScheme.onSurfaceVariant),
               ),
             ],
@@ -163,7 +163,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
           // 周口径与趋势属于回看背景，放在其后
           dayAsync.when(
             loading: () => _buildSkeletonCard(theme, height: 150),
-            error: (err, _) => _buildErrorCard(theme, '读取当日数据失败: $err'),
+            error: (err, _) => _buildErrorCard(theme, '当日数据读取失败：$err'),
             data: (day) => day.collected
                 ? _buildDayCard(theme, day)
                 : _buildNotCollectedCard(theme, day.date, earliestAsync.valueOrNull),
@@ -173,7 +173,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
           // 本周概览与逐日趋势合并成一张卡：两者说的是同一件事，拆开后页面长一倍
           weekAsync.when(
             loading: () => _buildSkeletonCard(theme, height: 244),
-            error: (err, _) => _buildErrorCard(theme, '读取本周统计失败: $err'),
+            error: (err, _) => _buildErrorCard(theme, '本周统计读取失败：$err'),
             data: (agg) => _buildWeekCard(theme, agg, trendAsync, selectedDate),
           ),
           const SizedBox(height: 12),
@@ -210,13 +210,13 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
           ),
           const SizedBox(height: 20),
           Text(
-            '获取健康使用手机数据',
+            '获取屏幕使用数据',
             style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 10),
           Text(
-            '需开启「有权查看使用情况的应用」权限，授权后即可回看每日屏幕时长、本周聚合与应用排行。'
-            '系统只保留最近约 7 天数据，App 会每天自动记录，历史记录从今天起累积。',
+            '需开启「有权查看使用情况的应用」权限，授权后可查看每日时长、本周汇总与应用排行。'
+            '系统只保留约 7 天，App 每天自动记录，历史从今天起累积。',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: colorScheme.onSurfaceVariant,
               height: 1.5,
@@ -226,7 +226,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
           const SizedBox(height: 28),
           FilledButton.icon(
             icon: const Icon(Icons.security_update_good_rounded),
-            label: const Text('去系统设置开启权限'),
+            label: const Text('去系统设置授权'),
             onPressed: () {
               ref.read(screenUsageServiceProvider).requestPermission();
             },
@@ -372,7 +372,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: Text(
-              '当天没有使用记录',
+              '当天无记录',
               style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.outline),
             ),
           )
@@ -409,11 +409,11 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
       theme: theme,
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       children: [
-        _buildSectionLabel(theme, '这一天还没有数据', icon: Icons.cloud_off_rounded),
+        _buildSectionLabel(theme, '这一天暂无数据', icon: Icons.cloud_off_rounded),
         const SizedBox(height: 8),
         Text(
-          '屏幕时长要逐日记录后才能回看，最早记录为 $earliestText；'
-          '系统本身只保留最近约 7 天，更早的补不回来。',
+          '历史屏幕时长需逐日记录，最早收录 $earliestText；'
+          '系统只保留约 7 天，更早的无法补回。',
           style: theme.textTheme.bodySmall?.copyWith(
             height: 1.5,
             color: theme.colorScheme.onSurfaceVariant,
@@ -456,7 +456,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: Text(
-              '本周暂无屏幕使用记录',
+              '本周暂无记录',
               style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.outline),
             ),
           )
@@ -497,7 +497,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
                 ? Padding(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     child: Text(
-                      '还没有足够的历史记录，应用会每天自动保存当日屏幕时长。',
+                      '暂无足够历史记录，App 每天自动保存当日时长。',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.outline,
                       ),
@@ -812,7 +812,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
         ),
         const SizedBox(height: 2),
         Text(
-          '每日仅记录使用时长前 20 的应用，按本周累计排序',
+          '每日只记时长前 20 应用，按本周累计排序',
           style: theme.textTheme.bodySmall?.copyWith(
             fontSize: 10,
             color: theme.colorScheme.outline,

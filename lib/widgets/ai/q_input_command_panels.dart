@@ -58,7 +58,7 @@ class SlashCommandPanel extends StatelessWidget {
                 ),
                 const Spacer(),
                 Text(
-                  '输入 / 调用技能，选中后手册自动注入',
+                  '输入 / 调用技能，自动注入手册',
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                   ),
@@ -76,7 +76,7 @@ class SlashCommandPanel extends StatelessWidget {
                     child: Text(
                       query.isEmpty
                           ? '暂无可用技能'
-                          : '没有匹配「$query」的技能，发送后将按普通消息处理',
+                          : '没有匹配「$query」的技能，按普通消息发送',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: colorScheme.onSurfaceVariant,
                       ),
@@ -121,7 +121,7 @@ class SlashCommandPanel extends StatelessWidget {
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Text(
-                                    '用过 $usageCount 次',
+                                    '$usageCount 次',
                                     style: theme.textTheme.labelSmall?.copyWith(
                                       color: colorScheme.onSecondaryContainer,
                                     ),
@@ -194,7 +194,7 @@ class AtReferencePanel extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 2),
             child: Text(
-              '引用内容给小Q',
+              '引用给小Q',
               style: theme.textTheme.labelSmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w600,

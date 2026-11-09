@@ -50,11 +50,11 @@ class _ScreenUsagePageState extends ConsumerState<ScreenUsagePage> {
     try {
       await _viewKey.currentState?.refresh();
       if (mounted) {
-        Toast.success(context, '屏幕使用时间已更新');
+        Toast.success(context, '已更新');
       }
     } catch (e) {
       if (mounted) {
-        Toast.error(context, '更新失败: $e');
+        Toast.error(context, '更新失败：$e');
       }
     } finally {
       if (mounted) {
@@ -81,7 +81,7 @@ class _ScreenUsagePageState extends ConsumerState<ScreenUsagePage> {
           else
             IconButton(
               icon: const Icon(Icons.refresh_rounded),
-              tooltip: '更新屏幕使用时间',
+              tooltip: '更新数据',
               onPressed: _handleRefresh,
             ),
         ],

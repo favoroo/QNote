@@ -131,7 +131,7 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
     if (_saving) return;
     final name = _nameCtl.text.trim();
     if (name.isEmpty) {
-      Toast.warning(context, '请填写路由组名称');
+      Toast.warning(context, '请填写名称');
       return;
     }
     if (_members.isEmpty) {
@@ -185,7 +185,7 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
       builder: (ctx) => AlertDialog(
         title: const Text('删除路由组'),
         content: Text(
-          '将删除「${group.name}」。绑定它的角色会回落到默认厂商的首个模型。',
+          '删除「${group.name}」？绑定角色会回落到默认厂商的首个模型。',
         ),
         actions: [
           TextButton(
@@ -302,7 +302,7 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
             _sectionTitle(
               theme,
               '成员（${_members.where((m) => m.enabled).length} 个启用）',
-              '长按拖动可调整顺序${_strategy == RouteStrategy.failover ? '（即优先级）' : ''}',
+              '长按拖动调整顺序${_strategy == RouteStrategy.failover ? '（即优先级）' : ''}',
               action: TextButton.icon(
                 onPressed: providers.isEmpty ? null : () => _addMembers(providers),
                 icon: const Icon(Icons.add_rounded, size: 18),
@@ -317,15 +317,15 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
               const SizedBox(height: 8),
               _hint(
                 theme,
-                '当前策略只有一个启用成员，轮换/权重/智能都不会有实际效果。',
+                '只有一个启用成员，当前策略不会生效。',
               ),
             ],
             const SizedBox(height: 8),
             SwitchListTile(
               value: _preferVision,
               contentPadding: EdgeInsets.zero,
-              title: const Text('含图片时优先选支持识图的成员'),
-              subtitle: const Text('避免把图片发给看不见画面的模型'),
+              title: const Text('优先选支持识图的成员'),
+              subtitle: const Text('避免图片发给不支持识图的模型'),
               onChanged: (value) => setState(() {
                 _preferVision = value;
                 _dirty = true;
@@ -333,8 +333,8 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
             ),
             _hint(
               theme,
-              '组内模型需都能胜任该角色：指定给小Q 对话时建议都支持工具调用，'
-              '指定给生图时需都支持 images/generations。',
+              '组内模型需都能胜任该角色：小Q 对话需支持工具调用，'
+              '生图需支持 images/generations。',
             ),
           ],
         ),
@@ -352,7 +352,7 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('放弃修改'),
-        content: const Text('当前修改尚未保存，确定要离开吗？'),
+        content: const Text('修改尚未保存，确定离开？'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -407,7 +407,7 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
         ),
       ),
       child: Text(
-        '还没有成员，点右上「添加模型」从已启用模型里挑选',
+        '还没有成员，点「添加模型」挑选',
         style: theme.textTheme.bodySmall?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,
         ),

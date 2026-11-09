@@ -25,7 +25,7 @@ Future<String?> showTimelineModelSelector(
   if (!context.mounted) return null;
 
   if (enabledModelEntries(providers).isEmpty && groups.isEmpty) {
-    await showNoModelConfiguredDialog(context, scene: '切换时间线提取模型');
+    await showNoModelConfiguredDialog(context, scene: '时间线提取');
     return null;
   }
 

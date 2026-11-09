@@ -95,8 +95,7 @@ class TokenUsageCard extends ConsumerWidget {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: Text(
-              '暂无消耗记录。服务端返回用量后会自动累计，'
-              '不支持上报用量的服务商不会计入。',
+              '暂无消耗记录。仅统计服务端返回的用量。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),

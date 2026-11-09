@@ -31,7 +31,7 @@ class _QMemoryPageState extends ConsumerState<QMemoryPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('加载失败: $e', style: theme.textTheme.bodyMedium),
+            Text('加载失败：$e', style: theme.textTheme.bodyMedium),
             const SizedBox(height: 12),
             FilledButton.tonal(
               onPressed: () => ref.invalidate(agentMemoryListProvider),
@@ -84,8 +84,7 @@ class _QMemoryPageState extends ConsumerState<QMemoryPage> {
             Text('还没有任何记忆', style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
             Text(
-              '和小Q聊天时，它会自动把你的偏好、习惯与重要约定沉淀到这里；'
-              '你也可以手动添加，每次对话都会自动载入小Q的上下文。',
+              '聊天时小Q会自动沉淀你的偏好与约定，每轮对话自动载入。',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
@@ -95,7 +94,7 @@ class _QMemoryPageState extends ConsumerState<QMemoryPage> {
             FilledButton.tonalIcon(
               onPressed: () => _showEntryDialog(category: AgentMemoryCategory.user),
               icon: const Icon(Icons.add),
-              label: const Text('手动添加一条'),
+              label: const Text('手动添加'),
             ),
           ],
         ),
@@ -167,7 +166,7 @@ class _QMemoryPageState extends ConsumerState<QMemoryPage> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(
-                '暂无记忆条目，小Q会在对话中自动沉淀，也可以点击下方按钮手动添加。',
+                '暂无记忆条目，聊天时自动沉淀，也可手动添加。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -296,7 +295,7 @@ class _QMemoryPageState extends ConsumerState<QMemoryPage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('删除记忆'),
-        content: const Text('确定删除这条记忆吗？删除后小Q将不再记得该内容。'),
+        content: const Text('删除这条记忆？小Q将不再记得。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),

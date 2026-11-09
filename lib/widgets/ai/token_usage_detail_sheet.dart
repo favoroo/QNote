@@ -135,7 +135,7 @@ class _SheetHeader extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '本机统计 · 仅含服务端上报用量',
+                  '仅统计服务端上报用量',
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                   ),
@@ -208,7 +208,7 @@ class TokenUsageDetailView extends StatelessWidget {
           ),
         const SizedBox(height: 16),
         Text(
-          '统计为本机数据，不参与云同步；仅当服务商返回 usage 时计入。',
+          '本机数据不参与云同步；仅统计服务端返回的 usage。',
           style: theme.textTheme.labelSmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -544,7 +544,7 @@ class _EmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '服务商返回 usage 后会自动累计；不支持上报用量的服务商不会计入。',
+            '仅统计服务端返回的 usage，不支持上报的厂商不计入。',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodySmall?.copyWith(
               color: colorScheme.onSurfaceVariant,

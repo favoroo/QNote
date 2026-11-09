@@ -55,7 +55,7 @@ class DailyScoreNotifier extends AsyncNotifier<DailyScore?> {
   Future<DailyScore> performScore(DateTime date) async {
     final records = await _diaryRepository.getByDateWithSleepByEndTime(date);
     if (records.length < 3) {
-      throw Exception('当日信息过少，暂无法评分');
+      throw Exception('记录不足 3 条，无法评分');
     }
 
     final repo = ConfigRepository.instance;

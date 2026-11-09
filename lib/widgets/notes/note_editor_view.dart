@@ -655,7 +655,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
       if (!mounted) return;
       Toast.show(
         context,
-        '自动保存失败，内容暂未存储',
+        '自动保存失败，内容未存储',
         type: ToastType.error,
         duration: const Duration(seconds: 5),
         actionLabel: '重试',
@@ -746,7 +746,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     final fresh = await NoteRepository().getById(widget.note.id);
     if (!mounted) return;
     if (fresh == null) {
-      Toast.info(context, '这篇笔记已被小Q删除');
+      Toast.info(context, '笔记已被小Q删除');
       return;
     }
     // 抑制监听器：程序化刷新不触发自动保存
@@ -1170,7 +1170,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
               TextField(
                 controller: urlController,
                 decoration: const InputDecoration(
-                  labelText: '链接地址 (URL)',
+                  labelText: '链接地址',
                   hintText: 'https://example.com',
                 ),
                 keyboardType: TextInputType.url,
@@ -1180,8 +1180,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
               TextField(
                 controller: titleController,
                 decoration: const InputDecoration(
-                  labelText: '链接标题 (可选)',
-                  hintText: '输入显示标题',
+                  labelText: '链接标题（可选）',
+                  hintText: '显示标题',
                 ),
               ),
             ],
@@ -1233,7 +1233,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
               TextField(
                 controller: urlController,
                 decoration: const InputDecoration(
-                  labelText: '链接地址 (URL)',
+                  labelText: '链接地址',
                   hintText: 'https://example.com',
                 ),
                 keyboardType: TextInputType.url,
@@ -1243,8 +1243,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
               TextField(
                 controller: titleController,
                 decoration: const InputDecoration(
-                  labelText: '链接标题 (可选)',
-                  hintText: '输入显示标题',
+                  labelText: '链接标题（可选）',
+                  hintText: '显示标题',
                 ),
               ),
             ],
@@ -1614,7 +1614,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     if (source.trim().isEmpty) {
       return Center(
         child: Text(
-          '暂无内容，点击右上角切换到源码编辑',
+          '暂无内容，点右上角查看源码',
           style: theme.textTheme.bodyMedium?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -1959,12 +1959,12 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
             IconButton(
               icon: const Icon(Icons.edit, size: 16),
               onPressed: onEdit,
-              tooltip: '编辑链接',
+              tooltip: '编辑',
             ),
             IconButton(
               icon: const Icon(Icons.close, size: 16),
               onPressed: onDelete,
-              tooltip: '删除链接',
+              tooltip: '删除',
             ),
           ],
         ),
@@ -2054,7 +2054,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              '正在获取链接预览: $url',
+              '获取预览中：$url',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodySmall?.copyWith(
@@ -2065,7 +2065,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
           IconButton(
             icon: const Icon(Icons.close, size: 16),
             onPressed: onDelete,
-            tooltip: '删除链接',
+            tooltip: '删除',
           ),
         ],
       ),
@@ -2165,12 +2165,12 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
             IconButton(
               icon: const Icon(Icons.edit, size: 16),
               onPressed: onEdit,
-              tooltip: '编辑链接',
+              tooltip: '编辑',
             ),
             IconButton(
               icon: const Icon(Icons.close, size: 16),
               onPressed: onDismiss,
-              tooltip: '删除链接',
+              tooltip: '删除',
             ),
           ],
         ),
@@ -2293,10 +2293,10 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildPopupMenuItem('H1 一级标题', '# ', context),
-                      _buildPopupMenuItem('H2 二级标题', '## ', context),
-                      _buildPopupMenuItem('H3 三级标题', '### ', context),
-                      _buildPopupMenuItem('H4 四级标题', '#### ', context),
+                      _buildPopupMenuItem('一级标题', '# ', context),
+                      _buildPopupMenuItem('二级标题', '## ', context),
+                      _buildPopupMenuItem('三级标题', '### ', context),
+                      _buildPopupMenuItem('四级标题', '#### ', context),
                     ],
                   ),
                 ),

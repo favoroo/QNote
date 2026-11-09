@@ -14,6 +14,16 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.84',
+    date: '2026-11-09',
+    notes: [
+      '全站界面文案精简：各页面的标题、说明、空状态、按钮与提示语统一去掉冗余词与重复主语，读起来更短更直接',
+      'AI 报错提示更简洁：网络、鉴权、限流等常见错误保留结论与可执行的下一步，不再铺开大段说明',
+      '统一冒号与标点写法：弹窗正文、Toast、导入导出与同步状态提示统一为「结论 + 原因」的句式',
+      '相关测试同步更新，覆盖新的文案表述',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.83',
     date: '2026-11-09',
     notes: [

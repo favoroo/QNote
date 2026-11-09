@@ -239,7 +239,7 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
                     Icon(Icons.check, size: 20),
                     SizedBox(width: 8),
                     Text(
-                      '完成设定',
+                      '完成',
                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                     ),
                   ],

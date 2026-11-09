@@ -252,7 +252,7 @@ class AiRouteService {
     _groupNames[group.id] = group.name;
     final allMembers = _feasibleMembers(group, providers);
     if (allMembers.isEmpty) {
-      throw NoModelConfiguredException('路由组「${group.name}」没有可用成员');
+      throw NoModelConfiguredException('路由组「${group.name}」');
     }
 
     var candidates = allMembers;

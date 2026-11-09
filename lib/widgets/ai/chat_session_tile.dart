@@ -100,7 +100,7 @@ class _ChatSessionTileState extends ConsumerState<ChatSessionTile> {
   /// 所以这里不静默失败，而是明确告诉用户稍后再改。
   void _guardBusy(bool isRunning, VoidCallback action) {
     if (isRunning) {
-      Toast.info(context, '小Q正在生成，稍后再改');
+      Toast.info(context, '小Q生成中，稍后再改');
       return;
     }
     action();
@@ -224,7 +224,7 @@ class _ChatSessionTileState extends ConsumerState<ChatSessionTile> {
                   size: 18,
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
-                tooltip: '置顶 / 重命名 / 批量选择 / 删除',
+                tooltip: '更多操作',
                 onPressed: () => _showRowMenu(isRunning: isRunning),
               ),
         selected: widget.isActive && !widget.isBatchMode,

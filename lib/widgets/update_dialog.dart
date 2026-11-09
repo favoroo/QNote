@@ -92,10 +92,10 @@ class _UpdateDialogState extends State<_UpdateDialog> {
     final remainingBytes = _totalBytes - _receivedBytes;
     final seconds = (remainingBytes / _speedBytesPerSec).round();
     if (seconds < 1) return '即将完成';
-    if (seconds < 60) return '剩余约 $seconds 秒';
+    if (seconds < 60) return '剩余 $seconds 秒';
     final minutes = seconds ~/ 60;
     final remSec = seconds % 60;
-    return '剩余约 $minutes 分 $remSec 秒';
+    return '剩余 $minutes 分 $remSec 秒';
   }
 
   /// 使用系统浏览器直接下载或打开链接
@@ -103,7 +103,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
     Navigator.of(context).pop(true);
     final launched = await AppInstaller.openInBrowser(widget.updateInfo.downloadUrl);
     if (!launched) {
-      _notifyError('无法打开下载链接');
+      _notifyError('打开下载链接失败');
     }
   }
 
@@ -181,7 +181,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       if (!mounted) return;
       setState(() {
         _state = _DownloadState.failed;
-        _errorMessage = e.message ?? '下载连接异常';
+        _errorMessage = e.message ?? '连接异常';
       });
     } catch (e) {
       if (!mounted) return;
@@ -206,7 +206,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
 
     final success = await AppInstaller.installApk(path);
     if (!success) {
-      _notifyError('调起安装程序失败，请检查安装未知应用权限');
+      _notifyError('调起安装失败，请检查未知应用权限');
     }
   }
 
@@ -321,7 +321,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                     Text(
                       _totalBytes > 0
                           ? '${(_progress * 100).toStringAsFixed(1)}%'
-                          : '下载中...',
+                          : '下载中',
                       style: theme.textTheme.labelMedium?.copyWith(
                         color: colorScheme.primary,
                         fontWeight: FontWeight.bold,
@@ -382,7 +382,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                 const SizedBox(height: 18),
                 Center(
                   child: Text(
-                    '安装包已下载完成，若未自动弹出安装器可点击下方按钮重新安装。',
+                    '未自动弹出安装器时，点下方按钮重新安装。',
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: colorScheme.onSurfaceVariant,
@@ -403,7 +403,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    _errorMessage ?? '下载失败，请稍后重试',
+                    _errorMessage ?? '请稍后重试',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: colorScheme.error,
                     ),

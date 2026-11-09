@@ -257,7 +257,7 @@ void main() {
 
       expect(find.text('全选'), findsOneWidget);
       expect(find.text('清空全部'), findsOneWidget);
-      expect(find.text('删除已选 (0)'), findsNothing, reason: '没勾就不给删除条');
+      expect(find.text('删除 (0)'), findsNothing, reason: '没勾就不给删除条');
     });
 
     testWidgets('搜索态下「全选」只作用于命中集', (tester) async {
@@ -269,17 +269,17 @@ void main() {
 
       await tester.tap(find.text('全选'));
       await _settle(tester);
-      expect(find.text('删除已选 (1)'), findsOneWidget, reason: '命中只有 1 条');
+      expect(find.text('删除 (1)'), findsOneWidget, reason: '命中只有 1 条');
     });
 
-    testWidgets('勾选后底部出现「删除已选」条', (tester) async {
+    testWidgets('勾选后底部出现「删除」条', (tester) async {
       await _pumpDrawer(tester);
       await tester.tap(find.byIcon(Icons.grid_view).first);
       await _settle(tester);
 
       await tester.tap(find.byType(Checkbox).first);
       await _settle(tester);
-      expect(find.text('删除已选 (1)'), findsOneWidget);
+      expect(find.text('删除 (1)'), findsOneWidget);
     });
   });
 

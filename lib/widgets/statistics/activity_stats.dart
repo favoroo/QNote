@@ -67,7 +67,7 @@ class ActivityStatsWidget extends StatelessWidget {
         const SizedBox(height: 16),
         _ActivityCard(
           isDark: isDark,
-          title: '活跃度趋势',
+          title: '活跃趋势',
           trailing: const SizedBox.shrink(),
           child: SizedBox(
             height: 192,
@@ -80,7 +80,7 @@ class ActivityStatsWidget extends StatelessWidget {
         if (pieData.isNotEmpty)
           _ActivityCard(
             isDark: isDark,
-            title: '活动类型分布',
+            title: '类型分布',
             trailing: const SizedBox.shrink(),
             child: Column(
               children: [
@@ -134,7 +134,7 @@ class ActivityStatsWidget extends StatelessWidget {
           const SizedBox(height: 16),
           _ActivityCard(
             isDark: isDark,
-            title: '各类别时长',
+            title: '分类时长',
             trailing: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(

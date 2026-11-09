@@ -121,7 +121,7 @@ void main() {
         isA<FormatException>().having(
           (error) => error.message,
           'message',
-          '换取登录凭证失败（HTTP 200）',
+          '登录失败：HTTP 200',
         ),
       ),
     );

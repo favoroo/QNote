@@ -102,9 +102,9 @@ class LogViewerPageState extends State<LogViewerPage> {
                             _isSelectMode = false;
                             _selectedLogs.clear();
                           });
-                          Toast.success(context, '已复制选中的日志');
+                          Toast.success(context, '已复制');
                         },
-                  tooltip: '复制选中',
+                  tooltip: '复制',
                 ),
               ]
             : [
@@ -120,7 +120,7 @@ class LogViewerPageState extends State<LogViewerPage> {
                     });
                   },
                   itemBuilder: (context) => [
-                    const PopupMenuItem(value: 'all', child: Text('显示全部')),
+                    const PopupMenuItem(value: 'all', child: Text('全部')),
                     const PopupMenuDivider(),
                     ...LogLevel.values.map(
                       (level) => PopupMenuItem(
@@ -152,7 +152,7 @@ class LogViewerPageState extends State<LogViewerPage> {
                       filterLevel: _selectedLevel,
                     );
                     Clipboard.setData(ClipboardData(text: text));
-                    Toast.success(context, '日志已复制到剪贴板');
+                    Toast.success(context, '已复制');
                   },
                 ),
                 IconButton(
@@ -182,7 +182,7 @@ class LogViewerPageState extends State<LogViewerPage> {
                     onPressed: () => setState(() {
                       _selectedLevel = null;
                     }),
-                    child: const Text('清除筛选'),
+                    child: const Text('清除'),
                   ),
                 ],
               ),
@@ -253,7 +253,7 @@ class LogViewerPageState extends State<LogViewerPage> {
           ? null
           : () {
               Clipboard.setData(ClipboardData(text: entry.message));
-              Toast.success(context, '已复制该条日志内容');
+              Toast.success(context, '已复制');
             },
       child: Container(
         color: isSelected ? Colors.blue.withValues(alpha: 0.2) : Colors.transparent,

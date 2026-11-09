@@ -53,7 +53,7 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('导入数据'),
-        content: const Text('导入将覆盖当前数据，是否继续？'),
+        content: const Text('将覆盖当前本地数据。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -137,7 +137,7 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('清除数据'),
-        content: const Text('确定要清除所有数据吗？'),
+        content: const Text('将删除全部本地数据，不可恢复。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -158,7 +158,7 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('再次确认'),
-        content: const Text('此操作不可恢复，再次确认清除？'),
+        content: const Text('删除后无法恢复。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -244,7 +244,7 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
                 _buildActionButton(
                   theme,
                   icon: Icons.file_upload_outlined,
-                  title: '导入备份数据',
+                  title: '导入备份',
                   color: theme.colorScheme.primary,
                   backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.08),
                   onTap: _isImporting ? null : _handleImport,
@@ -259,7 +259,7 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
           _buildActionButton(
             theme,
             icon: Icons.delete_outline,
-            title: '清空所有本地数据',
+            title: '清空本地数据',
             color: Colors.red,
             backgroundColor: Colors.red.withValues(alpha: 0.1),
             onTap: _handleClearData,
@@ -418,7 +418,7 @@ class _LogViewerPageState extends State<_LogViewerPage> {
                             _isSelectMode = false;
                             _selectedLogs.clear();
                           });
-                          Toast.success(context, '已复制选中的日志');
+                          Toast.success(context, '已复制日志');
                         },
                   tooltip: '复制选中',
                 ),
@@ -463,7 +463,7 @@ class _LogViewerPageState extends State<_LogViewerPage> {
                       filterLevel: _selectedLevel,
                     );
                     Clipboard.setData(ClipboardData(text: text));
-                    Toast.success(context, '日志已复制到剪贴板');
+                    Toast.success(context, '日志已复制');
                   },
                 ),
                 IconButton(
@@ -564,7 +564,7 @@ class _LogViewerPageState extends State<_LogViewerPage> {
           ? null
           : () {
               Clipboard.setData(ClipboardData(text: entry.message));
-              Toast.success(context, '已复制该条日志内容');
+              Toast.success(context, '已复制日志');
             },
       child: Container(
         color: isSelected ? Colors.blue.withValues(alpha: 0.2) : Colors.transparent,
@@ -602,7 +602,7 @@ class _LogViewerPageState extends State<_LogViewerPage> {
       children: [
         Icon(icon, size: 16, color: color ?? Colors.white70),
         const SizedBox(width: 4),
-        Text('$label: $count', style: const TextStyle(fontSize: 12, color: Colors.white70)),
+        Text('$label：$count', style: const TextStyle(fontSize: 12, color: Colors.white70)),
       ],
     );
   }

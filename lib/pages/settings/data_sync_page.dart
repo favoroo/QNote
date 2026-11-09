@@ -262,7 +262,7 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
     // 同步进行中导入会与上传线程互相覆盖：上传可能正把旧快照推上去，
     // 而导入又把本地换成另一份数据。
     if (SyncScheduler.instance.status == SyncStatus.syncing) {
-      Toast.warning(context, '正在同步中，请稍后再导入');
+      Toast.warning(context, '同步中，稍后再导入');
       return;
     }
 
@@ -270,7 +270,7 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('导入数据'),
-        content: const Text('导入将覆盖当前数据，是否继续？'),
+        content: const Text('将覆盖当前本地数据。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -333,16 +333,16 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
     final config = await ref.read(webdavConfigProvider.future).catchError((_) => null);
     if (!mounted) return;
     if (config == null || config.serverUrl.isEmpty) {
-      Toast.error(context, '请先配置并保存 WebDAV 服务器信息');
+      Toast.error(context, '请先配置并保存 WebDAV 服务器');
       return;
     }
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('从云端恢复本地数据', style: TextStyle(color: Colors.red)),
+        title: const Text('从云端恢复', style: TextStyle(color: Colors.red)),
         content: const Text(
-          '警告：此操作将从云端下载最新备份，并完全覆盖当前的本地数据！\n适用于换机或重新安装应用时的恢复。确认要继续吗？',
+          '将用云端备份覆盖本地数据，不可撤销。\n换机或重装后恢复时使用。',
         ),
         actions: [
           TextButton(
@@ -352,7 +352,7 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('确认覆盖恢复'),
+            child: const Text('覆盖恢复'),
           ),
         ],
       ),
@@ -368,9 +368,9 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
     final scheduler = SyncScheduler.instance;
     if (scheduler.status == SyncStatus.success) {
       _invalidateAllData(ref);
-      Toast.success(context, '本地数据已成功从云端恢复！');
+      Toast.success(context, '云端恢复成功');
     } else if (scheduler.status == SyncStatus.error) {
-      Toast.error(context, '恢复失败: ${scheduler.lastError ?? "请确认云端是否存在有效备份"}');
+      Toast.error(context, '恢复失败：${scheduler.lastError ?? "请确认云端有可用备份"}');
     }
   }
 
@@ -392,7 +392,7 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
             ),
             _ActionTile(
               icon: Icons.file_upload_outlined,
-              title: '导入备份数据',
+              title: '导入备份',
               onTap: _isImporting ? null : _handleImport,
               isLoading: _isImporting,
             ),
@@ -404,7 +404,7 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
           children: [
             _ActionTile(
               icon: Icons.settings_backup_restore_rounded,
-              title: '从云端恢复到本地',
+              title: '从云端恢复',
               color: Colors.orange.shade700,
               onTap: _isRestoring ? null : _handleRestoreFromCloud,
               isLoading: _isRestoring,
@@ -466,7 +466,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
     final config = await ref.read(webdavConfigProvider.future).catchError((_) => null);
     if (!mounted) return;
     if (config == null || config.serverUrl.isEmpty) {
-      Toast.error(context, '请先配置并保存 WebDAV 服务器信息');
+      Toast.error(context, '请先配置并保存 WebDAV 服务器');
       return;
     }
 
@@ -474,7 +474,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('强制全量同步'),
-        content: const Text('将把本地完整数据快照强制上传并覆盖云端快照，可能耗时稍长。是否继续？'),
+        content: const Text('将用本地数据覆盖云端快照，耗时较长。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -495,9 +495,9 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
     if (!mounted) return;
     final scheduler = SyncScheduler.instance;
     if (scheduler.status == SyncStatus.success) {
-      Toast.success(context, '全量同步成功！');
+      Toast.success(context, '全量同步完成');
     } else if (scheduler.status == SyncStatus.error) {
-      Toast.error(context, '全量同步失败: ${scheduler.lastError ?? "请查看日志"}');
+      Toast.error(context, '全量同步失败：${scheduler.lastError ?? "请查看日志"}');
     }
   }
 
@@ -505,7 +505,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
     final config = await ref.read(webdavConfigProvider.future).catchError((_) => null);
     if (!mounted) return;
     if (config == null || config.serverUrl.isEmpty) {
-      Toast.error(context, '请先配置并保存 WebDAV 服务器信息');
+      Toast.error(context, '请先配置并保存 WebDAV 服务器');
       return;
     }
 
@@ -513,7 +513,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('清理旧备份文件'),
-        content: const Text('将清理云端历史遗留的按日期命名的旧格式备份文件，保留最新的快照与增量数据。是否继续？'),
+        content: const Text('将清理云端按日期命名的旧格式备份，保留最新快照与增量数据。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -532,7 +532,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
     final deletedCount = await SyncScheduler.instance.cleanupRemoteBackups();
 
     if (!mounted) return;
-    Toast.success(context, '已清理 $deletedCount 个旧备份文件');
+    Toast.success(context, '已清理 $deletedCount 个旧备份');
   }
 
   void _openLogViewer() {
@@ -548,7 +548,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
     // 同步进行中清库会让远端与本地互相覆盖：上传线程可能正在把清空前/清空后的
     // 半截状态推上去，下一次拉取又把旧数据写回来。
     if (SyncScheduler.instance.status == SyncStatus.syncing) {
-      Toast.warning(context, '正在同步中，请稍后再清空数据');
+      Toast.warning(context, '同步中，稍后再清空');
       return;
     }
 
@@ -556,7 +556,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('清除数据'),
-        content: const Text('确定要清除所有数据吗？'),
+        content: const Text('将删除全部本地数据，不可恢复。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -577,7 +577,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('再次确认'),
-        content: const Text('此操作不可恢复，再次确认清除？'),
+        content: const Text('删除后无法恢复。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -643,7 +643,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
   /// 只做「删掉无人引用的东西」，不触碰仍在显示的对话与笔记/日记在用的文件。
   Future<void> _reclaimChatStorage() async {
     if (SyncScheduler.instance.status == SyncStatus.syncing) {
-      Toast.warning(context, '正在同步中，请稍后再回收');
+      Toast.warning(context, '同步中，稍后再回收');
       return;
     }
     final usage = _chatUsage;
@@ -652,10 +652,8 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
       builder: (ctx) => AlertDialog(
         title: const Text('立即回收'),
         content: Text(
-          '将永久清除旧版本「已删除但仍占着空间」的 '
-          '${usage?.tombstonedSessions ?? 0} 个对话，'
-          '以及 ${usage?.orphanImageFiles ?? 0} 张已无对话引用的生成图片。'
-          '\n\n仍在显示的对话、笔记和日记不会被改动。是否继续？',
+          '将永久删除旧版遗留的 ${usage?.tombstonedSessions ?? 0} 个已删对话'
+          '和 ${usage?.orphanImageFiles ?? 0} 张无引用生成图，当前可见的笔记与日记不受影响。',
         ),
         actions: [
           TextButton(
@@ -682,11 +680,11 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
       if (!mounted) return;
 
       if (purged.deletedSessions == 0 && orphans.deletedFiles == 0) {
-        Toast.success(context, '没有需要回收的内容');
+        Toast.success(context, '无需回收');
       } else {
         Toast.success(
           context,
-          '已回收 ${purged.deletedSessions} 个历史对话 · '
+          '已回收 ${purged.deletedSessions} 个对话 · '
           '${orphans.deletedFiles} 张图片'
           '${bytes > 0 ? ' · 释放约 ${formatChatStorageBytes(bytes)}' : ''}',
         );
@@ -706,21 +704,18 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
   /// 整理数据库（VACUUM）：删行不会让 SQLite 文件变小，只有整理才真正把空间还给系统。
   Future<void> _vacuumDatabase() async {
     if (kIsWeb) {
-      Toast.info(context, 'Web 端存储由浏览器管理，无需整理');
+      Toast.info(context, 'Web 端存储由浏览器管理');
       return;
     }
     if (SyncScheduler.instance.status == SyncStatus.syncing) {
-      Toast.warning(context, '正在同步中，请稍后再整理');
+      Toast.warning(context, '同步中，稍后再整理');
       return;
     }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('整理数据库'),
-        content: const Text(
-          '将重写数据库文件，收回已删除内容占用的空间。'
-          '\n\n需要约 2 倍于当前库文件的临时空间，期间请勿同步。是否继续？',
-        ),
+        content: const Text('将重写数据库文件以释放空间，需约 2 倍库文件的临时空间，期间请勿同步。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -743,7 +738,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
     if (ok) {
       Toast.success(context, '整理完成');
     } else {
-      Toast.info(context, '当前平台不支持整理，空间会在后续写入中复用');
+      Toast.info(context, '当前平台不支持整理');
     }
   }
 
@@ -778,7 +773,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
           children: [
             _ActionTile(
               icon: Icons.storage_rounded,
-              title: '对话历史占用',
+              title: '对话存储占用',
               subtitle: _chatUsageSubtitle(_chatUsage),
               color: colorScheme.onSurfaceVariant,
               onTap: () => _loadChatUsage(),
@@ -786,14 +781,14 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
             _ActionTile(
               icon: Icons.delete_sweep_rounded,
               title: '立即回收',
-              subtitle: '清除旧版已删除的对话与无引用的生成图片',
+              subtitle: '清除旧版遗留对话与无引用图片',
               onTap: (_isReclaiming || isSyncing) ? null : _reclaimChatStorage,
               isLoading: _isReclaiming,
             ),
             _ActionTile(
               icon: Icons.bolt_rounded,
               title: '整理数据库',
-              subtitle: '把已删除内容占用的库文件空间还给系统',
+              subtitle: '回收已删除内容占用的空间',
               onTap: (_isVacuuming || isSyncing) ? null : _vacuumDatabase,
               isLoading: _isVacuuming,
             ),
@@ -817,7 +812,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
           children: [
             _ActionTile(
               icon: Icons.delete_outline_rounded,
-              title: '清空所有本地数据',
+              title: '清空本地数据',
               color: colorScheme.error,
               isDestructive: true,
               onTap: _isClearing ? null : _handleClearData,

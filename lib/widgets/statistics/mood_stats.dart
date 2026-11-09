@@ -28,7 +28,7 @@ class MoodStatsWidget extends StatelessWidget {
           children: [
             Expanded(
               child: StatsCard(
-                title: '健康状况',
+                title: '健康',
                 value: stats.averageSeverity > 0 ? _healthLabel(stats.averageSeverity) : '无数据',
                 icon: Icons.health_and_safety,
                 iconColor: Colors.teal,
@@ -37,7 +37,7 @@ class MoodStatsWidget extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: StatsCard(
-                title: '记录条数',
+                title: '记录数',
                 value: '${stats.totalRecords}条',
                 icon: Icons.local_activity,
                 iconColor: Colors.pink,

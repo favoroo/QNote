@@ -13,7 +13,7 @@ void main() {
   Future<void> pumpHost(
     WidgetTester tester, {
     Future<bool> Function()? onSave,
-    String content = '有未保存的更改，离开后将丢失。',
+    String content = '离开后更改将丢失。',
     String? failureMessage,
     required void Function(bool canLeave) onResult,
   }) async {
@@ -27,7 +27,7 @@ void main() {
                   await promptUnsavedChanges(
                     context,
                     content: content,
-                    failureMessage: failureMessage ?? '未能保存，仍停在当前页',
+                    failureMessage: failureMessage ?? '保存失败，仍停留当前页',
                     onSave: onSave,
                   ),
                 );
@@ -79,7 +79,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(result, isFalse);
-      expect(find.text('未能保存，仍停在当前页'), findsOneWidget);
+      expect(find.text('保存失败，仍停留当前页'), findsOneWidget);
       // 提示的是通用文案，不把异常对象拼进用户可见文本
       expect(find.textContaining('Exception'), findsNothing);
 

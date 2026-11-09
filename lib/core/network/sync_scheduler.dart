@@ -73,14 +73,14 @@ class SyncScheduler {
     _lastError = null;
     try {
       final config = await _configRepo.getWebdavConfig();
-      if (config == null) throw Exception('WebDAV not configured');
+      if (config == null) throw Exception('WebDAV 未配置');
       _webdavService.updateConfig(config);
 
       await _refreshPendingChanges();
 
       final result = await _webdavService.uploadDatabase();
       if (!result.success) {
-        throw Exception(result.error ?? '备份上传失败，请查看运行日志获取详情');
+        throw Exception(result.error ?? '备份上传失败，详见运行日志');
       }
       _lastSyncTime = DateTime.now();
       _lastSyncWasFull = result.wasFullSync;
@@ -93,7 +93,7 @@ class SyncScheduler {
 
       final syncImagesEnabled = await _configRepo.getAppConfig('webdav_sync_images') == 'true';
       if (syncImagesEnabled) {
-        _currentProgressStatus = '数据同步已完成，正在同步图片...';
+        _currentProgressStatus = '正在同步图片…';
         _statusController.add(_status);
         final imgSuccess = await _webdavService.syncImages(
           onProgress: (progress) {
@@ -102,7 +102,7 @@ class SyncScheduler {
           },
         );
         if (!imgSuccess) {
-          throw Exception('数据备份成功，但图片同步失败');
+          throw Exception('数据已备份，图片同步失败');
         }
       }
 
@@ -122,12 +122,12 @@ class SyncScheduler {
     _lastError = null;
     try {
       final config = await _configRepo.getWebdavConfig();
-      if (config == null) throw Exception('WebDAV not configured');
+      if (config == null) throw Exception('WebDAV 未配置');
       _webdavService.updateConfig(config);
 
       final result = await _webdavService.uploadDatabase(forceFullSync: true);
       if (!result.success) {
-        throw Exception(result.error ?? '全量同步失败，请查看运行日志获取详情');
+        throw Exception(result.error ?? '全量同步失败，详见运行日志');
       }
       _lastSyncTime = DateTime.now();
       _lastSyncWasFull = true;
@@ -140,7 +140,7 @@ class SyncScheduler {
 
       final syncImagesEnabled = await _configRepo.getAppConfig('webdav_sync_images') == 'true';
       if (syncImagesEnabled) {
-        _currentProgressStatus = '全量数据同步已完成，正在同步图片...';
+        _currentProgressStatus = '正在同步图片…';
         _statusController.add(_status);
         final imgSuccess = await _webdavService.syncImages(
           onProgress: (progress) {
@@ -149,7 +149,7 @@ class SyncScheduler {
           },
         );
         if (!imgSuccess) {
-          throw Exception('全量数据同步成功，但图片同步失败');
+          throw Exception('全量同步成功，图片同步失败');
         }
       }
 
@@ -169,10 +169,10 @@ class SyncScheduler {
     _lastError = null;
     try {
       final config = await _configRepo.getWebdavConfig();
-      if (config == null) throw Exception('WebDAV not configured');
+      if (config == null) throw Exception('WebDAV 未配置');
       _webdavService.updateConfig(config);
 
-      _currentProgressStatus = '开始同步图片...';
+      _currentProgressStatus = '正在同步图片…';
       _statusController.add(_status);
 
       final success = await _webdavService.syncImages(
@@ -184,7 +184,7 @@ class SyncScheduler {
       );
 
       if (!success) {
-        throw Exception('图片同步失败，请检查连接或查看日志');
+        throw Exception('图片同步失败，请检查连接');
       }
 
       _lastSyncTime = DateTime.now();
@@ -203,11 +203,11 @@ class SyncScheduler {
     _lastError = null;
     try {
       final config = await _configRepo.getWebdavConfig();
-      if (config == null) throw Exception('WebDAV not configured');
+      if (config == null) throw Exception('WebDAV 未配置');
       _webdavService.updateConfig(config);
       final success = await _webdavService.downloadDatabase(merge: merge);
       if (!success) {
-        throw Exception('备份下载/恢复失败，请确认云端是否存在备份，或查看运行日志');
+        throw Exception('恢复失败，请确认云端有备份');
       }
       _lastSyncTime = DateTime.now();
       await _refreshPendingChanges();

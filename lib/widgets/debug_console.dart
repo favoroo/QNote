@@ -179,7 +179,7 @@ class _DebugConsoleOverlayState extends State<_DebugConsoleOverlay> {
                   _selectedLogs.clear();
                 });
               },
-              tooltip: '取消选择',
+              tooltip: '取消',
             ),
             const SizedBox(width: 8),
             Text(
@@ -219,9 +219,9 @@ class _DebugConsoleOverlayState extends State<_DebugConsoleOverlay> {
                         _isSelectMode = false;
                         _selectedLogs.clear();
                       });
-                      _showToast('已复制选中的日志');
+                      _showToast('已复制');
                     },
-              tooltip: '复制选中',
+              tooltip: '复制',
             ),
           ],
         ),
@@ -251,7 +251,7 @@ class _DebugConsoleOverlayState extends State<_DebugConsoleOverlay> {
               );
               if (text.isNotEmpty) {
                 Clipboard.setData(ClipboardData(text: text));
-                _showToast('日志已全部复制到剪贴板');
+                _showToast('已复制');
               }
             },
             tooltip: '复制全部',
@@ -302,7 +302,7 @@ class _DebugConsoleOverlayState extends State<_DebugConsoleOverlay> {
           ? null
           : () {
               Clipboard.setData(ClipboardData(text: entry.message));
-              _showToast('已复制该条日志内容');
+              _showToast('已复制');
             },
       child: Container(
         color: isSelected ? Colors.blue.withValues(alpha: 0.2) : Colors.transparent,

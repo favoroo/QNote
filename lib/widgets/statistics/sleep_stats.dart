@@ -51,7 +51,7 @@ class SleepStatsWidget extends StatelessWidget {
           iconBgColor: isDark ? const Color(0x336366F1) : const Color(0x1A6366F1),
           iconColor: Colors.indigo,
           icon: Icons.nightlight,
-          title: '睡眠时长趋势',
+          title: '睡眠趋势',
           child: SizedBox(
             height: 192,
             child: stats.dailyData.isNotEmpty

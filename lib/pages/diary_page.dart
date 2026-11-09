@@ -983,7 +983,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('标记日期颜色'),
+        title: const Text('日期颜色'),
         content: SizedBox(
           width: 240,
           child: GridView.count(
@@ -1186,7 +1186,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     // 运动健康日结汇总卡片不可被删除
     final bs = record.bodyState;
     if (bs != null && bs['source'] == 'mi_fitness' && bs['type'] == 'daily_summary') {
-      Toast.info(context, '运动健康日结数据由系统同步管理，不支持手动删除');
+      Toast.info(context, '运动健康日结由系统同步，不可删除');
       return;
     }
 
@@ -1512,7 +1512,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     }
 
     if (untaggedAll == 0) {
-      Toast.info(context, '没有需要优化的记录');
+      Toast.info(context, '没有可优化的记录');
       return;
     }
 
@@ -1522,7 +1522,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       items.add(
         ActionMenuItem(
           icon: Icons.today,
-          label: '提取今日记录 ($untaggedToday条)',
+          label: '提取今日（$untaggedToday 条）',
           onTap: () => _startBatchExtract(allDates: false),
         ),
       );
@@ -1532,7 +1532,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       items.add(
         ActionMenuItem(
           icon: Icons.date_range,
-          label: '提取全部记录 ($untaggedAll条)',
+          label: '提取全部（$untaggedAll 条）',
           onTap: () => _startBatchExtract(allDates: true),
         ),
       );
@@ -1577,7 +1577,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
     if (untaggedRecords.isEmpty) {
       if (mounted) {
-        Toast.info(context, allDates ? '没有需要提取的记录' : '当天没有需要提取的记录');
+        Toast.info(context, allDates ? '没有可提取的记录' : '当天没有可提取的记录');
       }
       return;
     }
@@ -1597,7 +1597,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     if (mounted) {
       Toast.info(
         context,
-        '开始提取 ${untaggedRecords.length} 条记录${allDates ? '（全部日期）' : ''}',
+        '开始提取 ${untaggedRecords.length} 条${allDates ? '（全部日期）' : ''}',
       );
     }
 
@@ -1687,10 +1687,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       if (cancelled) {
         Toast.info(
           context,
-          '已停止提取（完成 $_batchExtractCompleted/$_batchExtractTotal）',
+          '已停止提取（$_batchExtractCompleted/$_batchExtractTotal）',
         );
       } else {
-        Toast.success(context, '批量提取完成（$_batchExtractTotal 条）');
+        Toast.success(context, '提取完成（$_batchExtractTotal 条）');
       }
     }
 
@@ -1857,7 +1857,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       _batchExtractedRecordIds.clear();
       _showBatchConfirmButton = false;
     });
-    Toast.success(context, '已确认保存');
+    Toast.success(context, '已保存');
   }
 
   Widget _buildBatchConfirmPanel(ThemeData theme) {
@@ -1883,7 +1883,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
             ),
             const SizedBox(width: 8),
             Text(
-              '已批量提取并优化 ${_batchExtractedRecordIds.length} 条记录',
+              '已优化 ${_batchExtractedRecordIds.length} 条记录',
               style: theme.textTheme.bodyMedium?.copyWith(
                 fontWeight: FontWeight.w500,
               ),
@@ -1942,7 +1942,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       }
       final title = switch (level) {
         CheerLevel.full => '今日完整！',
-        CheerLevel.record => '新纪录！今天第${next.todayCount}条',
+        CheerLevel.record => '新纪录！第${next.todayCount}条',
         CheerLevel.plain => '今日第${next.todayCount}条',
       };
       final sub = switch (level) {

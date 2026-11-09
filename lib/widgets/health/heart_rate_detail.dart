@@ -33,9 +33,7 @@ class HeartRateDetail extends StatelessWidget {
       children: [
         HealthDetailSection(
           title: '全天心率曲线',
-          subtitle: values.isEmpty
-              ? '这一天没有心率采样，可能设备未佩戴或未同步'
-              : '共 ${values.length} 个采样点，虚线为当日静息心率',
+          subtitle: values.isEmpty ? '无心率采样，可能设备未佩戴或未同步' : '共 ${values.length} 个采样点，虚线为静息心率',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -51,7 +49,7 @@ class HeartRateDetail extends StatelessWidget {
               ),
               if (metrics.restingHeartRate != null && metrics.restingHeartRate! > 0) ...[
                 const SizedBox(height: 8),
-                HealthChartReferenceNote(label: '当日静息心率 ${metrics.restingHeartRate} bpm', color: Colors.redAccent),
+                HealthChartReferenceNote(label: '静息心率 ${metrics.restingHeartRate} bpm', color: Colors.redAccent),
               ],
             ],
           ),
@@ -89,7 +87,7 @@ class HeartRateDetail extends StatelessWidget {
         const SizedBox(height: 12),
         HealthDetailSection(
           title: '采样点区间分布',
-          subtitle: '按采样点个数统计，非各区间持续时长',
+          subtitle: '按采样点个数统计，非时长',
           child: values.isEmpty
               ? Text(
                   '暂无数据',

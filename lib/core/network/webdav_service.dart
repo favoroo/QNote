@@ -445,7 +445,7 @@ class WebdavService {
 
   Future<SyncResult> uploadDatabase({bool forceFullSync = false}) async {
     if (_config == null) {
-      return SyncResult(success: false, error: 'WebDAV未配置');
+      return SyncResult(success: false, error: 'WebDAV 未配置');
     }
 
     try {
@@ -531,7 +531,7 @@ class WebdavService {
         wasFullSync: true,
         changeCount: 0,
         uploadSizeBytes: uploadSize,
-        error: '云端清单（manifest）写入失败，本地变更记录已保留，请稍后重试',
+        error: '云端清单（manifest）写入失败，本地变更已保留',
       );
     }
 
@@ -613,7 +613,7 @@ class WebdavService {
         wasFullSync: false,
         changeCount: currentDeltaCount,
         uploadSizeBytes: uploadSize,
-        error: '云端清单（manifest）写入失败，本地变更记录已保留，请稍后重试',
+        error: '云端清单（manifest）写入失败，本地变更已保留',
       );
     }
 
@@ -881,7 +881,7 @@ class WebdavService {
     if (_config == null) return false;
 
     try {
-      onProgress?.call('正在扫描本地及云端图片...');
+      onProgress?.call('正在扫描图片…');
       LoggerService.instance.logSync('开始 WebDAV 图片同步...');
 
       // 1. 获取本地数据库中所有被引用的“活动图片”
@@ -935,7 +935,7 @@ class WebdavService {
       final uploadTargets = activeImages.intersection(localPhysicalImages).difference(remoteImages);
       int uploadCount = 0;
       for (final rel in uploadTargets) {
-        onProgress?.call('正在上传图片: ${uploadCount + 1}/${uploadTargets.length}');
+        onProgress?.call('上传图片 ${uploadCount + 1}/${uploadTargets.length}');
         final localPath = p.join(appDir.path, 'images', rel);
         final remoteName = 'images/$rel';
         
@@ -955,7 +955,7 @@ class WebdavService {
       final downloadTargets = activeImages.difference(localPhysicalImages).intersection(remoteImages);
       int downloadCount = 0;
       for (final rel in downloadTargets) {
-        onProgress?.call('正在下载图片: ${downloadCount + 1}/${downloadTargets.length}');
+        onProgress?.call('下载图片 ${downloadCount + 1}/${downloadTargets.length}');
         final localPath = p.join(appDir.path, 'images', rel);
         final remoteName = 'images/$rel';
         final success = await downloadFile(remoteName, localPath);

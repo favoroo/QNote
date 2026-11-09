@@ -66,7 +66,7 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
       return SizedBox(
         height: _monthLabelHeight + 7 * (_cellSize + _cellGap) + 24 + 32,
         child: Center(
-          child: Text('暂无评分数据', style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
+          child: Text('暂无评分', style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
         ),
       );
     }

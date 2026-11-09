@@ -258,7 +258,7 @@ class UpdateService {
     }
 
     if (releaseData == null) {
-      return UpdateCheckResult.failed('网络请求失败，请稍后重试（$lastErrorReason）');
+      return UpdateCheckResult.failed('网络请求失败（$lastErrorReason）');
     }
 
     try {
@@ -365,7 +365,7 @@ class UpdateService {
         category: LogCategory.network,
         details: stackTrace.toString(),
       );
-      return UpdateCheckResult.failed('检查更新时发生异常');
+      return UpdateCheckResult.failed('解析更新数据失败');
     }
   }
 
@@ -438,6 +438,6 @@ class UpdateService {
       }
     }
 
-    throw Exception('所有下载镜像均不可用，请稍后重试或使用浏览器下载 (错误: $lastError)');
+    throw Exception('全部下载镜像不可用（$lastError）');
   }
 }

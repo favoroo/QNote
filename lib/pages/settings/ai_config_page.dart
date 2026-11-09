@@ -164,10 +164,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         title: const Text('删除模型服务'),
         content: Text(
           provider.usesAccountAuth
-              ? '将删除「${provider.name}」及其本地登录态、'
-                  '${provider.models.length} 个已启用模型，引用它的角色绑定会被清空。'
-              : '将删除「${provider.name}」及其 ${provider.apiKeys.length} 把密钥、'
-                  '${provider.models.length} 个已启用模型，引用它的角色绑定会被清空。',
+              ? '将删除「${provider.name}」及登录态和 ${provider.models.length} 个模型，角色绑定会清空。'
+              : '将删除「${provider.name}」及 ${provider.apiKeys.length} 把密钥和 '
+                  '${provider.models.length} 个模型，角色绑定会清空。',
         ),
         actions: [
           TextButton(
@@ -296,7 +295,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     final hint = _disabledBindingHint(bound, providers, groups);
     // 生图刻意不回落对话模型：对话模型通常不支持 images/generations
     if (roleKey == 'imageGeneration') {
-      return hint == null ? '未配置（生图暂不可用）' : '$hint，生图暂不可用';
+      return hint == null ? '未配置（生图不可用）' : '$hint，生图不可用';
     }
     final provider = providers.where((p) => p.isDefault && p.isUsable).firstOrNull ??
         providers.where((p) => p.isUsable).firstOrNull;
@@ -315,7 +314,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       if (mounted) await showNoModelConfiguredDialog(context, scene: _roleLabel(roleKey));
       return;
     } catch (e) {
-      if (mounted) Toast.warning(context, '读取当前绑定模型失败：$e');
+      if (mounted) Toast.warning(context, '读取模型失败：$e');
       return;
     }
 
@@ -339,7 +338,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       }
     } catch (e) {
       // 失败**不写缓存**：网络断、额度耗尽、端点故障都不说明该模型没有视觉能力
-      if (mounted) setState(() => _imageTestByRole[roleKey] = '测试失败: $e');
+      if (mounted) setState(() => _imageTestByRole[roleKey] = '测试失败：$e');
     } finally {
       if (mounted) setState(() => _testingImageRecognition = false);
     }
@@ -399,7 +398,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionTitle(theme, '模型服务', '点击卡片管理密钥与已启用模型，右上角菜单可临时停用'),
+        _sectionTitle(theme, '模型服务', '点击卡片管理密钥与模型'),
         ...providers.map((provider) => _providerCard(theme, provider)),
       ],
     );
@@ -484,8 +483,8 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                       Text(
                         provider.usesAccountAuth
                             ? '账号登录 · ${AccountRouting.fromId(provider.accountRouting).label} · '
-                                  '${provider.models.length} 个模型已启用'
-                            : '${provider.apiKeys.length} 把密钥 · ${provider.models.length} 个模型已启用',
+                                  '${provider.models.length} 个模型'
+                            : '${provider.apiKeys.length} 把密钥 · ${provider.models.length} 个模型',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: colorScheme.onSurfaceVariant,
                         ),
@@ -546,7 +545,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
         _sectionTitle(
           theme,
           '模型路由组',
-          '把多个模型组成一个「虚拟模型」，按策略轮流调用以分散限流',
+          '多个模型轮流调用，分散限流',
         ),
         Align(
           alignment: Alignment.centerLeft,
@@ -572,9 +571,8 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
             ),
             child: Text(
               canCreate
-                  ? '还没有路由组。勾选多个已启用模型即可建立一个组，'
-                      '之后在「模型分配」里把角色指向这个组。'
-                  : '先添加模型服务并启用至少一个模型，才能建立路由组。',
+                  ? '还没有路由组，勾选多个模型建立，再到「模型分配」绑定角色。'
+                  : '先添加并启用至少一个模型，才能建立路由组。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -659,7 +657,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                 if (liveCount == 0) ...[
                   const SizedBox(height: 4),
                   Text(
-                    '成员模型均已停用，绑定它的角色会回落到默认模型',
+                    '成员均已停用，绑定角色会回落默认模型',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: colorScheme.error,
                     ),
@@ -715,7 +713,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionTitle(theme, '模型分配', '同一个模型/路由组可分配给多个角色'),
+        _sectionTitle(theme, '模型分配', '同一模型或路由组可分给多个角色'),
         Container(
           decoration: BoxDecoration(
             color: theme.cardColor,
@@ -954,7 +952,7 @@ class _VendorPickerSheet extends StatelessWidget {
                   _vendorSectionHeader(
                     theme,
                     title: '账号登录',
-                    subtitle: '登录厂商账号即可使用，凭证自动续期',
+                    subtitle: '登录账号即可使用，凭证自动续期',
                   ),
                   ...accountVendors.map(
                     (spec) => _vendorTile(context, theme, spec),
@@ -964,7 +962,7 @@ class _VendorPickerSheet extends StatelessWidget {
                   _vendorSectionHeader(
                     theme,
                     title: 'API Key',
-                    subtitle: '填写服务地址与密钥，多把密钥自动轮询',
+                    subtitle: '填写地址与密钥，多把自动轮询',
                   ),
                   ...apiKeyVendors.map(
                     (spec) => _vendorTile(context, theme, spec),

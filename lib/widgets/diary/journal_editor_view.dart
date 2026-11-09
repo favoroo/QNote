@@ -313,7 +313,7 @@ class _JournalEditorViewState extends ConsumerState<JournalEditorView> {
                 border: InputBorder.none,
                 focusedBorder: InputBorder.none,
                 enabledBorder: InputBorder.none,
-                hintText: '记录这一天的感受、想法或发生的事…',
+                hintText: '记录这一天的感受与想法…',
                 hintStyle: theme.textTheme.bodyLarge?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
                   height: 1.8,

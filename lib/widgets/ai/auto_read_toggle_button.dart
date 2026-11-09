@@ -61,7 +61,7 @@ class _AutoReadToggleButtonState extends State<AutoReadToggleButton> {
       builder: (context, enabled, _) {
         return IconButton(
           onPressed: _toggle,
-          tooltip: enabled ? '自动朗读：已开启，点击关闭' : '自动朗读：已关闭，点击开启',
+          tooltip: enabled ? '自动朗读已开启，点击关闭' : '自动朗读已关闭，点击开启',
           // 关闭态用 volume_off 明示「现在不会读」，再配 primary 色区分开启态，
           // 比只调深浅更容易一眼扫出来
           icon: Icon(

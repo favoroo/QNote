@@ -179,7 +179,7 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
           autofocus: true,
           maxLength: 40,
           textInputAction: TextInputAction.done,
-          decoration: const InputDecoration(hintText: '输入对话名称'),
+          decoration: const InputDecoration(hintText: '输入新名称'),
           onSubmitted: (value) => Navigator.pop(ctx, value),
         ),
         actions: [
@@ -224,17 +224,17 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
     final detail = StringBuffer();
     detail.writeln(
       targets.length == 1
-          ? '将永久删除「${targets.first.title}」'
-          : '将永久删除 ${targets.length} 个对话',
+          ? '永久删除「${targets.first.title}」'
+          : '永久删除 ${targets.length} 个对话',
     );
     detail.write('（共 $messageCount 条消息');
     if (imageCount > 0) {
       detail.write(' · $imageCount 张图片');
     }
-    detail.writeln('），包括小Q生成并保存在本机的图片。');
+    detail.writeln('），含小Q生成的本机图片。');
     detail.writeln();
-    detail.writeln('小Q已为你创建的笔记、日记、待办和虚拟工作区文件不会被删除。');
-    detail.write('此操作不可恢复，并会同步到其它设备。');
+    detail.writeln('小Q创建的笔记、日记、待办和工作区文件不受影响。');
+    detail.write('不可恢复，会同步到其它设备。');
 
     final ok = await showDialog<bool>(
       context: context,
@@ -344,7 +344,7 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => AppErrorState(
           error: e,
-          action: '加载历史对话失败',
+          action: '加载对话失败',
           // Drawer 宽度有限，用紧凑态避免长异常串挤掉重试按钮
           compact: true,
           onRetry: () => ref.invalidate(chatSessionListProvider),
@@ -426,7 +426,7 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
               width: double.infinity,
               child: FilledButton.icon(
                 icon: const Icon(Icons.delete_outline, size: 18),
-                label: Text('删除已选 (${selected.length})'),
+                label: Text('删除 (${selected.length})'),
                 style: FilledButton.styleFrom(
                   backgroundColor: theme.colorScheme.error,
                 ),
@@ -486,7 +486,7 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
       textInputAction: TextInputAction.search,
       style: theme.textTheme.bodyMedium,
       decoration: InputDecoration(
-        hintText: '搜索对话标题或内容',
+        hintText: '搜索标题或内容',
         hintStyle: theme.textTheme.bodyMedium?.copyWith(
           color: scheme.onSurfaceVariant,
         ),
@@ -538,7 +538,7 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
           : const EmptyStateWidget(
               icon: Icons.chat_bubble_outline,
               message: '暂无对话',
-              description: '点上方图标开始新对话',
+              description: '点上方图标新建对话',
             );
     }
 

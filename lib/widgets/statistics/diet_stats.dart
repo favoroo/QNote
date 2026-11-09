@@ -60,7 +60,7 @@ class DietStatsWidget extends StatelessWidget {
             iconBgColor: isDark ? const Color(0x3310B981) : const Color(0x1A10B981),
             iconColor: const Color(0xFF10B981),
             icon: Icons.favorite,
-            title: '饮食健康评价',
+            title: '健康评价',
             child: Column(
               children: [
                 SizedBox(

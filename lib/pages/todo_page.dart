@@ -140,7 +140,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('已删除 $count 项待办'),
+          content: Text('已删除 $count 项'),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -321,7 +321,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                                 const Icon(Icons.delete_outline, size: 16),
                                 const SizedBox(width: 6),
                                 Text(
-                                  _isConfirming ? '再次点击确认' : '删除',
+                                  _isConfirming ? '再点确认' : '删除',
                                   style: const TextStyle(fontWeight: FontWeight.bold),
                                 ),
                               ],
@@ -473,7 +473,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  '暂无待办，享受此刻吧',
+                  '暂无待办',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                   ),
@@ -677,12 +677,12 @@ class _TodoPageState extends ConsumerState<TodoPage> {
       ),
       ActionMenuItem(
         icon: Icons.repeat,
-        label: todo.isRecurring ? '重复: ${todo.repeatRuleLabel}' : '设置重复周期',
+        label: todo.isRecurring ? '重复：${todo.repeatRuleLabel}' : '设置重复',
         onTap: () => _showRepeatRuleDialog(context, todo),
       ),
       ActionMenuItem(
         icon: Icons.alarm,
-        label: todo.reminderTime != null ? '修改提醒 (${todo.reminderTime})' : '设置提醒时间',
+        label: todo.reminderTime != null ? '修改提醒 ${todo.reminderTime}' : '设置提醒',
         onTap: () => _setReminder(todo),
       ),
       if (todo.reminderTime != null)
@@ -695,7 +695,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
       if (folders.length > 1)
         ActionMenuItem(
           icon: Icons.drive_file_move_outlined,
-          label: '移动分类...',
+          label: '移动到分类',
           onTap: () => _showMoveFolderDialog(context, todo, folders),
         ),
       ActionMenuItem(
@@ -730,12 +730,12 @@ class _TodoPageState extends ConsumerState<TodoPage> {
   /// 设置待办重复周期
   Future<void> _showRepeatRuleDialog(BuildContext context, Todo todo) async {
     final rules = [
-      {'key': 'none', 'label': '不重复', 'desc': '单次任务，完成后不自动生成'},
-      {'key': 'daily', 'label': '每天重复', 'desc': '完成后自动生成次日待办'},
-      {'key': 'workday', 'label': '工作日重复', 'desc': '周一至周五，周末自动顺延至下周一'},
-      {'key': 'weekly', 'label': '每周重复', 'desc': '每周相同时间再次出现'},
-      {'key': 'monthly', 'label': '每月重复', 'desc': '每月同日再次出现'},
-      {'key': 'yearly', 'label': '每年重复', 'desc': '每年同日再次出现'},
+      {'key': 'none', 'label': '不重复', 'desc': '单次任务，不自动生成'},
+      {'key': 'daily', 'label': '每天', 'desc': '完成后生成次日待办'},
+      {'key': 'workday', 'label': '工作日', 'desc': '周一至周五，周末顺延至下周一'},
+      {'key': 'weekly', 'label': '每周', 'desc': '每周同一时间重复'},
+      {'key': 'monthly', 'label': '每月', 'desc': '每月同日重复'},
+      {'key': 'yearly', 'label': '每年', 'desc': '每年同日重复'},
     ];
 
     final theme = Theme.of(context);
@@ -760,7 +760,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                       Icon(Icons.repeat, color: theme.colorScheme.primary, size: 20),
                       const SizedBox(width: 8),
                       Text(
-                        '设置重复周期',
+                        '重复周期',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -910,7 +910,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                               Icon(Icons.category, color: colorScheme.primary, size: 20),
                               const SizedBox(width: 8),
                               Text(
-                                '待办分类管理',
+                                '分类管理',
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
@@ -960,7 +960,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                                   onPressed: isOnlyOne
                                       ? () {
                                           ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(content: Text('至少需要保留一个分类，无法删除')),
+                                            const SnackBar(content: Text('至少保留一个分类')),
                                           );
                                         }
                                       : () => _confirmDeleteFolder(context, folder),
@@ -992,7 +992,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
           controller: controller,
           autofocus: true,
           decoration: const InputDecoration(
-            hintText: '请输入分类名称',
+            hintText: '分类名称',
             border: OutlineInputBorder(),
           ),
         ),
@@ -1024,7 +1024,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
           controller: controller,
           autofocus: true,
           decoration: const InputDecoration(
-            hintText: '请输入新名称',
+            hintText: '新名称',
             border: OutlineInputBorder(),
           ),
         ),
@@ -1051,7 +1051,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除分类'),
-        content: Text('确定要删除分类「${folder.name}」吗？\n\n注意：该分类下的所有待办事项将一并删除！'),
+        content: Text('删除「${folder.name}」？该分类下的待办会一并删除。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -1060,7 +1060,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
           TextButton(
             style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确认删除'),
+            child: const Text('删除'),
           ),
         ],
       ),
@@ -1069,7 +1069,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
       final success = await ref.read(todoFolderListProvider.notifier).deleteFolder(folder.id);
       if (!success && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('至少需要保留一个分类，无法删除')),
+          const SnackBar(content: Text('至少保留一个分类')),
         );
       }
     }
@@ -1080,7 +1080,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     final result = await showTimePickerDialog(
       context: context,
       initialTime: reminder != null ? ReminderUtils.parse(reminder) : null,
-      title: '设置提醒时间',
+      title: '提醒时间',
     );
     if (result == null) return;
     final formatted = ReminderUtils.format(result);
@@ -1091,8 +1091,8 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('确认删除'),
-        content: Text('确定要删除「${todo.title.isEmpty ? '待办' : todo.title}」吗？'),
+        title: const Text('删除待办'),
+        content: Text('删除「${todo.title.isEmpty ? '待办' : todo.title}」？'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -1833,7 +1833,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
     final result = await showTimePickerDialog(
       context: context,
       initialTime: initialDate,
-      title: '设置提醒时间',
+      title: '提醒时间',
     );
     if (result != null) {
       setState(() {
@@ -1844,12 +1844,12 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
 
   Future<void> _pickRepeatRule() async {
     final rules = [
-      {'key': 'none', 'label': '不重复', 'desc': '单次任务，完成后不自动生成'},
-      {'key': 'daily', 'label': '每天重复', 'desc': '完成后自动生成次日待办'},
-      {'key': 'workday', 'label': '工作日重复', 'desc': '周一至周五，周末自动顺延至下周一'},
-      {'key': 'weekly', 'label': '每周重复', 'desc': '每周相同时间再次出现'},
-      {'key': 'monthly', 'label': '每月重复', 'desc': '每月同日再次出现'},
-      {'key': 'yearly', 'label': '每年重复', 'desc': '每年同日再次出现'},
+      {'key': 'none', 'label': '不重复', 'desc': '单次任务，不自动生成'},
+      {'key': 'daily', 'label': '每天', 'desc': '完成后生成次日待办'},
+      {'key': 'workday', 'label': '工作日', 'desc': '周一至周五，周末顺延至下周一'},
+      {'key': 'weekly', 'label': '每周', 'desc': '每周同一时间重复'},
+      {'key': 'monthly', 'label': '每月', 'desc': '每月同日重复'},
+      {'key': 'yearly', 'label': '每年', 'desc': '每年同日重复'},
     ];
 
     final theme = Theme.of(context);
@@ -1874,7 +1874,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                       Icon(Icons.repeat, color: theme.colorScheme.primary, size: 20),
                       const SizedBox(width: 8),
                       Text(
-                        '设置重复周期',
+                        '重复周期',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -1992,15 +1992,15 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
   String _repeatRuleLabel(String rule) {
     switch (rule) {
       case 'daily':
-        return '每天重复';
+        return '每天';
       case 'workday':
-        return '工作日重复';
+        return '工作日';
       case 'weekly':
-        return '每周重复';
+        return '每周';
       case 'monthly':
-        return '每月重复';
+        return '每月';
       case 'yearly':
-        return '每年重复';
+        return '每年';
       default:
         return '重复';
     }
@@ -2088,7 +2088,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                       errorBorder: InputBorder.none,
                       disabledBorder: InputBorder.none,
                       filled: false,
-                      hintText: widget.todo == null ? '回车即可连续添加待办' : '输入待办内容...',
+                      hintText: widget.todo == null ? '回车连续添加' : '输入待办内容',
                       hintStyle: TextStyle(
                         fontSize: 17.5,
                         color: isDark

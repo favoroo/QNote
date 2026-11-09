@@ -25,50 +25,45 @@ class AiErrorExplainer {
     if (error is NoModelConfiguredException ||
         raw.contains('尚未配置可用的 AI 模型')) {
       problem = '还没有可用的 AI 模型';
-      advice = '请到「设置 → AI 模型配置」添加你自己的模型服务（API 地址 + 密钥），'
-          '扫描并启用模型后即可使用。';
+      advice = '到「设置 → AI 模型配置」添加模型服务（地址 + 密钥），扫描并启用模型。';
     } else if (raw.contains('Failed host lookup')) {
       final host = RegExp(r"Failed host lookup:\s*'?(.+?)'?(?:\s|\(|$)")
           .firstMatch(raw)
           ?.group(1);
       problem = host == null
-          ? '无法解析服务器地址（域名没有对应的 IP）'
-          : '无法解析服务器地址 `$host`（域名没有对应的 IP）';
-      advice =
-          '设备当前可能不在该服务所在的网络中。内网/自建域名（如 Tailscale、局域网地址）'
-          '需要先连接对应网络或 VPN；公网服务请检查网络连接与域名拼写。';
+          ? '无法解析服务器地址（域名解析不到 IP）'
+          : '无法解析服务器地址 `$host`（域名解析不到 IP）';
+      advice = '内网/自建域名（如 Tailscale）需先连 VPN；公网请检查域名拼写。';
     } else if (raw.contains('Connection timed out') ||
         raw.contains('connection timeout') ||
         raw.contains('connection took longer')) {
       problem = '连接服务器超时';
-      advice = '请检查设备网络是否可用；服务端可能已下线，或服务地址/端口填写有误。';
+      advice = '检查网络是否可用；服务可能已下线，或地址/端口有误。';
     } else if (raw.contains('Connection refused')) {
       problem = '服务器拒绝了连接';
-      advice = '目标服务可能未启动或端口不正确，请确认服务端在线、地址与端口无误。';
+      advice = '服务可能未启动或端口不对，确认地址与端口无误。';
     } else if (raw.contains('Network is unreachable')) {
       problem = '当前网络不可用';
-      advice = '设备可能未联网或没有到目标地址的路由，请检查网络连接。';
+      advice = '设备可能未联网，或没有到该地址的路由。';
     } else if (raw.contains('HandshakeException') ||
         raw.contains('TlsException') ||
         raw.contains('CERTIFICATE_VERIFY_FAILED')) {
       problem = '安全连接（TLS/证书）校验失败';
-      advice = '自建/内网网关的证书可能不受信任或已过期，请检查服务端证书配置；'
-          '若使用动态网关（如 Tailscale），也可能是网关设备暂时离线或正在重连，'
-          '稍后可长按本条消息重试。';
+      advice = '证书过期或不受信任，检查服务端证书；网关重连也会触发，稍后长按重试。';
     } else if (raw.contains('receive timeout') ||
         raw.contains('receive took longer') ||
         raw.contains('TimeoutException')) {
       problem = '服务器响应超时';
-      advice = '模型推理时间过长或服务端负载过高，可稍后重试；若反复出现请检查网关状态。';
+      advice = '模型推理过久或服务端繁忙，稍后重试；反复出现请检查网关状态。';
     } else if (statusCode == 400) {
       problem = '服务端拒绝了请求（HTTP 400）';
-      advice = '请检查模型名称与请求参数是否符合该服务的要求。';
+      advice = '检查模型名称与请求参数是否符合该服务要求。';
     } else if (statusCode == 401 || statusCode == 403) {
       problem = 'API Key 无效或没有访问权限（HTTP $statusCode）';
-      advice = '请到设置中检查该模型的 API Key 是否正确、是否过期，以及账号是否有对应模型的权限。';
+      advice = '到设置检查该模型的 API Key 是否正确、过期，以及账号是否有该模型权限。';
     } else if (statusCode == 404) {
-      problem = '请求的接口或模型不存在（HTTP 404）';
-      advice = '请检查 Base URL 与模型名称拼写是否正确。';
+      problem = '接口或模型不存在（HTTP 404）';
+      advice = '检查 Base URL 与模型名拼写。';
     } else if (statusCode == 429 ||
         raw.contains('EndpointTPMExceeded') ||
         // SSE 带内错误没有 HTTP 状态码可提取（HTTP 本身是 200），只能靠原文里的
@@ -81,15 +76,14 @@ class AiErrorExplainer {
           ? '短时间内请求太密集，被服务端的排队保护挡下（HTTP 429 · rps）'
           : '模型服务额度暂时用满（HTTP 429 · 限流）';
       advice = isBurst
-          ? '小Q 会自动换下一把 Key 重发，通常几秒内自愈；连续追问时可以等上一条回复出来再发。'
-          : '该 Key 的额度按分钟滚动恢复。若该厂商配置了多把密钥，App 会自动轮询并在冷却后回池；'
-              '也可以到「AI 模型配置」里补充密钥或换一个模型。';
+          ? '小Q 会自动换下一把 Key 重发，通常几秒内自愈；可等上一条回复出来再发。'
+          : '额度按分钟滚动恢复，多 Key 自动轮询；也可到「AI 模型配置」补密钥。';
     } else if (statusCode != null && statusCode >= 500) {
       problem = '服务器内部故障（HTTP $statusCode）';
-      advice = '服务端暂时不可用，请稍后重试。';
+      advice = '服务端暂时不可用，稍后重试。';
     } else {
       problem = '请求过程中发生未知错误';
-      advice = '请稍后重试；若反复出现，可复制下方技术详情排查原因。';
+      advice = '稍后重试；反复出现可复制下方技术详情排查。';
     }
 
     // 压成单行再截断，避免多行堆栈把气泡撑爆

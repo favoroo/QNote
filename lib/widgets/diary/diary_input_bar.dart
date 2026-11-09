@@ -636,7 +636,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
           _selectedFixedEventIds.remove(template.id);
         });
       }
-      Toast.info(context, '「${template.name}」今日已添加，每天仅需记录一次');
+      Toast.info(context, '「${template.name}」今日已添加');
       return;
     }
 
@@ -996,7 +996,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         _activeDraft,
         ref.read(selectedDateProvider),
       ),
-      title: '设定开始时间',
+      title: '开始时间',
     );
     if (result != null) {
       final selectedDate = ref.read(selectedDateProvider);
@@ -1030,7 +1030,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
     final result = await showTimePickerDialog(
       context: context,
       initialTime: initialDate,
-      title: '设定结束时间',
+      title: '结束时间',
     );
     if (result != null) {
       final selectedDate = ref.read(selectedDateProvider);
@@ -1475,7 +1475,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         );
       } else {
         if (mounted) {
-          Toast.warning(context, '未提取到有用信息');
+          Toast.warning(context, '未提取到信息');
         }
         setState(() {
           _extractPhase = _ExtractPhase.idle;
@@ -1496,9 +1496,9 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
 
       if (e is DioException) {
         if (e.type == DioExceptionType.connectionError) {
-          errorMessage = '网络连接失败，请检查网络或API配置';
+          errorMessage = '网络连接失败，请检查网络配置';
         } else if (e.type == DioExceptionType.connectionTimeout) {
-          errorMessage = '连接超时，请稍后重试';
+          errorMessage = '连接超时，请重试';
         } else if (e.response?.statusCode == 401) {
           errorMessage = 'API密钥无效，请检查AI配置';
         } else if (e.response?.statusCode == 403) {
@@ -1506,16 +1506,16 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
         } else if (e.response?.statusCode == 404) {
           final respStr = e.response?.data?.toString() ?? '';
           if (respStr.contains('model') || respStr.contains('route')) {
-            errorMessage = '当前AI模型已下线或不存在，请在设置中切换模型';
+            errorMessage = 'AI模型已下线或不存在，请切换模型';
           } else {
             errorMessage = '请求的AI服务地址不存在(404)，请检查Base URL';
           }
         } else if (e.response?.statusCode == 429) {
-          errorMessage = 'AI服务调用频次超限，请稍后重试';
+          errorMessage = 'AI服务调用频次超限，请重试';
         }
       } else if (e is ArgumentError &&
           e.message.toString().contains('apiKey')) {
-        errorMessage = 'AI配置不完整，请在设置中完善API密钥和地址';
+        errorMessage = 'AI配置不完整，请完善密钥和地址';
       }
 
       LoggerService.instance.logAI(
@@ -1623,7 +1623,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
               children: [
                 CircularProgressIndicator(),
                 SizedBox(height: 16),
-                Text('正在处理图片，请稍候...'),
+                Text('正在处理图片...'),
               ],
             ),
           ),
@@ -1692,7 +1692,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
       if (alreadyAddedTemplates.isNotEmpty) {
         final names = alreadyAddedTemplates.map((t) => '「${t.name}」').join('、');
         if (templatesToAdd.isEmpty) {
-          Toast.warning(context, '$names 今日已添加，无需重复添加');
+          Toast.warning(context, '$names 今日已添加');
           setState(() {
             _selectedFixedEventIds.clear();
           });
@@ -3854,7 +3854,7 @@ class _DiaryInputBarState extends ConsumerState<DiaryInputBar>
                         filled: false,
                         hintText: draft.tagEntries.isNotEmpty
                             ? '记录${draft.tagEntries.map((e) => e.name).join('、')}...'
-                            : '记录当前...',
+                            : '记录此刻...',
                         hintStyle: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant.withValues(
                             alpha: 0.6,

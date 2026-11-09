@@ -219,7 +219,7 @@ class AiRouteGroupListNotifier extends AsyncNotifier<List<AiRouteGroup>> {
       state = AsyncData(await AiRouteGroupRepository.instance.getAll());
     } catch (e, st) {
       RefreshFailureNotice.report(
-        source: '模型路由组',
+        source: '路由组',
         error: e,
         stackTrace: st,
         retry: () {
@@ -304,7 +304,7 @@ class ChatSessionListNotifier extends AsyncNotifier<List<ChatSession>> {
       state = AsyncData(await repo.getAllChatSessions());
     } catch (e, st) {
       RefreshFailureNotice.report(
-        source: '历史对话',
+        source: '对话',
         error: e,
         stackTrace: st,
         retry: () {
@@ -1038,7 +1038,7 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         ),
         // 整池限流时不报错、不静默：把排队秒数写到状态行，用户知道还在等
         onQuotaHold: (hold) =>
-            _setRunStatus(run, '服务商限流 · 排队 ${hold.inSeconds}s 后重试'),
+            _setRunStatus(run, '服务商限流 · ${hold.inSeconds}s 后重试'),
         afterToolCall: (call, result) async {
           // 按 VFS 路径前缀联动刷新对应业务数据
           refreshWorkspaceSideEffects(
@@ -1220,9 +1220,9 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       final errorMessage = ChatMessage(
         role: 'assistant',
         content:
-            '抱歉，本轮对话请求失败了。\n\n'
+            '本轮对话请求失败\n\n'
             '${AiErrorExplainer.describe(e)}\n\n'
-            '长按本条消息可重试本轮对话。',
+            '长按本条消息可重试。',
         timestamp: DateTime.now(),
         isError: true,
       );

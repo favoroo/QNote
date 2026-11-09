@@ -37,7 +37,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
       return;
     }
     setState(() => _isScoring = true);
-    Toast.show(context, '正在分析今日数据...', duration: const Duration(seconds: 15));
+    Toast.show(context, '正在分析今日数据', duration: const Duration(seconds: 15));
     try {
       DailyScore score;
       if (isRescore) {
@@ -46,7 +46,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
         score = await ref.read(dailyScoreProvider.notifier).performScore(date);
       }
       if (mounted) {
-        Toast.success(context, '评分完成！今日得分 ${score.totalScore} 分');
+        Toast.success(context, '评分完成，今日 ${score.totalScore} 分');
       }
     } catch (e) {
       if (mounted) {
@@ -68,7 +68,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('重新评分'),
-        content: const Text('确定要重新评分吗？这会清除该日期的旧评分并重新调用 AI 进行评估。'),
+        content: const Text('将清除该日期的旧评分并重新评估。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -142,7 +142,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                   children: [
                     CircularProgressIndicator(),
                     SizedBox(height: 16),
-                    Text('正在评估今日健康数据，请稍候...'),
+                    Text('正在评估今日数据'),
                   ],
                 ),
               ),
@@ -175,7 +175,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
               elevation: 0,
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
-                child: Center(child: Text('加载评分失败: $err')),
+                child: Center(child: Text('评分加载失败：$err')),
               ),
             ),
             data: (score) {
@@ -239,7 +239,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                                 ),
                                 const SizedBox(width: 8),
                                 const Text(
-                                  '各维度评分',
+                                  '维度评分',
                                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                                 ),
                               ],
@@ -311,7 +311,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                     elevation: 0,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
-                      child: Center(child: Text('检查日记记录失败: $err')),
+                      child: Center(child: Text('记录检查失败：$err')),
                     ),
                   ),
                   data: (records) {
@@ -338,12 +338,12 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                               ),
                               const SizedBox(height: 16),
                               const Text(
-                                  '当日记录过少',
+                                  '记录过少',
                                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                                 ),
                               const SizedBox(height: 12),
                               Text(
-                                '今日仅有 $count 条日记记录，AI 至少需要 3 条记录才能做出准确的生活评分与建议。请记录更多的日常信息（日记、睡眠、饮食或运动记录）后再来评分！',
+                                '今日仅 $count 条记录。AI 至少需要 3 条才能评分，再记几条试试。',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontSize: 13,
@@ -377,12 +377,12 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                               ),
                               const SizedBox(height: 16),
                               const Text(
-                                  '分析今日表现',
+                                  '今日表现',
                                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                                 ),
                               const SizedBox(height: 12),
                               Text(
-                                '您今天已记录了 $count 条日常信息，快让 AI 为您的一天进行全方位的健康评分和建议吧！',
+                                '今天已记录 $count 条，让 AI 给出全天健康评分与建议。',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontSize: 13,
@@ -399,7 +399,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                   ),
                                   icon: const Icon(Icons.auto_awesome),
-                                  label: const Text('开始 AI 智能评分', style: TextStyle(fontWeight: FontWeight.bold)),
+                                  label: const Text('开始评分', style: TextStyle(fontWeight: FontWeight.bold)),
                                   onPressed: () => _performScoreAction(selectedDate),
                                 ),
                               ),
@@ -443,7 +443,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                     ),
                     const SizedBox(width: 8),
                     const Text(
-                      '评分热力图 (近3个月)',
+                      '评分热力图（近3个月）',
                       style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                     ),
                   ],
@@ -456,7 +456,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                   ),
                   error: (err, stack) => SizedBox(
                     height: 140,
-                    child: Center(child: Text('加载热力图失败: $err')),
+                    child: Center(child: Text('热力图加载失败：$err')),
                   ),
                   data: (scores) => ScoreHeatmap(scores: scores, isDark: isDark),
                 ),
@@ -493,13 +493,13 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                     ),
                     const SizedBox(width: 8),
                     const Text(
-                      '历史评分趋势 (近7天)',
+                      '评分趋势（近7天）',
                       style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                     ),
                     const Spacer(),
                     IconButton(
                       onPressed: () => _openBatchAdjust(context),
-                      tooltip: '批量调整历史评分',
+                      tooltip: '批量调整评分',
                       icon: const Icon(Icons.tune),
                       iconSize: 20,
                       color: theme.colorScheme.primary,
@@ -516,7 +516,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                   ),
                   error: (err, stack) => SizedBox(
                     height: 160,
-                    child: Center(child: Text('加载历史失败: $err')),
+                    child: Center(child: Text('历史加载失败：$err')),
                   ),
                   data: (historyScores) => _ScoreHistoryChart(
                     historyScores: historyScores,
@@ -745,7 +745,7 @@ class _AiSuggestionCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 const Text(
-                  'AI 评价与建议',
+                  'AI 评价',
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                 ),
               ],
@@ -799,7 +799,7 @@ class _ScoreHistoryChart extends StatelessWidget {
     if (historyScores.isEmpty) {
       return const SizedBox(
         height: 160,
-        child: Center(child: Text('近 7 天暂无评分历史')),
+        child: Center(child: Text('近 7 天暂无评分')),
       );
     }
 

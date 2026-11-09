@@ -100,12 +100,12 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
             ),
             const SizedBox(height: 20),
             Text(
-              '开启运动健康监测',
+              '开启健康监测',
               style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 10),
             Text(
-              '授权连接后，步数、心率、睡眠分期、血氧、压力和运动记录将自动在此汇总分析，并支持小Q每日健康复盘。',
+              '授权后可汇总步数、心率、睡眠、血氧、压力与运动记录，支持小Q每日健康复盘。',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: colorScheme.onSurfaceVariant,
                 height: 1.5,
@@ -115,7 +115,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
             const SizedBox(height: 28),
             FilledButton.icon(
               icon: const Icon(Icons.qr_code_scanner),
-              label: const Text('前往绑定小米账号'),
+              label: const Text('绑定小米账号'),
               onPressed: () => context.push('/settings/mi-fitness'),
             ),
           ],
@@ -129,12 +129,12 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
         children: [
           const EmptyStateWidget(
             icon: Icons.monitor_heart_outlined,
-            message: '当前时间区间暂无运动健康数据',
+            message: '该时间段暂无健康数据',
           ),
           const SizedBox(height: 12),
           OutlinedButton.icon(
             icon: const Icon(Icons.sync),
-            label: const Text('立即从小米健康同步'),
+            label: const Text('从小米健康同步'),
             onPressed: () => context.push('/settings/mi-fitness'),
           ),
         ],
@@ -263,7 +263,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '日常活动概览',
+                  '活动概览',
                   style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                 ),
                 Container(
@@ -416,7 +416,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
           context,
           title: '平均睡眠',
           value: sleepStr,
-          subText: '深浅与REM分期监测',
+          subText: '含深浅与REM分期',
           icon: Icons.bedtime_rounded,
           color: Colors.purple,
         ),
@@ -424,7 +424,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
           context,
           title: '平均心率',
           value: hrStr,
-          subText: '全天连续心率采样',
+          subText: '全天连续采样',
           icon: Icons.favorite_rounded,
           color: Colors.red,
         ),

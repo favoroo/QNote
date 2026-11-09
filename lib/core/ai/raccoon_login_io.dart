@@ -80,25 +80,25 @@ Future<RaccoonLoopbackLogin> startRaccoonLoopbackLogin({
     }
     final stateValues = request.uri.queryParametersAll['state'] ?? const [];
     if (stateValues.length != 1 || stateValues.first != state) {
-      await reply(400, '回调不属于本次登录，请回到原授权页重试。');
+      await reply(400, '回调不属于本次登录，请回原授权页重试。');
       return;
     }
     if (settled) {
-      await reply(409, '本次回调已经处理，请回到 QNote 查看结果。');
+      await reply(409, '本次回调已处理，请回 QNote 查看结果。');
       return;
     }
     final error = request.uri.queryParameters['error'];
     if (error != null && error.isNotEmpty) {
       final description =
           request.uri.queryParameters['error_description'] ?? error;
-      await reply(400, '登录未获授权，请回到 QNote 重新登录。');
-      await finish(() => fail(StateError('小浣熊授权被拒绝：$description')));
+      await reply(400, '登录未获授权，请回 QNote 重新登录。');
+      await finish(() => fail(StateError('授权被拒绝：$description')));
       return;
     }
     final codes = request.uri.queryParametersAll['code'] ?? const [];
     final code = codes.length == 1 ? codes.first.trim() : '';
     if (code.isEmpty || code.length > 4096) {
-      await reply(400, '回调缺少有效授权码，请回到原授权页重试。');
+      await reply(400, '回调缺少授权码，请回原授权页重试。');
       return;
     }
     // 先换取再回页面：换取失败时浏览器不能显示「登录成功」，
@@ -107,13 +107,13 @@ Future<RaccoonLoopbackLogin> startRaccoonLoopbackLogin({
       await onCode?.call(code);
     } catch (e) {
       if (!settled) {
-        await replyQuietly(502, '登录未完成，请返回 QNote 查看错误并重新登录。');
+        await replyQuietly(502, '登录未完成，请回 QNote 查看错误并重试。');
       }
       await finish(() => fail(e));
       return;
     }
     if (!settled) {
-      await replyQuietly(200, '商汤小浣熊登录成功，可以关闭此页并返回 QNote。');
+      await replyQuietly(200, '小浣熊登录成功，可关闭此页回 QNote。');
     }
     await finish(() => succeed(code));
   });

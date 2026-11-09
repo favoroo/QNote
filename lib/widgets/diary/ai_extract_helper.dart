@@ -213,7 +213,7 @@ Future<AiExtractResult?> extractExistingRecord({
       );
     }
     if (context.mounted) {
-      Toast.warning(context, '未提取到有用信息');
+      Toast.warning(context, '未提取到信息');
     }
     return null;
   } on DioException catch (e) {
@@ -225,9 +225,9 @@ Future<AiExtractResult?> extractExistingRecord({
     }
     String errorMessage = '提取失败';
     if (e.type == DioExceptionType.connectionError) {
-      errorMessage = '网络连接失败，请检查网络或API配置';
+      errorMessage = '网络连接失败，请检查网络配置';
     } else if (e.type == DioExceptionType.connectionTimeout) {
-      errorMessage = '连接超时，请稍后重试';
+      errorMessage = '连接超时，请重试';
     } else if (e.response?.statusCode == 401) {
       errorMessage = 'API密钥无效，请检查AI配置';
     } else if (e.response?.statusCode == 403) {
@@ -235,12 +235,12 @@ Future<AiExtractResult?> extractExistingRecord({
     } else if (e.response?.statusCode == 404) {
       final respStr = e.response?.data?.toString() ?? '';
       if (respStr.contains('model') || respStr.contains('route')) {
-        errorMessage = '当前AI模型已下线或不存在，请在设置中切换模型';
+        errorMessage = 'AI模型已下线或不存在，请切换模型';
       } else {
         errorMessage = '请求的AI服务地址不存在(404)，请检查Base URL';
       }
     } else if (e.response?.statusCode == 429) {
-      errorMessage = 'AI服务调用频次超限，请稍后重试';
+      errorMessage = 'AI服务调用频次超限，请重试';
     }
     if (context.mounted) {
       Toast.error(context, errorMessage);
@@ -250,7 +250,7 @@ Future<AiExtractResult?> extractExistingRecord({
     if (e is VisionUnsupportedException) rethrow;
     String errorMessage = '提取失败';
     if (e is ArgumentError && e.message.toString().contains('apiKey')) {
-      errorMessage = 'AI配置不完整，请在设置中完善API密钥和地址';
+      errorMessage = 'AI配置不完整，请完善密钥和地址';
     }
     LoggerService.instance.logAI('记录智能优化失败: $e', level: LogLevel.error, details: stackTrace.toString());
     if (context.mounted) {

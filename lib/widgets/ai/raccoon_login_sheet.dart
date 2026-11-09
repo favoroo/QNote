@@ -67,7 +67,7 @@ class _RaccoonLoginSheetState extends State<RaccoonLoginSheet> {
         mode: LaunchMode.externalApplication,
       );
       if (!launched) {
-        throw StateError('无法打开系统浏览器，请复制链接后手动打开，或使用下方粘贴方式');
+        throw StateError('无法打开浏览器，请复制链接手动打开或改用粘贴登录');
       }
       final account = await handle.result;
       if (!mounted) return;
@@ -122,7 +122,7 @@ class _RaccoonLoginSheetState extends State<RaccoonLoginSheet> {
 
   String _friendlyError(Object error) {
     if (error is UnsupportedError) {
-      return '当前平台不支持浏览器回环登录，请使用下方「粘贴回调链接/Token」';
+      return '当前平台不支持回环登录，请用下方粘贴方式';
     }
     final message = error.toString().replaceFirst('Exception: ', '');
     return message.length > 160 ? '${message.substring(0, 160)}…' : message;
@@ -161,8 +161,8 @@ class _RaccoonLoginSheetState extends State<RaccoonLoginSheet> {
             ),
             const SizedBox(height: 6),
             Text(
-              '登录后小Q会使用这个账号的额度调用小浣熊模型；登录态只保存在本机，不随备份同步。'
-              '登录多个账号后可在上一页按策略轮换。',
+              '登录后小Q使用该账号额度调用小浣熊模型；登录态仅存本机、不随备份同步，'
+              '多账号可在上一页轮换。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
@@ -180,7 +180,7 @@ class _RaccoonLoginSheetState extends State<RaccoonLoginSheet> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.open_in_browser_rounded),
-                  label: Text(_waiting ? '等待浏览器授权…' : '打开浏览器登录'),
+                  label: Text(_waiting ? '等待浏览器授权…' : '浏览器登录'),
                 ),
               ),
             if (_waiting) ...[
@@ -189,7 +189,7 @@ class _RaccoonLoginSheetState extends State<RaccoonLoginSheet> {
                 children: [
                   Expanded(
                     child: Text(
-                      '授权完成后会自动返回。若浏览器没有反应，可取消后用下方粘贴方式。',
+                      '授权后自动返回；浏览器无反应时，取消并改用下方粘贴。',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: colorScheme.onSurfaceVariant,
                       ),
@@ -204,7 +204,7 @@ class _RaccoonLoginSheetState extends State<RaccoonLoginSheet> {
             ],
             if (kIsWeb) ...[
               Text(
-                'Web 端受浏览器限制，无法自动接收本机回调，请使用下方粘贴方式。',
+                'Web 端无法接收本机回调，请用下方粘贴方式。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: colorScheme.onSurfaceVariant,
                 ),
@@ -249,7 +249,7 @@ class _RaccoonLoginSheetState extends State<RaccoonLoginSheet> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.content_paste_go_rounded),
-                label: const Text('使用粘贴内容登录'),
+                label: const Text('粘贴登录'),
               ),
             ),
             if (_error != null) ...[
@@ -271,7 +271,7 @@ class _RaccoonLoginSheetState extends State<RaccoonLoginSheet> {
             ],
             const SizedBox(height: 6),
             Text(
-              '提示：如果浏览器跳转到 office-raccoon:// 开头但页面打不开，复制地址栏完整链接粘贴到上方即可。',
+              '若 office-raccoon:// 链接打不开，复制完整地址粘贴到上方。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),

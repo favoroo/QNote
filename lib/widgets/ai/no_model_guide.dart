@@ -30,10 +30,8 @@ Future<void> showNoModelConfiguredDialog(
         title: const Text('还没有可用的 AI 模型'),
         content: Text(
           scene.isEmpty
-              ? '请先添加你自己的模型服务：填入 API 地址与密钥，'
-                  '扫描出模型后按需启用即可。\n\n整个过程一分钟左右，添加密钥后即可正常使用。'
-              : '$scene需要调用 AI 模型，但你现在还没有添加任何模型服务。\n\n'
-                  '在「AI 模型配置」里填入 API 地址与密钥，扫描出模型后按需启用即可。',
+              ? '添加模型服务：填入 API 地址与密钥，扫描并启用模型即可使用。'
+              : '$scene需要添加模型服务。\n到「AI 模型配置」填入 API 地址与密钥即可。',
           style: theme.textTheme.bodyMedium,
         ),
         actions: [
@@ -85,10 +83,9 @@ Future<void> showVisionUnsupportedDialog(
         ),
         title: const Text('当前模型不支持识图'),
         content: Text(
-          '$scene需要把图片交给模型识别，但当前「时间线提取」绑定的「$modelName」经识图检测判定不支持图片输入。\n\n'
-          '请在「AI 模型配置 → 模型分配」中把「时间线提取」换成支持识图的模型：模型名通常含 vision / -vl / omni，'
-          '或属于 Gemini / Claude 系列；也可以到设置页对该模型重新做一次「识图检测」覆盖旧结论。'
-          '如果不需要图片，关闭「提取图片内容」后重试。',
+          '$scene需要识图，但「时间线提取」绑定的「$modelName」不支持图片输入。\n'
+          '到「AI 模型配置 → 模型分配」换成支持识图的模型'
+          '（名字常含 vision / -vl / omni）；不需要图片就关闭「提取图片内容」后重试。',
           style: theme.textTheme.bodyMedium,
         ),
         actions: [
@@ -168,8 +165,8 @@ class NoModelGuideCard extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               scene.isEmpty
-                  ? '添加你自己的模型服务（API 地址 + 密钥）后，小Q 对话、日记提取、AI 评分等功能即可使用。'
-                  : '$scene需要调用 AI 模型。添加你自己的模型服务后即可使用。',
+                  ? '添加模型服务后，小Q 对话、日记提取与 AI 评分即可使用。'
+                  : '$scene需要调用 AI 模型，添加模型服务后即可使用。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
                 height: 1.5,

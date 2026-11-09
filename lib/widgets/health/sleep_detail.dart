@@ -43,13 +43,13 @@ class SleepDetail extends StatelessWidget {
       children: [
         HealthDetailSection(
           title: '作息概览',
-          subtitle: '入睡与醒来取当天最长的那一段（主睡眠）',
+          subtitle: '入睡与醒来取当天最长的睡眠段',
           child: HealthStatRow(
             children: [
               HealthStatTile(
                 label: '总时长',
                 value: _hm(metrics.sleepDurationMinutes),
-                hint: '含午睡等当天全部睡眠段',
+                hint: '含午睡等全部睡眠段',
               ),
               HealthStatTile(
                 label: '入睡',
@@ -70,7 +70,7 @@ class SleepDetail extends StatelessWidget {
         const SizedBox(height: 12),
         HealthDetailSection(
           title: '睡眠分期时间轴',
-          subtitle: stages.isEmpty ? '这一天没有分期数据，多为设备未整夜佩戴' : '按实际起止时间等比绘制',
+          subtitle: stages.isEmpty ? '无分期数据，多为设备未整夜佩戴' : '按实际起止时间绘制',
           child: stages.isEmpty
               ? _emptyNote(context)
               : Column(
