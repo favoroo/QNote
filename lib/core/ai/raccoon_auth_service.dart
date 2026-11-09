@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, visibleForTesting;
 import 'package:uuid/uuid.dart';
 
 import 'package:qnote_flutter/core/ai/raccoon_account_router.dart';
@@ -13,6 +14,7 @@ import 'package:qnote_flutter/models/ai_account.dart';
 import 'package:qnote_flutter/models/ai_account_routing.dart';
 import 'package:qnote_flutter/models/ai_provider.dart';
 import 'package:qnote_flutter/models/raccoon_account_quota.dart';
+import 'package:qnote_flutter/models/raccoon_checkin_result.dart';
 
 /// 订阅账号没有可用登录态：发信前抛出，交给界面提示重新登录
 class RaccoonAuthRequiredException implements Exception {
@@ -140,10 +142,9 @@ class RaccoonAuthService {
   }
 
   List<AiAccount> _cachedFor(String providerId) {
-    final result = _cache.values
-        .where((a) => a.providerId == providerId)
-        .toList()
-      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final result =
+        _cache.values.where((a) => a.providerId == providerId).toList()
+          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
     return result;
   }
 
@@ -204,8 +205,9 @@ class RaccoonAuthService {
         );
       }
       // 还有没试过的账号 → 说明它们都在冷却，是「限流」而不是「没登录」
-      final untried =
-          enabled.where((a) => !triedAccountIds.contains(a.id)).toList();
+      final untried = enabled
+          .where((a) => !triedAccountIds.contains(a.id))
+          .toList();
       if (untried.isNotEmpty) {
         throw RaccoonAuthRequiredException(
           providerId,
@@ -373,10 +375,7 @@ class RaccoonAuthService {
     final stored = await _repository.getById(accountId);
     if (stored == null) {
       _cache.remove(accountId);
-      throw const RaccoonAuthRequiredException(
-        '',
-        message: '账号已被删除，请重新登录',
-      );
+      throw const RaccoonAuthRequiredException('', message: '账号已被删除，请重新登录');
     }
     _cache[accountId] = stored;
     if (!force && !stored.isStale(margin: refreshMargin) && !stored.isExpired) {
@@ -493,9 +492,7 @@ class RaccoonAuthService {
   /// 换取 access/refresh token（含重试）
   ///
   /// 落库放在重试之外：授权码一次性，重试只会重复交换，不该把库写入错误一起重来。
-  Future<({String access, String refresh})> _exchangeTokens(
-    String code,
-  ) async {
+  Future<({String access, String refresh})> _exchangeTokens(String code) async {
     Object? lastError;
     for (var attempt = 0; attempt < 3; attempt++) {
       if (attempt > 0) {
@@ -551,7 +548,8 @@ class RaccoonAuthService {
         // 5xx / 429 / 超时 / 连接中断都可能是瞬时抖动；其余 4xx 是确定性拒绝
         retryable:
             status == null || status >= 500 || status == 429 || status == 408,
-        detail: 'HTTP ${status ?? '-'} code=${vendorCode ?? '-'} '
+        detail:
+            'HTTP ${status ?? '-'} code=${vendorCode ?? '-'} '
             '${_vendorError(payload, _preview(payload))}',
       );
     }
@@ -574,7 +572,8 @@ class RaccoonAuthService {
           _vendorError(payload, '换取登录凭证失败（HTTP ${response.statusCode}）'),
         ),
         retryable: true,
-        detail: 'HTTP ${response.statusCode} code=${vendorCode ?? '-'} '
+        detail:
+            'HTTP ${response.statusCode} code=${vendorCode ?? '-'} '
             '响应缺少 access_token/refresh_token: ${_preview(payload)}',
       );
     }
@@ -688,10 +687,7 @@ class RaccoonAuthService {
 
   int _nextSortOrder(List<AiAccount> existing) {
     if (existing.isEmpty) return 0;
-    return existing
-            .map((a) => a.sortOrder)
-            .reduce((a, b) => a > b ? a : b) +
-        1;
+    return existing.map((a) => a.sortOrder).reduce((a, b) => a > b ? a : b) + 1;
   }
 
   // ── 账号管理 ─────────────────────────────────────────────
@@ -824,13 +820,22 @@ class RaccoonAuthService {
   /// 回落到客户端开屏调用的 `/office/v3/setting_info`，两处都是 `available_points`。
   /// 服务端不认 token（401 / 200001 / 200003）时强制刷新一次再试，仍被拒才标记
   /// 账号过期——与发信层的 401 处理口径一致，不把「额度查不到」当成「登录失效」。
-  Future<RaccoonAccountQuota> fetchQuota(AiAccount account) async {
+  Future<RaccoonAccountQuota> fetchQuota(AiAccount account) =>
+      _runWithToken(account, _readQuota);
+
+  /// 带登录态执行一次只读接口：被服务端拒绝时刷新一次再试，仍被拒才标记过期
+  ///
+  /// 与发信层的 401 处理口径一致——不把「接口查不到」当成「登录失效」。
+  Future<T> _runWithToken<T>(
+    AiAccount account,
+    Future<T> Function(String token) run,
+  ) async {
     final token = await accessTokenForAccount(account);
     if (token == null || token.trim().isEmpty) {
       throw RaccoonAuthRequiredException(account.providerId);
     }
     try {
-      return await _readQuota(token);
+      return await run(token);
     } on _QuotaAuthRejected {
       final refresher = accountRefresherForTest;
       final AiAccount refreshed;
@@ -842,7 +847,7 @@ class RaccoonAuthService {
         rethrow;
       }
       try {
-        return await _readQuota(refreshed.accessToken);
+        return await run(refreshed.accessToken);
       } on _QuotaAuthRejected {
         await _markExpiredAccount(refreshed);
         throw RaccoonAuthRequiredException(
@@ -902,17 +907,162 @@ class RaccoonAuthService {
     );
   }
 
+  // ── 手动签到 ─────────────────────────────────────────────
+
+  /// 账单列表：签到前后各拍一次，用差额确认到底到账多少积分
+  static const String _billsPath =
+      '/api/web/points/v1/bills?paging.limit=20&paging.offset=0';
+
+  /// 手动签到并领取当日积分（只做用户点击触发，不自动执行）
+  ///
+  /// 厂商没有独立的签到接口——开屏接口 `/office/v3/setting_info` 本身就是
+  /// 签到触发器（与 magpie 插件一致）。为了避免重复点击把历史账单误报成
+  /// 新到账，先拍一张「今天已有发放账单」的快照，签到后再对比账单差异；
+  /// 快照失败时退化成「接口成功就算已处理」，宁可少报也不虚报积分。
+  Future<RaccoonCheckInResult> checkIn(AiAccount account) =>
+      _runWithToken(account, _checkInWithToken);
+
+  Future<RaccoonCheckInResult> _checkInWithToken(String token) async {
+    final today = _beijingDateKey(DateTime.now());
+    Set<String>? beforeKeys;
+    try {
+      beforeKeys = _checkinGrantKeys(await _quotaGet(_billsPath, token), today);
+    } catch (_) {
+      // 快照只影响「能不能算出本次到账」，不能挡住签到本身
+    }
+
+    // 带桌面端请求头才会触发当日积分发放（与插件同口径）
+    await _quotaGet(
+      '/api/web/office/v3/setting_info',
+      token,
+      headers: {
+        'X-Client-Platform': defaultTargetPlatform == TargetPlatform.macOS
+            ? 'desktop-mac'
+            : 'desktop-windows',
+        'X-Client-Version': 'v1.0.0',
+        'X-Raccoon-Language': 'zh',
+      },
+    );
+
+    final checkedAt = DateTime.now();
+    if (beforeKeys == null) {
+      // 没有签到前的账单快照：无法判断是否新到账，按「已签到」收尾
+      return RaccoonCheckInResult(
+        claimed: false,
+        credit: 0,
+        message: '今日已签到',
+        checkedAt: checkedAt,
+      );
+    }
+
+    final bills = await _quotaGet(_billsPath, token);
+    var credit = 0;
+    final names = <String>[];
+    for (final item in _billItems(bills)) {
+      if (!_isCheckinGrantBill(item, today)) continue;
+      if (beforeKeys.contains(_billKey(item))) continue;
+      credit += _intOf(item['points']);
+      final name = (item['event_name'] ?? '').toString().trim();
+      if (name.isNotEmpty && !names.contains(name)) names.add(name);
+    }
+    if (credit <= 0) {
+      return RaccoonCheckInResult(
+        claimed: false,
+        credit: 0,
+        message: '今日已签到',
+        checkedAt: checkedAt,
+      );
+    }
+    return RaccoonCheckInResult(
+      claimed: true,
+      credit: credit,
+      message: '${names.isEmpty ? '今日签到' : names.join(' + ')} +$credit',
+      checkedAt: checkedAt,
+    );
+  }
+
+  /// 账单里「今天已发放的签到类积分」的键集合（用于签到前后对比）
+  static Set<String> _checkinGrantKeys(dynamic payload, String today) {
+    final keys = <String>{};
+    for (final item in _billItems(payload)) {
+      if (_isCheckinGrantBill(item, today)) keys.add(_billKey(item));
+    }
+    return keys;
+  }
+
+  static List<Map> _billItems(dynamic payload) {
+    if (payload is! Map) return const [];
+    final items = payload['items'];
+    if (items is! List) return const [];
+    return items.whereType<Map>().toList();
+  }
+
+  /// 只认当天到账的发放账单：`daily_grant`（每日签到）、`reward_grant`
+  /// （奖励发放），`biz_type` 缺失时也当成发放记录（兼容旧版接口）
+  static bool _isCheckinGrantBill(Map item, String today) {
+    if (_intOf(item['points']) <= 0) return false;
+    if (_vendorDateKey(item['created_at']) != today) return false;
+    final bizType = (item['biz_type'] ?? '').toString().trim();
+    return bizType.isEmpty ||
+        bizType == 'daily_grant' ||
+        bizType == 'reward_grant';
+  }
+
+  /// 账单键：优先用厂商 id，缺失时用「时间 + 积分 + 事件名」兜底
+  static String _billKey(Map item) {
+    final id = (item['bill_id'] ?? item['biz_id'] ?? '').toString().trim();
+    if (id.isNotEmpty) return id;
+    return '${item['created_at'] ?? ''}:'
+        '${item['points'] ?? ''}:${item['event_name'] ?? ''}';
+  }
+
+  static int _intOf(dynamic raw) {
+    final number = num.tryParse(raw?.toString().trim() ?? '');
+    if (number == null || !number.isFinite) return 0;
+    return number.floor();
+  }
+
+  /// 厂商口径的「今天」按北京时间算
+  static String _beijingDateKey(DateTime now) {
+    final beijing = now.toUtc().add(const Duration(hours: 8));
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${beijing.year.toString().padLeft(4, '0')}-'
+        '${two(beijing.month)}-${two(beijing.day)}';
+  }
+
+  /// 账单时间可能是北京时间字符串、带时区的 ISO 或时间戳
+  static String _vendorDateKey(dynamic raw) {
+    final text = raw?.toString().trim() ?? '';
+    if (text.isEmpty) return '';
+    final parsed = DateTime.tryParse(text);
+    if (parsed == null) {
+      return text.length >= 10 ? text.substring(0, 10) : '';
+    }
+    // 带 Z / 偏移量的值解析出来是 UTC：换算成北京时间再取日期
+    if (parsed.isUtc) return _beijingDateKey(parsed);
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${parsed.year.toString().padLeft(4, '0')}-'
+        '${two(parsed.month)}-${two(parsed.day)}';
+  }
+
   /// GET 小浣熊网页接口并拆掉 `{code, data}` 信封
   ///
   /// 401 / `code=200001|200003` 表示「登录态不被接受」，交给调用方决定刷新重试；
   /// 其余非零 code 统一转成带厂商文案的 FormatException。
-  Future<dynamic> _quotaGet(String path, String token) async {
+  Future<dynamic> _quotaGet(
+    String path,
+    String token, {
+    Map<String, String>? headers,
+  }) async {
     final Response<dynamic> response;
     try {
       response = await _dio.get<dynamic>(
         '$mainOrigin$path',
         options: Options(
-          headers: {'Authorization': 'Bearer ${_stripBearer(token)}'},
+          headers: {
+            'Authorization': 'Bearer ${_stripBearer(token)}',
+            ...?headers,
+          },
         ),
       );
     } on DioException catch (e) {
@@ -933,9 +1083,7 @@ class RaccoonAuthService {
       throw const _QuotaAuthRejected();
     }
     if (code != null && code != '0') {
-      throw FormatException(
-        _vendorError(payload, '查询积分失败（code=$code）'),
-      );
+      throw FormatException(_vendorError(payload, '查询积分失败（code=$code）'));
     }
     if (payload is Map && payload['data'] != null) return payload['data'];
     return payload;
@@ -1212,9 +1360,10 @@ class RaccoonAuthService {
       claims?['name']?.toString().trim() ?? '';
 
   static String _hexToDecimal(String value) {
-    final raw = value
-        .trim()
-        .replaceFirst(RegExp(r'^0x', caseSensitive: false), '');
+    final raw = value.trim().replaceFirst(
+      RegExp(r'^0x', caseSensitive: false),
+      '',
+    );
     if (raw.isEmpty || !RegExp(r'^[0-9a-fA-F]+$').hasMatch(raw)) return '';
     try {
       return BigInt.parse(raw, radix: 16).toString();

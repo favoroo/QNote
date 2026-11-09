@@ -2758,56 +2758,9 @@ class ChatBubble extends ConsumerWidget {
                         ],
                       )
                     : statusText != null
-                    ? // 阶段性状态行：弱化色文案 + 逐点渐显的动态省略号，替代原先文本下方的闪烁光标；
-                      // 下方挂实时思考区（模型返回 reasoning_content 时滚动展示思考过程）
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 2),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    statusText,
-                                    style: TextStyle(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                      fontSize: 14,
-                                      height: 1.5,
-                                    ),
-                                  ),
-                                ),
-                                // 思考中采用形变无限符号动画，流动生命力替代三个跳动圆点
-                                Padding(
-                                  padding: const EdgeInsets.only(
-                                    left: 8,
-                                    right: 6,
-                                  ),
-                                  child: MorphingInfinity(
-                                    size: 21,
-                                    strokeWidth: 1.5,
-                                    color: theme.colorScheme.primary,
-                                  ),
-                                ),
-                                // 已用时递增计数：长任务期间传达"仍在推进，没有卡住"
-                                Padding(
-                                  padding: const EdgeInsets.only(left: 2),
-                                  child: StreamingElapsedText(
-                                    startedAt: statusStartedAt,
-                                    style: TextStyle(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const _LiveThoughtView(),
-                        ],
+                    ? _StreamingStatusCard(
+                        statusText: statusText,
+                        startedAt: statusStartedAt,
                       )
                     : !hasRenderableBody
                     ? const MorphingInfinity()
@@ -4470,6 +4423,78 @@ class _InputPill extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 流式占位卡：思考步骤行在上，进行中的动作/排队状态行在下
+///
+/// 顺序与落库后的时间线一致（思考 → 工具/正文）。早期把状态行排在思考上方，
+/// 工具调用状态一出现，思考行就被挤到下面，落库后又跳回上方，看起来像顺序颠倒。
+class _StreamingStatusCard extends ConsumerWidget {
+  final String statusText;
+
+  /// 本轮任务开始时间，状态行尾部显示「已用时」递增计数
+  final DateTime? startedAt;
+
+  const _StreamingStatusCard({required this.statusText, this.startedAt});
+
+  /// 「思考中/准备中」只表示任务在跑，思考步骤行（含计时与呼吸动画）
+  /// 已经表达同一信息，不再重复占一行
+  static bool _isThinkingStatus(String text) =>
+      text.startsWith('小Q思考中') || text.startsWith('小Q准备中');
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final hasThought =
+        ref.watch(aiStreamingThoughtProvider)?.trim().isNotEmpty ?? false;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const _LiveThoughtView(),
+        if (!hasThought || !_isThinkingStatus(statusText))
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Flexible(
+                  child: Text(
+                    statusText,
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontSize: 14,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+                // 思考中采用形变无限符号动画，流动生命力替代三个跳动圆点
+                Padding(
+                  padding: const EdgeInsets.only(left: 8, right: 6),
+                  child: MorphingInfinity(
+                    size: 21,
+                    strokeWidth: 1.5,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                // 已用时递增计数：长任务期间传达"仍在推进，没有卡住"
+                Padding(
+                  padding: const EdgeInsets.only(left: 2),
+                  child: StreamingElapsedText(
+                    startedAt: startedAt,
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

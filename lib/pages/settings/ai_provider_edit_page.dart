@@ -78,6 +78,9 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
   final Set<String> _quotaLoading = {};
   final Map<String, String> _quotaErrors = {};
 
+  /// 正在签到的账号（避免重复点击把同一个账号签到请求打两遍）
+  final Set<String> _checkingIn = {};
+
   bool _dirty = false;
   bool _saving = false;
   bool _scanning = false;
@@ -199,6 +202,31 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
         .where((account) => account.enabled && !account.isExpired)
         .toList();
     await Future.wait(targets.map(_fetchQuota));
+  }
+
+  /// 手动签到：成功后顺手刷新一次积分，让新到账的数字立刻可见
+  Future<void> _checkIn(AiAccount account) async {
+    if (_checkingIn.contains(account.id)) return;
+    setState(() => _checkingIn.add(account.id));
+    try {
+      final result = await RaccoonAuthService.instance.checkIn(account);
+      if (!mounted) return;
+      setState(() => _checkingIn.remove(account.id));
+      if (result.claimed) {
+        Toast.success(context, '签到成功：${result.message}');
+        await _fetchQuota(account);
+      } else {
+        Toast.info(context, result.message);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _checkingIn.remove(account.id));
+      Toast.error(context, '签到失败：${_quotaErrorMessage(e)}');
+      if (e is RaccoonAuthRequiredException) {
+        // 登录态被服务端拒绝：拉一次账号列表，让「已过期」状态立刻显示出来
+        await _loadAccounts();
+      }
+    }
   }
 
   String _quotaErrorMessage(Object error) {
@@ -1480,11 +1508,12 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     );
   }
 
-  /// 账号行里的额度：积分 + 套餐 + 更新时间，右侧是单账号刷新
+  /// 账号行里的额度：积分 + 套餐 + 更新时间，右侧是签到与单账号刷新
   Widget _quotaLine(ThemeData theme, AiAccount account) {
     final colorScheme = theme.colorScheme;
     final quota = _quotas[account.id];
     final loading = _quotaLoading.contains(account.id);
+    final checkingIn = _checkingIn.contains(account.id);
     final error = _quotaErrors[account.id];
 
     final String text;
@@ -1523,6 +1552,30 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
             ),
           ),
         ),
+        if (!account.isExpired)
+          SizedBox(
+            height: 32,
+            child: TextButton.icon(
+              onPressed: checkingIn ? null : () => _checkIn(account),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: const Size(0, 32),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+              ),
+              icon: checkingIn
+                  ? const SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.event_available_outlined, size: 14),
+              label: Text(
+                checkingIn ? '签到中' : '签到',
+                style: theme.textTheme.labelSmall,
+              ),
+            ),
+          ),
         SizedBox(
           width: 32,
           height: 32,
