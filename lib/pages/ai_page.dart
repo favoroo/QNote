@@ -20,7 +20,6 @@ import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
-import 'package:qnote_flutter/core/ai/model_reasoning_capability.dart';
 import 'package:qnote_flutter/core/agent/agent_tool_labels.dart';
 import 'package:qnote_flutter/core/utils/chat_reedit.dart';
 import 'package:qnote_flutter/core/utils/chat_timeline.dart';
@@ -32,13 +31,13 @@ import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/tts/tts_player.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
+import 'package:qnote_flutter/widgets/ai/assistant_model_sheet.dart';
 import 'package:qnote_flutter/widgets/ai/auto_read_toggle_button.dart';
 import 'package:qnote_flutter/widgets/ai/bubble_action_bar.dart';
 import 'package:qnote_flutter/widgets/ai/chat_history_drawer.dart';
 import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
-import 'package:qnote_flutter/widgets/ai/reasoning_effort_sheet.dart';
 import 'package:qnote_flutter/widgets/ai/user_bubble_reedit_tap.dart';
 import 'package:qnote_flutter/widgets/common/loading_ring.dart';
 import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
@@ -1162,96 +1161,6 @@ class _AiPageState extends ConsumerState<AiPage> {
     setState(() => _activeModelId = selected.ref);
   }
 
-  /// 当前绑定对应的具体模型（路由组返回 null：组内成员档位可能不同）
-  ({AiProvider provider, AiProviderModel model})? _resolveActiveModelEntry(
-    List<AiProvider> providers,
-  ) {
-    final binding = _activeModelId;
-    if (binding == null || binding.isRouteGroup) return null;
-    final provider = providers
-        .where((p) => p.id == binding.providerId)
-        .firstOrNull;
-    final model = provider?.models
-        .where((m) => m.id == binding.modelName)
-        .firstOrNull;
-    if (provider == null || model == null) return null;
-    return (provider: provider, model: model);
-  }
-
-  /// 思考强度的作用对象：具体模型就是它自己；路由组展开为全部启用成员
-  ///
-  /// 路由组内成员档位可以不一致，输入区改档时统一写到每个成员上；
-  /// 不支持的成员在发信层会静默跳过，不会把请求打挂。
-  List<({AiProvider provider, AiProviderModel model})> _reasoningTargets(
-    List<AiProvider> providers,
-    List<AiRouteGroup> groups,
-  ) {
-    final single = _resolveActiveModelEntry(providers);
-    if (single != null) return [single];
-
-    final binding = _activeModelId;
-    if (binding == null || !binding.isRouteGroup) return const [];
-    final group = groups.where((g) => g.id == binding.providerId).firstOrNull;
-    if (group == null) return const [];
-    final targets = <({AiProvider provider, AiProviderModel model})>[];
-    for (final member in group.enabledMembers) {
-      final provider = providers
-          .where((p) => p.id == member.providerId)
-          .firstOrNull;
-      final model = provider?.models
-          .where((m) => m.id == member.modelName)
-          .firstOrNull;
-      if (provider != null && model != null) {
-        targets.add((provider: provider, model: model));
-      }
-    }
-    return targets;
-  }
-
-  /// 输入区调整思考强度：直接写回厂商条目，下一轮请求即生效
-  Future<void> _openReasoningEffort(
-    List<({AiProvider provider, AiProviderModel model})> targets,
-  ) async {
-    if (targets.isEmpty) return;
-    final first = targets.first;
-    // 组内档位不一致时按「自动」预选，避免把某个成员的档位冒充成全局选择
-    final sameEffort = targets.every(
-      (t) => t.model.reasoningEffort == first.model.reasoningEffort,
-    );
-    final result = await showReasoningEffortSheet(
-      context,
-      modelName: targets.length == 1
-          ? first.model.name
-          : '${first.model.name} 等 ${targets.length} 个模型',
-      providerType: first.provider.providerType,
-      vendorId: first.provider.vendorId,
-      selected: sameEffort ? first.model.reasoningEffort : null,
-    );
-    if (result == null || !mounted) return;
-
-    // 按厂商聚合写回：一个路由组可能横跨多个厂商条目
-    final byProvider = <String, List<String>>{};
-    for (final target in targets) {
-      byProvider.putIfAbsent(target.provider.id, () => []).add(target.model.id);
-    }
-    final notifier = ref.read(aiProviderListProvider.notifier);
-    for (final target in targets) {
-      final ids = byProvider[target.provider.id];
-      if (ids == null) continue;
-      final updatedModels = target.provider.models
-          .map(
-            (m) => ids.contains(m.id)
-                ? m.copyWith(reasoningEffort: result.effort)
-                : m,
-          )
-          .toList();
-      await notifier.updateProvider(
-        target.provider.copyWith(models: updatedModels),
-      );
-      byProvider.remove(target.provider.id);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final currentChat = ref.watch(currentChatProvider);
@@ -1637,26 +1546,18 @@ class _AiPageState extends ConsumerState<AiPage> {
     );
     final busy = _isTyping || isSessionBusy;
 
-    // 思考强度胶囊：具体模型或路由组都展示（路由组作用于全部启用成员），
-    // 能力表未收录时用通用兜底，保证入口始终可见
-    final reasoningTargets = _reasoningTargets(
+    // 模型胶囊尾部的思考强度档位：模型选择面板里一并调整，这里只做展示
+    final reasoningTargets = reasoningTargetsOf(
+      _activeModelId,
       providersAsync.valueOrNull ?? const <AiProvider>[],
       routeGroupsAsync.valueOrNull ?? const <AiRouteGroup>[],
     );
-    final activeReasoningCapability = reasoningTargets.isEmpty
+    final effortState = reasoningEffortStateOf(reasoningTargets);
+    final effortLabel = effortState == null
         ? null
-        : ModelReasoningCapability.forUi(
-            modelName: reasoningTargets.first.model.id,
-            providerType: reasoningTargets.first.provider.providerType,
-            vendorId: reasoningTargets.first.provider.vendorId,
-          );
-    // 组内档位不一致时展示「混合」，不把某个成员的档位冒充成全局选择
-    final firstEffort = reasoningTargets.isEmpty
-        ? null
-        : reasoningTargets.first.model.reasoningEffort;
-    final sameEffort =
-        reasoningTargets.isNotEmpty &&
-        reasoningTargets.every((t) => t.model.reasoningEffort == firstEffort);
+        : effortState.mixed
+        ? '混合'
+        : effortState.capability.labelFor(effortState.effort);
 
     return Material(
       color: theme.colorScheme.surface,
@@ -1692,7 +1593,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                 const SizedBox(height: 6),
               ],
 
-              // 1.5 输入栏上方功能行：左侧常用提示词，右侧思考强度与模型
+              // 1.5 输入栏上方功能行：左侧常用提示词，右侧模型胶囊（含思考强度档位）
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
@@ -1710,26 +1611,15 @@ class _AiPageState extends ConsumerState<AiPage> {
                       }),
                     ),
                     const SizedBox(width: 8),
-                    // 右侧控制区：思考强度 + 模型。
+                    // 右侧控制区：模型胶囊（带当前思考强度档位）。
                     // 模型只显示模型名（厂商名对「当前用哪个模型」没有增量信息，
-                    // 且会把胶囊撑得很长）；思考强度入口始终可见。
+                    // 且会把胶囊撑得很长）；思考强度在模型选择面板里一并调整。
                     Expanded(
                       child: Align(
                         alignment: Alignment.centerRight,
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (activeReasoningCapability != null &&
-                                reasoningTargets.isNotEmpty) ...[
-                              _InputPill(
-                                icon: Icons.psychology_outlined,
-                                label:
-                                    '思考 · ${sameEffort ? activeReasoningCapability.labelFor(firstEffort) : '混合'}',
-                                onTap: () =>
-                                    _openReasoningEffort(reasoningTargets),
-                              ),
-                              const SizedBox(width: 6),
-                            ],
                             Flexible(
                               child: _InputPill(
                                 icon: Icons.memory_rounded,
@@ -1740,6 +1630,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                                   routeGroupsAsync.valueOrNull ??
                                       const <AiRouteGroup>[],
                                 ),
+                                suffix: effortLabel,
                                 trailing: Icons.expand_more_rounded,
                                 onTap: _openModelSelector,
                               ),
@@ -4380,12 +4271,19 @@ class _TypingBubble extends StatelessWidget {
 class _InputPill extends StatelessWidget {
   final IconData icon;
   final String label;
+
+  /// 尾部固定展示的次要文案（如思考强度档位）
+  ///
+  /// 与 [label] 分开是因为 [label] 会被省略号截断：模型名再长也不能把档位挤没，
+  /// 否则用户看不到当前思考强度。
+  final String? suffix;
   final IconData? trailing;
   final VoidCallback onTap;
 
   const _InputPill({
     required this.icon,
     required this.label,
+    this.suffix,
     this.trailing,
     required this.onTap,
   });
@@ -4415,6 +4313,12 @@ class _InputPill extends StatelessWidget {
                   style: theme.textTheme.bodySmall?.copyWith(color: color),
                 ),
               ),
+              if (suffix != null)
+                Text(
+                  ' · $suffix',
+                  maxLines: 1,
+                  style: theme.textTheme.bodySmall?.copyWith(color: color),
+                ),
               if (trailing != null) ...[
                 const SizedBox(width: 2),
                 Icon(trailing, size: 14, color: color),

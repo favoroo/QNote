@@ -1,0 +1,859 @@
+import 'package:flutter/material.dart';
+
+import 'package:qnote_flutter/core/ai/model_reasoning_capability.dart';
+import 'package:qnote_flutter/models/ai_model_ref.dart';
+import 'package:qnote_flutter/models/ai_provider.dart';
+import 'package:qnote_flutter/models/ai_route_group.dart';
+import 'package:qnote_flutter/models/reasoning_effort.dart';
+import 'package:qnote_flutter/widgets/ai/model_picker_sheet.dart';
+import 'package:qnote_flutter/widgets/ai/reasoning_effort_sheet.dart';
+
+/// 思考强度的作用对象：某个厂商条目下的某个已启用模型
+typedef ReasoningEffortTarget = ({AiProvider provider, AiProviderModel model});
+
+/// 绑定引用 → 思考强度的作用对象
+///
+/// 具体模型就是它自己；路由组展开为组内全部启用成员——组内档位本来就可以不
+/// 一致，发信层会对不支持的成员静默跳过。厂商或模型已被删除时返回空列表。
+List<ReasoningEffortTarget> reasoningTargetsOf(
+  AiModelRef? ref,
+  List<AiProvider> providers,
+  List<AiRouteGroup> groups,
+) {
+  if (ref == null) return const [];
+  if (!ref.isRouteGroup) {
+    final target = _targetOf(providers, ref.providerId, ref.modelName);
+    return target == null ? const [] : [target];
+  }
+
+  final group = groups.where((g) => g.id == ref.providerId).firstOrNull;
+  if (group == null) return const [];
+  final targets = <ReasoningEffortTarget>[];
+  for (final member in group.enabledMembers) {
+    final target = _targetOf(providers, member.providerId, member.modelName);
+    if (target != null) targets.add(target);
+  }
+  return targets;
+}
+
+/// 厂商条目 + 模型 id → 目标；厂商或模型已被删除时返回 null
+ReasoningEffortTarget? _targetOf(
+  List<AiProvider> providers,
+  String providerId,
+  String modelName,
+) {
+  final provider = providers.where((p) => p.id == providerId).firstOrNull;
+  final model = provider?.models.where((m) => m.id == modelName).firstOrNull;
+  if (provider == null || model == null) return null;
+  return (provider: provider, model: model);
+}
+
+/// 一组思考强度目标的状态：可选档位 + 当前值
+class ReasoningEffortState {
+  /// 档位取值能力：决定界面展示哪些档位、用什么文案
+  final ModelReasoningCapability capability;
+
+  /// 当前档位；null 表示「自动」，或组内不一致（看 [mixed]）
+  final ReasoningEffort? effort;
+
+  /// 多个目标档位不一致：界面显示「混合」，不把某个成员的档位冒充成全局选择
+  final bool mixed;
+
+  const ReasoningEffortState({
+    required this.capability,
+    this.effort,
+    this.mixed = false,
+  });
+}
+
+/// 目标集合 → 状态；空集合返回 null（没有可调对象，界面只给提示）
+ReasoningEffortState? reasoningEffortStateOf(
+  List<ReasoningEffortTarget> targets,
+) {
+  if (targets.isEmpty) return null;
+  final first = targets.first;
+  final capability = ModelReasoningCapability.forUi(
+    modelName: first.model.id,
+    providerType: first.provider.providerType,
+    vendorId: first.provider.vendorId,
+  );
+  final effort = first.model.reasoningEffort;
+  return ReasoningEffortState(
+    capability: capability,
+    effort: effort,
+    mixed: targets.any((t) => t.model.reasoningEffort != effort),
+  );
+}
+
+/// 弹出小Q 模型选择面板（一级厂商/路由组 → 二级模型 + 思考强度）
+///
+/// 绑定与思考强度都由调用方通过回调写库：面板只负责展示与收集选择，回调返回
+/// false 表示没落库，面板保持原样（界面不能比库里的状态更超前）。
+/// 面板本身不返回值——点选即生效，关闭面板不影响已经写入的选择。
+Future<void> showAssistantModelSheet(
+  BuildContext context, {
+  required List<AiProvider> providers,
+  required List<AiRouteGroup> groups,
+  required AiModelRef? selected,
+  required Future<bool> Function(AiModelRef ref) onSelectBinding,
+  required Future<bool> Function(
+    List<ReasoningEffortTarget> targets,
+    ReasoningEffort? effort,
+  )
+  onEffortChanged,
+  VoidCallback? onManageModels,
+}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (_) => AssistantModelSheet(
+      providers: providers,
+      groups: groups,
+      selected: selected,
+      onSelectBinding: onSelectBinding,
+      onEffortChanged: onEffortChanged,
+      onManageModels: onManageModels,
+    ),
+  );
+}
+
+/// 二级面板的作用域：具体厂商，或一个路由组
+class _DetailScope {
+  /// 厂商 id 或路由组 id
+  final String id;
+  final bool isGroup;
+
+  const _DetailScope.provider(this.id) : isGroup = false;
+
+  const _DetailScope.group(this.id) : isGroup = true;
+}
+
+/// 小Q 模型选择面板：一级选厂商/路由组，二级选模型并把思考强度一起调完
+///
+/// 参考 ZCode 的选择面板：思考强度跟着模型走，不再在输入区单独占一个胶囊。
+/// 点模型即写库并保持面板打开——用户接着就能调它的思考强度，不用先关面板
+/// 再点第二个入口。
+class AssistantModelSheet extends StatefulWidget {
+  final List<AiProvider> providers;
+  final List<AiRouteGroup> groups;
+
+  /// 打开面板时的绑定，用于勾选与「思考强度」的作用对象
+  final AiModelRef? selected;
+
+  /// 点选模型/路由组：写库成功返回 true
+  final Future<bool> Function(AiModelRef ref) onSelectBinding;
+
+  /// 调整思考强度：写库成功返回 true
+  final Future<bool> Function(
+    List<ReasoningEffortTarget> targets,
+    ReasoningEffort? effort,
+  )
+  onEffortChanged;
+
+  /// 一级面板底部的「管理模型」入口
+  final VoidCallback? onManageModels;
+
+  const AssistantModelSheet({
+    super.key,
+    required this.providers,
+    required this.groups,
+    required this.selected,
+    required this.onSelectBinding,
+    required this.onEffortChanged,
+    this.onManageModels,
+  });
+
+  @override
+  State<AssistantModelSheet> createState() => _AssistantModelSheetState();
+}
+
+class _AssistantModelSheetState extends State<AssistantModelSheet> {
+  final TextEditingController _searchCtl = TextEditingController();
+  String _query = '';
+
+  /// 当前二级面板；null 表示停在一级列表
+  _DetailScope? _detail;
+
+  /// 面板打开期间的绑定：点选写库成功后立即移动勾选，不依赖外部重建
+  late AiModelRef? _binding = widget.selected;
+
+  /// 面板打开期间调过的思考强度（key 见 [_effortKey]）
+  ///
+  /// 外部传进来的 providers 是打开面板那一刻的快照，写库后不会自己更新，
+  /// 所以本地记一份，避免档位「点了没反应」。
+  final Map<String, ReasoningEffort?> _effortOverride = {};
+
+  /// 有写库请求在飞：期间禁止重复点选，防止连点写乱绑定
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _searchCtl.dispose();
+    super.dispose();
+  }
+
+  String _effortKey(String providerId, String modelName) =>
+      '$providerId::$modelName';
+
+  bool _matches(String text) =>
+      _query.isEmpty || text.toLowerCase().contains(_query.toLowerCase());
+
+  bool _matchesProvider(AiProvider provider) =>
+      _matches(provider.name) ||
+      provider.models.any((m) => _matches(m.id) || _matches(m.name));
+
+  /// 应用本地档位覆盖：思考强度区块读这一份，才和面板上的操作一致
+  List<ReasoningEffortTarget> _withOverride(
+    List<ReasoningEffortTarget> targets,
+  ) {
+    if (_effortOverride.isEmpty) return targets;
+    return [
+      for (final target in targets)
+        if (_effortOverride.containsKey(
+          _effortKey(target.provider.id, target.model.id),
+        ))
+          (
+            provider: target.provider,
+            model: target.model.copyWith(
+              reasoningEffort:
+                  _effortOverride[_effortKey(
+                    target.provider.id,
+                    target.model.id,
+                  )],
+            ),
+          )
+        else
+          target,
+    ];
+  }
+
+  /// 二级面板里「思考强度」的作用对象
+  ///
+  /// 厂商面板：只作用于当前选中的那个模型；还没选中该厂商下的模型时为空
+  /// （面板提示先选模型）。路由组面板：作用于组内全部启用成员。
+  List<ReasoningEffortTarget> _effortTargets(_DetailScope scope) {
+    if (scope.isGroup) {
+      return _withOverride(
+        reasoningTargetsOf(
+          AiModelRef.routeGroup(scope.id),
+          widget.providers,
+          widget.groups,
+        ),
+      );
+    }
+    final binding = _binding;
+    if (binding == null || binding.isRouteGroup) return const [];
+    if (binding.providerId != scope.id) return const [];
+    return _withOverride(
+      reasoningTargetsOf(binding, widget.providers, widget.groups),
+    );
+  }
+
+  Future<void> _selectBinding(AiModelRef ref) async {
+    if (_busy || ref == _binding) return;
+    setState(() => _busy = true);
+    final ok = await widget.onSelectBinding(ref);
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      if (ok) _binding = ref;
+    });
+  }
+
+  Future<void> _applyEffort(
+    List<ReasoningEffortTarget> targets,
+    ReasoningEffort? effort,
+  ) async {
+    if (_busy) return;
+    // 点已选中的档位不做无意义的写库
+    if (targets.every((t) => t.model.reasoningEffort == effort)) return;
+    setState(() => _busy = true);
+    final ok = await widget.onEffortChanged(targets, effort);
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      if (!ok) return;
+      for (final target in targets) {
+        _effortOverride[_effortKey(target.provider.id, target.model.id)] =
+            effort;
+      }
+    });
+  }
+
+  void _openDetail(_DetailScope scope) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    _searchCtl.clear();
+    setState(() {
+      _query = '';
+      _detail = scope;
+    });
+  }
+
+  /// 点路由组：先写绑定再进二级面板（组内成员与档位都在那一屏里）
+  Future<void> _openGroup(AiRouteGroup group) async {
+    await _selectBinding(AiModelRef.routeGroup(group.id));
+    if (!mounted) return;
+    _openDetail(_DetailScope.group(group.id));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scope = _detail;
+    final showSearch =
+        scope == null &&
+        (enabledModelEntries(widget.providers).length > 8 ||
+            widget.groups.isNotEmpty);
+
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.7,
+      minChildSize: 0.45,
+      maxChildSize: 0.92,
+      builder: (context, scrollController) => Column(
+        children: [
+          if (scope == null)
+            _buildRootHeader(theme)
+          else
+            _buildDetailHeader(theme, scope),
+          if (showSearch)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+              child: TextField(
+                controller: _searchCtl,
+                onChanged: (value) => setState(() => _query = value.trim()),
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: '搜索模型或厂商',
+                  prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                  suffixIcon: _query.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.clear_rounded, size: 18),
+                          onPressed: () {
+                            _searchCtl.clear();
+                            setState(() => _query = '');
+                          },
+                        ),
+                ),
+              ),
+            ),
+          Expanded(
+            child: scope == null
+                ? _buildRootList(scrollController, theme)
+                : _buildDetailList(scope, scrollController, theme),
+          ),
+          if (scope != null) _buildEffortSection(theme, scope),
+        ],
+      ),
+    );
+  }
+
+  // ── 一级：厂商 / 路由组 ──────────────────────────────────
+
+  Widget _buildRootHeader(ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 12, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '选择小Q模型',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: '关闭',
+            icon: const Icon(Icons.close_rounded),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 一级行尾：当前绑定的打勾，其余给一个进入二级的箭头
+  Widget _enterTrailing(ThemeData theme, bool isSelected) {
+    if (isSelected) {
+      return Icon(Icons.check_rounded, color: theme.colorScheme.primary);
+    }
+    return Icon(Icons.chevron_right_rounded, color: theme.colorScheme.outline);
+  }
+
+  Widget _buildRootList(ScrollController controller, ThemeData theme) {
+    final colorScheme = theme.colorScheme;
+    // 没有成员的组绑上也是坏体验，这里直接不出现
+    final groups = widget.groups
+        .where((g) => g.enabledMembers.isNotEmpty)
+        .where((g) => _matches(g.name))
+        .toList();
+    final providers = widget.providers
+        .where((p) => p.enabled && p.models.isNotEmpty)
+        .where(_matchesProvider)
+        .toList();
+
+    if (groups.isEmpty && providers.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Text(
+            '没有匹配的模型或厂商',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return ListView(
+      controller: controller,
+      padding: const EdgeInsets.only(bottom: 16),
+      children: [
+        if (groups.isNotEmpty) ...[
+          _sectionHeader(theme, '路由组', trailing: '多模型轮流 / 故障转移'),
+          for (final group in groups) _buildGroupTile(theme, group),
+        ],
+        if (providers.isNotEmpty) ...[
+          _sectionHeader(theme, '厂商'),
+          for (final provider in providers) _buildProviderTile(theme, provider),
+        ],
+        if (widget.onManageModels != null) ...[
+          const Divider(height: 24, indent: 16, endIndent: 16),
+          ListTile(
+            leading: const Icon(Icons.tune_rounded),
+            title: const Text('管理模型'),
+            subtitle: const Text('添加厂商、扫描并启用模型'),
+            // 先关面板再跳转，避免弹层盖在设置页上
+            onTap: () {
+              Navigator.of(context).pop();
+              widget.onManageModels!.call();
+            },
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildGroupTile(ThemeData theme, AiRouteGroup group) {
+    final colorScheme = theme.colorScheme;
+    final ref = AiModelRef.routeGroup(group.id);
+    final isSelected = ref == _binding;
+    final live = routeGroupLiveMemberCount(group, widget.providers);
+    return ListTile(
+      leading: Icon(
+        Icons.alt_route_rounded,
+        color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+      ),
+      title: Text(
+        group.name,
+        style: TextStyle(
+          fontWeight: FontWeight.w600,
+          color: isSelected ? colorScheme.primary : null,
+        ),
+      ),
+      subtitle: Text(
+        live == 0
+            ? '${group.strategy.label} · 模型均已停用'
+            : '$live 个模型 · ${group.strategy.label}',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: live == 0 ? colorScheme.error : colorScheme.onSurfaceVariant,
+        ),
+      ),
+      trailing: _enterTrailing(theme, isSelected),
+      onTap: () => _openGroup(group),
+    );
+  }
+
+  Widget _buildProviderTile(ThemeData theme, AiProvider provider) {
+    final colorScheme = theme.colorScheme;
+    final binding = _binding;
+    final inProvider =
+        binding != null &&
+        !binding.isRouteGroup &&
+        binding.providerId == provider.id;
+    final current = inProvider
+        ? provider.models.where((m) => m.id == binding.modelName).firstOrNull
+        : null;
+    // 有当前选择时先说清「这家现在用的是谁」，没有就报该厂商的模型规模
+    final subtitle = [
+      if (current != null)
+        '当前 ${current.name}'
+      else
+        '${provider.models.length} 个模型',
+      if (provider.isDefault) '默认',
+    ].join(' · ');
+    return ListTile(
+      leading: Icon(
+        Icons.memory_rounded,
+        color: inProvider ? colorScheme.primary : colorScheme.onSurfaceVariant,
+      ),
+      title: Text(
+        provider.name,
+        style: TextStyle(
+          fontWeight: FontWeight.w600,
+          color: inProvider ? colorScheme.primary : null,
+        ),
+      ),
+      subtitle: Text(
+        subtitle,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: colorScheme.onSurfaceVariant,
+        ),
+      ),
+      trailing: _enterTrailing(theme, inProvider),
+      onTap: () => _openDetail(_DetailScope.provider(provider.id)),
+    );
+  }
+
+  Widget _sectionHeader(ThemeData theme, String title, {String? trailing}) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 2),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.outline,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          if (trailing != null)
+            Text(
+              trailing,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.outline,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ── 二级：模型 +（底部固定）思考强度 ──────────────────────
+
+  Widget _buildDetailHeader(ThemeData theme, _DetailScope scope) {
+    final provider = scope.isGroup
+        ? null
+        : widget.providers.where((p) => p.id == scope.id).firstOrNull;
+    final group = scope.isGroup
+        ? widget.groups.where((g) => g.id == scope.id).firstOrNull
+        : null;
+    final title = provider?.name ?? group?.name ?? '已失效';
+    final String? subtitle;
+    if (provider != null) {
+      subtitle = '${provider.models.length} 个模型';
+    } else if (group != null) {
+      subtitle = '${group.enabledMembers.length} 个成员 · ${group.strategy.label}';
+    } else {
+      subtitle = null;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 12, 0),
+          child: Row(
+            children: [
+              TextButton.icon(
+                onPressed: () => setState(() => _detail = null),
+                icon: const Icon(Icons.chevron_left_rounded, size: 20),
+                label: const Text('上一步'),
+              ),
+              const Spacer(),
+              IconButton(
+                tooltip: '关闭',
+                icon: const Icon(Icons.close_rounded),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              if (subtitle != null)
+                Text(
+                  subtitle,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.outline,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDetailList(
+    _DetailScope scope,
+    ScrollController controller,
+    ThemeData theme,
+  ) {
+    final colorScheme = theme.colorScheme;
+    final group = scope.isGroup
+        ? widget.groups.where((g) => g.id == scope.id).firstOrNull
+        : null;
+    final provider = scope.isGroup
+        ? null
+        : widget.providers.where((p) => p.id == scope.id).firstOrNull;
+
+    return ListView(
+      controller: controller,
+      padding: const EdgeInsets.only(bottom: 16),
+      children: [
+        if (group != null) ...[
+          _sectionHeader(
+            theme,
+            '组内模型',
+            trailing: '按「${group.strategy.label}」自动选择',
+          ),
+          for (final member in group.members)
+            _buildMemberTile(theme, group, member),
+        ],
+        if (provider != null) ...[
+          _sectionHeader(theme, '模型', trailing: '${provider.models.length} 个'),
+          for (final model in provider.models.where(
+            (m) => _matches(m.id) || _matches(m.name),
+          ))
+            _buildModelTile(theme, provider, model),
+        ],
+        if (group == null && provider == null)
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Text(
+              '这个绑定已经失效，请重新选择',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colorScheme.error,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildModelTile(
+    ThemeData theme,
+    AiProvider provider,
+    AiProviderModel model,
+  ) {
+    final colorScheme = theme.colorScheme;
+    final ref = AiModelRef(providerId: provider.id, modelName: model.id);
+    final isSelected = ref == _binding;
+    final meta = modelMetaLine(model);
+    return ListTile(
+      dense: true,
+      title: Text(
+        model.name,
+        style: TextStyle(
+          fontWeight: FontWeight.w600,
+          color: isSelected ? colorScheme.primary : null,
+        ),
+      ),
+      subtitle: meta == null
+          ? null
+          : Text(
+              meta,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+      trailing: isSelected
+          ? Icon(Icons.check_rounded, size: 20, color: colorScheme.primary)
+          : null,
+      onTap: () => _selectBinding(ref),
+    );
+  }
+
+  /// 成员行是只读的：选了路由组就是选整组，成员由路由策略自动挑
+  Widget _buildMemberTile(
+    ThemeData theme,
+    AiRouteGroup group,
+    RouteGroupMember member,
+  ) {
+    final colorScheme = theme.colorScheme;
+    final target = _targetOf(
+      widget.providers,
+      member.providerId,
+      member.modelName,
+    );
+    final provider = target?.provider;
+    final model = target?.model;
+    final broken = provider == null || model == null;
+    final disabled = !member.enabled;
+    final subtitle = [
+      if (model == null || provider == null) '模型已删除',
+      // 模型名与厂商名相同时不重复占一行
+      if (provider != null && provider.name != model?.name) provider.name,
+      if (disabled) '组内已停用',
+      if (group.strategy == RouteStrategy.weight) '权重 ${member.weight}',
+    ].join(' · ');
+    final color = broken || disabled
+        ? colorScheme.error
+        : colorScheme.onSurfaceVariant;
+    return ListTile(
+      dense: true,
+      title: Text(
+        model?.name ?? member.modelName,
+        style: TextStyle(color: broken || disabled ? color : null),
+      ),
+      subtitle: subtitle.isEmpty
+          ? null
+          : Text(
+              subtitle,
+              style: theme.textTheme.bodySmall?.copyWith(color: color),
+            ),
+    );
+  }
+
+  // ── 思考强度 ────────────────────────────────────────────
+
+  Widget _buildEffortSection(ThemeData theme, _DetailScope scope) {
+    final colorScheme = theme.colorScheme;
+    final targets = _effortTargets(scope);
+    final state = reasoningEffortStateOf(targets);
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+        border: Border(
+          top: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+          ),
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
+      child: SafeArea(
+        top: false,
+        // 没有作用对象时也保留「思考强度」这一节，避免点选模型时整块高度跳动
+        child: state == null
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '思考强度',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '选中模型后即可调整它的思考强度',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              )
+            : _buildEffortControls(theme, targets, state),
+      ),
+    );
+  }
+
+  Widget _buildEffortControls(
+    ThemeData theme,
+    List<ReasoningEffortTarget> targets,
+    ReasoningEffortState state,
+  ) {
+    final colorScheme = theme.colorScheme;
+    final first = targets.first;
+    final options = reasoningEffortOptions(
+      modelName: first.model.id,
+      providerType: first.provider.providerType,
+      vendorId: first.provider.vendorId,
+    );
+    final hint = _effortHint(state, options);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              '思考强度',
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              state.mixed ? '混合' : state.capability.labelFor(state.effort),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final option in options)
+              ChoiceChip(
+                label: Text(option.label),
+                selected: !state.mixed && option.effort == state.effort,
+                visualDensity: VisualDensity.compact,
+                onSelected: _busy
+                    ? null
+                    : (_) => _applyEffort(targets, option.effort),
+              ),
+          ],
+        ),
+        if (hint.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            hint,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// 档位说明：与单独弹层共用一套文案，再补充混合/通用参数的提醒
+  String _effortHint(
+    ReasoningEffortState state,
+    List<ReasoningEffortOption> options,
+  ) {
+    final parts = <String>[];
+    if (state.mixed) {
+      parts.add('组内档位不一致，选择后统一写入全部启用成员');
+    } else {
+      final description = options
+          .where((o) => o.effort == state.effort)
+          .map((o) => o.description)
+          .firstOrNull;
+      if (description != null) parts.add(description);
+    }
+    if (state.capability.isGeneric) {
+      parts.add('未收录该模型的思考参数，按通用字段发送，不支持时自动忽略');
+    }
+    return parts.join('；');
+  }
+}

@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/router/app_router.dart';
+import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/ai_model_ref.dart';
-import 'package:qnote_flutter/providers/ai_provider.dart';import 'package:qnote_flutter/widgets/ai/model_picker_sheet.dart';
+import 'package:qnote_flutter/models/reasoning_effort.dart';
+import 'package:qnote_flutter/providers/ai_provider.dart';
+import 'package:qnote_flutter/widgets/ai/assistant_model_sheet.dart';
+import 'package:qnote_flutter/widgets/ai/model_picker_sheet.dart';
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 
 export 'package:qnote_flutter/widgets/ai/model_picker_sheet.dart'
@@ -14,14 +21,12 @@ export 'package:qnote_flutter/widgets/ai/model_picker_sheet.dart'
         defaultModelRef,
         enabledModelEntries;
 
-/// 弹出小Q 对话模型选择弹层（AI 主页面与悬浮小Q 面板共用入口）
+/// 弹出小Q 对话模型选择面板（AI 主页面与悬浮小Q 面板共用入口）
 ///
-/// 选中且与当前不同时写入全局 `AiRoles.assistant` 角色绑定并刷新
-/// [aiRolesProvider]，返回选中项（ref + 展示名）；取消或未变更返回 null。
-/// 两处界面共用同一角色设置，任一处切换即全局生效。可选项里同时包含具体模型与
-/// 模型路由组（组以组名展示，绑定后由 `AiRouteService` 按策略选成员）。
-///
-/// 一个已启用模型与路由组都没有时不做选择器，直接弹「去添加模型」引导。
+/// 面板分两级：一级列路由组与厂商，二级列该厂商的模型并把「思考强度」一并调完
+/// （参考 ZCode 的选择面板，思考强度跟着模型走）。点选即写库：绑定写
+/// `AiRoles.assistant`，思考强度写回对应模型的 `reasoning_effort`。
+/// 返回最终选中的绑定（ref + 展示名）；取消或未变更返回 null。
 Future<({AiModelRef ref, String name})?> showAssistantModelSelector(
   BuildContext context,
   WidgetRef ref,
@@ -41,19 +46,78 @@ Future<({AiModelRef ref, String name})?> showAssistantModelSelector(
   final effective = isBindingUsable(current, providers, groups)
       ? current
       : defaultModelRef(providers);
+  if (effective == null) {
+    await showNoModelConfiguredDialog(context, scene: '切换小Q模型');
+    return null;
+  }
 
-  final result = await showModelPickerSheet(
+  // 面板里点选即写库，这里只记录「有没有变过」用于返回值与提示
+  var selected = effective;
+  var changed = false;
+
+  await showAssistantModelSheet(
     context,
     providers: providers,
     groups: groups,
     selected: effective,
-    title: '选择小Q模型',
+    onSelectBinding: (next) async {
+      if (next == selected) return true;
+      try {
+        // 先落库再让面板移动勾选：写失败时界面不能显示成已切换
+        await AiRoleService.instance.bindRole('assistant', next);
+        ref.invalidate(aiRolesProvider);
+      } catch (e, st) {
+        LoggerService.instance.error('切换小Q模型失败', details: '$e', stackTrace: st);
+        if (context.mounted) Toast.error(context, '模型切换失败：$e');
+        return false;
+      }
+      selected = next;
+      changed = true;
+      return true;
+    },
+    onEffortChanged: (targets, effort) async {
+      try {
+        await _writeEffort(ref, targets, effort);
+      } catch (e, st) {
+        LoggerService.instance.error('保存思考强度失败', details: '$e', stackTrace: st);
+        if (context.mounted) Toast.error(context, '思考强度保存失败：$e');
+        return false;
+      }
+      return true;
+    },
+    onManageModels: () =>
+        rootNavigatorKey.currentContext?.push('/settings/ai-config'),
   );
-  if (result == null || result.ref == current) return null;
 
-  await AiRoleService.instance.bindRole('assistant', result.ref);
-  ref.invalidate(aiRolesProvider);
+  if (!changed) return null;
+  return (
+    ref: selected,
+    name: aiBindingDisplayName(selected, providers, groups),
+  );
+}
 
-  final name = aiBindingDisplayName(result.ref, providers, groups);
-  return (ref: result.ref, name: name);
+/// 把思考强度写回目标模型：按厂商条目聚合，一个条目只更新一次
+///
+/// 路由组的成员可能横跨多个厂商条目，逐条目写回才不会互相覆盖。
+Future<void> _writeEffort(
+  WidgetRef ref,
+  List<ReasoningEffortTarget> targets,
+  ReasoningEffort? effort,
+) async {
+  final byProvider = <String, List<ReasoningEffortTarget>>{};
+  for (final target in targets) {
+    byProvider.putIfAbsent(target.provider.id, () => []).add(target);
+  }
+
+  final notifier = ref.read(aiProviderListProvider.notifier);
+  for (final group in byProvider.values) {
+    final provider = group.first.provider;
+    final ids = group.map((t) => t.model.id).toSet();
+    final updatedModels = provider.models
+        .map(
+          (m) => ids.contains(m.id) ? m.copyWith(reasoningEffort: effort) : m,
+        )
+        .toList();
+    await notifier.updateProvider(provider.copyWith(models: updatedModels));
+  }
 }

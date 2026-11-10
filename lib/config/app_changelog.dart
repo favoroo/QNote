@@ -14,6 +14,15 @@ class ChangelogEntry {
 /// 最近几个版本的更新日志，按版本倒序排列。
 const List<ChangelogEntry> kAppChangelog = [
   ChangelogEntry(
+    version: '0.1.88',
+    date: '2026-11-10',
+    notes: [
+      '小Q 模型选择改为两级面板：先选厂商或路由组，再从该厂商的模型里挑，选完不关面板就能接着调',
+      '思考强度并入模型选择面板：直接用档位按钮切换自动/关闭/低/中/高，路由组会一次作用到组内全部模型',
+      '输入区不再单独占一个「思考」按钮，模型名与当前档位合并成一个胶囊展示，模型名过长时档位也始终可见',
+    ],
+  ),
+  ChangelogEntry(
     version: '0.1.87',
     date: '2026-11-09',
     notes: [

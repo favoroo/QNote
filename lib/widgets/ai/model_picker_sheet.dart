@@ -258,9 +258,9 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
     // 厂商分组按 ID 过滤：entries 已经决定了哪些模型可见（生图筛选/保留已绑定）
     final visibleIds = <String, Set<String>>{};
     for (final entry in entries) {
-      visibleIds.putIfAbsent(entry.provider.id, () => <String>{}).add(
-        entry.model.id,
-      );
+      visibleIds
+          .putIfAbsent(entry.provider.id, () => <String>{})
+          .add(entry.model.id);
     }
     final imageModelCount = allEntries
         .where((entry) => isImageGenerationModel(entry.model))
@@ -345,17 +345,17 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
                       ? const Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            NoModelGuideCard(scene: '', padding: EdgeInsets.zero),
+                            NoModelGuideCard(
+                              scene: '',
+                              padding: EdgeInsets.zero,
+                            ),
                             SizedBox(height: 8),
                           ],
                         )
                       : Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              '未识别到生图模型',
-                              style: theme.textTheme.titleSmall,
-                            ),
+                            Text('未识别到生图模型', style: theme.textTheme.titleSmall),
                             const SizedBox(height: 6),
                             Text(
                               '厂商目录没声明生图能力，模型名里也没有生图关键词。'
@@ -507,16 +507,22 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
   }
 }
 
-/// 模型行的副标题：模型 ID 与计费/能力徽标併成一行
+/// 模型行的副标题文案：模型 ID 与计费/能力徽标併成一行
 ///
 /// 按积分计费的厂商（小浣熊、Loomy）里，倍率与限免状态直接决定一次对话花多少
 /// 额度，选模型时必须和模型名一起看到；两者都没有时返回 null，不留空行。
-Widget? _modelSubtitle(ThemeData theme, AiProviderModel model) {
+String? modelMetaLine(AiProviderModel model) {
   final line = [
     if (model.name != model.id) model.id,
     ...modelMetaBadges(model),
   ].join(' · ');
-  if (line.isEmpty) return null;
+  return line.isEmpty ? null : line;
+}
+
+/// 模型行的副标题组件；没有可展示的元数据时返回 null
+Widget? _modelSubtitle(ThemeData theme, AiProviderModel model) {
+  final line = modelMetaLine(model);
+  if (line == null) return null;
   return Text(
     line,
     style: theme.textTheme.bodySmall?.copyWith(
