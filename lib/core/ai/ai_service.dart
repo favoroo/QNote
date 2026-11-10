@@ -1681,6 +1681,7 @@ class AiService {
       modelName: config.modelName,
       providerType: config.provider,
       vendorId: config.vendorId,
+      customLevels: config.reasoningEfforts,
     );
   }
 

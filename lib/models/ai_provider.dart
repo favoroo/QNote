@@ -14,6 +14,12 @@ class AiProviderModel {
   /// 思考强度；null 表示「自动」（不额外干预，由模型服务决定）
   final ReasoningEffort? reasoningEffort;
 
+  /// 自定义可选档位；null 表示按模型族自动识别
+  ///
+  /// 只决定对话面板里出现哪些档位，不决定当前用哪一档。用户可以在模型配置
+  /// 里裁掉模型不认的档位，或补上自动识别没覆盖的档位。
+  final List<ReasoningEffort>? reasoningEfforts;
+
   /// 实际生效的计费倍率（0 = 当前免费）；null 表示厂商没给这项信息
   ///
   /// 按积分计费的厂商（小浣熊、Loomy）用倍率决定一次对话花多少额度，
@@ -42,6 +48,7 @@ class AiProviderModel {
     required this.id,
     required this.name,
     this.reasoningEffort,
+    this.reasoningEfforts,
     this.rate,
     this.rateWas,
     this.contextWindow,
@@ -61,6 +68,7 @@ class AiProviderModel {
     String id, {
     String? name,
     ReasoningEffort? reasoningEffort,
+    List<ReasoningEffort>? reasoningEfforts,
     num? rate,
     num? rateWas,
     int? contextWindow,
@@ -73,6 +81,7 @@ class AiProviderModel {
       id: id,
       name: trimmed.isEmpty ? id : trimmed,
       reasoningEffort: reasoningEffort,
+      reasoningEfforts: _normalizeEfforts(reasoningEfforts),
       rate: rate,
       rateWas: rateWas,
       contextWindow: contextWindow,
@@ -86,6 +95,8 @@ class AiProviderModel {
     'id': id,
     'name': name,
     if (reasoningEffort != null) 'reasoning_effort': reasoningEffort!.wireName,
+    if (reasoningEfforts != null)
+      'reasoning_efforts': [for (final effort in reasoningEfforts!) effort.wireName],
     if (rate != null) 'rate': rate,
     if (rateWas != null) 'rate_was': rateWas,
     if (contextWindow != null) 'context_window': contextWindow,
@@ -103,6 +114,7 @@ class AiProviderModel {
       reasoningEffort: ReasoningEffort.tryParse(
         map['reasoning_effort']?.toString(),
       ),
+      reasoningEfforts: ReasoningEffort.tryParseList(map['reasoning_efforts']),
       rate: _numOf(map['rate']),
       rateWas: _numOf(map['rate_was']),
       contextWindow: _intOf(map['context_window']),
@@ -121,17 +133,23 @@ class AiProviderModel {
 
   static int? _intOf(dynamic raw) => _numOf(raw)?.floor();
 
-  /// 复制并修改思考强度
+  /// 复制并修改思考强度 / 自定义档位
   ///
-  /// 用哨兵区分「不传该字段」与「显式置为自动（null）」，避免 `copyWith`
-  /// 无法清空选择。
-  AiProviderModel copyWith({Object? reasoningEffort = _unsetReasoningEffort}) {
+  /// 用哨兵区分「不传该字段」与「显式置空（恢复自动）」，避免 `copyWith`
+  /// 无法清空选择。自定义档位会去重并按由弱到强排序。
+  AiProviderModel copyWith({
+    Object? reasoningEffort = _unsetReasoningEffort,
+    Object? reasoningEfforts = _unsetReasoningEfforts,
+  }) {
     return AiProviderModel(
       id: id,
       name: name,
       reasoningEffort: identical(reasoningEffort, _unsetReasoningEffort)
           ? this.reasoningEffort
           : reasoningEffort as ReasoningEffort?,
+      reasoningEfforts: identical(reasoningEfforts, _unsetReasoningEfforts)
+          ? this.reasoningEfforts
+          : _normalizeEfforts(reasoningEfforts as List<ReasoningEffort>?),
       rate: rate,
       rateWas: rateWas,
       contextWindow: contextWindow,
@@ -141,7 +159,7 @@ class AiProviderModel {
     );
   }
 
-  /// 保留本地的展示名与思考档位，只把计费/能力元数据换成最新扫描结果
+  /// 保留本地的展示名、思考档位与自定义档位，只把计费/能力元数据换成最新扫描结果
   ///
   /// 扫描合并时若整体沿用旧条目，用户改过的名称与档位能留住，但厂商新调的
   /// 倍率、限免说明就永远刷不进来了。
@@ -149,6 +167,7 @@ class AiProviderModel {
     id: id,
     name: name,
     reasoningEffort: reasoningEffort,
+    reasoningEfforts: reasoningEfforts,
     rate: fresh.rate,
     rateWas: fresh.rateWas,
     contextWindow: fresh.contextWindow,
@@ -158,6 +177,32 @@ class AiProviderModel {
   );
 
   static const Object _unsetReasoningEffort = Object();
+  static const Object _unsetReasoningEfforts = Object();
+
+  /// 档位集合归一：去重、按枚举顺序（由弱到强）排序，空集合回落到自动识别
+  static List<ReasoningEffort>? _normalizeEfforts(
+    List<ReasoningEffort>? levels,
+  ) {
+    if (levels == null || levels.isEmpty) return null;
+    final set = levels.toSet();
+    return List.unmodifiable([
+      for (final effort in ReasoningEffort.values)
+        if (set.contains(effort)) effort,
+    ]);
+  }
+
+  /// 两个档位集合是否内容一致（顺序已在构造时归一）
+  static bool _sameEfforts(
+    List<ReasoningEffort>? a,
+    List<ReasoningEffort>? b,
+  ) {
+    if (identical(a, b)) return true;
+    if (a == null || b == null || a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
 
   static List<AiProviderModel> listFromJson(String? raw) {
     if (raw == null || raw.trim().isEmpty) return const [];
@@ -186,10 +231,16 @@ class AiProviderModel {
       other is AiProviderModel &&
       other.id == id &&
       other.name == name &&
-      other.reasoningEffort == reasoningEffort;
+      other.reasoningEffort == reasoningEffort &&
+      _sameEfforts(other.reasoningEfforts, reasoningEfforts);
 
   @override
-  int get hashCode => Object.hash(id, name, reasoningEffort);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    reasoningEffort,
+    reasoningEfforts == null ? null : Object.hashAll(reasoningEfforts!),
+  );
 
   @override
   String toString() => 'AiProviderModel($id)';

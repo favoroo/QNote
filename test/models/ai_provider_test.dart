@@ -315,4 +315,95 @@ void main() {
       expect(updated.contextWindow, 1000000);
     });
   });
+
+  group('AiProviderModel 自定义思考档位', () {
+    test('toMap / fromMap 往返，并按由弱到强排序', () {
+      final model = AiProviderModel.of(
+        'gpt-5.4-mini',
+        reasoningEfforts: [
+          ReasoningEffort.max,
+          ReasoningEffort.minimal,
+          ReasoningEffort.low,
+        ],
+      );
+
+      final restored = AiProviderModel.fromMap(model.toMap());
+
+      expect(restored.reasoningEfforts, [
+        ReasoningEffort.minimal,
+        ReasoningEffort.low,
+        ReasoningEffort.max,
+      ]);
+      expect(restored.toMap()['reasoning_efforts'], [
+        'minimal',
+        'low',
+        'max',
+      ]);
+    });
+
+    test('未设置自定义档位时不写字段，旧数据按自动识别处理', () {
+      final model = AiProviderModel.fromMap({'id': 'm', 'name': 'm'});
+
+      expect(model.reasoningEfforts, isNull);
+      expect(model.toMap().containsKey('reasoning_efforts'), isFalse);
+    });
+
+    test('空集合按自动识别处理', () {
+      final model = AiProviderModel.of('m', reasoningEfforts: const []);
+
+      expect(model.reasoningEfforts, isNull);
+    });
+
+    test('copyWith 可清空自定义档位，也可只改当前档位', () {
+      final model = AiProviderModel.of(
+        'm',
+        reasoningEffort: ReasoningEffort.high,
+        reasoningEfforts: [ReasoningEffort.low, ReasoningEffort.high],
+      );
+
+      expect(model.copyWith(reasoningEfforts: null).reasoningEfforts, isNull);
+      // 未传自定义档位时保留原集合
+      final updated = model.copyWith(reasoningEffort: ReasoningEffort.low);
+      expect(updated.reasoningEffort, ReasoningEffort.low);
+      expect(updated.reasoningEfforts, [
+        ReasoningEffort.low,
+        ReasoningEffort.high,
+      ]);
+    });
+
+    test('withMetadataFrom 保留自定义档位', () {
+      final local = AiProviderModel.of(
+        'm',
+        reasoningEfforts: [ReasoningEffort.xhigh],
+      );
+
+      final merged = local.withMetadataFrom(
+        AiProviderModel.of('m', rate: 0.5),
+      );
+
+      expect(merged.reasoningEfforts, [ReasoningEffort.xhigh]);
+      expect(merged.rate, 0.5);
+    });
+
+    test('相等性包含档位集合内容，顺序归一后视为相等', () {
+      final a = AiProviderModel.of(
+        'm',
+        reasoningEfforts: [ReasoningEffort.low, ReasoningEffort.high],
+      );
+      final b = AiProviderModel.of(
+        'm',
+        reasoningEfforts: [ReasoningEffort.high, ReasoningEffort.low],
+      );
+
+      expect(a, b);
+      expect(
+        a ==
+            AiProviderModel.of(
+              'm',
+              reasoningEfforts: [ReasoningEffort.high],
+            ),
+        isFalse,
+      );
+    });
+  });
 }

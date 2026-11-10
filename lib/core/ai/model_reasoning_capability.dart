@@ -51,6 +51,106 @@ class ModelReasoningCapability {
   /// 字段发送；网关不认时由 AiService 的 400 降级重发兜住，不会把对话打死。
   final bool isGeneric;
 
+  /// 是否为二值开关模型（目前是 GLM）
+  bool get isBinary => _binary;
+
+  /// 默认开放的档位：只给能力表确认过的四档
+  ///
+  /// `minimal` / `xhigh` / `max` 不是每家都认，默认不放进对话面板；用户可在
+  /// 模型配置里按需勾选，避免一上来就给出 8 个 chips。
+  static const List<ReasoningEffort> _defaultLevels = [
+    ReasoningEffort.none,
+    ReasoningEffort.low,
+    ReasoningEffort.medium,
+    ReasoningEffort.high,
+  ];
+
+  /// 参数形态的中文说明，配置页用来解释「这些档位会怎么发出去」
+  String get paramStyleLabel {
+    switch (_style) {
+      case _ReasoningParamStyle.openAiEffort:
+        return '按 reasoning_effort 发送';
+      case _ReasoningParamStyle.thinkingToggle:
+        return '按 thinking.type 开关发送，只能表达开启/关闭';
+      case _ReasoningParamStyle.qwenThinking:
+        return '按 enable_thinking + thinking_budget 发送';
+      case _ReasoningParamStyle.openRouterReasoning:
+        return '按 reasoning.effort 发送';
+      case _ReasoningParamStyle.geminiThinkingLevel:
+        return '按 thinkingLevel 发送，只区分低/高';
+      case _ReasoningParamStyle.geminiThinkingBudget:
+        return '按 thinkingBudget 发送';
+    }
+  }
+
+  /// 该参数形态下能单独表达的档位（配置页的候选集合）
+  ///
+  /// 二值开关与 Gemini 3 强行给出中间档只会让用户误以为生效，实际请求仍只有
+  /// 开/关或低/高，因此候选集合做收缩而不是全量放开。
+  List<ReasoningEffort> get configurableLevels {
+    switch (_style) {
+      case _ReasoningParamStyle.thinkingToggle:
+        return const [ReasoningEffort.none, ReasoningEffort.high];
+      case _ReasoningParamStyle.geminiThinkingLevel:
+        return const [ReasoningEffort.low, ReasoningEffort.high];
+      case _ReasoningParamStyle.openAiEffort:
+      case _ReasoningParamStyle.qwenThinking:
+      case _ReasoningParamStyle.openRouterReasoning:
+      case _ReasoningParamStyle.geminiThinkingBudget:
+        return ReasoningEffort.values;
+    }
+  }
+
+  /// 档位在请求里的实际写法，配置页展示给愿意看参数的用户
+  String wireValueFor(ReasoningEffort effort) {
+    switch (_style) {
+      case _ReasoningParamStyle.openAiEffort:
+        // OpenAI 兼容端点大多没有真正的「关闭」，用 minimal 表达
+        return effort == ReasoningEffort.none ||
+                effort == ReasoningEffort.minimal
+            ? 'reasoning_effort: minimal'
+            : 'reasoning_effort: ${effort.wireName}';
+      case _ReasoningParamStyle.thinkingToggle:
+        return effort == ReasoningEffort.none
+            ? 'thinking.type: disabled'
+            : 'thinking.type: enabled';
+      case _ReasoningParamStyle.qwenThinking:
+        return effort == ReasoningEffort.none
+            ? 'enable_thinking: false'
+            : 'thinking_budget: ${_budgetFor(effort)}';
+      case _ReasoningParamStyle.openRouterReasoning:
+        return 'reasoning.effort: ${effort.wireName}';
+      case _ReasoningParamStyle.geminiThinkingLevel:
+        return 'thinkingLevel: ${effort == ReasoningEffort.high ? 'high' : 'low'}';
+      case _ReasoningParamStyle.geminiThinkingBudget:
+        return 'thinkingBudget: ${_budgetFor(effort)}';
+    }
+  }
+
+  /// 用自定义档位集合覆盖自动识别结果
+  ///
+  /// 传 null 或空集合表示沿用自动识别；不在该参数形态候选里的档位会被过滤，
+  /// 避免二值模型出现「选了中等但请求只能开/关」的假精度。
+  ModelReasoningCapability withLevels(List<ReasoningEffort>? customLevels) {
+    if (customLevels == null || customLevels.isEmpty) {
+      return this;
+    }
+    final allowed = configurableLevels.toSet();
+    final normalized = [
+      for (final effort in ReasoningEffort.values)
+        if (customLevels.contains(effort) && allowed.contains(effort)) effort,
+    ];
+    if (normalized.isEmpty) {
+      return this;
+    }
+    return ModelReasoningCapability._(
+      List.unmodifiable(normalized),
+      _style,
+      binary: _binary,
+      isGeneric: isGeneric,
+    );
+  }
+
   /// 该档位是否受支持（切换模型后旧选择可能失效，调用方据此回落到「自动」）
   bool supports(ReasoningEffort effort) => levels.contains(effort);
 
@@ -96,7 +196,7 @@ class ModelReasoningCapability {
       }
       if (_gemini25Flash.hasMatch(name)) {
         return const ModelReasoningCapability._(
-          ReasoningEffort.values,
+          _defaultLevels,
           _ReasoningParamStyle.geminiThinkingBudget,
         );
       }
@@ -121,7 +221,7 @@ class ModelReasoningCapability {
     }
     if (_gpt5.hasMatch(name)) {
       return const ModelReasoningCapability._(
-        ReasoningEffort.values,
+        _defaultLevels,
         _ReasoningParamStyle.openAiEffort,
       );
     }
@@ -141,7 +241,7 @@ class ModelReasoningCapability {
     }
     if (_qwenThinking.hasMatch(name)) {
       return const ModelReasoningCapability._(
-        ReasoningEffort.values,
+        _defaultLevels,
         _ReasoningParamStyle.qwenThinking,
       );
     }
@@ -155,18 +255,19 @@ class ModelReasoningCapability {
     return null;
   }
 
-  /// 未收录模型的通用兜底：按协议族最常见的字段给出三档
+  /// 未收录模型的通用兜底：按协议族最常见的字段给出全部四档
   ///
-  /// 只开放低/中/高：「关闭」在多数网关里并没有可靠的表达（OpenAI 的
-  /// `minimal` 是「尽量少想」而不是「不想」），不如交给「自动」不做干预。
-  /// 界面会显式标注这是通用参数，用户选错时由发信层的 400 降级兜住。
+  /// 「关闭」也要真实发出去：时间线提取默认不思考，未收录模型若缺少该档位，
+  /// 用户看到的「关闭」与实际行为会不一致（请求里什么都没带，模型照常思考）。
+  /// OpenAI 兼容协议的 `minimal` 是「尽量少想」，对提取场景已足够；参数不被
+  /// 接受时由发信层的 400 降级兜住，不会把请求打挂。
   static ModelReasoningCapability genericFor({
     String providerType = 'openai',
     String? vendorId,
   }) {
     if (providerType == 'gemini') {
       return const ModelReasoningCapability._(
-        [ReasoningEffort.low, ReasoningEffort.medium, ReasoningEffort.high],
+        _defaultLevels,
         _ReasoningParamStyle.geminiThinkingBudget,
         isGeneric: true,
       );
@@ -174,30 +275,36 @@ class ModelReasoningCapability {
     if (vendorId == 'openrouter') {
       // OpenRouter 只认统一的 reasoning.effort，写 reasoning_effort 会被忽略
       return const ModelReasoningCapability._(
-        [ReasoningEffort.low, ReasoningEffort.medium, ReasoningEffort.high],
+        _defaultLevels,
         _ReasoningParamStyle.openRouterReasoning,
         isGeneric: true,
       );
     }
     return const ModelReasoningCapability._(
-      [ReasoningEffort.low, ReasoningEffort.medium, ReasoningEffort.high],
+      _defaultLevels,
       _ReasoningParamStyle.openAiEffort,
       isGeneric: true,
     );
   }
 
   /// 界面侧解析：能力表未收录时返回通用兜底，保证入口永远可见
+  ///
+  /// [customLevels] 是用户在模型配置里勾选的档位集合；为空或 null 时沿用
+  /// 自动识别结果。
   static ModelReasoningCapability forUi({
     required String modelName,
     String providerType = 'openai',
     String? vendorId,
+    List<ReasoningEffort>? customLevels,
   }) {
-    return resolve(
+    final base =
+        resolve(
           modelName: modelName,
           providerType: providerType,
           vendorId: vendorId,
         ) ??
         genericFor(providerType: providerType, vendorId: vendorId);
+    return base.withLevels(customLevels);
   }
 
   /// 把强度写进 OpenAI 兼容请求体
@@ -234,8 +341,12 @@ class ModelReasoningCapability {
       return null;
     }
     if (_style == _ReasoningParamStyle.geminiThinkingLevel) {
-      // Gemini 3 只区分低/高（能力表也只提供这两档）
-      return {'thinkingLevel': effort == ReasoningEffort.high ? 'high' : 'low'};
+      // Gemini 3 只区分低/高；自定义集合也只会给出这两档，这里仍做兜底收敛
+      final isHigh =
+          effort == ReasoningEffort.high ||
+          effort == ReasoningEffort.xhigh ||
+          effort == ReasoningEffort.max;
+      return {'thinkingLevel': isHigh ? 'high' : 'low'};
     }
     if (_style == _ReasoningParamStyle.geminiThinkingBudget) {
       return {
@@ -252,12 +363,18 @@ class ModelReasoningCapability {
     switch (effort) {
       case ReasoningEffort.none:
         return 0;
+      case ReasoningEffort.minimal:
+        return 512;
       case ReasoningEffort.low:
         return 1024;
       case ReasoningEffort.medium:
         return 4096;
       case ReasoningEffort.high:
         return 16384;
+      case ReasoningEffort.xhigh:
+        return 32768;
+      case ReasoningEffort.max:
+        return 65536;
     }
   }
 

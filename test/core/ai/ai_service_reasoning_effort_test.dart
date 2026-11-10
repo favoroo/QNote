@@ -23,6 +23,7 @@ void main() {
     String provider = 'openai',
     String? vendorId,
     ReasoningEffort? effort,
+    List<ReasoningEffort>? efforts,
   }) {
     return AiConfig(
       providerId: 'provider-1',
@@ -35,6 +36,7 @@ void main() {
           : 'https://gw.example.com/v1',
       vendorId: vendorId,
       reasoningEffort: effort,
+      reasoningEfforts: efforts,
     );
   }
 
@@ -89,6 +91,44 @@ void main() {
     expect(body['reasoning_effort'], 'high');
     expect(body.containsKey('thinking'), isFalse);
     expect(body.containsKey('enable_thinking'), isFalse);
+  });
+
+  test('自定义勾选的 xhigh 会真实发出', () async {
+    await send(
+      config(
+        'gpt-5.4-mini',
+        effort: ReasoningEffort.xhigh,
+        efforts: [ReasoningEffort.minimal, ReasoningEffort.xhigh],
+      ),
+    );
+
+    expect(lastBody()['reasoning_effort'], 'xhigh');
+  });
+
+  test('自动识别之外的档位没有自定义时静默跳过', () async {
+    await send(config('gpt-5.4-mini', effort: ReasoningEffort.xhigh));
+
+    expect(lastBody().containsKey('reasoning_effort'), isFalse);
+  });
+
+  test('自定义 max 档在 Qwen 里发更大的思考预算', () async {
+    await send(
+      config(
+        'qwen3-max',
+        effort: ReasoningEffort.max,
+        efforts: [ReasoningEffort.max],
+      ),
+    );
+
+    final body = lastBody();
+    expect(body['enable_thinking'], isTrue);
+    expect(body['thinking_budget'], 65536);
+  });
+
+  test('未收录模型的关闭档写 minimal（时间线提取默认值）', () async {
+    await send(config('my-custom-model', effort: ReasoningEffort.none));
+
+    expect(lastBody()['reasoning_effort'], 'minimal');
   });
 
   test('模型不支持的档位静默跳过', () async {

@@ -22,13 +22,56 @@ void main() {
   }
 
   group('OpenAI 系 reasoning_effort', () {
-    test('gpt-5 全档位，none 写 minimal', () {
+    test('gpt-5 默认四档，none 写 minimal', () {
       final capability = capabilityOf('gpt-5.4-mini');
-      expect(capability.levels, ReasoningEffort.values);
+      expect(capability.levels, [
+        ReasoningEffort.none,
+        ReasoningEffort.low,
+        ReasoningEffort.medium,
+        ReasoningEffort.high,
+      ]);
 
       final body = <String, dynamic>{};
       capability.applyToOpenAiBody(body, ReasoningEffort.none);
       expect(body['reasoning_effort'], 'minimal');
+    });
+
+    test('自定义勾选的 minimal/xhigh/max 会真实发出去', () {
+      final capability = capabilityOf('gpt-5.4-mini').withLevels([
+        ReasoningEffort.minimal,
+        ReasoningEffort.xhigh,
+        ReasoningEffort.max,
+      ]);
+      expect(capability.levels, [
+        ReasoningEffort.minimal,
+        ReasoningEffort.xhigh,
+        ReasoningEffort.max,
+      ]);
+
+      final body = <String, dynamic>{};
+      capability.applyToOpenAiBody(body, ReasoningEffort.xhigh);
+      expect(body['reasoning_effort'], 'xhigh');
+
+      final maxBody = <String, dynamic>{};
+      capability.applyToOpenAiBody(maxBody, ReasoningEffort.max);
+      expect(maxBody['reasoning_effort'], 'max');
+    });
+
+    test('自定义档位不在参数形态候选里时被过滤', () {
+      // 二值开关表达不了中间档，不能给用户假精度
+      final binary = capabilityOf('glm-4.6').withLevels([
+        ReasoningEffort.none,
+        ReasoningEffort.low,
+        ReasoningEffort.high,
+      ]);
+      expect(binary.levels, [
+        ReasoningEffort.none,
+        ReasoningEffort.high,
+      ]);
+      expect(binary.configurableLevels, [
+        ReasoningEffort.none,
+        ReasoningEffort.high,
+      ]);
     });
 
     test('o 系没有 none 档，选了也不发字段', () {
@@ -180,12 +223,13 @@ void main() {
   });
 
   group('未收录模型的通用兜底（界面入口永远可见）', () {
-    test('OpenAI 兼容给低/中/高，写 reasoning_effort', () {
+    test('OpenAI 兼容给全档位，none 写 minimal', () {
       final capability = ModelReasoningCapability.forUi(
         modelName: 'my-custom-model',
       );
       expect(capability.isGeneric, isTrue);
       expect(capability.levels, [
+        ReasoningEffort.none,
         ReasoningEffort.low,
         ReasoningEffort.medium,
         ReasoningEffort.high,
@@ -194,6 +238,10 @@ void main() {
       final body = <String, dynamic>{};
       capability.applyToOpenAiBody(body, ReasoningEffort.medium);
       expect(body['reasoning_effort'], 'medium');
+
+      final off = <String, dynamic>{};
+      capability.applyToOpenAiBody(off, ReasoningEffort.none);
+      expect(off['reasoning_effort'], 'minimal');
     });
 
     test('OpenRouter 兜底写 reasoning.effort 而不是顶层字段', () {

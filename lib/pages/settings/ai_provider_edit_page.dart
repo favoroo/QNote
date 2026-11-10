@@ -19,10 +19,11 @@ import 'package:qnote_flutter/models/ai_account_routing.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
 import 'package:qnote_flutter/models/ai_provider.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
+import 'package:qnote_flutter/models/reasoning_effort.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
+import 'package:qnote_flutter/widgets/ai/model_effort_levels_sheet.dart';
 import 'package:qnote_flutter/widgets/ai/model_meta_badges.dart';
 import 'package:qnote_flutter/widgets/ai/raccoon_login_sheet.dart';
-import 'package:qnote_flutter/widgets/ai/reasoning_effort_sheet.dart';
 import 'package:qnote_flutter/widgets/ai/sms_login_sheet.dart';
 import 'package:qnote_flutter/widgets/unsaved_changes_dialog.dart';
 
@@ -626,9 +627,12 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     for (final id in fetched) {
       final trimmed = id.trim();
       if (trimmed.isEmpty || !seen.add(trimmed)) continue;
-      // 保留已启用模型的自定义展示名；生图标识按目录 ID 重新推断，
-      // 这样用户不用停用再启用一遍才能看到「生图」徽标
-      final existing = _models.where((m) => m.id == trimmed).firstOrNull;
+      // 保留本地设置（展示名、思考档位）；生图标识按目录 ID 重新推断，
+      // 这样用户不用停用再启用一遍才能看到「生图」徽标。已停用的模型设置
+      // 留在目录里，扫描时也要认，否则停用期间扫一次就把配置冲掉了
+      final existing =
+          _models.where((m) => m.id == trimmed).firstOrNull ??
+          _catalog.where((m) => m.id == trimmed).firstOrNull;
       final fresh = AiProviderModel.of(
         trimmed,
         supportsImageGeneration: looksLikeImageGenerationModel(trimmed)
@@ -680,8 +684,10 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       for (final model in models) {
         if (!seen.add(model.id)) continue;
         // 名称与思考档位是用户本地设置，保留；倍率/上下文这类厂商元数据
-        // 每次扫描都跟着目录刷新，否则限免到期、调价都看不出来
-        final existing = _models.where((m) => m.id == model.id).firstOrNull;
+        // 每次扫描都跟着目录刷新。已停用的模型设置也在 catalog 里，一并认。
+        final existing =
+            _models.where((m) => m.id == model.id).firstOrNull ??
+            _catalog.where((m) => m.id == model.id).firstOrNull;
         merged.add(existing == null ? model : existing.withMetadataFrom(model));
       }
       for (final model in _catalog) {
@@ -797,26 +803,72 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     );
   }
 
-  /// 调整某个已启用模型的思考强度
-  Future<void> _editModelReasoning(AiProviderModel model) async {
-    final result = await showReasoningEffortSheet(
+  /// 可选档位的一行文案；没有能力（模型未启用）时返回 null
+  String? _levelsLabel(ModelReasoningCapability? capability) {
+    if (capability == null) return null;
+    return capability.levels.map(capability.labelFor).join(' / ');
+  }
+
+  /// 档位来源徽标：自定义 / 通用兜底 / 自动识别
+  String? _levelsBadge(
+    ModelReasoningCapability? capability,
+    List<ReasoningEffort>? customLevels,
+  ) {
+    if (capability == null) return null;
+    if (customLevels != null) return '自定义';
+    return capability.isGeneric ? '通用' : '自动识别';
+  }
+
+  /// 配置某个已启用模型在对话里可选的思考档位
+  ///
+  /// 这里只编辑「有哪些档位」，不设置当前用哪一档：当前档位统一在对话的模型
+  /// 面板里调整，避免同一设置两处入口打架。取消正在使用的档位时回到「自动」，
+  /// 否则界面会留下一个已经发不出去的档位。
+  Future<void> _editModelEffortLevels(AiProviderModel model) async {
+    final result = await showModelEffortLevelsSheet(
       context,
       modelName: model.id,
       providerType: _providerType,
       vendorId: _vendorId,
-      selected: model.reasoningEffort,
+      customLevels: model.reasoningEfforts,
     );
     if (result == null || !mounted) return;
+
+    final levels = result.customLevels;
+    final capability = ModelReasoningCapability.forUi(
+      modelName: model.id,
+      providerType: _providerType,
+      vendorId: _vendorId,
+      customLevels: levels,
+    );
+    final current = _models.where((m) => m.id == model.id).firstOrNull;
+    final currentEffort = current?.reasoningEffort;
+    final resetCurrent =
+        currentEffort != null && !capability.supports(currentEffort);
+
     setState(() {
-      final index = _models.indexWhere((m) => m.id == model.id);
-      if (index == -1) return;
-      final updated = _models[index].copyWith(reasoningEffort: result.effort);
-      _models[index] = updated;
-      // 目录条目保持同步，停用再启用时档位不丢
-      final catalogIndex = _catalog.indexWhere((m) => m.id == model.id);
-      if (catalogIndex != -1) _catalog[catalogIndex] = updated;
+      void apply(List<AiProviderModel> models) {
+        final index = models.indexWhere((m) => m.id == model.id);
+        if (index == -1) return;
+        final item = models[index];
+        final keepCurrent =
+            item.reasoningEffort == null ||
+            capability.supports(item.reasoningEffort!);
+        models[index] = item.copyWith(
+          reasoningEfforts: levels,
+          reasoningEffort: keepCurrent ? item.reasoningEffort : null,
+        );
+      }
+
+      // 已启用列表与扫描目录保持同步，停用再启用时配置不丢
+      apply(_models);
+      apply(_catalog);
       _dirty = true;
     });
+
+    if (resetCurrent) {
+      Toast.info(context, '当前档位已回到「自动」');
+    }
   }
 
   void _setAllModels(bool enabled) {
@@ -2028,20 +2080,20 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                     .firstOrNull;
                 final latency = _modelLatency[model.id];
                 final testing = _testingModels.contains(model.id);
-                // 已启用的模型都展示思考强度入口：能力表未收录时用通用兜底，
+                // 已启用的模型都展示思考档位配置：能力表未收录时用通用兜底，
                 // 与 ZCode 一致——用户总能自己调，选错由发信层降级兜住
                 final capability = enabled
                     ? ModelReasoningCapability.forUi(
                         modelName: model.id,
                         providerType: _providerType,
                         vendorId: _vendorId,
+                        customLevels: enabledModel?.reasoningEfforts,
                       )
                     : null;
-                final effort = enabledModel?.reasoningEffort;
+                final customLevels = enabledModel?.reasoningEfforts;
                 final metaRow = _modelMetaRow(theme, model);
-                final effortLabel = capability == null
-                    ? null
-                    : (effort == null ? '自动' : capability.labelFor(effort));
+                final levelLabels = _levelsLabel(capability);
+                final levelBadge = _levelsBadge(capability, customLevels);
                 final latencyLabel = latency == null
                     ? null
                     : (latency.failed
@@ -2082,16 +2134,15 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                         ),
                       ),
                       ?metaRow,
-                      if (effortLabel != null)
+                      if (levelLabels != null)
                         InkWell(
                           onTap: enabledModel == null
                               ? null
-                              : () => _editModelReasoning(enabledModel),
+                              : () => _editModelEffortLevels(enabledModel),
                           borderRadius: BorderRadius.circular(4),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(vertical: 2),
                             child: Row(
-                              mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
                                   Icons.tune_rounded,
@@ -2099,12 +2150,29 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                                   color: colorScheme.primary,
                                 ),
                                 const SizedBox(width: 3),
-                                Text(
-                                  '思考强度：$effortLabel',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    fontSize: 11,
-                                    color: colorScheme.primary,
+                                Flexible(
+                                  child: Text(
+                                    '可选档位：$levelLabels',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      fontSize: 11,
+                                      color: colorScheme.primary,
+                                    ),
                                   ),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  levelBadge ?? '',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    fontSize: 10,
+                                    color: colorScheme.outline,
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.chevron_right_rounded,
+                                  size: 14,
+                                  color: colorScheme.outline,
                                 ),
                               ],
                             ),

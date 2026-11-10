@@ -26,8 +26,15 @@ AiProvider _provider({
   updatedAt: DateTime(2026),
 );
 
-AiProviderModel _model(String id, {ReasoningEffort? effort}) =>
-    AiProviderModel.of(id, reasoningEffort: effort);
+AiProviderModel _model(
+  String id, {
+  ReasoningEffort? effort,
+  List<ReasoningEffort>? efforts,
+}) => AiProviderModel.of(
+  id,
+  reasoningEffort: effort,
+  reasoningEfforts: efforts,
+);
 
 AiRouteGroup _group({
   required List<RouteGroupMember> members,
@@ -54,6 +61,11 @@ Future<void> _openSheet(
   )?
   onEffort,
 }) async {
+  // 面板底部常驻思考强度区块，默认 800x600 的测试视口装不下完整列表
+  tester.view.physicalSize = const Size(900, 1600);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+
   await tester.pumpWidget(
     MaterialApp(
       home: Builder(
@@ -159,6 +171,33 @@ void main() {
       ]);
       expect(mixed?.mixed, isTrue);
     });
+
+    test('自定义档位覆盖自动识别，裁掉当前档位后按自动处理', () {
+      final custom = _model(
+        'gpt-5.4-mini',
+        effort: ReasoningEffort.xhigh,
+        efforts: [ReasoningEffort.minimal, ReasoningEffort.xhigh],
+      );
+      final state = reasoningEffortStateOf([
+        (provider: primary, model: custom),
+      ]);
+      expect(state?.capability.levels, [
+        ReasoningEffort.minimal,
+        ReasoningEffort.xhigh,
+      ]);
+      expect(state?.effort, ReasoningEffort.xhigh);
+
+      // 当前存的是高，但自定义集合里没有高：发信层不会发，界面按自动显示
+      final stale = _model(
+        'gpt-5.4-mini',
+        effort: ReasoningEffort.high,
+        efforts: [ReasoningEffort.minimal, ReasoningEffort.xhigh],
+      );
+      final staleState = reasoningEffortStateOf([
+        (provider: primary, model: stale),
+      ]);
+      expect(staleState?.effort, isNull);
+    });
   });
 
   group('选择面板', () {
@@ -184,6 +223,58 @@ void main() {
       expect(find.text('当前 gpt-5.4-mini · 默认'), findsOneWidget);
       // 只有当前绑定的厂商行打勾
       expect(find.byIcon(Icons.check_rounded), findsOneWidget);
+      // 一级常驻思考强度：当前模型与档位都直接可见
+      expect(find.text('当前模型'), findsOneWidget);
+      expect(find.text('gpt-5.4-mini'), findsOneWidget);
+      expect(_chipSelected(tester, '自动'), isTrue);
+    });
+
+    testWidgets('一级直接调当前模型的思考强度，不用进二级', (tester) async {
+      ReasoningEffort? written;
+      await _openSheet(
+        tester,
+        providers: [primary, backup],
+        selected: const AiModelRef(providerId: 'p1', modelName: 'gpt-5.4-mini'),
+        onEffort: (targets, effort) async {
+          written = effort;
+          return true;
+        },
+      );
+
+      await tester.tap(find.text('中'));
+      await tester.pumpAndSettle();
+
+      expect(written, ReasoningEffort.medium);
+      expect(_chipSelected(tester, '中'), isTrue);
+      // 仍停在一级：没有「上一步」，当前模型行还在
+      expect(find.text('上一步'), findsNothing);
+      expect(find.text('当前模型'), findsOneWidget);
+    });
+
+    testWidgets('对话面板只展示模型自定义的档位', (tester) async {
+      final custom = _provider(
+        id: 'p4',
+        name: '自定义',
+        models: [
+          _model(
+            'gpt-5.4-mini',
+            effort: ReasoningEffort.xhigh,
+            efforts: [ReasoningEffort.minimal, ReasoningEffort.xhigh],
+          ),
+        ],
+      );
+      await _openSheet(
+        tester,
+        providers: [custom],
+        selected: const AiModelRef(providerId: 'p4', modelName: 'gpt-5.4-mini'),
+      );
+
+      expect(find.widgetWithText(ChoiceChip, '最少'), findsOneWidget);
+      expect(find.widgetWithText(ChoiceChip, '极高'), findsOneWidget);
+      expect(find.widgetWithText(ChoiceChip, '低'), findsNothing);
+      expect(find.widgetWithText(ChoiceChip, '中'), findsNothing);
+      expect(find.widgetWithText(ChoiceChip, '高'), findsNothing);
+      expect(_chipSelected(tester, '极高'), isTrue);
     });
 
     testWidgets('点厂商进入二级：模型与思考强度同屏，点模型即写库', (tester) async {

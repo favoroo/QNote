@@ -44,6 +44,11 @@ class AiConfig {
   /// 模型级思考强度；null 表示「自动」（沿用厂商默认或不干预）
   final ReasoningEffort? reasoningEffort;
 
+  /// 模型自定义的可选档位；null 表示按模型族自动识别
+  ///
+  /// 发信层据此判断用户勾选的档位是否可发，避免自定义档位被能力表静默吞掉。
+  final List<ReasoningEffort>? reasoningEfforts;
+
   const AiConfig({
     required this.providerId,
     required this.name,
@@ -56,6 +61,7 @@ class AiConfig {
     this.accountAffinity = AiProvider.defaultAccountAffinity,
     this.vendorId,
     this.reasoningEffort,
+    this.reasoningEfforts,
   });
 
   /// 是否由订阅账号提供凭证
@@ -83,6 +89,7 @@ class AiConfig {
       accountAffinity: provider.accountAffinity,
       vendorId: provider.vendorId,
       reasoningEffort: model?.reasoningEffort,
+      reasoningEfforts: model?.reasoningEfforts,
     );
   }
 
@@ -98,6 +105,7 @@ class AiConfig {
     String? accountAffinity,
     String? vendorId,
     ReasoningEffort? reasoningEffort,
+    List<ReasoningEffort>? reasoningEfforts,
   }) {
     return AiConfig(
       providerId: providerId ?? this.providerId,
@@ -111,6 +119,7 @@ class AiConfig {
       accountAffinity: accountAffinity ?? this.accountAffinity,
       vendorId: vendorId ?? this.vendorId,
       reasoningEffort: reasoningEffort ?? this.reasoningEffort,
+      reasoningEfforts: reasoningEfforts ?? this.reasoningEfforts,
     );
   }
 

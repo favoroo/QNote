@@ -6,7 +6,7 @@ import 'package:qnote_flutter/models/ai_provider.dart';
 import 'package:qnote_flutter/models/ai_route_group.dart';
 import 'package:qnote_flutter/models/reasoning_effort.dart';
 import 'package:qnote_flutter/widgets/ai/model_picker_sheet.dart';
-import 'package:qnote_flutter/widgets/ai/reasoning_effort_sheet.dart';
+import 'package:qnote_flutter/widgets/ai/reasoning_effort_options.dart';
 
 /// 思考强度的作用对象：某个厂商条目下的某个已启用模型
 typedef ReasoningEffortTarget = ({AiProvider provider, AiProviderModel model});
@@ -59,10 +59,14 @@ class ReasoningEffortState {
   /// 多个目标档位不一致：界面显示「混合」，不把某个成员的档位冒充成全局选择
   final bool mixed;
 
+  /// 档位集合是否来自模型配置里的自定义勾选
+  final bool customized;
+
   const ReasoningEffortState({
     required this.capability,
     this.effort,
     this.mixed = false,
+    this.customized = false,
   });
 }
 
@@ -76,12 +80,27 @@ ReasoningEffortState? reasoningEffortStateOf(
     modelName: first.model.id,
     providerType: first.provider.providerType,
     vendorId: first.provider.vendorId,
+    customLevels: first.model.reasoningEfforts,
   );
-  final effort = first.model.reasoningEffort;
+  // 用户裁掉当前档位后，存储值可能已经发不出去；按「自动」展示才不撒谎
+  ReasoningEffort? effectiveOf(ReasoningEffortTarget target) {
+    final effort = target.model.reasoningEffort;
+    if (effort == null) return null;
+    final targetCapability = ModelReasoningCapability.forUi(
+      modelName: target.model.id,
+      providerType: target.provider.providerType,
+      vendorId: target.provider.vendorId,
+      customLevels: target.model.reasoningEfforts,
+    );
+    return targetCapability.supports(effort) ? effort : null;
+  }
+
+  final effort = effectiveOf(first);
   return ReasoningEffortState(
     capability: capability,
     effort: effort,
-    mixed: targets.any((t) => t.model.reasoningEffort != effort),
+    mixed: targets.any((t) => effectiveOf(t) != effort),
+    customized: first.model.reasoningEfforts != null,
   );
 }
 
@@ -228,11 +247,17 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
     ];
   }
 
-  /// 二级面板里「思考强度」的作用对象
+  /// 「思考强度」的作用对象
   ///
-  /// 厂商面板：只作用于当前选中的那个模型；还没选中该厂商下的模型时为空
-  /// （面板提示先选模型）。路由组面板：作用于组内全部启用成员。
-  List<ReasoningEffortTarget> _effortTargets(_DetailScope scope) {
+  /// 一级面板：当前绑定（具体模型就是它自己，路由组展开为全部启用成员）；
+  /// 二级厂商面板：只作用于当前选中的那个模型，还没选中该厂商下的模型时为空
+  /// （面板提示先选模型）；二级路由组面板：作用于组内全部启用成员。
+  List<ReasoningEffortTarget> _effortTargets(_DetailScope? scope) {
+    if (scope == null) {
+      return _withOverride(
+        reasoningTargetsOf(_binding, widget.providers, widget.groups),
+      );
+    }
     if (scope.isGroup) {
       return _withOverride(
         reasoningTargetsOf(
@@ -344,7 +369,8 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
                 ? _buildRootList(scrollController, theme)
                 : _buildDetailList(scope, scrollController, theme),
           ),
-          if (scope != null) _buildEffortSection(theme, scope),
+          // 一级也常驻思考强度：当前模型的档位不用点进厂商面板就能调
+          _buildEffortSection(theme, scope),
         ],
       ),
     );
@@ -728,10 +754,20 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
 
   // ── 思考强度 ────────────────────────────────────────────
 
-  Widget _buildEffortSection(ThemeData theme, _DetailScope scope) {
+  Widget _buildEffortSection(ThemeData theme, _DetailScope? scope) {
     final colorScheme = theme.colorScheme;
     final targets = _effortTargets(scope);
     final state = reasoningEffortStateOf(targets);
+    final first = targets.isEmpty ? null : targets.first;
+    final options = first == null
+        ? const <ReasoningEffortOption>[]
+        : reasoningEffortOptions(
+            modelName: first.model.id,
+            providerType: first.provider.providerType,
+            vendorId: first.provider.vendorId,
+            customLevels: first.model.reasoningEfforts,
+          );
+    final hint = state == null ? '' : _effortHint(state, options);
 
     return Container(
       width: double.infinity,
@@ -746,94 +782,114 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
       child: SafeArea(
         top: false,
-        // 没有作用对象时也保留「思考强度」这一节，避免点选模型时整块高度跳动
-        child: state == null
-            ? Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildEffortTitleRow(theme, scope, state),
+            if (state == null) ...[
+              const SizedBox(height: 6),
+              Text(
+                scope == null ? '当前没有可调整的模型' : '选中模型后即可调整它的思考强度',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ] else ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
-                  Text(
-                    '思考强度',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
+                  for (final option in options)
+                    ChoiceChip(
+                      label: Text(option.label),
+                      selected: !state.mixed && option.effort == state.effort,
+                      visualDensity: VisualDensity.compact,
+                      onSelected: _busy
+                          ? null
+                          : (_) => _applyEffort(targets, option.effort),
                     ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '选中模型后即可调整它的思考强度',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
                 ],
-              )
-            : _buildEffortControls(theme, targets, state),
+              ),
+              if (hint.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  hint,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildEffortControls(
+  /// 档位区块的标题行
+  ///
+  /// 一级显示「当前模型/当前路由组 + 绑定名」，二级只写「思考强度」：
+  /// 一级列表本身不说明当前绑的是哪个模型，这一行必须把名字带上。
+  Widget _buildEffortTitleRow(
     ThemeData theme,
-    List<ReasoningEffortTarget> targets,
-    ReasoningEffortState state,
+    _DetailScope? scope,
+    ReasoningEffortState? state,
   ) {
     final colorScheme = theme.colorScheme;
-    final first = targets.first;
-    final options = reasoningEffortOptions(
-      modelName: first.model.id,
-      providerType: first.provider.providerType,
-      vendorId: first.provider.vendorId,
-    );
-    final hint = _effortHint(state, options);
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final bindingName = scope == null ? _bindingDisplayName() : null;
+    final isGroup = _binding?.isRouteGroup ?? false;
+    return Row(
       children: [
-        Row(
-          children: [
-            Text(
-              '思考强度',
-              style: theme.textTheme.labelLarge?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              state.mixed ? '混合' : state.capability.labelFor(state.effort),
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: colorScheme.primary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
+        Text(
+          scope == null ? (isGroup ? '当前路由组' : '当前模型') : '思考强度',
+          style: theme.textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
         ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final option in options)
-              ChoiceChip(
-                label: Text(option.label),
-                selected: !state.mixed && option.effort == state.effort,
-                visualDensity: VisualDensity.compact,
-                onSelected: _busy
-                    ? null
-                    : (_) => _applyEffort(targets, option.effort),
+        if (scope == null) ...[
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              bindingName ?? '未选择',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
               ),
-          ],
-        ),
-        if (hint.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(
-            hint,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
             ),
           ),
-        ],
+        ] else
+          const Spacer(),
+        if (state != null)
+          Text(
+            state.mixed ? '混合' : state.capability.labelFor(state.effort),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colorScheme.primary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
       ],
     );
+  }
+
+  /// 当前绑定的展示名：路由组给组名，模型给模型名（厂商在这一行不重复）
+  String? _bindingDisplayName() {
+    final binding = _binding;
+    if (binding == null) return null;
+    if (binding.isRouteGroup) {
+      return widget.groups
+          .where((g) => g.id == binding.providerId)
+          .firstOrNull
+          ?.name;
+    }
+    final target = _targetOf(
+      widget.providers,
+      binding.providerId,
+      binding.modelName,
+    );
+    return target?.model.name ?? binding.modelName;
   }
 
   /// 档位说明：与单独弹层共用一套文案，再补充混合/通用参数的提醒
@@ -853,6 +909,9 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
     }
     if (state.capability.isGeneric) {
       parts.add('未收录该模型的思考参数，按通用字段发送，不支持时自动忽略');
+    }
+    if (state.customized) {
+      parts.add('档位已按模型设置自定义');
     }
     return parts.join('；');
   }

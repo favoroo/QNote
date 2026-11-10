@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:qnote_flutter/core/ai/ai_route_service.dart';
+import 'package:qnote_flutter/core/ai/model_reasoning_capability.dart';
 import 'package:qnote_flutter/core/ai/no_model_exception.dart';
 import 'package:qnote_flutter/core/storage/ai_provider_repository.dart';
 import 'package:qnote_flutter/core/storage/ai_route_group_repository.dart';
@@ -10,6 +11,7 @@ import 'package:qnote_flutter/models/ai_model_ref.dart';
 import 'package:qnote_flutter/models/ai_provider.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/ai_route_group.dart';
+import 'package:qnote_flutter/models/reasoning_effort.dart';
 
 /// 角色解析结果：本次真正使用的模型配置，以及（绑定路由组时的）组内切换器
 class AiRoleResolution {
@@ -84,6 +86,32 @@ bool hasResolvableMember(AiRouteGroup group, List<AiProvider> providers) {
     }
   }
   return false;
+}
+
+/// 角色级的思考强度默认值
+///
+/// 时间线提取是结构化抽取：思考不会让字段更准，只会把单次提取拖长（新加的
+/// 模型服务默认开思考，表现就是「点了提取很久没反应」）。因此该角色固定用
+/// 尽可能低的档位：支持关闭的模型发「关闭」（OpenAI 兼容协议映射为 `minimal`），
+/// 不支持关闭的模型退到它能力表里的最低档，避免把请求打挂。
+///
+/// 只覆盖「用时间线角色发信」的场景，模型级档位对其它角色（小Q 对话）仍然生效。
+AiConfig applyRoleReasoningDefault(String role, AiConfig config) {
+  if (role != 'timelineOptimization') {
+    return config;
+  }
+  final capability = ModelReasoningCapability.forUi(
+    modelName: config.modelName,
+    providerType: config.provider,
+    vendorId: config.vendorId,
+    customLevels: config.reasoningEfforts,
+  );
+  return config.copyWith(
+    reasoningEffort: capability.supports(ReasoningEffort.none)
+        ? ReasoningEffort.none
+        // 自定义档位可能裁掉了「低」，退到该模型可选的最低档而不是硬编码 low
+        : capability.levels.first,
+  );
 }
 
 /// 角色 → 厂商模型 / 路由组 的绑定与解析服务
@@ -282,7 +310,8 @@ class AiRoleService {
   /// 会推进路由组的轮次：调用它就意味着「接下来要发一次请求」。
   /// 只想知道当前会用哪个模型、不发请求的场景请用 [peekConfigForRole]。
   Future<AiConfig> getEffectiveConfigForRole(String role) async {
-    return (await resolveForRole(role)).config;
+    final config = (await resolveForRole(role)).config;
+    return applyRoleReasoningDefault(role, config);
   }
 
   /// 只看「当前会轮到哪个模型」，不推进路由组轮次
