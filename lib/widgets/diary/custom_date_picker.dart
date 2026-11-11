@@ -171,9 +171,9 @@ class _CustomDatePickerDialogState extends State<CustomDatePickerDialog> {
             const SizedBox(height: 12),
 
             // Weekday Headings
-            Row(
+            const Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: const [
+              children: [
                 _WeekdayLabel(label: '日'),
                 _WeekdayLabel(label: '一'),
                 _WeekdayLabel(label: '二'),

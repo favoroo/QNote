@@ -24,7 +24,7 @@ class DiaryRepository {
   Future<List<String>> getActiveDates({int limit = 30}) async {
     final db = await _dbHelper.database;
     final results = await db.rawQuery(
-      "SELECT DISTINCT substr(time, 1, 10) AS date_str FROM diary_records WHERE is_deleted = 0 ORDER BY time DESC LIMIT ?",
+      'SELECT DISTINCT substr(time, 1, 10) AS date_str FROM diary_records WHERE is_deleted = 0 ORDER BY time DESC LIMIT ?',
       [limit],
     );
     return results
@@ -41,7 +41,7 @@ class DiaryRepository {
 
     final maps = await db.query(
       'diary_records',
-      where: "time >= ? AND time < ? AND is_deleted = 0",
+      where: 'time >= ? AND time < ? AND is_deleted = 0',
       whereArgs: [prevDateStr, nextDateStr],
       orderBy: 'time DESC',
     );

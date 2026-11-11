@@ -1,3 +1,5 @@
+import 'package:qnote_flutter/core/logger/logger_service.dart';
+
 /// 工作区文件变更类型
 enum WorkspaceChangeType {
   created,
@@ -50,7 +52,13 @@ class WorkspaceEventBus {
     for (final listener in List.from(_listeners)) {
       try {
         listener(event);
-      } catch (_) {}
+      } catch (e) {
+        // 单个监听器抛错不能中断其余监听器，但需记录以便排查 UI 状态未刷新问题
+        LoggerService.instance.warning(
+          '工作区变更事件监听器执行失败: path=$path, type=${type.name}, $e',
+          category: LogCategory.ui,
+        );
+      }
     }
   }
 }

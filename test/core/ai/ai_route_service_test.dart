@@ -129,7 +129,7 @@ void main() {
     );
 
     service.markMemberFailed(
-      AiConfig(
+      const AiConfig(
         providerId: 'pA',
         name: 'a1',
         provider: 'openai',
@@ -201,7 +201,7 @@ void main() {
     final g = group(
       strategy: RouteStrategy.rotate,
       members: [
-        RouteGroupMember(providerId: 'pA', modelName: 'a1', enabled: false),
+        const RouteGroupMember(providerId: 'pA', modelName: 'a1', enabled: false),
         m('pB', 'b1'),
       ],
     );

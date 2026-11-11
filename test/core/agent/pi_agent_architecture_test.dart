@@ -142,7 +142,7 @@ void main() {
         aiService: mockAi,
         dispatcher: dispatcher,
         beforeToolCall: (_) async => beforeHookCalled = true,
-        afterToolCall: (_, __) async => afterHookCalled = true,
+        afterToolCall: (_, _) async => afterHookCalled = true,
       );
 
       final events = <AgentEventType>[];

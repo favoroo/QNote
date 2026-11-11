@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+
 import 'package:fl_chart/fl_chart.dart';
+
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
+import 'package:qnote_flutter/widgets/statistics/stat_shared.dart';
 import 'package:qnote_flutter/widgets/stats_card.dart';
 
 class SleepStatsWidget extends StatelessWidget {
@@ -24,48 +27,44 @@ class SleepStatsWidget extends StatelessWidget {
 
     return Column(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: StatsCard(
-                title: '平均时长',
-                value: '${stats.averageDuration.toStringAsFixed(1)}h',
-                icon: Icons.schedule,
-                iconColor: Colors.indigo,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: StatsCard(
-                title: '质量分布',
-                value: qualityLabel,
-                icon: Icons.emoji_events,
-                iconColor: Colors.amber,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        _ChartCard(
-          isDark: isDark,
-          iconBgColor: isDark ? const Color(0x336366F1) : const Color(0x1A6366F1),
-          iconColor: Colors.indigo,
-          icon: Icons.nightlight,
-          title: '睡眠趋势',
-          child: SizedBox(
-            height: 192,
-            child: stats.dailyData.isNotEmpty
-                ? _SleepDurationChart(dailyData: stats.dailyData, isDark: isDark)
-                : Center(child: Text('暂无数据', style: TextStyle(color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF94A3B8)))),
+        StatsCardPair(
+          left: StatsCard(
+            title: '平均时长',
+            value: '${stats.averageDuration.toStringAsFixed(1)}h',
+            icon: Icons.schedule,
+            iconColor: Colors.indigo,
+          ),
+          right: StatsCard(
+            title: '质量分布',
+            value: qualityLabel,
+            icon: Icons.emoji_events,
+            iconColor: Colors.amber,
           ),
         ),
         const SizedBox(height: 16),
-        _ChartCard(
+        StatCardShell(
           isDark: isDark,
-          iconBgColor: isDark ? const Color(0x33F59E0B) : const Color(0x1AF59E0B),
-          iconColor: Colors.amber,
-          icon: Icons.star,
+          title: '睡眠趋势',
+          leading: StatIconChip(
+            icon: Icons.nightlight,
+            color: Colors.indigo,
+            backgroundColor: isDark ? const Color(0x336366F1) : const Color(0x1A6366F1),
+          ),
+          child: StatChartBox(
+            height: 192,
+            isEmpty: stats.dailyData.isEmpty,
+            child: _SleepDurationChart(dailyData: stats.dailyData, isDark: isDark),
+          ),
+        ),
+        const SizedBox(height: 16),
+        StatCardShell(
+          isDark: isDark,
           title: '质量统计',
+          leading: StatIconChip(
+            icon: Icons.star,
+            color: Colors.amber,
+            backgroundColor: isDark ? const Color(0x33F59E0B) : const Color(0x1AF59E0B),
+          ),
           child: _QualityDistribution(
             qualityDistribution: stats.qualityDistribution,
             totalRecords: stats.totalRecords,
@@ -73,69 +72,6 @@ class SleepStatsWidget extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _ChartCard extends StatelessWidget {
-  final bool isDark;
-  final Color iconBgColor;
-  final Color iconColor;
-  final IconData icon;
-  final String title;
-  final Widget child;
-
-  const _ChartCard({
-    required this.isDark,
-    required this.iconBgColor,
-    required this.iconColor,
-    required this.icon,
-    required this.title,
-    required this.child,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: isDark ? const Color(0x1A383C47) : const Color(0xFFC2C6D6),
-          width: 0.5,
-        ),
-      ),
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: iconBgColor,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(icon, size: 16, color: iconColor),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? const Color(0xFFE2E2E9) : const Color(0xFF191B23),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            child,
-          ],
-        ),
-      ),
     );
   }
 }
@@ -177,7 +113,7 @@ class _SleepDurationChart extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
                     '${parts[1]}/${parts[2]}',
-                    style: TextStyle(fontSize: 10, color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF94A3B8)),
+                    style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
                   ),
                 );
               },
@@ -189,7 +125,7 @@ class _SleepDurationChart extends StatelessWidget {
               reservedSize: 30,
               getTitlesWidget: (value, meta) => Text(
                 '${value.toInt()}h',
-                style: TextStyle(fontSize: 10, color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF94A3B8)),
+                style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
               ),
             ),
           ),
@@ -254,14 +190,11 @@ class _QualityDistribution extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: totalRecords > 0 ? item.count / totalRecords : 0,
-                    backgroundColor: isDark ? const Color(0xFF2A2D36) : const Color(0xFFECEDF7),
-                    valueColor: AlwaysStoppedAnimation(item.color),
-                    minHeight: 8,
-                  ),
+                child: StatProgressBar(
+                  isDark: isDark,
+                  value: totalRecords > 0 ? item.count / totalRecords : 0,
+                  color: item.color,
+                  minHeight: 8,
                 ),
               ),
               const SizedBox(width: 8),
@@ -269,10 +202,10 @@ class _QualityDistribution extends StatelessWidget {
                 width: 24,
                 child: Text(
                   '${item.count}',
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
-                    color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF94A3B8),
+                    color: Color(0xFF94A3B8),
                   ),
                   textAlign: TextAlign.end,
                 ),

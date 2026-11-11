@@ -124,7 +124,7 @@ void main() {
       expect(writeRes.isError, false);
 
       // 读取验证
-      final readRes = await dispatcher.dispatch(ToolCall(
+      final readRes = await dispatcher.dispatch(const ToolCall(
         id: 'call_read_journal',
         name: 'read_file',
         arguments: {'path': '/journal/$todayStr.md'},
@@ -132,7 +132,7 @@ void main() {
       expect(readRes.content.contains('今天天气晴朗'), true);
 
       // 删除
-      final deleteRes = await dispatcher.dispatch(ToolCall(
+      final deleteRes = await dispatcher.dispatch(const ToolCall(
         id: 'call_delete_journal',
         name: 'delete_file',
         arguments: {'path': '/journal/$todayStr.md'},
@@ -141,7 +141,7 @@ void main() {
       expect(deleteRes.content.contains('已成功删除'), true);
 
       // 再次读取验证已被清空
-      final readAfterDelete = await dispatcher.dispatch(ToolCall(
+      final readAfterDelete = await dispatcher.dispatch(const ToolCall(
         id: 'call_read_journal_after',
         name: 'read_file',
         arguments: {'path': '/journal/$todayStr.md'},
@@ -180,7 +180,7 @@ void main() {
 
     test('6. read_file + write_file: 修改个人信息配置', () async {
       // 先读取当前 profile.json（read_file 输出带行号前缀，需剥离后再解析）
-      final readRes = await dispatcher.dispatch(ToolCall(
+      final readRes = await dispatcher.dispatch(const ToolCall(
         id: 'call_read_profile',
         name: 'read_file',
         arguments: {'path': '/settings/profile.json'},

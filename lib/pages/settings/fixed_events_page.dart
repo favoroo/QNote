@@ -956,7 +956,7 @@ class FixedEventsPageState extends ConsumerState<FixedEventsPage> {
 
       // 确定要展示的字段列表：优先使用分类下的字段，其次用 config.fields
       List<ShortcutField> fieldsToProcess;
-      bool hasCategories =
+      final bool hasCategories =
           config.categories != null && config.categories!.isNotEmpty;
 
       if (hasCategories) {
@@ -1093,7 +1093,7 @@ class FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                 // 根据字段类型渲染不同输入控件
                 if (field.type == 'select' && field.options.isNotEmpty)
                   DropdownButtonFormField<String>(
-                    value: field.options.contains(currentValue as String?)
+                    initialValue: field.options.contains(currentValue as String?)
                         ? currentValue
                         : null,
                     decoration: InputDecoration(

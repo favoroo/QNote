@@ -206,10 +206,10 @@ class ShortcutsPageState extends ConsumerState<ShortcutsPage> {
     final isEditing = existingConfig != null;
     final nameCtl = TextEditingController(text: existingConfig?.name ?? '');
     bool hasPopup = existingConfig?.hasPopup ?? false;
-    List<ShortcutField> fields = existingConfig != null
+    final List<ShortcutField> fields = existingConfig != null
         ? existingConfig.fields.map((f) => f.copyWith()).toList()
         : [];
-    List<ShortcutCategory> categories = existingConfig != null
+    final List<ShortcutCategory> categories = existingConfig != null
         ? (existingConfig.categories?.map((c) => c.copyWith(
             fields: c.fields.map((f) => f.copyWith()).toList(),
           )).toList() ?? [])

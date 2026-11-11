@@ -138,7 +138,7 @@ void main() {
     test('8. timeline: 写入多条、edit_file 差量删除、单条ID删除与清空验证', () async {
       final diaryRepo = DiaryRepository();
       const testDateStr = '2026-09-11';
-      final testPath = '/timeline/$testDateStr.md';
+      const testPath = '/timeline/$testDateStr.md';
 
       // 1. 写入两条时间线记录
       final writeRes = await vfs.writeFile(
@@ -442,7 +442,7 @@ tags: "运动,健康"
 
     test('16. timeline: 时间跨度 [09:00 - 11:30] 与自定义结构化指标', () async {
       const testDate = '2026-09-12';
-      final path = '/timeline/$testDate.md';
+      const path = '/timeline/$testDate.md';
 
       await vfs.writeFile(
         path,

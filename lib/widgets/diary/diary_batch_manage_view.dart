@@ -8,7 +8,6 @@ import 'package:intl/intl.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
-import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/widgets/app_error_state.dart';
 import 'package:qnote_flutter/widgets/diary/custom_date_range_picker.dart';
@@ -70,7 +69,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
     _loading = true;
     _loadError = null;
     try {
-      final repo = DiaryRepository();
+      final repo = ref.read(diaryRepositoryProvider);
       if (withTags) {
         final allRecords = await repo.getAll();
         final tags = <String>{};
@@ -1532,7 +1531,7 @@ class _FullScreenImageGalleryState extends State<_FullScreenImageGallery> {
   }
 }
 
-class _RecordDetailSheet extends StatefulWidget {
+class _RecordDetailSheet extends ConsumerStatefulWidget {
   final List<DiaryRecord> records;
   final int initialIndex;
   final Set<String> selectedIds;
@@ -1548,10 +1547,10 @@ class _RecordDetailSheet extends StatefulWidget {
   });
 
   @override
-  State<_RecordDetailSheet> createState() => _RecordDetailSheetState();
+  ConsumerState<_RecordDetailSheet> createState() => _RecordDetailSheetState();
 }
 
-class _RecordDetailSheetState extends State<_RecordDetailSheet> {
+class _RecordDetailSheetState extends ConsumerState<_RecordDetailSheet> {
   late PageController _pageController;
   late int _currentIndex;
   late Set<String> _localSelectedIds;
@@ -1588,7 +1587,7 @@ class _RecordDetailSheetState extends State<_RecordDetailSheet> {
     await GoRouter.of(context).push('/diary/editor', extra: record);
     
     // Fetch updated record from database
-    final repo = DiaryRepository();
+    final repo = ref.read(diaryRepositoryProvider);
     final updatedRecord = await repo.getById(record.id);
     
     if (mounted) {

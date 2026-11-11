@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:qnote_flutter/core/storage/chat_image_gc.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
@@ -201,8 +200,8 @@ void main() {
 
   test('待回收判定只认 basename，绝对路径前缀变化不影响结论', () async {
     // 重装 App 后 documents 绝对路径会变，但文件名不变：保护集必须仍能认出同一张图
-    final fileName = 'moved.png';
-    final oldAbsolute = '/old/install/path/images/ai/$fileName';
+    const fileName = 'moved.png';
+    const oldAbsolute = '/old/install/path/images/ai/$fileName';
     final file = File(p.join(aiDir.path, fileName));
     await file.writeAsBytes(List<int>.filled(300, 9));
     await insertSessionWithImage(testId('moved'), oldAbsolute);

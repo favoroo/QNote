@@ -145,7 +145,7 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(height: _monthLabelHeight),
+            const SizedBox(height: _monthLabelHeight),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -156,7 +156,7 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       for (var row = 0; row < 7; row++) ...[
-                        if (row > 0) SizedBox(height: _cellGap),
+                        if (row > 0) const SizedBox(height: _cellGap),
                         SizedBox(
                           height: _cellSize,
                           child: Align(
@@ -204,12 +204,12 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           for (var row = 0; row < 7; row++) ...[
-                            if (row > 0) SizedBox(height: _cellGap),
+                            if (row > 0) const SizedBox(height: _cellGap),
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 for (var col = 0; col < weekCount; col++) ...[
-                                  if (col > 0) SizedBox(width: _cellGap),
+                                  if (col > 0) const SizedBox(width: _cellGap),
                                   _buildCell(weeks[col], row, col, scoreMap, primary, emptyColor, theme),
                                 ],
                               ],
@@ -240,7 +240,7 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
     ThemeData theme,
   ) {
     if (row >= week.length) {
-      return SizedBox(width: _cellSize, height: _cellSize);
+      return const SizedBox(width: _cellSize, height: _cellSize);
     }
 
     final day = week[row];

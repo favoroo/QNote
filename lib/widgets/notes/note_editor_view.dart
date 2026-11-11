@@ -9,9 +9,9 @@ import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
 import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
+import 'package:qnote_flutter/providers/image_repository_provider.dart';
 import 'package:qnote_flutter/providers/note_provider.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
-import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/utils/delta_markdown.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
@@ -137,7 +137,7 @@ class NoteEditorView extends ConsumerStatefulWidget {
 class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   late TextEditingController _titleController;
   final ScrollController _scrollController = ScrollController();
-  final ImageRepository _imageRepo = ImageRepository();
+  late final ImageRepository _imageRepo;
   final ImagePicker _imagePicker = ImagePicker();
 
   final List<_Segment> _segments = [];
@@ -194,6 +194,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   @override
   void initState() {
     super.initState();
+    _imageRepo = ref.read(imageRepositoryProvider);
     _titleController = TextEditingController(text: widget.note.title);
     // 基线必须与 _saveNote 的归一化口径一致，否则空标题笔记一进来就被判脏、白写一次库
     _lastSavedTitle = _normalizeTitle(widget.note.title);
@@ -743,7 +744,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   /// （桥接仅在用户任务期间未手动编辑时调用，用户编辑过的版本不会被覆盖）
   Future<void> _reloadFromRepository() async {
     if (!mounted) return;
-    final fresh = await NoteRepository().getById(widget.note.id);
+    final fresh = await ref.read(noteRepositoryProvider).getById(widget.note.id);
     if (!mounted) return;
     if (fresh == null) {
       Toast.info(context, '笔记已被小Q删除');

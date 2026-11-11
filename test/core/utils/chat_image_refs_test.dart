@@ -40,7 +40,7 @@ void main() {
 
     test('命中 JSON 转义后的 Windows 反斜杠路径', () {
       // 实际入库形态：路径里的 `\` 被 jsonEncode 转义成 `\\`
-      final escaped = r'{"p":"C:\data\images\\ai\\ab-1.jpeg"}';
+      const escaped = r'{"p":"C:\data\images\\ai\\ab-1.jpeg"}';
       expect(extractChatAiImageKeys(escaped), {'ab-1.jpeg'});
     });
 

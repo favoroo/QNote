@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:qnote_flutter/core/agent/engine/tool_dispatcher.dart';
 import 'package:qnote_flutter/core/agent/agent_tool_registry.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 
@@ -30,7 +29,7 @@ void main() {
 
     test('ToolDispatcher dispatch 未知工具能安全返回 isError 消息', () async {
       final dispatcher = AgentToolRegistry.createDefaultDispatcher();
-      final call = ToolCall(
+      const call = ToolCall(
         id: 'test_call_1',
         name: 'non_existent_tool',
         arguments: {},
@@ -44,7 +43,7 @@ void main() {
     });
 
     test('ToolCall 与 ChatMessage 模型序列化与反序列化完整性', () {
-      final toolCall = ToolCall(
+      const toolCall = ToolCall(
         id: 'call_123',
         name: 'write_file',
         arguments: {'path': '/todos/今日/测试待办.md', 'content': '测试内容'},

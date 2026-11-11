@@ -41,7 +41,7 @@ void main() {
       expect(result.isError, false);
       expect(result.uiDetails?['status'], 'confirmed');
       expect(result.uiDetails?['choice'], '确认删除');
-      expect(result.modelOutput.contains('用户已确认并回复：\"确认删除\"'), true);
+      expect(result.modelOutput.contains('用户已确认并回复："确认删除"'), true);
     });
 
     test('AskUserTool 注入模拟用户选择取消', () async {

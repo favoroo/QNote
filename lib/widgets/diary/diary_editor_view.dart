@@ -8,7 +8,6 @@ import 'package:intl/intl.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
 import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
-import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/theme/tag_colors.dart';
@@ -21,8 +20,8 @@ import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/shortcut_field.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
+import 'package:qnote_flutter/providers/image_repository_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
-import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/widgets/unsaved_changes_dialog.dart';
 import 'package:qnote_flutter/widgets/diary/ai_extract_helper.dart';
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
@@ -96,7 +95,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     setState(() {
       _tagEntries = _tagEntries.map((entry) {
         if (entry.id == tagId) {
-          var newFields = Map<String, dynamic>.from(entry.fields);
+          final newFields = Map<String, dynamic>.from(entry.fields);
           if (value == null) {
             newFields.remove(fieldKey);
           } else {
@@ -240,7 +239,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       final config = popupConfigs[pi];
 
       List<ShortcutField> fieldsToProcess = config.fields;
-      Map<String, dynamic> entryFields = Map<String, dynamic>.from(
+      final Map<String, dynamic> entryFields = Map<String, dynamic>.from(
         entry.fields,
       );
       String categoryPrefix = '';
@@ -531,7 +530,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   /// （桥接仅在用户任务期间未手动编辑时调用，用户编辑过的版本不会被覆盖）
   Future<void> _reloadFromRecord() async {
     if (!mounted) return;
-    final fresh = await DiaryRepository().getById(widget.record.id);
+    final fresh = await ref.read(diaryRepositoryProvider).getById(widget.record.id);
     if (!mounted) return;
     if (fresh == null) {
       Toast.info(context, '这条记录已被小Q删除');
@@ -806,7 +805,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       setState(() {
         _tagEntries = _tagEntries.map((e) {
           if (e.id == entry.id || e.name == entry.name) {
-            Map<String, dynamic> updatedFields = Map<String, dynamic>.from(e.fields);
+            final Map<String, dynamic> updatedFields = Map<String, dynamic>.from(e.fields);
             if (e.id == 'sleep' || e.name == '睡眠') {
               if (startHour != null && startMinute != null) {
                 updatedFields['fallAsleepTime'] =
@@ -1002,7 +1001,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       _photos.add(tempPath);
     });
 
-    final imageRepo = ImageRepository();
+    final imageRepo = ref.read(imageRepositoryProvider);
     // 启动异步任务
     final Future<String> compressFuture = imageRepo.saveImage(
       File(tempPath),
@@ -1042,7 +1041,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     final removed = _photos.removeAt(index);
     if (_newlyUploadedPaths.contains(removed)) {
       _newlyUploadedPaths.remove(removed);
-      ImageRepository().deleteImage(removed);
+      ref.read(imageRepositoryProvider).deleteImage(removed);
     } else {
       _removedPaths.add(removed);
     }
@@ -1184,8 +1183,9 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               'medication': entry.fields['medication'],
               'notes': _contentController.text,
             };
-          } else
+          } else {
             bodyState ??= Map<String, dynamic>.from(entry.fields);
+          }
         }
       } catch (_) {}
     }
@@ -1237,7 +1237,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     // 不能再当作「未保存的临时文件」处理
     for (final path in _removedPaths) {
       try {
-        await ImageRepository().deleteImage(path);
+        await ref.read(imageRepositoryProvider).deleteImage(path);
       } catch (_) {
         // 文件可能已被系统清理，删不掉不影响记录内容
       }
@@ -1272,7 +1272,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     );
     if (confirmed == true) {
       for (final path in _newlyUploadedPaths) {
-        await ImageRepository().deleteImage(path);
+        await ref.read(imageRepositoryProvider).deleteImage(path);
       }
       await ref.read(diaryListProvider.notifier).deleteDiary(widget.record.id);
       if (mounted) Navigator.of(context).pop();
@@ -1300,7 +1300,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     // 剩下的场景是用户选了「放弃更改」：本次新上传的图还没被记录引用，删掉
     for (final path in _newlyUploadedPaths) {
       try {
-        await ImageRepository().deleteImage(path);
+        await ref.read(imageRepositoryProvider).deleteImage(path);
       } catch (_) {
         // 删不掉也不能挡住退出
       }
@@ -1660,7 +1660,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       '活动': Icons.directions_run,
       '记账': Icons.account_balance_wallet,
     };
-    final tagColors = TagColors.map;
+    const tagColors = TagColors.map;
 
     final shortcuts = ref.watch(shortcutListProvider).valueOrNull ?? [];
     final shortcutNames = shortcuts.map((s) => s.name).toSet();
@@ -2618,7 +2618,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
           focusNode: _contentFocusNode,
           maxLines: null,
           minLines: 5,
-          decoration: InputDecoration(
+          decoration: const InputDecoration(
             hintText: '输入详细记录内容...',
             border: InputBorder.none,
             filled: false,

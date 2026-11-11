@@ -209,7 +209,7 @@ class _QuickPromptDialogState extends ConsumerState<_QuickPromptDialog> {
     if (confirmed != true) return;
 
     if (text.isEmpty) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       Toast.warning(context, '提示词不能为空');
       return;
     }
@@ -221,10 +221,10 @@ class _QuickPromptDialogState extends ConsumerState<_QuickPromptDialog> {
       } else {
         await notifier.updatePrompt(target.index, text);
       }
-      if (!mounted) return;
+      if (!context.mounted) return;
       Toast.success(context, target == null ? '已添加' : '已更新');
     } catch (e) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       Toast.error(context, '保存失败：$e');
     }
   }
@@ -261,10 +261,10 @@ class _QuickPromptDialogState extends ConsumerState<_QuickPromptDialog> {
 
     try {
       await ref.read(quickPromptListProvider.notifier).deletePrompt(index);
-      if (!mounted) return;
+      if (!context.mounted) return;
       Toast.success(context, '已删除');
     } catch (e) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       Toast.error(context, '删除失败：$e');
     }
   }

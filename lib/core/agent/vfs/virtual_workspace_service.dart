@@ -10,6 +10,7 @@ import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
 import 'package:qnote_flutter/core/ai/api_key_pool.dart';
 import 'package:qnote_flutter/core/health/health_sync_service.dart';
 import 'package:qnote_flutter/core/health/screen_usage_service.dart';
+import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/notification/notification_service.dart';
 import 'package:qnote_flutter/core/storage/color_mark_repository.dart';
 import 'package:qnote_flutter/core/storage/ai_provider_repository.dart';
@@ -619,7 +620,13 @@ class VirtualWorkspaceService {
       try {
         final active = await _diaryRepo.getActiveDates(limit: 30);
         dateSet.addAll(active);
-      } catch (_) {}
+      } catch (e) {
+        // 读取失败时时间线目录退化为仅展示最近 7 天，需留痕排查数据库异常
+        LoggerService.instance.logDatabase(
+          '读取日记活跃日期失败，时间线目录仅展示最近 7 天: $e',
+          level: LogLevel.warning,
+        );
+      }
 
       final sortedList = dateSet.toList()..sort((a, b) => b.compareTo(a));
       return sortedList.map((d) => '$d.md').toList();
@@ -1093,13 +1100,17 @@ class VirtualWorkspaceService {
             (map['weight_history'] as String).isNotEmpty) {
           map['weight_history'] = jsonDecode(map['weight_history'] as String);
         }
-      } catch (_) {}
+      } catch (_) {
+        // 忽略：历史 weight_history 不是合法 JSON 时保留原始字符串输出
+      }
       try {
         if (map['custom_fields'] is String &&
             (map['custom_fields'] as String).isNotEmpty) {
           map['custom_fields'] = jsonDecode(map['custom_fields'] as String);
         }
-      } catch (_) {}
+      } catch (_) {
+        // 忽略：历史 custom_fields 不是合法 JSON 时保留原始字符串输出
+      }
       return const JsonEncoder.withIndent('  ').convert(map);
     } else if (name == 'color_marks.json') {
       final marks = await _colorMarkRepo.getAll();
@@ -1604,7 +1615,9 @@ class VirtualWorkspaceService {
         dueDate = DateTime.parse(
           meta['due_date'].toString().replaceAll('"', ''),
         );
-      } catch (_) {}
+      } catch (_) {
+        // 忽略：待办 meta 里的 due_date 非法时按无截止日期处理
+      }
     }
 
     // 提醒时间：归一化为 MM-DD HH:mm 存储，这是一切通知的唯一触发源
@@ -2684,7 +2697,7 @@ class VirtualWorkspaceService {
             (map['sort_order'] ?? map['sortOrder'] as num?)?.toInt() ?? i;
 
         // 解析多时间段（兼顾标准 timePeriods、下划线 time_periods，以及模型自拟的 timeSlots / periods）
-        List<TimePeriod> periods = [];
+        final List<TimePeriod> periods = [];
         dynamic rawPeriods =
             map['timePeriods'] ??
             map['time_periods'] ??
@@ -2693,7 +2706,9 @@ class VirtualWorkspaceService {
         if (rawPeriods is String && rawPeriods.isNotEmpty) {
           try {
             rawPeriods = jsonDecode(rawPeriods);
-          } catch (_) {}
+          } catch (_) {
+            // 忽略：time_periods 存储为非法 JSON 时按非列表处理，回退到顶层起止时间
+          }
         }
         if (rawPeriods is List) {
           for (final p in rawPeriods) {
@@ -2738,7 +2753,9 @@ class VirtualWorkspaceService {
             if (decodedTags is List) {
               tags = decodedTags.map((e) => e.toString()).toList();
             }
-          } catch (_) {}
+          } catch (_) {
+            // 忽略：tags 不是合法 JSON 时保留该固定事件原有标签
+          }
         }
 
         final template = FixedEventTemplate(
@@ -2776,7 +2793,9 @@ class VirtualWorkspaceService {
         if (decoded['time'] != null) {
           try {
             time = DateTime.parse(decoded['time'].toString());
-          } catch (_) {}
+          } catch (_) {
+            // 忽略：weight.json 的 time 非法时按当前时间记录
+          }
         }
       } else if (decoded is num) {
         newWeight = decoded.toDouble();
@@ -3062,8 +3081,9 @@ class VirtualWorkspaceService {
       if (item is! Map<String, dynamic>) continue;
       final id = item['id']?.toString();
       final newTitle = item['title']?.toString().trim();
-      if (id == null || id.isEmpty || newTitle == null || newTitle.isEmpty)
+      if (id == null || id.isEmpty || newTitle == null || newTitle.isEmpty) {
         continue;
+      }
 
       final existing = await _configRepo.getChatSession(id);
       if (existing != null) {
@@ -3290,11 +3310,13 @@ class VirtualWorkspaceService {
     if (raw is int) return Color(raw);
     if (raw is String) {
       final s = raw.trim().toLowerCase();
-      if (s == 'classic_blue' || s == 'blue' || s == '经典蓝')
+      if (s == 'classic_blue' || s == 'blue' || s == '经典蓝') {
         return const Color(0xFF005BCB);
+      }
       if (s == 'yellow_green' || s == '荧光黄绿') return const Color(0xFFC5E803);
-      if (s == 'pink' || s == 'rose' || s == '玫瑰粉红')
+      if (s == 'pink' || s == 'rose' || s == '玫瑰粉红') {
         return const Color(0xFFE91E8C);
+      }
       if (s == 'green' || s == '春天亮绿') return const Color(0xFF00E676);
       if (s == 'red' || s == '红色' || s == '活力红') return const Color(0xFFFF3B30);
       if (s == 'orange' || s == '橙色' || s == '活力橙') return const Color(0xFFFF9500);
@@ -3320,10 +3342,12 @@ class VirtualWorkspaceService {
   ThemeMode _parseThemeMode(dynamic raw) {
     if (raw == null) return ThemeMode.system;
     final s = raw.toString().trim().toLowerCase();
-    if (s == 'dark' || s == '深色' || s == '暗色' || s == '夜间' || s == '黑')
+    if (s == 'dark' || s == '深色' || s == '暗色' || s == '夜间' || s == '黑') {
       return ThemeMode.dark;
-    if (s == 'light' || s == '浅色' || s == '明亮' || s == '日间' || s == '白')
+    }
+    if (s == 'light' || s == '浅色' || s == '明亮' || s == '日间' || s == '白') {
       return ThemeMode.light;
+    }
     return ThemeMode.system;
   }
 

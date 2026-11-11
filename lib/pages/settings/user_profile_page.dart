@@ -16,6 +16,7 @@ import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/user_profile.dart';
 import 'package:qnote_flutter/models/weight_record.dart';
+import 'package:qnote_flutter/providers/image_repository_provider.dart';
 import 'package:qnote_flutter/providers/user_profile_provider.dart';
 import 'package:qnote_flutter/widgets/birthday_picker.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
@@ -45,11 +46,12 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   String _avatarPath = '';
   String _weightUnit = 'kg'; // 'kg' 或 '斤'
 
-  final ImageRepository _imageRepo = ImageRepository();
+  late final ImageRepository _imageRepo;
 
   @override
   void initState() {
     super.initState();
+    _imageRepo = ref.read(imageRepositoryProvider);
     _weightInputFocusNode.addListener(() {
       if (mounted) setState(() {});
     });

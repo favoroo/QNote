@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/core/utils/reminder_utils.dart';
 import 'package:qnote_flutter/models/todo.dart';
@@ -109,7 +110,13 @@ class NotificationService {
         importance: Importance.defaultImportance,
       );
       await androidPlugin?.createNotificationChannel(scheduledChannel);
-    } catch (_) {}
+    } catch (e) {
+      // Android 通知权限/渠道创建失败会直接影响提醒送达，需留痕
+      LoggerService.instance.warning(
+        '创建 Android 通知渠道或申请权限失败: $e',
+        category: LogCategory.system,
+      );
+    }
     try {
       final iosPlugin = _plugin.resolvePlatformSpecificImplementation<
           IOSFlutterLocalNotificationsPlugin>();
@@ -118,7 +125,13 @@ class NotificationService {
         badge: true,
         sound: true,
       );
-    } catch (_) {}
+    } catch (e) {
+      // iOS 权限申请失败会直接影响提醒送达，需留痕
+      LoggerService.instance.warning(
+        '申请 iOS 通知权限失败: $e',
+        category: LogCategory.system,
+      );
+    }
   }
 
   void startReminderCheck() {
@@ -156,7 +169,11 @@ class NotificationService {
         }
       }
     } catch (e) {
-      // Avoid letting timer checks throw uncaught exceptions
+      // 定时轮询失败不能让异常逃逸，但需留痕排查提醒未触发
+      LoggerService.instance.warning(
+        '检查待办提醒失败: $e',
+        category: LogCategory.system,
+      );
     }
   }
 
@@ -178,8 +195,12 @@ class NotificationService {
       const iosDetails = DarwinNotificationDetails();
       const details = NotificationDetails(android: androidDetails, iOS: iosDetails);
       await _plugin.show(id, title, body, details, payload: payload);
-    } catch (_) {
-      // Safe guard against native initialization/permission crashes
+    } catch (e) {
+      // 通知失败不阻断业务，但需留痕排查权限/渠道问题
+      LoggerService.instance.warning(
+        '显示本地通知失败(id=$id): $e',
+        category: LogCategory.system,
+      );
     }
   }
 
@@ -212,8 +233,12 @@ class NotificationService {
             UILocalNotificationDateInterpretation.absoluteTime,
         payload: payload,
       );
-    } catch (_) {
-      // Safe guard against native exact alarms / permission SecurityExceptions on Android 13/14
+    } catch (e) {
+      // Android 13/14 的精确闹钟或权限限制常在这里抛异常，需留痕排查提醒未调度
+      LoggerService.instance.warning(
+        '调度本地通知失败(id=$id): $e',
+        category: LogCategory.system,
+      );
     }
   }
 
@@ -221,14 +246,26 @@ class NotificationService {
     if (kIsWeb) return;
     try {
       await _plugin.cancel(id);
-    } catch (_) {}
+    } catch (e) {
+      // 取消失败可能让已完成待办继续提醒，需留痕
+      LoggerService.instance.warning(
+        '取消本地通知失败(id=$id): $e',
+        category: LogCategory.system,
+      );
+    }
   }
 
   Future<void> cancelAllNotifications() async {
     if (kIsWeb) return;
     try {
       await _plugin.cancelAll();
-    } catch (_) {}
+    } catch (e) {
+      // 批量取消失败可能残留过期提醒，需留痕
+      LoggerService.instance.warning(
+        '取消全部本地通知失败: $e',
+        category: LogCategory.system,
+      );
+    }
   }
 
   Future<void> showDiaryReminder({

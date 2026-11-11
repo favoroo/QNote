@@ -1,0 +1,40 @@
+# QNote 质量门禁：静态分析 + 全量单测
+# 与发布流程解耦，只在提交/PR 时验证代码，不产物、不部署。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.4'
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # sqflite_common_ffi 在 Linux 上需要系统 sqlite3
+      - name: Install Linux test dependencies
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+
+      # 历史告警已清零，用 --fatal-infos 防止新增 info 悄悄回潮
+      - name: Analyze
+        run: flutter analyze --fatal-infos
+
+      - name: Test
+        run: flutter test --reporter compact

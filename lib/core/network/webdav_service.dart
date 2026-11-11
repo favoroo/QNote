@@ -831,7 +831,14 @@ class WebdavService {
                 if (rel != null) activeImages.add(rel);
               }
             }
-          } catch (_) {}
+          } catch (e) {
+            // 图片列表解析失败会让该记录图片失去保护，可能被孤儿清理误删，必须留痕
+            LoggerService.instance.logSync(
+              '解析日记图片列表失败，该记录按无图片处理: $e',
+              level: LogLevel.warning,
+              details: '记录ID=${row['id']}',
+            );
+          }
         }
       }
 
@@ -848,7 +855,13 @@ class WebdavService {
                 if (rel != null) activeImages.add(rel);
               }
             }
-          } catch (_) {}
+          } catch (e) {
+            LoggerService.instance.logSync(
+              '解析笔记图片列表失败，该笔记按无图片处理: $e',
+              level: LogLevel.warning,
+              details: '笔记ID=${row['id']}',
+            );
+          }
         }
       }
 
@@ -906,7 +919,13 @@ class WebdavService {
       final remoteImagesBase = '${_config!.remotePath}images/';
       try {
         await _dio.request(remoteImagesBase, options: Options(method: 'MKCOL'));
-      } catch (_) {}
+      } catch (e) {
+        // 目录已存在时服务端常返回 405，不阻断后续上传，但失败需留痕
+        LoggerService.instance.logSync(
+          '确保云端 images 目录存在失败: $e',
+          level: LogLevel.warning,
+        );
+      }
 
       // 获取云端所有的图片相对路径
       final remoteImages = <String>{};
@@ -917,7 +936,13 @@ class WebdavService {
         final remoteSubDir = '$remoteImagesBase$sub/';
         try {
           await _dio.request(remoteSubDir, options: Options(method: 'MKCOL'));
-        } catch (_) {}
+        } catch (e) {
+          LoggerService.instance.logSync(
+            '确保云端图片子目录存在失败: $e',
+            level: LogLevel.warning,
+            details: '子目录=images/$sub',
+          );
+        }
 
         final filesInSub = await propFind(remoteSubDir);
         for (final fileHref in filesInSub) {
@@ -944,7 +969,13 @@ class WebdavService {
         if (parentDir != '.') {
           try {
             await _dio.request('$remoteImagesBase$parentDir/', options: Options(method: 'MKCOL'));
-          } catch (_) {}
+          } catch (e) {
+            LoggerService.instance.logSync(
+              '确保云端图片父目录存在失败: $e',
+              level: LogLevel.warning,
+              details: '子目录=images/$parentDir',
+            );
+          }
         }
 
         final success = await uploadFile(localPath, remoteName);
@@ -996,7 +1027,9 @@ class WebdavService {
         final localPath = p.join(appDir.path, 'images', rel);
         try {
           await File(localPath).delete();
-        } catch (_) {}
+        } catch (_) {
+          // 忽略：孤儿图片清理失败只会留下本地冗余文件，不影响同步结果
+        }
       }
 
       LoggerService.instance.logSync('图片同步完成! 上传=$uploadCount, 下载=$downloadCount, 清理本地=${localCleanupTargets.length}, 云端未引用=$remoteOrphans.length');

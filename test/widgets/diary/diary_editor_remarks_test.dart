@@ -56,7 +56,7 @@ void main() {
         final config = popupConfigs[pi];
 
         List<ShortcutField> fieldsToProcess = config.fields;
-        Map<String, dynamic> entryFields = Map<String, dynamic>.from(
+        final Map<String, dynamic> entryFields = Map<String, dynamic>.from(
           entry.fields,
         );
         String categoryPrefix = '';
@@ -220,7 +220,7 @@ void main() {
           fields: {'type': '自制', 'rating': '健康'},
         ),
       ];
-      final content = '清蒸鲈鱼、凉拌猪耳、肉沫酸豆角、青菜豆腐荷包蛋汤、米饭与芋圆啵啵甜品\n'
+      const content = '清蒸鲈鱼、凉拌猪耳、肉沫酸豆角、青菜豆腐荷包蛋汤、米饭与芋圆啵啵甜品\n'
           '图：清蒸鲈鱼，凉拌猪耳，肉沫酸豆角，青菜豆腐荷包蛋汤，米饭与芋圆啵啵甜品';
 
       final remarks = parseUserRemarks(content, tagEntries, shortcuts);

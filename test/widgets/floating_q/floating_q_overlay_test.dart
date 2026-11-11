@@ -126,7 +126,7 @@ void main() {
 
   group('「给小Q」引用卡片', () {
     /// 通过 provider 挂起一条笔记引用（悬浮层经 openWithQuote 打开面板）
-    void _openWithQuote(WidgetTester tester) {
+    void openWithQuote(WidgetTester tester) {
       final context = tester.element(find.byType(FloatingQOverlay));
       final container = ProviderScope.containerOf(context, listen: false);
       container.read(floatingQProvider.notifier).openWithQuote(
@@ -145,7 +145,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('quote-card')), findsNothing);
 
-      _openWithQuote(tester);
+      openWithQuote(tester);
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('panel')), findsOneWidget);
@@ -157,7 +157,7 @@ void main() {
     testWidgets('点击 × 移除引用，卡片消失且面板保持打开', (tester) async {
       await tester.pumpWidget(_host());
       await tester.pumpAndSettle();
-      _openWithQuote(tester);
+      openWithQuote(tester);
       await tester.pumpAndSettle();
 
       await tester.tap(find.byTooltip('移除引用'));
@@ -181,7 +181,7 @@ void main() {
       final context = tester.element(find.byType(FloatingQOverlay));
       final container = ProviderScope.containerOf(context, listen: false);
       container.read(floatingQProvider.notifier).pushOverlayContext(noteContext);
-      _openWithQuote(tester);
+      openWithQuote(tester);
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('quote-card')), findsOneWidget);
 

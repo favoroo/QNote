@@ -15,7 +15,7 @@ void main() {
   late _RecordingAdapter adapter;
   late AiService service;
 
-  AiConfig config() => AiConfig(
+  AiConfig config() => const AiConfig(
         providerId: 'provider-1',
         name: 'demo',
         provider: 'openai',
@@ -87,7 +87,7 @@ void main() {
   });
 
   test('gemini 接口类型用 x-goog-api-key 覆写轮换', () async {
-    final gemini = AiConfig(
+    const gemini = AiConfig(
       providerId: 'provider-1',
       name: 'gemini',
       provider: 'gemini',

@@ -1,28 +1,27 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:qnote_flutter/core/storage/diary_repository.dart';
-import 'package:qnote_flutter/core/storage/note_repository.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/core/utils/delta_markdown.dart';
+import 'package:qnote_flutter/providers/diary_provider.dart';
+import 'package:qnote_flutter/providers/note_provider.dart';
 import 'package:qnote_flutter/widgets/search_highlight.dart';
 
-class SearchView extends StatefulWidget {
+class SearchView extends ConsumerStatefulWidget {
   final void Function(dynamic result)? onResultSelected;
 
   const SearchView({super.key, this.onResultSelected});
 
   @override
-  State<SearchView> createState() => _SearchViewState();
+  ConsumerState<SearchView> createState() => _SearchViewState();
 }
 
-class _SearchViewState extends State<SearchView> {
+class _SearchViewState extends ConsumerState<SearchView> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
-  final DiaryRepository _diaryRepo = DiaryRepository();
-  final NoteRepository _noteRepo = NoteRepository();
 
   List<DiaryRecord> _diaryResults = [];
   List<Note> _noteResults = [];
@@ -69,8 +68,10 @@ class _SearchViewState extends State<SearchView> {
       _query = query.trim();
     });
 
-    final diaries = await _diaryRepo.search(query.trim());
-    final notes = await _noteRepo.search(query.trim());
+    final diaryRepo = ref.read(diaryRepositoryProvider);
+    final noteRepo = ref.read(noteRepositoryProvider);
+    final diaries = await diaryRepo.search(query.trim());
+    final notes = await noteRepo.search(query.trim());
 
     if (!mounted) return;
 

@@ -62,7 +62,7 @@ class _TimeScrollPickerState extends State<TimeScrollPicker> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final height = _itemExtent * _visibleItemCount;
+    const height = _itemExtent * _visibleItemCount;
 
     return Column(
       mainAxisSize: MainAxisSize.min,

@@ -409,7 +409,7 @@ void main() {
       var count = 0;
       bridge.register('note:r1', QTargetHooks(reload: () async => count++));
       bridge.register('note:r2', QTargetHooks(reload: () async => count++));
-      bridge.register('note:r3', QTargetHooks());
+      bridge.register('note:r3', const QTargetHooks());
 
       await bridge.reloadAll();
       expect(count, 2);

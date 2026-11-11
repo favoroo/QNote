@@ -109,7 +109,7 @@ class TagEntry {
       } else if (startOffset == 2) {
         buffer.write('后天 ');
       } else {
-        buffer.write('${startOffset! > 0 ? "+" : ""}${startOffset}天 ');
+        buffer.write('${startOffset! > 0 ? "+" : ""}$startOffset天 ');
       }
     }
     buffer.write('${startHour!.toString().padLeft(2, '0')}:${startMinute!.toString().padLeft(2, '0')}');
@@ -126,7 +126,7 @@ class TagEntry {
         } else if (endOffset == 2) {
           buffer.write('后天 ');
         } else {
-          buffer.write('${endOffset! > 0 ? "+" : ""}${endOffset}天 ');
+          buffer.write('${endOffset! > 0 ? "+" : ""}$endOffset天 ');
         }
       }
       buffer.write('${endHour!.toString().padLeft(2, '0')}:${endMinute!.toString().padLeft(2, '0')}');

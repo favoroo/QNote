@@ -7,7 +7,7 @@ void main() {
   group('MiFitnessCrypto', () {
     test('RC4-drop1024 加解密对称可逆验证', () {
       final key = Uint8List.fromList(utf8.encode('test-secret-key-12345678'));
-      final plainText = 'Hello Mi Fitness! 小米运动健康云端同步测试 123456';
+      const plainText = 'Hello Mi Fitness! 小米运动健康云端同步测试 123456';
       final plainBytes = Uint8List.fromList(utf8.encode(plainText));
 
       final encrypted = MiFitnessCrypto.rc4Drop1024(key, plainBytes);

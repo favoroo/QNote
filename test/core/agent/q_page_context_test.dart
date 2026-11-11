@@ -124,7 +124,7 @@ void main() {
         signature: 'note:n1',
         displayLabel: '笔记《T》',
       );
-      final b = QPageContext(
+      const b = QPageContext(
         type: QContextType.noteDetail,
         targetId: 'n1',
         targetTitle: 'T',

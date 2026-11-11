@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+
 import 'package:fl_chart/fl_chart.dart';
+
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
+import 'package:qnote_flutter/widgets/statistics/stat_shared.dart';
 import 'package:qnote_flutter/widgets/stats_card.dart';
 
 const _expenseColors = [Color(0xFF10B981), Color(0xFF3B82F6), Color(0xFFF59E0B), Color(0xFFEF4444), Color(0xFF8B5CF6)];
@@ -20,63 +23,48 @@ class FinanceStatsWidget extends StatelessWidget {
 
     return Column(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: StatsCard(
-                title: '收入',
-                value: '¥${stats.totalIncome.toStringAsFixed(0)}',
-                icon: Icons.trending_up,
-                iconColor: Colors.green,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: StatsCard(
-                title: '支出',
-                value: '¥${stats.totalExpense.toStringAsFixed(0)}',
-                icon: Icons.trending_down,
-                iconColor: Colors.red,
-              ),
-            ),
-          ],
+        StatsCardPair(
+          left: StatsCard(
+            title: '收入',
+            value: '¥${stats.totalIncome.toStringAsFixed(0)}',
+            icon: Icons.trending_up,
+            iconColor: Colors.green,
+          ),
+          right: StatsCard(
+            title: '支出',
+            value: '¥${stats.totalExpense.toStringAsFixed(0)}',
+            icon: Icons.trending_down,
+            iconColor: Colors.red,
+          ),
         ),
         const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: StatsCard(
-                title: '结余',
-                value: '¥${stats.balance.toStringAsFixed(0)}',
-                icon: Icons.account_balance_wallet,
-                iconColor: stats.balance >= 0 ? Colors.green : Colors.red,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: StatsCard(
-                title: '记录数',
-                value: '${stats.totalRecords}笔',
-                icon: Icons.bar_chart,
-                iconColor: Colors.blue,
-              ),
-            ),
-          ],
+        StatsCardPair(
+          left: StatsCard(
+            title: '结余',
+            value: '¥${stats.balance.toStringAsFixed(0)}',
+            icon: Icons.account_balance_wallet,
+            iconColor: stats.balance >= 0 ? Colors.green : Colors.red,
+          ),
+          right: StatsCard(
+            title: '记录数',
+            value: '${stats.totalRecords}笔',
+            icon: Icons.bar_chart,
+            iconColor: Colors.blue,
+          ),
         ),
         const SizedBox(height: 16),
-        _FinanceCard(
+        StatCardShell(
           isDark: isDark,
           title: '收支趋势',
-          child: SizedBox(
+          child: StatChartBox(
             height: 192,
-            child: stats.dailyData.isNotEmpty
-                ? _FinanceTrendChart(dailyData: stats.dailyData, isDark: isDark)
-                : Center(child: Text('暂无数据', style: TextStyle(color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF94A3B8)))),
+            isEmpty: stats.dailyData.isEmpty,
+            child: _FinanceTrendChart(dailyData: stats.dailyData, isDark: isDark),
           ),
         ),
         const SizedBox(height: 16),
         if (expenseData.isNotEmpty)
-          _FinanceCard(
+          StatCardShell(
             isDark: isDark,
             title: '支出排行',
             child: SizedBox(
@@ -85,46 +73,6 @@ class FinanceStatsWidget extends StatelessWidget {
             ),
           ),
       ],
-    );
-  }
-}
-
-class _FinanceCard extends StatelessWidget {
-  final bool isDark;
-  final String title;
-  final Widget child;
-
-  const _FinanceCard({required this.isDark, required this.title, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: isDark ? const Color(0x1A383C47) : const Color(0xFFC2C6D6),
-          width: 0.5,
-        ),
-      ),
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: isDark ? const Color(0xFFE2E2E9) : const Color(0xFF191B23),
-              ),
-            ),
-            const SizedBox(height: 16),
-            child,
-          ],
-        ),
-      ),
     );
   }
 }
@@ -167,7 +115,7 @@ class _FinanceTrendChart extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
                     '${parts[1]}/${parts[2]}',
-                    style: TextStyle(fontSize: 10, color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF94A3B8)),
+                    style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
                   ),
                 );
               },
@@ -179,7 +127,7 @@ class _FinanceTrendChart extends StatelessWidget {
               reservedSize: 40,
               getTitlesWidget: (value, meta) => Text(
                 '¥${value.toInt()}',
-                style: TextStyle(fontSize: 9, color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF94A3B8)),
+                style: const TextStyle(fontSize: 9, color: Color(0xFF94A3B8)),
               ),
             ),
           ),
@@ -257,14 +205,11 @@ class _ExpenseTypeChart extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: pct,
-                    backgroundColor: isDark ? const Color(0xFF2A2D36) : const Color(0xFFECEDF7),
-                    valueColor: AlwaysStoppedAnimation(color),
-                    minHeight: 12,
-                  ),
+                child: StatProgressBar(
+                  isDark: isDark,
+                  value: pct,
+                  color: color,
+                  minHeight: 12,
                 ),
               ),
               const SizedBox(width: 8),
@@ -272,10 +217,10 @@ class _ExpenseTypeChart extends StatelessWidget {
                 width: 48,
                 child: Text(
                   '¥${item.value.toStringAsFixed(0)}',
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
-                    color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF94A3B8),
+                    color: Color(0xFF94A3B8),
                   ),
                   textAlign: TextAlign.end,
                 ),

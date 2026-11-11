@@ -5,17 +5,14 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform, kIsWeb, visibleForTesting;
-import 'package:uuid/uuid.dart';
+    show TargetPlatform, defaultTargetPlatform, kIsWeb, protected, visibleForTesting;
 
+import 'package:qnote_flutter/core/ai/account_auth_service_base.dart';
 import 'package:qnote_flutter/core/ai/account_auth_types.dart';
-import 'package:qnote_flutter/core/ai/raccoon_account_router.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
-import 'package:qnote_flutter/core/storage/ai_account_repository.dart';
 import 'package:qnote_flutter/models/account_checkin_result.dart';
 import 'package:qnote_flutter/models/account_quota.dart';
 import 'package:qnote_flutter/models/ai_account.dart';
-import 'package:qnote_flutter/models/ai_account_routing.dart';
 import 'package:qnote_flutter/models/ai_provider.dart';
 
 export 'package:qnote_flutter/core/ai/account_auth_types.dart';
@@ -34,7 +31,7 @@ export 'package:qnote_flutter/core/ai/account_auth_types.dart';
 ///
 /// 与发信层的契约和 `RaccoonAuthService` 一致：token 不落 `api_keys`、不参与
 /// WebDAV 同步与备份导出；多账号选号复用同一个 [RaccoonAccountRouter]。
-class AutoClawAuthService extends AccountAuthService {
+class AutoClawAuthService extends AccountAuthServiceBase {
   AutoClawAuthService._();
 
   static final AutoClawAuthService instance = AutoClawAuthService._();
@@ -76,10 +73,6 @@ class AutoClawAuthService extends AccountAuthService {
   /// 拿临期 token 发信失败后再刷新，等于多烧一次轮换。
   static const Duration expirySkew = Duration(minutes: 10);
 
-  final AiAccountRepository _repository = AiAccountRepository.instance;
-
-  final RaccoonAccountRouter _router = RaccoonAccountRouter.instance;
-
   final Dio _dio = Dio(
     BaseOptions(
       connectTimeout: const Duration(seconds: 20),
@@ -89,12 +82,6 @@ class AutoClawAuthService extends AccountAuthService {
       validateStatus: (status) => status != null && status < 600,
     ),
   );
-
-  /// accountId → 登录态（进程内缓存；登录/刷新/退出都会更新）
-  final Map<String, AiAccount> _cache = {};
-
-  /// accountId → 正在进行的刷新（合并并发刷新，避免 refresh token 被重复消费）
-  final Map<String, Future<AiAccount>> _refreshing = {};
 
   /// 测试注入：替换底层 HTTP adapter
   @visibleForTesting
@@ -117,217 +104,34 @@ class AutoClawAuthService extends AccountAuthService {
   bool get supportsSmsLogin => true;
 
   @override
-  AccountAuthRequiredException notLoggedIn(String providerId) =>
-      AccountAuthRequiredException(
-        providerId,
-        message: 'AutoClaw 账号未登录或已过期，请到「设置 → AI 模型配置」重新登录',
-        kind: kind,
-      );
+  Duration get tokenRefreshMargin => refreshMargin;
 
   @override
-  AccountAuthRequiredException authExpired(String providerId) =>
-      AccountAuthRequiredException(
-        providerId,
-        message: 'AutoClaw 登录已失效，请重新登录',
-        kind: kind,
-      );
+  @protected
+  Future<List<AiAccount>> Function(String providerId)?
+  get accountsLoaderHook => accountsLoaderForTest;
 
   @override
-  Future<List<AiAccount>> accountsFor(
-    String providerId, {
-    bool forceReload = false,
-  }) async {
-    final loader = accountsLoaderForTest;
-    if (loader != null) {
-      final accounts = await loader(providerId);
-      for (final account in accounts) {
-        _cache[account.id] = account;
-      }
-      return accounts;
-    }
-    if (!forceReload) {
-      final cached = _cachedFor(providerId);
-      if (cached.isNotEmpty) return cached;
-    }
-    final stored = (await _repository.getByProvider(providerId))
-        .where((account) => account.kind == AiAccount.kindAutoClaw)
-        .toList();
-    for (final account in stored) {
-      _cache[account.id] = account;
-    }
-    return stored;
-  }
+  @protected
+  Future<String?> Function(String providerId)? get accessTokenLoaderHook =>
+      accessTokenLoaderForTest;
+
+  @override
+  @protected
+  Future<void> Function(AiAccount account)? get accountSaverHook =>
+      accountSaverForTest;
+
+  @override
+  @protected
+  Future<AiAccount> Function(AiAccount account)?
+  get accountRefresherHook => accountRefresherForTest;
 
   /// 测试注入：绕开数据库直接给账号列表
   @visibleForTesting
   static Future<List<AiAccount>> Function(String providerId)?
   accountsLoaderForTest;
 
-  List<AiAccount> _cachedFor(String providerId) {
-    final result = _cache.values
-        .where(
-          (a) =>
-              a.providerId == providerId && a.kind == AiAccount.kindAutoClaw,
-        )
-        .toList()
-      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
-    return result;
-  }
-
-  @override
-  Future<AccountSession?> sessionForRequest(
-    String providerId, {
-    String routing = AiProvider.defaultAccountRouting,
-    String affinity = AiProvider.defaultAccountAffinity,
-    AiRequestScope? scope,
-    Set<String> triedAccountIds = const {},
-    bool advance = true,
-  }) async {
-    final loader = accessTokenLoaderForTest;
-    if (loader != null) {
-      final token = await loader(providerId);
-      if (token == null || token.trim().isEmpty) return null;
-      final now = DateTime.now();
-      return AccountSession(
-        account: AiAccount(
-          id: 'test-account',
-          providerId: providerId,
-          kind: AiAccount.kindAutoClaw,
-          accessToken: token,
-          createdAt: now,
-          updatedAt: now,
-        ),
-        accessToken: token,
-      );
-    }
-
-    final accounts = await accountsFor(providerId);
-    if (accounts.isEmpty) return null;
-
-    final selection = _router.select(
-      providerId: providerId,
-      accounts: accounts,
-      routing: AccountRouting.fromId(routing),
-      affinity: AccountAffinity.fromId(affinity),
-      scope: scope,
-      triedAccountIds: triedAccountIds,
-      advance: advance,
-    );
-    if (selection == null) {
-      final enabled = accounts.where((a) => a.enabled).toList();
-      if (enabled.isEmpty) {
-        throw AccountAuthRequiredException(
-          providerId,
-          message: 'AutoClaw 账号已全部停用，请到「设置 → AI 模型配置」启用一个账号',
-          kind: kind,
-        );
-      }
-      final untried = enabled
-          .where((a) => !triedAccountIds.contains(a.id))
-          .toList();
-      if (untried.isNotEmpty) {
-        throw AccountAuthRequiredException(
-          providerId,
-          message: 'AutoClaw 账号都在限流冷却中，稍后重试',
-          kind: kind,
-        );
-      }
-      return null;
-    }
-
-    final token = await accessTokenForAccount(selection.account);
-    if (token == null || token.trim().isEmpty) {
-      _router.markFailed(
-        selection.account,
-        const FormatException('账号凭证不可用'),
-        affinity: AccountAffinity.fromId(affinity),
-      );
-      return null;
-    }
-    return AccountSession(
-      account: selection.account,
-      accessToken: token,
-    );
-  }
-
-  @override
-  void markAccountSucceeded(AiAccount account) =>
-      _router.markSucceeded(account);
-
-  @override
-  void markAccountFailed(
-    AiAccount account,
-    Object error, {
-    String affinity = AiProvider.defaultAccountAffinity,
-  }) {
-    _router.markFailed(
-      account,
-      error,
-      affinity: AccountAffinity.fromId(affinity),
-    );
-  }
-
-  @override
-  Future<bool> hasAlternateAccount(
-    String providerId, {
-    String routing = AiProvider.defaultAccountRouting,
-    String affinity = AiProvider.defaultAccountAffinity,
-    AiRequestScope? scope,
-    Set<String> triedAccountIds = const {},
-  }) async {
-    final accounts = await accountsFor(providerId);
-    if (accounts.where((a) => a.enabled).length < 2) return false;
-    return _router.select(
-          providerId: providerId,
-          accounts: accounts,
-          routing: AccountRouting.fromId(routing),
-          affinity: AccountAffinity.fromId(affinity),
-          scope: scope,
-          triedAccountIds: triedAccountIds,
-          advance: false,
-        ) !=
-        null;
-  }
-
-  @override
-  Future<AiAccount?> accountById(String accountId) async {
-    final cached = _cache[accountId];
-    if (cached != null) return cached;
-    final stored = await _repository.getById(accountId);
-    if (stored != null) _cache[stored.id] = stored;
-    return stored;
-  }
-
-  @override
-  AiAccount? accountFromCache(String accountId) => _cache[accountId];
-
-  @override
-  bool isAccountCooling(String accountId) => _router.isCooling(accountId);
-
   // ── token 读取与刷新 ─────────────────────────────────────
-
-  @override
-  Future<String?> accessTokenForAccount(AiAccount account) async {
-    final loader = accessTokenLoaderForTest;
-    if (loader != null) return loader(account.providerId);
-
-    final current = accountsLoaderForTest != null
-        ? account
-        : await _refreshCacheFromStore(account);
-    if (current.accessToken.trim().isEmpty) return null;
-    final needsRefresh =
-        current.isExpired || current.isStale(margin: refreshMargin);
-    if (!needsRefresh) return current.accessToken;
-    try {
-      final refreshed = await refreshAccount(current.id, force: true);
-      return refreshed.accessToken;
-    } on AccountAuthRequiredException {
-      await _markExpiredAccount(current);
-      return null;
-    } catch (_) {
-      return null;
-    }
-  }
 
   Future<String?> accessTokenFor(String providerId) async {
     final accounts = await accountsFor(providerId);
@@ -348,36 +152,22 @@ class AutoClawAuthService extends AccountAuthService {
   static Future<AiAccount> Function(AiAccount account)? accountRefresherForTest;
 
   @override
-  Future<AiAccount> refreshAccount(String accountId, {bool force = false}) {
-    final running = _refreshing[accountId];
-    if (running != null) return running;
-    final future = _refresh(accountId, force: force).whenComplete(() {
-      _refreshing.remove(accountId);
-    });
-    _refreshing[accountId] = future;
-    return future;
-  }
-
-  @override
-  Future<AiAccount> refresh(String providerId, {bool force = false}) async {
-    final accounts = await accountsFor(providerId, forceReload: true);
-    if (accounts.isEmpty) throw notLoggedIn(providerId);
-    return refreshAccount(accounts.first.id, force: force);
-  }
-
-  Future<AiAccount> _refresh(String accountId, {required bool force}) async {
-    final stored = await _repository.getById(accountId);
+  Future<AiAccount> reloadAccount(
+    String accountId, {
+    required bool force,
+  }) async {
+    final stored = await repository.getById(accountId);
     if (stored == null) {
-      _cache.remove(accountId);
+      evictCachedAccount(accountId);
       throw AccountAuthRequiredException('', message: '账号已删除，请重新登录', kind: kind);
     }
-    _cache[accountId] = stored;
+    cacheAccount(stored);
     if (!force && !stored.isStale(margin: refreshMargin) && !stored.isExpired) {
       return stored;
     }
     final refreshToken = stored.refreshToken.trim();
     if (refreshToken.isEmpty) {
-      await _markExpired(accountId);
+      await markAccountExpiredById(accountId);
       throw authExpired(stored.providerId);
     }
 
@@ -410,7 +200,7 @@ class AutoClawAuthService extends AccountAuthService {
         level: LogLevel.warning,
         details: envelope.message,
       );
-      await _markExpired(accountId);
+      await markAccountExpiredById(accountId);
       throw authExpired(stored.providerId);
     }
     if (envelope.code != 0 || envelope.data is! Map) {
@@ -434,7 +224,7 @@ class AutoClawAuthService extends AccountAuthService {
       previous: stored,
       fetchProfile: true,
     );
-    await _save(next);
+    await saveAccount(next);
     LoggerService.instance.logAI(
       'AutoClaw 登录态已刷新: ${next.label}',
       details: '有效期至 ${next.expiresAt?.toIso8601String() ?? '未知'}',
@@ -575,121 +365,27 @@ class AutoClawAuthService extends AccountAuthService {
     String? accountId,
     String fallbackPhone = '',
     String uidHint = '',
-  }) async {
-    final existing = await accountsFor(providerId, forceReload: true);
-    final target = accountId == null
-        ? null
-        : existing.where((a) => a.id == accountId).firstOrNull;
-
-    AiAccount? previous = target;
-    if (previous == null) {
-      final probe = await _accountFromTokens(
-        providerId,
-        accountId: '',
-        access: access,
-        refresh: refresh,
-        deviceId: deviceId,
-        profile: profile,
-        fallbackPhone: fallbackPhone,
-        uidHint: uidHint,
-      );
-      for (final account in existing) {
-        if (account.isSameVendorAccount(probe)) {
-          previous = account;
-          break;
-        }
-      }
-    }
-
-    final account = await _accountFromTokens(
-      providerId,
-      accountId: previous?.id ?? const Uuid().v4(),
-      access: access,
-      refresh: refresh,
-      deviceId: deviceId,
-      profile: profile,
-      previous: previous,
-      fallbackPhone: fallbackPhone,
-      uidHint: uidHint,
-    );
-    final next = previous == null
-        ? account.copyWith(sortOrder: _nextSortOrder(existing))
-        : account;
-    await _save(next);
-    LoggerService.instance.logAI(
-      previous == null
-          ? 'AutoClaw 新增账号: ${next.label}'
-          : 'AutoClaw 账号已更新: ${next.label}',
-    );
-    return next;
-  }
-
-  int _nextSortOrder(List<AiAccount> existing) {
-    if (existing.isEmpty) return 0;
-    return existing.map((a) => a.sortOrder).reduce((a, b) => a > b ? a : b) + 1;
-  }
-
-  // ── 账号管理 ─────────────────────────────────────────────
-
-  @override
-  Future<void> logout(String accountId) async {
-    _cache.remove(accountId);
-    _router.forget(accountId);
-    await _repository.delete(accountId);
-  }
-
-  @override
-  Future<void> logoutProvider(String providerId) async {
-    final cached = _cache.values
-        .where((account) => account.providerId == providerId)
-        .toList();
-    for (final account in cached) {
-      _cache.remove(account.id);
-    }
-    _router.resetProvider(providerId, accounts: cached);
-    await _repository.deleteByProvider(providerId);
-  }
-
-  @override
-  Future<AiAccount> updateAccount(
-    AiAccount account, {
-    String? alias,
-    bool? enabled,
-  }) async {
-    final next = account.copyWith(alias: alias, enabled: enabled);
-    await _save(next);
-    return next;
-  }
-
-  @override
-  Future<List<AiAccount>> reorderAccounts(
-    String providerId,
-    List<String> orderedIds,
-  ) async {
-    final accounts = await accountsFor(providerId, forceReload: true);
-    final byId = {for (final a in accounts) a.id: a};
-    final next = <AiAccount>[];
-    var index = 0;
-    for (final id in orderedIds) {
-      final account = byId.remove(id);
-      if (account == null) continue;
-      next.add(account.copyWith(sortOrder: index++));
-    }
-    for (final account in byId.values) {
-      next.add(account.copyWith(sortOrder: index++));
-    }
-    await _repository.upsertAll(next);
-    for (final account in next) {
-      _cache[account.id] = account;
-    }
-    return next;
-  }
-
-  @override
-  void clearCache() {
-    _cache.clear();
-    _router.clearAll();
-  }
+  }) => persistLogin(
+    providerId,
+    accountId: accountId,
+    buildAccount:
+        ({
+          required String accountId,
+          AiAccount? previous,
+          required bool fetchProfile,
+        }) => _accountFromTokens(
+          providerId,
+          accountId: accountId,
+          access: access,
+          refresh: refresh,
+          deviceId: deviceId,
+          profile: profile,
+          previous: previous,
+          fallbackPhone: fallbackPhone,
+          uidHint: uidHint,
+          fetchProfile: fetchProfile,
+        ),
+  );
 
   // ── 模型目录 ─────────────────────────────────────────────
 
@@ -736,7 +432,7 @@ class AutoClawAuthService extends AccountAuthService {
 
   @override
   Future<AccountQuota> fetchQuota(AiAccount account) =>
-      _runWithToken(account, _readQuota);
+      runWithToken(account, _readQuota);
 
   Future<AccountQuota> _readQuota(String token) async {
     final envelope = await _send(
@@ -816,7 +512,7 @@ class AutoClawAuthService extends AccountAuthService {
 
   @override
   Future<AccountCheckInResult> checkIn(AiAccount account) =>
-      _runWithToken(account, _checkInWithToken);
+      runWithToken(account, _checkInWithToken);
 
   Future<AccountCheckInResult> _checkInWithToken(String token) async {
     final envelope = await _send(
@@ -855,36 +551,6 @@ class AutoClawAuthService extends AccountAuthService {
       );
     }
     throw const FormatException('签到失败：接口未返回签到结果');
-  }
-
-  /// 带登录态执行一次只读/签到接口：被服务端拒绝时刷新一次再试
-  Future<T> _runWithToken<T>(
-    AiAccount account,
-    Future<T> Function(String token) run,
-  ) async {
-    final token = await accessTokenForAccount(account);
-    if (token == null || token.trim().isEmpty) {
-      throw notLoggedIn(account.providerId);
-    }
-    try {
-      return await run(token);
-    } on _AutoClawAuthRejected {
-      final refresher = accountRefresherForTest;
-      final AiAccount refreshed;
-      try {
-        refreshed = refresher != null
-            ? await refresher(account)
-            : await refreshAccount(account.id, force: true);
-      } on AccountAuthRequiredException {
-        rethrow;
-      }
-      try {
-        return await run(refreshed.accessToken);
-      } on _AutoClawAuthRejected {
-        await _markExpiredAccount(refreshed);
-        throw authExpired(account.providerId);
-      }
-    }
   }
 
   // ── 请求与签名 ───────────────────────────────────────────
@@ -1039,43 +705,10 @@ class AutoClawAuthService extends AccountAuthService {
   }
 
   void _rejectIfUnauthorized(_Envelope envelope) {
-    if (envelope.isAuthRejected) throw const _AutoClawAuthRejected();
+    if (envelope.isAuthRejected) throw const AccountAuthTokenRejected();
   }
 
   // ── 内部 ─────────────────────────────────────────────────
-
-  Future<void> _save(AiAccount account) async {
-    final saver = accountSaverForTest;
-    if (saver != null) {
-      await saver(account);
-      _cache[account.id] = account;
-      return;
-    }
-    await _repository.upsert(account);
-    _cache[account.id] = account;
-  }
-
-  Future<AiAccount> _refreshCacheFromStore(AiAccount account) async {
-    final stored = await _repository.getById(account.id);
-    if (stored == null) return account;
-    _cache[stored.id] = stored;
-    return stored;
-  }
-
-  Future<void> _markExpired(String accountId) async {
-    final stored = await _repository.getById(accountId);
-    if (stored == null) return;
-    await _markExpiredAccount(stored);
-  }
-
-  Future<void> _markExpiredAccount(AiAccount account) async {
-    await _save(
-      account.copyWith(
-        status: AiAccount.statusExpired,
-        updatedAt: DateTime.now(),
-      ),
-    );
-  }
 
   Future<AiAccount> _accountFromTokens(
     String providerId, {
@@ -1257,13 +890,12 @@ class AutoClawAuthService extends AccountAuthService {
 
   @visibleForTesting
   void resetForTest() {
-    _cache.clear();
-    _refreshing.clear();
+    clearCache();
+    clearRefreshLocks();
     accessTokenLoaderForTest = null;
     accountsLoaderForTest = null;
     accountSaverForTest = null;
     accountRefresherForTest = null;
-    RaccoonAccountRouter.instance.clearAll();
   }
 }
 
@@ -1314,9 +946,4 @@ class _AutoClawProfile {
     required this.name,
     required this.phone,
   });
-}
-
-/// 额度/签到接口拒绝当前 token：刷新登录态后重试
-class _AutoClawAuthRejected implements Exception {
-  const _AutoClawAuthRejected();
 }

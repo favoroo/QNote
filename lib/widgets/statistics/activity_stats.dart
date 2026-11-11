@@ -1,9 +1,24 @@
 import 'package:flutter/material.dart';
+
 import 'package:fl_chart/fl_chart.dart';
+
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
+import 'package:qnote_flutter/widgets/statistics/stat_shared.dart';
 import 'package:qnote_flutter/widgets/stats_card.dart';
 
-const _activityColors = [Color(0xFF8B5CF6), Color(0xFFEC4899), Color(0xFFF43F5E), Color(0xFF3B82F6), Color(0xFF10B981)];
+const _activityColors = [
+  Color(0xFF8B5CF6),
+  Color(0xFFEC4899),
+  Color(0xFFF43F5E),
+  Color(0xFF3B82F6),
+  Color(0xFF10B981),
+];
+
+/// 将小时数格式化为整数或一位小数的展示文本。
+String _formatHours(double value) {
+  final fractionDigits = value == value.toInt() ? 0 : 1;
+  return '${value.toStringAsFixed(fractionDigits)}小时';
+}
 
 class ActivityStatsWidget extends StatelessWidget {
   final ActivityStatistics stats;
@@ -20,119 +35,65 @@ class ActivityStatsWidget extends StatelessWidget {
 
     return Column(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: StatsCard(
-                title: '活跃次数',
-                value: '${stats.totalActivities}次',
-                icon: Icons.bolt,
-                iconColor: Colors.purple,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: StatsCard(
-                title: '总时长',
-                value: '${stats.totalDuration.toStringAsFixed(stats.totalDuration == stats.totalDuration.toInt() ? 0 : 1)}小时',
-                icon: Icons.schedule,
-                iconColor: Colors.blue,
-              ),
-            ),
-          ],
+        StatsCardPair(
+          left: StatsCard(
+            title: '活跃次数',
+            value: '${stats.totalActivities}次',
+            icon: Icons.bolt,
+            iconColor: Colors.purple,
+          ),
+          right: StatsCard(
+            title: '总时长',
+            value: _formatHours(stats.totalDuration),
+            icon: Icons.schedule,
+            iconColor: Colors.blue,
+          ),
         ),
         if (stats.averageDuration > 0) ...[
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: StatsCard(
-                  title: '平均时长',
-                  value: '${stats.averageDuration.toStringAsFixed(stats.averageDuration == stats.averageDuration.toInt() ? 0 : 1)}小时',
-                  icon: Icons.timer,
-                  iconColor: Colors.orange,
-                ),
-              ),
-              Expanded(
-                child: StatsCard(
-                  title: '活动类型',
-                  value: '${pieData.length}种',
-                  icon: Icons.track_changes,
-                  iconColor: Colors.green,
-                ),
-              ),
-            ],
+          StatsCardPair(
+            left: StatsCard(
+              title: '平均时长',
+              value: _formatHours(stats.averageDuration),
+              icon: Icons.timer,
+              iconColor: Colors.orange,
+            ),
+            right: StatsCard(
+              title: '活动类型',
+              value: '${pieData.length}种',
+              icon: Icons.track_changes,
+              iconColor: Colors.green,
+            ),
+            // 原布局该行两卡之间无间距，保持视觉不变
+            gap: 0,
           ),
         ],
         const SizedBox(height: 16),
-        _ActivityCard(
+        StatCardShell(
           isDark: isDark,
           title: '活跃趋势',
           trailing: const SizedBox.shrink(),
-          child: SizedBox(
+          child: StatChartBox(
             height: 192,
-            child: stats.dailyData.isNotEmpty
-                ? _ActivityBarChart(dailyData: stats.dailyData, isDark: isDark)
-                : Center(child: Text('暂无数据', style: TextStyle(color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF94A3B8)))),
+            isEmpty: stats.dailyData.isEmpty,
+            child: _ActivityBarChart(dailyData: stats.dailyData, isDark: isDark),
           ),
         ),
         const SizedBox(height: 16),
         if (pieData.isNotEmpty)
-          _ActivityCard(
+          StatCardShell(
             isDark: isDark,
             title: '类型分布',
             trailing: const SizedBox.shrink(),
-            child: Column(
-              children: [
-                SizedBox(
-                  height: 200,
-                  child: PieChart(
-                    PieChartData(
-                      sections: pieData.asMap().entries.map((e) {
-                        final color = _activityColors[e.key % _activityColors.length];
-                        return PieChartSectionData(
-                          value: e.value.value.toDouble(),
-                          color: color,
-                          radius: 60,
-                          title: '${e.value.value}',
-                          titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
-                        );
-                      }).toList(),
-                      sectionsSpace: 2,
-                      centerSpaceRadius: 28,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 16,
-                  runSpacing: 8,
-                  alignment: WrapAlignment.center,
-                  children: pieData.asMap().entries.map((e) {
-                    final color = _activityColors[e.key % _activityColors.length];
-                    return Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-                        const SizedBox(width: 6),
-                        Text(
-                          '${e.value.key} (${e.value.value})',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? const Color(0xFFC2C6D6) : const Color(0xFF424754),
-                          ),
-                        ),
-                      ],
-                    );
-                  }).toList(),
-                ),
-              ],
+            child: StatPieChart(
+              isDark: isDark,
+              data: pieData,
+              colorOf: (_, index) => _activityColors[index % _activityColors.length],
             ),
           ),
         if (durationData.isNotEmpty) ...[
           const SizedBox(height: 16),
-          _ActivityCard(
+          StatCardShell(
             isDark: isDark,
             title: '分类时长',
             trailing: Container(
@@ -157,53 +118,6 @@ class ActivityStatsWidget extends StatelessWidget {
           ),
         ],
       ],
-    );
-  }
-}
-
-class _ActivityCard extends StatelessWidget {
-  final bool isDark;
-  final String title;
-  final Widget trailing;
-  final Widget child;
-
-  const _ActivityCard({required this.isDark, required this.title, required this.trailing, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: isDark ? const Color(0x1A383C47) : const Color(0xFFC2C6D6),
-          width: 0.5,
-        ),
-      ),
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? const Color(0xFFE2E2E9) : const Color(0xFF191B23),
-                  ),
-                ),
-                trailing,
-              ],
-            ),
-            const SizedBox(height: 16),
-            child,
-          ],
-        ),
-      ),
     );
   }
 }
@@ -240,7 +154,7 @@ class _ActivityBarChart extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
                     '${parts[1]}/${parts[2]}',
-                    style: TextStyle(fontSize: 10, color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF94A3B8)),
+                    style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
                   ),
                 );
               },
@@ -252,7 +166,7 @@ class _ActivityBarChart extends StatelessWidget {
               reservedSize: 30,
               getTitlesWidget: (value, meta) => Text(
                 '${value.toInt()}',
-                style: TextStyle(fontSize: 10, color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF94A3B8)),
+                style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
               ),
             ),
           ),
@@ -309,7 +223,11 @@ class _DurationBarChart extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
                     durationData[idx].key,
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isDark ? const Color(0xFFC2C6D6) : const Color(0xFF424754)),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? const Color(0xFFC2C6D6) : const Color(0xFF424754),
+                    ),
                   ),
                 );
               },
@@ -321,7 +239,7 @@ class _DurationBarChart extends StatelessWidget {
               reservedSize: 36,
               getTitlesWidget: (value, meta) => Text(
                 '${value.toInt()}',
-                style: TextStyle(fontSize: 10, color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF94A3B8)),
+                style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
               ),
             ),
           ),

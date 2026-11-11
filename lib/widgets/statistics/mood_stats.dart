@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+
 import 'package:fl_chart/fl_chart.dart';
+
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
+import 'package:qnote_flutter/widgets/statistics/stat_shared.dart';
 import 'package:qnote_flutter/widgets/stats_card.dart';
 
 class MoodStatsWidget extends StatelessWidget {
@@ -24,41 +27,33 @@ class MoodStatsWidget extends StatelessWidget {
 
     return Column(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: StatsCard(
-                title: '健康',
-                value: stats.averageSeverity > 0 ? _healthLabel(stats.averageSeverity) : '无数据',
-                icon: Icons.health_and_safety,
-                iconColor: Colors.teal,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: StatsCard(
-                title: '记录数',
-                value: '${stats.totalRecords}条',
-                icon: Icons.local_activity,
-                iconColor: Colors.pink,
-              ),
-            ),
-          ],
+        StatsCardPair(
+          left: StatsCard(
+            title: '健康',
+            value: stats.averageSeverity > 0 ? _healthLabel(stats.averageSeverity) : '无数据',
+            icon: Icons.health_and_safety,
+            iconColor: Colors.teal,
+          ),
+          right: StatsCard(
+            title: '记录数',
+            value: '${stats.totalRecords}条',
+            icon: Icons.local_activity,
+            iconColor: Colors.pink,
+          ),
         ),
         const SizedBox(height: 16),
-        _MoodCard(
+        StatCardShell(
           isDark: isDark,
           title: '健康趋势',
-          child: SizedBox(
+          child: StatChartBox(
             height: 192,
-            child: stats.dailyData.isNotEmpty
-                ? _SeverityTrendChart(dailyData: stats.dailyData, isDark: isDark)
-                : Center(child: Text('暂无数据', style: TextStyle(color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF94A3B8)))),
+            isEmpty: stats.dailyData.isEmpty,
+            child: _SeverityTrendChart(dailyData: stats.dailyData, isDark: isDark),
           ),
         ),
         const SizedBox(height: 16),
         if (symptomData.isNotEmpty)
-          _MoodCard(
+          StatCardShell(
             isDark: isDark,
             title: '症状分布',
             child: _SymptomDistribution(
@@ -68,46 +63,6 @@ class MoodStatsWidget extends StatelessWidget {
             ),
           ),
       ],
-    );
-  }
-}
-
-class _MoodCard extends StatelessWidget {
-  final bool isDark;
-  final String title;
-  final Widget child;
-
-  const _MoodCard({required this.isDark, required this.title, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: isDark ? const Color(0x1A383C47) : const Color(0xFFC2C6D6),
-          width: 0.5,
-        ),
-      ),
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: isDark ? const Color(0xFFE2E2E9) : const Color(0xFF191B23),
-              ),
-            ),
-            const SizedBox(height: 16),
-            child,
-          ],
-        ),
-      ),
     );
   }
 }
@@ -150,7 +105,7 @@ class _SeverityTrendChart extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
                     '${parts[1]}/${parts[2]}',
-                    style: TextStyle(fontSize: 10, color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF94A3B8)),
+                    style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
                   ),
                 );
               },
@@ -173,7 +128,7 @@ class _SeverityTrendChart extends StatelessWidget {
                 }
                 return Text(
                   label,
-                  style: TextStyle(fontSize: 9, color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF94A3B8)),
+                  style: const TextStyle(fontSize: 9, color: Color(0xFF94A3B8)),
                 );
               },
             ),
@@ -232,23 +187,20 @@ class _SymptomDistribution extends StatelessWidget {
                   ),
                   Text(
                     '${item.value} 次',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
-                      color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF94A3B8),
+                      color: Color(0xFF94A3B8),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 4),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: totalRecords > 0 ? item.value / totalRecords : 0,
-                  backgroundColor: isDark ? const Color(0xFF2A2D36) : const Color(0xFFECEDF7),
-                  valueColor: const AlwaysStoppedAnimation(Colors.teal),
-                  minHeight: 6,
-                ),
+              StatProgressBar(
+                isDark: isDark,
+                value: totalRecords > 0 ? item.value / totalRecords : 0,
+                color: Colors.teal,
+                minHeight: 6,
               ),
             ],
           ),

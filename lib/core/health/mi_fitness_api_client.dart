@@ -297,7 +297,9 @@ class MiFitnessApiClient {
           if (hrMax == null || bpm > hrMax) hrMax = bpm;
           if (hrMin == null || bpm < hrMin) hrMin = bpm;
         }
-      } catch (_) {}
+      } catch (_) {
+        // 忽略：单条心率样本格式异常，跳过该点，避免一条脏数据中断整日汇总
+      }
     }
     final avgHr = hrSamples.isNotEmpty ? (hrSum ~/ hrSamples.length) : null;
     // 静息心率在独立的 resting_heart_rate key 里；heart_rate 样本只有 time/bpm/type，
@@ -319,7 +321,9 @@ class MiFitnessApiClient {
           spo2Sum += spo2;
           if (spo2Min == null || spo2 < spo2Min) spo2Min = spo2;
         }
-      } catch (_) {}
+      } catch (_) {
+        // 忽略：单条血氧样本格式异常，跳过该点，避免一条脏数据中断整日汇总
+      }
     }
     final avgSpo2 = spo2Samples.isNotEmpty ? (spo2Sum ~/ spo2Samples.length) : null;
 
@@ -338,7 +342,9 @@ class MiFitnessApiClient {
           stressSum += stress;
           if (stressMax == null || stress > stressMax) stressMax = stress;
         }
-      } catch (_) {}
+      } catch (_) {
+        // 忽略：单条压力样本格式异常，跳过该点，避免一条脏数据中断整日汇总
+      }
     }
     final avgStress = stressSamples.isNotEmpty ? (stressSum ~/ stressSamples.length) : null;
 
@@ -394,7 +400,9 @@ class MiFitnessApiClient {
           bpm = v;
           latestWrite = write;
         }
-      } catch (_) {}
+      } catch (_) {
+        // 忽略：单条静息心率样本格式异常，跳过该点，不影响其它有效样本
+      }
     }
     return bpm;
   }
@@ -421,7 +429,9 @@ class MiFitnessApiClient {
           distanceMeters: (val['distance'] as num?)?.toDouble() ?? 0.0,
           calories: (val['calories'] as num?)?.toDouble() ?? 0.0,
         ));
-      } catch (_) {}
+      } catch (_) {
+        // 忽略：单条步数样本格式异常，跳过该点，避免一条脏数据中断日汇总
+      }
     }
 
     // 每小时定主源
@@ -762,7 +772,9 @@ class MiFitnessApiClient {
                 standVal = _extractStandNum(decoded);
                 explicitHasStand = _extractHasStandBool(decoded);
               }
-            } catch (_) {}
+            } catch (_) {
+              // 忽略：站立样本 value 非合法 JSON 时按无该字段处理，继续走其它兼容分支
+            }
           } else {
             // 纯数字或布尔文本，如 "1", "12", "true", "false"
             final parsedNum = num.tryParse(trimmed);
