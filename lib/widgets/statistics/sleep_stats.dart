@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:fl_chart/fl_chart.dart';
 
+import 'package:qnote_flutter/core/theme/app_palette.dart';
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
 import 'package:qnote_flutter/widgets/statistics/stat_shared.dart';
 import 'package:qnote_flutter/widgets/stats_card.dart';
@@ -96,7 +97,7 @@ class _SleepDurationChart extends StatelessWidget {
           drawVerticalLine: false,
           horizontalInterval: 2,
           getDrawingHorizontalLine: (value) => FlLine(
-            color: isDark ? const Color(0xFF2A2D36) : const Color(0xFFE4E4E7),
+            color: AppPalette.chartGrid(isDark),
             strokeWidth: 1,
           ),
         ),
@@ -113,7 +114,7 @@ class _SleepDurationChart extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
                     '${parts[1]}/${parts[2]}',
-                    style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
+                    style: const TextStyle(fontSize: 10, color: AppPalette.textMuted),
                   ),
                 );
               },
@@ -125,7 +126,7 @@ class _SleepDurationChart extends StatelessWidget {
               reservedSize: 30,
               getTitlesWidget: (value, meta) => Text(
                 '${value.toInt()}h',
-                style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
+                style: const TextStyle(fontSize: 10, color: AppPalette.textMuted),
               ),
             ),
           ),
@@ -184,7 +185,7 @@ class _QualityDistribution extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
-                    color: isDark ? const Color(0xFFC2C6D6) : const Color(0xFF424754),
+                    color: AppPalette.textSecondary(isDark),
                   ),
                 ),
               ),
@@ -205,7 +206,7 @@ class _QualityDistribution extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
-                    color: Color(0xFF94A3B8),
+                    color: AppPalette.textMuted,
                   ),
                   textAlign: TextAlign.end,
                 ),

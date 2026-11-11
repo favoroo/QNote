@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
+import 'package:qnote_flutter/core/utils/diary_record_sheet_logic.dart';
 import 'package:qnote_flutter/core/utils/schema_formatter.dart';
 import 'package:qnote_flutter/widgets/diary/ai_extract_helper.dart';
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
@@ -349,26 +350,21 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     TimelineTimeSelectEvent event, {
     required DateTime selectedDate,
   }) {
-    final baseDay = DateTime(
-      selectedDate.year,
-      selectedDate.month,
-      selectedDate.day,
-    );
-    int offsetOf(DateTime date) =>
-        DateTime(date.year, date.month, date.day).difference(baseDay).inDays;
-
-    return base.copyWith(
+    final times = resolveDiarySelectionTimes(
+      selectedDate: selectedDate,
       startTime: event.time,
-      startOffset: offsetOf(event.date),
-      clearStartOffset: false,
-      clearEndTime: event.endTime == null,
+      startDate: event.date,
       endTime: event.endTime,
-      // endDate 为空表示结束时间落在开始那天（时间线区间选择就是这么表达的），
-      // 所以取开始日的偏移；留空会沿用草稿里上一段的旧偏移，跨天会算错。
-      endOffset: event.endDate == null
-          ? offsetOf(event.date)
-          : offsetOf(event.endDate!),
-      clearEndOffset: event.endTime == null,
+      endDate: event.endDate,
+    );
+    return base.copyWith(
+      startTime: times.startTime,
+      startOffset: times.startOffset,
+      clearStartOffset: false,
+      clearEndTime: times.endTime == null,
+      endTime: times.endTime,
+      endOffset: times.endOffset,
+      clearEndOffset: times.endTime == null,
     );
   }
 
@@ -804,32 +800,6 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     _updateActiveDraft(tagEntries: currentEntries);
   }
 
-  /// 判断指定固定事件模板在目标日期是否已经添加过（当天已存在对应日记记录）
-  bool _isFixedEventAddedOnDate(
-    FixedEventTemplate template,
-    DateTime date,
-    List<DiaryRecord> records,
-  ) {
-    final targetDate = DateTime(date.year, date.month, date.day);
-    return records.any((r) {
-      if (r.isDeleted) return false;
-      if (!r.belongsToDate(targetDate)) return false;
-
-      // 1. 优先比对 bodyState 中的固定事件元数据
-      final fixedId = r.bodyState?['fixed_event_id'] as String?;
-      if (fixedId != null && fixedId.isNotEmpty) {
-        return fixedId == template.id;
-      }
-      final fixedName = r.bodyState?['fixed_event_name'] as String?;
-      if (fixedName != null && fixedName.isNotEmpty) {
-        return fixedName == template.name;
-      }
-
-      // 2. 兼容历史/现有记录：通过 title 或 displayTag 比对
-      return r.title == template.name || r.displayTag == template.name;
-    });
-  }
-
   /// 选择固定事件模板，自动填充时间、内容和标签（含字段值）
   /// 支持多选：再次点击已选中模板则取消；多个模板的备注换行拼接显示；同一天已添加过的事件不可再次添加
   void _selectFixedEvent(FixedEventTemplate template) {
@@ -838,7 +808,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     final allRecords = ref.read(diaryListProvider).valueOrNull ?? [];
 
     // 若今日已添加该固定事件，拦截选中并给予提示
-    if (!isDeselecting && _isFixedEventAddedOnDate(template, selectedDate, allRecords)) {
+    if (!isDeselecting && isFixedEventAddedOnDate(template, selectedDate, allRecords)) {
       if (_selectedFixedEventIds.contains(template.id)) {
         setState(() {
           _selectedFixedEventIds.remove(template.id);
@@ -916,31 +886,12 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     }
     // 时间用最后选中模板的第一个时间段的开始/结束时间
     final last = selectedTemplates.last;
-    final firstPeriod = last.timePeriods.isNotEmpty 
-        ? last.timePeriods.first 
-        : TimePeriod(startTime: last.startTime, endTime: last.endTime);
-
-    final startParts = firstPeriod.startTime.split(':');
-    final startTime = TimeOfDay(
-      hour: int.tryParse(startParts[0]) ?? last.startHour,
-      minute: startParts.length > 1 ? int.tryParse(startParts[1]) ?? last.startMinute : 0,
-    );
-    final TimeOfDay? endTime = last.isTimePoint || firstPeriod.endTime.isEmpty
-        ? null
-        : () {
-            final endParts = firstPeriod.endTime.split(':');
-            return TimeOfDay(
-              hour: int.tryParse(endParts[0]) ?? last.endHour,
-              minute: endParts.length > 1 ? int.tryParse(endParts[1]) ?? last.endMinute : 0,
-            );
-          }();
+    final times = resolveFixedEventSelectionTimes(last);
+    final startTime = times.startTime;
+    final endTime = times.endTime;
 
     // 备注换行拼接（未填备注时默认使用事件标题）
-    final contents = selectedTemplates
-        .map((t) => t.effectiveContent)
-        .where((c) => c.isNotEmpty)
-        .toList();
-    final mergedText = contents.join('\n');
+    final mergedText = mergeFixedEventContents(selectedTemplates);
 
     _textController.text = mergedText;
     _textController.selection = TextSelection.fromPosition(
@@ -1803,15 +1754,10 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
   }
 
   bool _validateDraft(DiaryComposeDraft draft) {
-    for (final entry in draft.tagEntries) {
-      if (entry.id == 'consumption' && entry.fields['amount'] == null) {
-        Toast.warning(context, '请输入金额');
-        return false;
-      }
-      if (entry.id == 'sleep' && entry.fields['duration'] == null) {
-        Toast.warning(context, '请输入睡眠时长');
-        return false;
-      }
+    final warning = diaryTagValidationWarning(draft.tagEntries);
+    if (warning != null) {
+      Toast.warning(context, warning);
+      return false;
     }
     return true;
   }
@@ -1871,10 +1817,11 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     final selectedDate = ref.read(selectedDateProvider);
     final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
 
-    final isEmpty =
-        draft.inputText.trim().isEmpty &&
-        draft.tagEntries.isEmpty &&
-        draft.selectedPhotos.isEmpty;
+    final isEmpty = isDiaryDraftEmpty(
+      inputText: draft.inputText,
+      tagEntryCount: draft.tagEntries.length,
+      photoCount: draft.selectedPhotos.length,
+    );
     if (isEmpty) return;
 
     final now = DateTime.now();
@@ -1890,7 +1837,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
       final alreadyAddedTemplates = <FixedEventTemplate>[];
 
       for (final t in selectedTemplates) {
-        if (_isFixedEventAddedOnDate(t, selectedDate, allRecords)) {
+        if (isFixedEventAddedOnDate(t, selectedDate, allRecords)) {
           alreadyAddedTemplates.add(t);
         } else {
           templatesToAdd.add(t);
@@ -2417,32 +2364,20 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
   }
 
   DateTime _calculateStartDateTime(DiaryComposeDraft draft, DateTime selectedDate) {
-    var start = DateTime(
-      selectedDate.year,
-      selectedDate.month,
-      selectedDate.day,
-      draft.startTime.hour,
-      draft.startTime.minute,
+    return resolveDiaryDateTime(
+      selectedDate: selectedDate,
+      time: draft.startTime,
+      dayOffset: draft.startOffset,
     );
-    if (draft.startOffset != null) {
-      start = start.add(Duration(days: draft.startOffset!));
-    }
-    return start;
   }
 
   DateTime? _calculateEndDateTime(DiaryComposeDraft draft, DateTime selectedDate) {
     if (draft.endTime == null) return null;
-    var end = DateTime(
-      selectedDate.year,
-      selectedDate.month,
-      selectedDate.day,
-      draft.endTime!.hour,
-      draft.endTime!.minute,
+    return resolveDiaryDateTime(
+      selectedDate: selectedDate,
+      time: draft.endTime!,
+      dayOffset: draft.endOffset,
     );
-    if (draft.endOffset != null) {
-      end = end.add(Duration(days: draft.endOffset!));
-    }
-    return end;
   }
 
   /// 时间胶囊上的时间文案。
@@ -2451,13 +2386,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
   /// 只有跨天补记（offset ≠ 0）才补上月-日，避免把「11-11 09:58」这种冗余前缀
   /// 塞进头部最显眼的位置。
   String _formatTime(DateTime selectedDate, TimeOfDay time, {int? offset}) {
-    final timeStr =
-        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
-    if (offset == null || offset == 0) {
-      return timeStr;
-    }
-    final date = selectedDate.add(Duration(days: offset));
-    return '${DateFormat('MM-dd').format(date)} $timeStr';
+    return formatDiaryTimeLabel(selectedDate, time, offset: offset);
   }
 
   @override
@@ -2475,7 +2404,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
           final toRemove = <String>[];
           for (final id in _selectedFixedEventIds) {
             final template = allTemplates.where((t) => t.id == id).firstOrNull;
-            if (template != null && _isFixedEventAddedOnDate(template, next, allRecords)) {
+            if (template != null && isFixedEventAddedOnDate(template, next, allRecords)) {
               toRemove.add(id);
             }
           }
@@ -2642,17 +2571,13 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
   /// 发送键的可用性：必填校验 + 草稿是否为空 + 图片是否还在压缩。
   bool get _isSaveDisabled {
     final draft = _activeDraft;
-    final consumptionEntry = draft.tagEntries
-        .where((e) => e.id == 'consumption')
-        .firstOrNull;
-    final sleepEntry = draft.tagEntries
-        .where((e) => e.id == 'sleep')
-        .firstOrNull;
-    final isValidationError =
-        (consumptionEntry != null &&
-            consumptionEntry.fields['amount'] == null) ||
-        (sleepEntry != null && sleepEntry.fields['duration'] == null);
-    return isValidationError || draft.isEmpty || _compressingTasks.isNotEmpty;
+    final isValidationError = diaryTagValidationWarning(draft.tagEntries) != null;
+    final isEmpty = isDiaryDraftEmpty(
+      inputText: draft.inputText,
+      tagEntryCount: draft.tagEntries.length,
+      photoCount: draft.selectedPhotos.length,
+    );
+    return isValidationError || isEmpty || _compressingTasks.isNotEmpty;
   }
 
   Future<void> _editInputBarTagTime(TagEntry entry) async {
@@ -2764,7 +2689,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: templates.map((template) {
-                      final isAddedToday = _isFixedEventAddedOnDate(template, selectedDate, allRecords);
+                      final isAddedToday = isFixedEventAddedOnDate(template, selectedDate, allRecords);
                       final isSelected = _selectedFixedEventIds.contains(template.id) && !isAddedToday;
                       return Padding(
                         padding: const EdgeInsets.only(right: 6),

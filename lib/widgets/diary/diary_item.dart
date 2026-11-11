@@ -1472,8 +1472,8 @@ class _DiaryItemState extends State<DiaryItem> {
     final progress = stepTarget > 0 ? (steps / stepTarget).clamp(0.0, 1.0) : 0.0;
     final isTargetReached = steps >= stepTarget;
 
-    const brandGreen = Color(0xFF10B981);
-    const sleepPurple = Color(0xFF6366F1);
+    const brandGreen = TagColors.health;
+    const sleepPurple = TagColors.sleep;
     const screenBlue = Color(0xFF0284C7);
 
     // 屏幕使用时长（优先使用持久化数据，若无则使用当日异步检测补全数据）
@@ -2179,10 +2179,10 @@ class _DiaryItemState extends State<DiaryItem> {
             width: 28,
             height: 28,
             decoration: BoxDecoration(
-              color: const Color(0xFF10B981).withValues(alpha: 0.12),
+              color: TagColors.health.withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
-            child: Icon(sportIcon, size: 15, color: const Color(0xFF10B981)),
+            child: Icon(sportIcon, size: 15, color: TagColors.health),
           ),
           const SizedBox(width: 10),
           Expanded(

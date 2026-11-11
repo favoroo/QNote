@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
@@ -383,13 +384,13 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
 
   // 标签颜色配置，与 DiaryItem 保持一致
   static const _tagColors = <String, Color>{
-    '睡眠': Color(0xFF6366F1),
-    '饮食': Color(0xFFF59E0B),
-    '活动': Color(0xFF10B981),
-    '记账': Color(0xFFEF4444),
+    '睡眠': TagColors.sleep,
+    '饮食': TagColors.diet,
+    '活动': TagColors.activity,
+    '记账': TagColors.finance,
   };
 
-  static const _defaultColor = Color(0xFF6B7280);
+  static const _defaultColor = TagColors.defaultTag;
 
   Color _tagColor(String displayTag) => _tagColors[displayTag] ?? _defaultColor;
 
@@ -705,8 +706,8 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
 
     final progress = stepTarget > 0 ? (steps / stepTarget).clamp(0.0, 1.0) : 0.0;
     final isTargetReached = steps >= stepTarget;
-    const brandGreen = Color(0xFF10B981);
-    const sleepPurple = Color(0xFF6366F1);
+    const brandGreen = TagColors.health;
+    const sleepPurple = TagColors.sleep;
     const activityOrange = Color(0xFFF97316);
 
     // 格式化屏幕时长
@@ -1296,7 +1297,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                                           : Icons.access_time,
                                       size: 12,
                                       color: _isHealthDailySummary(record)
-                                          ? const Color(0xFF10B981)
+                                          ? TagColors.health
                                           : tagColor,
                                     ),
                                     const SizedBox(width: 4),
@@ -1305,7 +1306,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                                       style: theme.textTheme.labelSmall?.copyWith(
                                         fontWeight: FontWeight.bold,
                                         color: _isHealthDailySummary(record)
-                                            ? const Color(0xFF10B981)
+                                            ? TagColors.health
                                             : tagColor,
                                       ),
                                     ),
@@ -1317,7 +1318,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                                    color: TagColors.health.withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: const Text(
@@ -1325,7 +1326,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                                     style: TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.w600,
-                                      color: Color(0xFF10B981),
+                                      color: TagColors.health,
                                     ),
                                   ),
                                 ),
@@ -1956,13 +1957,13 @@ class _RecordDetailSheetState extends ConsumerState<_RecordDetailSheet> {
   static const _defaultIcon = Icons.description_outlined;
 
   static const _tagColors = <String, Color>{
-    '睡眠': Color(0xFF6366F1),
-    '饮食': Color(0xFFF59E0B),
-    '活动': Color(0xFF10B981),
-    '记账': Color(0xFFEF4444),
+    '睡眠': TagColors.sleep,
+    '饮食': TagColors.diet,
+    '活动': TagColors.activity,
+    '记账': TagColors.finance,
   };
 
-  static const _defaultColor = Color(0xFF6B7280);
+  static const _defaultColor = TagColors.defaultTag;
 
   IconData _tagIcon(String displayTag) => _tagIcons[displayTag] ?? _defaultIcon;
   Color _tagColor(String displayTag) => _tagColors[displayTag] ?? _defaultColor;

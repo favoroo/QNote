@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:qnote_flutter/core/theme/app_palette.dart';
 import 'package:qnote_flutter/widgets/statistics/stat_shared.dart';
 
 /// 统计数值卡片：展示标题、图标与单个数值。
@@ -43,14 +44,14 @@ class StatsCard extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF94A3B8),
+                  color: AppPalette.textMuted,
                   letterSpacing: 0.5,
                 ),
               ),
               Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF2A2D36) : const Color(0xFFECEDF7),
+                  color: AppPalette.chipBackground(isDark),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(icon, size: 14, color: iconColor),
@@ -63,7 +64,7 @@ class StatsCard extends StatelessWidget {
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
-              color: isDark ? const Color(0xFFE2E2E9) : const Color(0xFF191B23),
+              color: AppPalette.textPrimary(isDark),
             ),
             overflow: TextOverflow.ellipsis,
           ),

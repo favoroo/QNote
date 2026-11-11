@@ -57,7 +57,9 @@ import 'package:qnote_flutter/widgets/ai/quick_prompt_dialog.dart';
 import 'package:qnote_flutter/widgets/chat/chat_image_view.dart';
 import 'package:qnote_flutter/widgets/q_text_selection_toolbar.dart';
 
-part 'ai_page_widgets.dart';
+part 'ai_chat_bubble.dart';
+part 'ai_tool_feedback.dart';
+part 'ai_selector_dialogs.dart';
 
 class AiPage extends ConsumerStatefulWidget {
   const AiPage({super.key});

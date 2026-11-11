@@ -22,6 +22,7 @@ import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/core/utils/cheer_burst.dart';
 import 'package:qnote_flutter/core/utils/diary_progress.dart';
+import 'package:qnote_flutter/core/utils/diary_timeline_layout.dart';
 import 'package:qnote_flutter/core/utils/timeline_time_drag.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/core/utils/widget_utils.dart';
@@ -52,9 +53,8 @@ class DiaryPage extends ConsumerStatefulWidget {
 
 class _DiaryPageState extends ConsumerState<DiaryPage>
     with TickerProviderStateMixin, WidgetsBindingObserver {
-  static const int _itemsPerDay = 49;
-  static const double _dividerHeight = 80.0;
-  static const double _nodeHeight = 48.0;
+  static const int _itemsPerDay = kDiaryTimelineItemsPerDay;
+  static const double _nodeHeight = kDiaryTimelineNodeHeight;
 
   late DateTime _today;
   late DateTime _windowStartDate;
@@ -149,12 +149,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   /// 彩带层。挂 OverlayEntry 而不是包进 body：见 [_showCheerBurst]。
   OverlayEntry? _cheerBurstEntry;
 
-  static String _dateKey(DateTime date) {
-    final y = date.year.toString().padLeft(4, '0');
-    final m = date.month.toString().padLeft(2, '0');
-    final d = date.day.toString().padLeft(2, '0');
-    return '$y-$m-$d';
-  }
+  static String _dateKey(DateTime date) => diaryDateKey(date);
 
   Map<String, List<DiaryRecord>> _buildRecordsByDate(List<DiaryRecord> allRecords) {
     // 缓存命中：allRecords 引用相同 + _undoRecords 版本未变
@@ -192,12 +187,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   final Map<String, bool> _dateExpandedOverrides = {};
 
   bool _isDefaultExpanded(DateTime date) {
-    final yesterday = _today.subtract(const Duration(days: 1));
-    final tomorrow = _today.add(const Duration(days: 1));
-    // 仅昨天、今天、明天默认保持展开，其余历史与未来日期全部默认折叠
-    return _isSameDay(date, _today) ||
-        _isSameDay(date, yesterday) ||
-        _isSameDay(date, tomorrow);
+    return isDiaryDateExpandedByDefault(date, _today);
   }
 
   bool _isDateExpanded(DateTime date) {
@@ -246,73 +236,29 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   }
 
   double _estimateOffsetForIndex(int targetIndex) {
-    double offset = 0;
-    for (int i = 0; i < targetIndex; i++) {
-      if (_itemHeights.containsKey(i)) {
-        offset += _itemHeights[i]!;
-      } else if (i % _itemsPerDay == 0) {
-        offset += _dividerHeight;
-      } else {
-        final dayOffset = i ~/ _itemsPerDay;
-        final date = _indexToDate(dayOffset);
-        if (_isDateExpanded(date)) {
-          offset += _nodeHeight;
-        }
-      }
-    }
-    return offset;
+    return estimateDiaryOffsetForIndex(
+      targetIndex: targetIndex,
+      measuredHeights: _itemHeights,
+      windowStartDate: _windowStartDate,
+      isExpanded: _isDateExpanded,
+    );
   }
-
-  static const double _averageRecordExtraHeight = 130.0;
 
   double _estimateOffsetForTimeWithRecords(
     DateTime targetTime,
     Map<String, List<DiaryRecord>> recordsByDate,
   ) {
-    final targetDate = DateTime(
-      targetTime.year,
-      targetTime.month,
-      targetTime.day,
+    return estimateDiaryOffsetForTimeWithRecords(
+      targetTime: targetTime,
+      windowStartDate: _windowStartDate,
+      today: _today,
+      isExpanded: _isDateExpanded,
+      recordCountForDate: (date) =>
+          (recordsByDate[_dateKey(date)] ?? const <DiaryRecord>[]).length,
+      displayTimesForDate: (date) =>
+          (recordsByDate[_dateKey(date)] ?? const <DiaryRecord>[])
+              .map((record) => record.getDisplayTime()),
     );
-    final dayOffset = _dateToDayOffset(targetDate);
-    final nodeIndex = targetTime.hour * 2 + (targetTime.minute >= 30 ? 1 : 0);
-
-    // 考虑 ListView.builder vertical padding top = 12.0
-    double offset = 12.0;
-    for (int d = 0; d <= dayOffset; d++) {
-      final date = _indexToDate(d);
-      final dateKey = _dateKey(date);
-      final dayRecords = recordsByDate[dateKey] ?? [];
-
-      offset += _dividerHeight;
-
-      final isExpanded = _isDateExpanded(date);
-      if (d < dayOffset) {
-        if (isExpanded) {
-          offset += 48 * _nodeHeight;
-          offset += dayRecords.length * _averageRecordExtraHeight;
-        }
-      } else {
-        if (isExpanded) {
-          offset += nodeIndex * _nodeHeight;
-          for (final r in dayRecords) {
-            final displayTime = r.getDisplayTime();
-            final rNodeIndex = displayTime.hour * 2 + (displayTime.minute >= 30 ? 1 : 0);
-            if (rNodeIndex < nodeIndex) {
-              offset += _averageRecordExtraHeight;
-            }
-          }
-          // 当天非整点专用指示节点 _CurrentTimeNode (48px) 与自身半高补偿
-          if (_isToday(date) && !(targetTime.minute == 0 || targetTime.minute == 30)) {
-            offset += 24.0;
-          }
-          // 对准当前节点中心
-          offset += _nodeHeight * 0.5;
-        }
-      }
-    }
-
-    return offset;
   }
 
   void _scrollToTarget({
@@ -569,7 +515,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       now.day,
     );
 
-    final nodeIndex = now.hour * 2 + (now.minute >= 30 ? 1 : 0);
+    final nodeIndex = diaryTimelineNodeIndex(now);
     final targetIndex = dayOffset * _itemsPerDay + (nodeIndex + 1);
 
     _scrollToTarget(
@@ -609,7 +555,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       targetTime.day,
     );
 
-    final nodeIndex = targetTime.hour * 2 + (targetTime.minute >= 30 ? 1 : 0);
+    final nodeIndex = diaryTimelineNodeIndex(targetTime);
     final targetIndex = dayOffset * _itemsPerDay + (nodeIndex + 1);
 
     _scrollToTarget(
@@ -854,20 +800,16 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   }
 
   double _calculateDaysHeight(DateTime startDate, int daysCount) {
-    double total = 0.0;
     final allRecords = ref.read(diaryListProvider).valueOrNull;
     final recordsByDate = allRecords != null ? _buildRecordsByDate(allRecords) : null;
-    for (int i = 0; i < daysCount; i++) {
-      final date = startDate.add(Duration(days: i));
-      total += _dividerHeight;
-      if (_isDateExpanded(date)) {
-        total += 48 * _nodeHeight;
-        final dateKey = _dateKey(date);
-        final dayRecords = recordsByDate?[dateKey] ?? [];
-        total += dayRecords.length * _averageRecordExtraHeight;
-      }
-    }
-    return total;
+    return calculateDiaryDaysHeight(
+      startDate: startDate,
+      daysCount: daysCount,
+      isExpanded: _isDateExpanded,
+      recordCountForDate: recordsByDate == null
+          ? null
+          : (date) => (recordsByDate[_dateKey(date)] ?? const <DiaryRecord>[]).length,
+    );
   }
 
   void _shiftWindowBackward() {
@@ -930,38 +872,20 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   }
 
   DateTime _indexToDate(int dayOffset) {
-    return _windowStartDate.add(Duration(days: dayOffset));
+    return diaryDateForDayOffset(_windowStartDate, dayOffset);
   }
 
   int _dateToDayOffset(DateTime date) {
-    final target = DateTime(date.year, date.month, date.day);
-    return target.difference(_windowStartDate).inDays;
+    return diaryDayOffset(date, _windowStartDate);
   }
 
-  String _formatDateTitle(DateTime date) {
-    final weekDays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-    final year = date.year.toString().substring(2);
-    final month = date.month.toString().padLeft(2, '0');
-    final day = date.day.toString().padLeft(2, '0');
-    final weekday = weekDays[date.weekday - 1];
-    return '$year年$month月$day日 $weekday';
-  }
+  String _formatDateTitle(DateTime date) => formatDiaryDateTitle(date);
 
-  String _formatDividerDate(DateTime date) {
-    final weekDays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-    final weekday = weekDays[date.weekday - 1];
-    return '${date.month}月${date.day}日 $weekday';
-  }
+  String _formatDividerDate(DateTime date) => formatDiaryDividerDate(date);
 
-  bool _isToday(DateTime date) {
-    return date.year == _today.year &&
-        date.month == _today.month &&
-        date.day == _today.day;
-  }
+  bool _isToday(DateTime date) => isTodayDate(date, _today);
 
-  bool _isSameDay(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
-  }
+  bool _isSameDay(DateTime a, DateTime b) => isSameCalendarDay(a, b);
 
   void _goToDate(DateTime date, {bool expand = true}) {
     if (_isScrollingFromList) return;
@@ -3489,15 +3413,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   }
 
   String _dragPreviewText(DiaryRecord record) {
-    final content = record.content.trim();
-    if (content.isNotEmpty) {
-      return content;
-    }
-    final title = record.title.trim();
-    if (title.isNotEmpty) {
-      return title;
-    }
-    return record.photos.isNotEmpty ? '${record.photos.length} 张图片' : '一条记录';
+    return diaryDragPreviewText(
+      content: record.content,
+      title: record.title,
+      photoCount: record.photos.length,
+    );
   }
 
   void _startAutoScrollTimer() {

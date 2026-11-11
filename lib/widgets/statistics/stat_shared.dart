@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'package:fl_chart/fl_chart.dart';
 
+import 'package:qnote_flutter/core/theme/app_palette.dart';
+
 /// 统计卡片外框：统一 16 圆角、0.5 细边框、零阴影与 16 内边距。
 ///
 /// 所有统计卡片共用该外框，避免各组件重复维护卡片装饰导致视觉漂移。
@@ -24,7 +26,7 @@ class StatCardContainer extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
-          color: isDark ? const Color(0x1A383C47) : const Color(0xFFC2C6D6),
+          color: AppPalette.border(isDark),
           width: 0.5,
         ),
       ),
@@ -104,7 +106,7 @@ class StatCardShell extends StatelessWidget {
       style: TextStyle(
         fontSize: 13,
         fontWeight: FontWeight.bold,
-        color: isDark ? const Color(0xFFE2E2E9) : const Color(0xFF191B23),
+        color: AppPalette.textPrimary(isDark),
       ),
     );
 
@@ -194,7 +196,7 @@ class StatChartBox extends StatelessWidget {
       height: height,
       child: isEmpty
           ? const Center(
-              child: Text('暂无数据', style: TextStyle(color: Color(0xFF94A3B8))),
+              child: Text('暂无数据', style: TextStyle(color: AppPalette.textMuted)),
             )
           : child,
     );
@@ -269,7 +271,7 @@ class StatPieChart extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
-                    color: isDark ? const Color(0xFFC2C6D6) : const Color(0xFF424754),
+                    color: AppPalette.textSecondary(isDark),
                   ),
                 ),
               ],
@@ -309,7 +311,7 @@ class StatProgressBar extends StatelessWidget {
       borderRadius: BorderRadius.circular(4),
       child: LinearProgressIndicator(
         value: value,
-        backgroundColor: isDark ? const Color(0xFF2A2D36) : const Color(0xFFECEDF7),
+        backgroundColor: AppPalette.progressTrack(isDark),
         valueColor: AlwaysStoppedAnimation(color),
         minHeight: minHeight,
       ),
